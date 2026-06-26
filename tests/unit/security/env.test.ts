@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const VALID_TOKEN = "a".repeat(32);
 const VALID_SECRET = "b".repeat(32);
@@ -479,5 +482,64 @@ describe("getAuthSessionCookieNames", () => {
     const active = getAuthSessionCookieName();
     const both = getAuthSessionCookieNames();
     expect([both.name, both.secureName]).toContain(active);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// assertLoadedEnvFilePermissions
+// ---------------------------------------------------------------------------
+describe("assertLoadedEnvFilePermissions", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("is a no-op outside production even when the file is world-readable", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    const dir = mkdtempSync(join(tmpdir(), "env-perm-"));
+    const filePath = join(dir, ".env.production");
+    writeFileSync(filePath, "AUTH_SECRET=test");
+    chmodSync(filePath, 0o644);
+    try {
+      const { assertLoadedEnvFilePermissions } = await importEnv();
+      expect(() => assertLoadedEnvFilePermissions(filePath)).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects a 0644 env file in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const dir = mkdtempSync(join(tmpdir(), "env-perm-"));
+    const filePath = join(dir, ".env.production");
+    writeFileSync(filePath, "AUTH_SECRET=test");
+    chmodSync(filePath, 0o644);
+    try {
+      const { assertLoadedEnvFilePermissions } = await importEnv();
+      expect(() => assertLoadedEnvFilePermissions(filePath)).toThrow(/group\/other bits set/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("accepts a 0600 env file in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const dir = mkdtempSync(join(tmpdir(), "env-perm-"));
+    const filePath = join(dir, ".env.production");
+    writeFileSync(filePath, "AUTH_SECRET=test");
+    chmodSync(filePath, 0o600);
+    try {
+      const { assertLoadedEnvFilePermissions } = await importEnv();
+      expect(() => assertLoadedEnvFilePermissions(filePath)).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("skips gracefully when the env file cannot be resolved", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    const { assertLoadedEnvFilePermissions } = await importEnv();
+    expect(() =>
+      assertLoadedEnvFilePermissions("/definitely/not/a/real/path/.env"),
+    ).not.toThrow();
   });
 });

@@ -4,7 +4,7 @@ export async function register() {
   }
 
   const [
-    { getValidatedAuthSecret, getValidatedJudgeAuthToken },
+    { getValidatedAuthSecret, getValidatedJudgeAuthToken, assertLoadedEnvFilePermissions },
     { assertProductionConfig },
     { startRateLimitEviction },
     { startWorkerStalenessSweep },
@@ -26,6 +26,7 @@ export async function register() {
   ]);
 
   assertProductionConfig();
+  assertLoadedEnvFilePermissions();
   getValidatedAuthSecret();
   getValidatedJudgeAuthToken();
 

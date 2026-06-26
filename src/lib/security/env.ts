@@ -1,3 +1,5 @@
+import { statSync, type Stats } from "node:fs";
+import { resolve } from "node:path";
 import { logger } from "@/lib/logger";
 
 const AUTH_SECRET_PLACEHOLDER = "your-secret-key-here-generate-with-openssl-rand-base64-32";
@@ -134,6 +136,78 @@ export function validateAuthUrl() {
   }
 
   return authUrl;
+}
+
+/**
+ * Resolve the path of the env file the app actually loaded. Next.js reads
+ * `.env*` files from `process.cwd()` with a fixed precedence; we cannot
+ * observe which file supplied the loaded secrets, so we walk the
+ * production-relevant candidates in load order and return the first that
+ * exists. Returns `null` when no candidate is present (e.g. secrets were
+ * injected via process env by the orchestrator rather than read from a file),
+ * in which case the permission check is skipped.
+ */
+function resolveLoadedEnvFilePath(): string | null {
+  const candidates = [
+    ".env.production.local",
+    ".env.local",
+    ".env.production",
+    ".env",
+  ];
+
+  for (const candidate of candidates) {
+    const fullPath = resolve(process.cwd(), candidate);
+    try {
+      statSync(fullPath);
+      return fullPath;
+    } catch {
+      // Candidate missing — try the next.
+    }
+  }
+
+  return null;
+}
+
+/**
+ * In production, refuse to boot when the loaded env file is readable or
+ * writable by group/other users. `.env*` files contain AUTH_SECRET,
+ * NODE_ENCRYPTION_KEY, and similar secrets; a world-readable mode (e.g. 0644)
+ * leaks them to every user on the host. This is a no-op outside production and
+ * when no env file path can be resolved (env injected via process env).
+ *
+ * Accepts an optional explicit path so callers/tests can target a specific
+ * file; otherwise the loaded file is auto-resolved via
+ * {@link resolveLoadedEnvFilePath}.
+ */
+export function assertLoadedEnvFilePermissions(envFilePath?: string): void {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  const filePath = envFilePath ?? resolveLoadedEnvFilePath();
+  if (!filePath) {
+    return;
+  }
+
+  let stats: Stats;
+  try {
+    stats = statSync(filePath);
+  } catch (err) {
+    logger.warn({ err, filePath }, "[env] could not stat env file; skipping permission check");
+    return;
+  }
+
+  if ((stats.mode & 0o077) !== 0) {
+    const mode = (stats.mode & 0o777).toString(8).padStart(3, "0");
+    logger.error(
+      { filePath, mode },
+      "[env] env file is group/other accessible; refusing to boot in production",
+    );
+    throw new Error(
+      `Env file ${filePath} is mode ${mode} (group/other bits set) — secrets would be leaked to other users on this host. ` +
+        `Run \`chmod 600 ${filePath}\` and restart.`,
+    );
+  }
 }
 
 export async function getTrustedAuthHosts() {
