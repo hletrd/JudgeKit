@@ -134,4 +134,46 @@ describe("problemImportSchema", () => {
       "tooManyTestCases",
     );
   });
+
+  it("round-trips a function-typed export payload preserving problemType and functionSpec", () => {
+    // Shape mirrors the per-problem export route output (problem row + tags +
+    // testCases). The export must carry problemType/functionSpec/referenceSolution
+    // so a function problem survives export → import without downgrading to "auto".
+    const exportedProblem = {
+      title: "Function Round-Trip",
+      description: VALID_DESCRIPTION,
+      sequenceNumber: 1,
+      timeLimitMs: 1000,
+      memoryLimitMb: 256,
+      problemType: "function",
+      functionSpec: FUNCTION_SPEC,
+      referenceSolution: { language: "python", source: "def solve(x): return x" },
+      visibility: "private",
+      showCompileOutput: true,
+      showDetailedResults: true,
+      showRuntimeErrors: true,
+      allowAiAssistant: true,
+      comparisonMode: "exact",
+      floatAbsoluteError: null,
+      floatRelativeError: null,
+      difficulty: 4,
+      tags: ["functions"],
+      testCases: [{ input: "1\n", expectedOutput: "1\n", isVisible: false }],
+    };
+
+    const result = problemImportSchema.safeParse({
+      version: 1,
+      problem: exportedProblem,
+    });
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.problem.problemType).toBe("function");
+    expect(result.data.problem.functionSpec).not.toBeNull();
+    expect(result.data.problem.functionSpec).toEqual(FUNCTION_SPEC);
+    expect(result.data.problem.referenceSolution).toEqual({
+      language: "python",
+      source: "def solve(x): return x",
+    });
+  });
 });

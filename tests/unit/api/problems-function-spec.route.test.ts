@@ -367,6 +367,8 @@ describe("GET /api/v1/problems/[id] — referenceSolution hiding", () => {
     getApiUserMock.mockResolvedValue(STUDENT_USER);
     resolveCapabilitiesMock.mockResolvedValue({ has: () => false });
     canAccessProblemMock.mockResolvedValue(true);
+    // Strict gate rejects the student (not author / not in teaching group).
+    canManageProblemMock.mockResolvedValue(false);
     // findFirst is called twice: stub (columns) then full row.
     problemsFindFirstMock
       .mockResolvedValueOnce({ id: "prob-1", authorId: "author-9", visibility: "public" })
@@ -385,6 +387,37 @@ describe("GET /api/v1/problems/[id] — referenceSolution hiding", () => {
     expect(body.data.referenceSolution).toBeUndefined();
     // functionSpec MUST remain (drives student stub + language list)
     expect(body.data.functionSpec).toMatchObject({ functionName: "twoSum" });
+    // Non-managers must not receive hidden test cases either.
+    expect(body.data.testCases).toBeUndefined();
+    expect(testCasesFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it("strips referenceSolution + hidden testCases from a problems.edit holder outside the teaching group", async () => {
+    // The caller holds problems.edit but is neither the author nor in the
+    // problem's teaching group, and lacks groups.view_all. The looser local
+    // check (caps.has('problems.edit')) would leak the referenceSolution; the
+    // strict canManageProblem gate must reject them.
+    getApiUserMock.mockResolvedValue({ id: "instructor-x", role: "instructor", username: "ix" });
+    resolveCapabilitiesMock.mockResolvedValue({ has: (c: string) => c === "problems.edit" });
+    canAccessProblemMock.mockResolvedValue(true);
+    canManageProblemMock.mockResolvedValue(false);
+    problemsFindFirstMock
+      .mockResolvedValueOnce({ id: "prob-1", authorId: "admin-1", visibility: "private" })
+      .mockResolvedValueOnce({
+        id: "prob-1",
+        title: "Two Sum",
+        problemType: "function",
+        functionSpec: VALID_SPEC,
+        referenceSolution: { language: "python", source: "SECRET" },
+        visibility: "private",
+      });
+
+    const res = await GET(makeGetRequest("prob-1"), routeCtx("prob-1"));
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data.referenceSolution).toBeUndefined();
+    expect(body.data.testCases).toBeUndefined();
+    expect(testCasesFindManyMock).not.toHaveBeenCalled();
   });
 
   it("retains referenceSolution for a manager (author) read", async () => {
