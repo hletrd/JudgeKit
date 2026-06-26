@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiUser, unauthorized, forbidden, csrfForbidden } from "@/lib/api/auth";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
-import { recordAuditEvent } from "@/lib/audit/events";
+import { recordAuditEventDurable } from "@/lib/audit/events";
 import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { logger } from "@/lib/logger";
 import { db } from "@/lib/db";
@@ -171,13 +171,42 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    // Record the restore audit AFTER `importDatabase` commits. The import runs
-    // inside a single transaction that TRUNCATEs every table — including
-    // `auditEvents` — so an audit row written before the commit would be wiped
-    // the moment the transaction applies. Recording post-commit guarantees the
-    // integrity-trail entry survives the restore. Same pattern as the
-    // post-deletion audit in src/app/api/v1/users/[id]/route.ts.
-    recordAuditEvent({
+    // Restore uploaded files AFTER the DB transaction commits. If this phase
+    // fails, the DB already references the new backup's uploads — record a
+    // DURABLE failure audit so the integrity trail reflects reality, then
+    // surface the snapshot path the operator needs for manual rollback.
+    if (isZipFile) {
+      try {
+        filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);
+      } catch (err) {
+        logger.error({ err }, "[restore] restoreParsedBackupFiles failed after DB commit");
+        await recordAuditEventDurable({
+          actorId: user.id,
+          actorRole: user.role,
+          action: "system_settings.database_restore_files_failed",
+          resourceType: "system_settings",
+          resourceId: "database",
+          resourceLabel: "Database restore (files failed)",
+          summary: `Restore file-write phase failed after DB commit (source: ${data.sourceDialect})`,
+          details: {
+            preRestoreSnapshotPath: preSnapshotPath,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          request,
+        });
+        return NextResponse.json(
+          { error: "restoreFailed", details: ["fileRestoreFailed"], preRestoreSnapshotPath: preSnapshotPath },
+          { status: 500 },
+        );
+      }
+    }
+
+    // Record the restore audit AFTER `importDatabase` commits AND file
+    // restoration succeeds. Use the DURABLE helper (awaited insert) — a DB
+    // restore is the canonical low-frequency high-stakes event, and the
+    // buffered recordAuditEvent would be lost on a SIGKILL/OOM in its 5s flush
+    // window. recordAuditEventDurable never throws (falls back to buffer).
+    await recordAuditEventDurable({
       actorId: user.id,
       actorRole: user.role,
       action: "system_settings.database_restored",
@@ -185,15 +214,11 @@ export async function POST(request: NextRequest) {
       resourceId: "database",
       resourceLabel: "Database restore",
       summary: isZipFile
-        ? `Restoring from ZIP backup (source: ${data.sourceDialect}, ${pendingUploadedFiles.length} files pending, ${(file.size / 1024 / 1024).toFixed(1)} MB)`
-        : `Restoring from JSON export (source: ${data.sourceDialect}, ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
-      details: { preRestoreSnapshotPath: preSnapshotPath },
+        ? `Restored from ZIP backup (source: ${data.sourceDialect}, ${filesRestored} files written, ${(file.size / 1024 / 1024).toFixed(1)} MB)`
+        : `Restored from JSON export (source: ${data.sourceDialect}, ${(file.size / 1024 / 1024).toFixed(1)} MB)`,
+      details: { preRestoreSnapshotPath: preSnapshotPath, skippedTables: result.skippedTables },
       request,
     });
-
-    if (isZipFile) {
-      filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);
-    }
 
     return NextResponse.json({
       success: true,

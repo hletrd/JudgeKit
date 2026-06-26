@@ -16,6 +16,7 @@ const {
   parseBackupZipMock,
   restoreParsedBackupFilesMock,
   recordAuditEventMock,
+  recordAuditEventDurableMock,
   takePreRestoreSnapshotMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
@@ -32,6 +33,7 @@ const {
   parseBackupZipMock: vi.fn(),
   restoreParsedBackupFilesMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
+  recordAuditEventDurableMock: vi.fn(() => Promise.resolve()),
   takePreRestoreSnapshotMock: vi.fn(),
 }));
 
@@ -87,6 +89,7 @@ vi.mock("@/lib/db/import-transfer", () => ({
 
 vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: recordAuditEventMock,
+  recordAuditEventDurable: recordAuditEventDurableMock,
 }));
 
 vi.mock("@/lib/db/export-with-files", () => ({
@@ -394,10 +397,11 @@ describe("backup restore semantic safety", () => {
     expect(importDatabaseMock).not.toHaveBeenCalled();
   });
 
-  it("records the restore audit AFTER importDatabase commits so it survives the truncate", async () => {
+  it("records the restore audit AFTER importDatabase commits via the durable helper so it survives the truncate and a crash", async () => {
     // importDatabase truncates `auditEvents` inside its transaction. The audit
-    // must be recorded post-commit or the row is wiped. A pre-commit audit
-    // would be invoked BEFORE importDatabase resolved.
+    // must be recorded post-commit with the DURABLE helper (awaited insert) or
+    // the row is wiped by the truncate — and would also be lost on a hard
+    // crash within the buffered helper's 5s flush window.
     readUploadedJsonFileWithLimitMock.mockResolvedValue({
       version: 1,
       exportedAt: "2026-04-12T00:00:00.000Z",
@@ -419,15 +423,16 @@ describe("backup restore semantic safety", () => {
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
-    // Audit recorded exactly once, and only after importDatabase resolved.
-    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
-    expect(importDatabaseMock).toHaveBeenCalledBefore(recordAuditEventMock);
-    expect(recordAuditEventMock.mock.calls[0][0].action).toBe(
+    // The DURABLE helper is used (not the buffered recordAuditEvent).
+    expect(recordAuditEventDurableMock).toHaveBeenCalledTimes(1);
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
+    expect(importDatabaseMock).toHaveBeenCalledBefore(recordAuditEventDurableMock);
+    expect(recordAuditEventDurableMock.mock.calls[0][0].action).toBe(
       "system_settings.database_restored",
     );
   });
 
-  it("preserves pendingUploadedFiles count in the post-commit audit for ZIP restores", async () => {
+  it("records the restore audit AFTER file restoration completes for ZIP restores", async () => {
     parseBackupZipMock.mockResolvedValue({
       dbExport: {
         version: 1,
@@ -442,6 +447,7 @@ describe("backup restore semantic safety", () => {
         { storedName: "b.bin", buffer: Buffer.from("b") },
       ],
     });
+    restoreParsedBackupFilesMock.mockResolvedValue(2);
 
     const { POST } = await import("@/app/api/v1/admin/restore/route");
     const form = new FormData();
@@ -453,13 +459,52 @@ describe("backup restore semantic safety", () => {
     const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
 
     expect(res.status).toBe(200);
-    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
-    expect(importDatabaseMock).toHaveBeenCalledBefore(recordAuditEventMock);
-    const auditPayload = recordAuditEventMock.mock.calls[0][0];
-    expect(auditPayload.summary).toContain("2 files pending");
+    expect(recordAuditEventDurableMock).toHaveBeenCalledTimes(1);
+    // Audit fires only after file restoration completes (not before).
+    expect(restoreParsedBackupFilesMock).toHaveBeenCalledBefore(recordAuditEventDurableMock);
+    const auditPayload = recordAuditEventDurableMock.mock.calls[0][0];
+    expect(auditPayload.summary).toContain("2 files written");
     expect(auditPayload.details).toEqual({
       preRestoreSnapshotPath: "/tmp/snapshots/test-snapshot.sql",
     });
+  });
+
+  it("records a durable failure audit and surfaces the snapshot path when file restoration fails after the DB commit", async () => {
+    parseBackupZipMock.mockResolvedValue({
+      dbExport: {
+        version: 1,
+        exportedAt: "2026-04-12T00:00:00.000Z",
+        sourceDialect: "postgresql",
+        appVersion: "test",
+        redactionMode: "full-fidelity",
+        tables: {},
+      },
+      uploads: [{ storedName: "a.bin", buffer: Buffer.from("a") }],
+    });
+    restoreParsedBackupFilesMock.mockRejectedValue(new Error("ENOSPC"));
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set(
+      "file",
+      new File([new Uint8Array([1, 2, 3])], "backup.zip", { type: "application/zip" }),
+    );
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("restoreFailed");
+    expect(body.preRestoreSnapshotPath).toBe("/tmp/snapshots/test-snapshot.sql");
+    // The success audit must NOT fire; a dedicated failure audit must.
+    const successCalls = recordAuditEventDurableMock.mock.calls.filter(
+      (c) => c[0].action === "system_settings.database_restored",
+    );
+    const failureCalls = recordAuditEventDurableMock.mock.calls.filter(
+      (c) => c[0].action === "system_settings.database_restore_files_failed",
+    );
+    expect(successCalls).toHaveLength(0);
+    expect(failureCalls).toHaveLength(1);
   });
 
   it("does not record the restore audit when importDatabase fails", async () => {
@@ -492,6 +537,6 @@ describe("backup restore semantic safety", () => {
     expect(res.status).toBe(500);
     expect(body.error).toBe("restoreFailed");
     expect(body.preRestoreSnapshotPath).toBe("/tmp/snapshots/test-snapshot.sql");
-    expect(recordAuditEventMock).not.toHaveBeenCalled();
+    expect(recordAuditEventDurableMock).not.toHaveBeenCalled();
   });
 });

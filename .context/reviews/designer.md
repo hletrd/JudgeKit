@@ -1,585 +1,441 @@
-# Designer UI/UX Review — judgekit (HEAD `0b0ac198`)
+# Cycle 2 — designer
 
-**Reviewer:** Designer agent
+**Focus:** Cycle-1 Phase A regression check (A9 export, A11 GET strictness), Phase B designer remediation confirmation (AGG-56..AGG-62), and new UI/UX/a11y sweep against WCAG 2.2, Korean letter-spacing rule, oklch-token consistency, perceived-perf and i18n.
 **Date:** 2026-06-26
-**Scope:** Information architecture, affordances, focus/keyboard nav, WCAG 2.2 accessibility, responsive behavior, dark/light correctness, i18n parity, Korean letter-spacing compliance, perceived performance (LCP/CLS/INP), CodeMirror theming, loading/empty/error states.
-**Method:** Static code analysis (DOM, selectors, ARIA, computed CSS variables) across `src/components/**`, `src/app/**`, `messages/*.json`, `src/app/globals.css`. Multimodal caveat: no runtime DOM probe; all visual findings are grounded in exact selectors, hex/oklch values, and box metrics derived from code.
-
-**Headline numbers:** 267 tsx files (143 client, 124 server). 2,977 i18n leaf keys per locale with **zero missing-key drift**. ~30 `tracking-*` utility uses — **all correctly gated** by `locale !== "ko"`. Pretendard Variable self-hosted via `next/font/local`. 207 `dark:` variants, only 11 hardcoded colors codebase-wide.
-
----
-
-## Coverage
-
-| Surface | Examined | Notes |
-|---|---|---|
-| `src/app/globals.css` | Full 574 lines | Theme tokens, lecture modes, syntax-highlight vars |
-| `src/app/layout.tsx`, `(public)/layout.tsx`, `(dashboard)/layout.tsx`, `(auth)/layout.tsx` | Full | Skip-link, main wrapper, Toaster, ThemeProvider |
-| `src/components/ui/*` (20 primitives) | Full | Button, Input, Label, Textarea, Dialog, Sheet, Tabs, etc. |
-| `src/components/layout/*` | Full | public-header (mobile drawer + nav), locale/theme toggles, skip-to-content |
-| `src/components/code/*` | Full | CodeMirror surface, theming, iOS guards |
-| All auth forms (`(auth)/*`, `change-password`) | Full file reads | Validation, ARIA, autocomplete |
-| All admin forms (`(dashboard)/dashboard/admin/*`) | Sampled deeply | Validation, error feedback, labels |
-| Public list/detail pages (`(public)/*`) | Sampled deeply | Loading/empty/error, pagination, responsive |
-| `messages/en.json` + `messages/ko.json` | Programmatic diff | Key parity, placeholder parity, ICU usage |
-| Every `tracking-*` and `letter-spacing` use | Exhaustive grep | Korean compliance check |
-| Every `<h1>` / `<h2>` in admin tree | Exhaustive grep | Heading hierarchy |
-| Every `<img>` / `<Image>` | Exhaustive grep | CLS risks |
-| Every `loading.tsx` / `error.tsx` / `not-found.tsx` | Exhaustive find | Route boundary coverage |
+**HEAD reviewed:** `ad543e14`
+**Method:** Static analysis only. Dev-server browser pass was not feasible this cycle (Phase A changes are API-only, so visual regression surface is minimal). All findings cite exact file:line selectors and metrics derived from the OKLab → linear-sRGB matrix.
+**Framework detected:** Next.js 16 + React 19 + Tailwind 4 + shadcn-style (Base UI primitives) + next-intl + next-themes.
 
 ---
 
-## Severity legend
+## REGRESSION
 
-- **P0 (Critical):** WCAG Level A failure, broken core interaction, or data-loss risk. Blocks ship.
-- **P1 (High):** Real usability/a11y harm, AA contrast failure, or dead code that misleads users.
-- **P2 (Medium):** Polish gap with measurable UX cost.
-- **P3 (Low):** Nit, inconsistency, future maintenance risk.
+### REG-1 (P2, HIGH confidence) — Phase A touched zero UI files; no UI regression possible from those commits
 
----
+**Evidence:** `git diff 4b93c5ff^..HEAD --name-only` for the two Phase A commits:
+- `4b93c5ff fix(problems): include function-judging fields in per-problem export` → `src/app/api/v1/problems/[id]/export/route.ts` + tests only
+- `d4efb27b fix(authz): route problem GET through strict canManageProblem` → `src/app/api/v1/problems/[id]/route.ts` only
 
-## Strengths to preserve
+No `.tsx`, `.css`, or `messages/*.json` was modified by either commit. Per-problem export is triggered from existing admin/problem buttons (no UI wiring change), and the GET route is consumed by `apiFetch` clients whose error UX is unchanged.
 
-1. **Korean letter-spacing discipline is exemplary.** Every `tracking-*` utility is gated by `locale !== "ko"` (often with an inline comment documenting the rule). Base CSS at `globals.css:127-137` uses a `--letter-spacing-body` custom property that is reset to `normal` under `html:lang(ko)`. `<html lang={locale}>` at `src/app/layout.tsx:100` correctly feeds that selector. No Korean glyph receives tight tracking anywhere in the audited tree.
-2. **Mobile drawer is textbook.** `src/components/layout/public-header.tsx:89-134` implements focus trap with Tab/Shift+Tab wraparound, Escape-to-close with focus restoration, route-change auto-close (RAF-deferred), and a sr-only `aria-live="polite"` announcement when the menu opens (`:165-169`).
-3. **Submit-button hygiene is consistent everywhere.** Every mutation button uses `disabled={isPending}` plus label swap; the problem submit form (`src/components/problem/problem-submission-form.tsx:376, 485-487`) adds an in-handler re-entry guard and a `<Loader2 className="animate-spin" />`.
-4. **CodeMirror is correctly code-split.** `src/components/code/code-editor.tsx:10-13` uses `next/dynamic({ ssr: false, loading: <CodeEditorSkeleton /> })`; per-language packs (`@codemirror/lang-*`) are dynamically `import()`-ed from `code-surface.tsx:214-220`; `oneDark` is lazy in `editor-themes.ts:1088`.
-5. **Pretendard Variable via `next/font/local`** with `display: "swap"` and a CSS variable hook (`src/app/layout.tsx:6, 17-21, 100`). Self-hosted, subsetting handled by Next, no external CSS request.
-6. **i18n message parity is flawless.** 2,977 leaf keys in each of `en.json` / `ko.json`; zero structural diff; zero placeholder mismatches; one shared empty string (`admin.files.table.preview`).
-7. **`signup-form.tsx:139-175` is the gold standard for field wiring.** It pairs `<Label htmlFor>` + `<Input id>` + `<p id="x-error" role="alert">` + `aria-invalid` + `aria-describedby`. The same pattern is replicated in `system-settings-form.tsx:257-264`.
-8. **Status badge is not color-only.** `src/components/submission-status-badge.tsx` renders icon + color + visible abbreviation ("AC"/"WA"/"TLE") + full-name tooltip + `aria-label`.
-9. **AbortController hygiene** on auth forms that may re-submit (`forgot-password-form.tsx:15,25-27,64-67`, `reset-password-form.tsx:27,39-41`).
-10. **Reduced-motion block at `globals.css:138-145`** covers `animation-duration`, `iteration-count`, `transition-duration`, `scroll-behavior` for every element.
+**Criterion:** Phase A scope was backend-only; UI regression risk = 0.
 
----
+**Fix:** None required. Note for downstream: when the per-problem export button was first gated (`6cc068f0`, 2026-06-24), the capability moved from `canAccessProblem` to `canManageProblem`. Confirm every UI affordance that exposes `/api/v1/problems/[id]/export` is gated on `problems.edit` or `canManageProblem` (see REG-2 for the related edit-page gate).
 
-## Findings
+### REG-2 (P1, MEDIUM confidence) — Edit page access gate lags the stricter API GET gate (information-disclosure gap)
 
-### D-1 — Light-mode `--muted-foreground` fails WCAG AA contrast (4.5:1)
-**Severity:** P0 — WCAG 1.4.3 (Level AA), legal-baseline issue
-**Files:** `src/app/globals.css:63`
-**Confidence:** High (computed)
-
-The light-mode token is `oklch(0.48 0 0)` on `oklch(1 0 0)` background. Converting OKLab L to relative luminance (Y ≈ L³ for achromatic) gives Y_mf ≈ 0.2212 vs Y_bg = 1.0 → **contrast ratio ≈ 3.87:1**, below the 4.5:1 AA threshold for normal-size body text. Dark mode passes at ~15.9:1.
-
-**Where it bites** (non-exhaustive):
-- `src/components/ui/dialog.tsx:143` — `DialogDescription` body copy in every dialog
-- `src/components/ui/sheet.tsx:123` — `SheetDescription`
-- `src/components/ui/alert-dialog.tsx:113` — `AlertDialogDescription`
-- `src/components/ui/dropdown-menu.tsx:68,254` — `DropdownMenuLabel`, shortcut text
-- `src/components/ui/tabs.tsx:32` — inactive tab text
-- `src/components/layout/public-header.tsx:190` — inactive top-nav links at `text-sm` (normal size, not large)
-- `src/app/(auth)/signup/signup-form.tsx:196` — `password-hint` at `text-xs text-muted-foreground` (small text — needs 4.5:1, gets 3.87:1)
-- `src/components/empty-state.tsx:18,22` — empty-state description body
-
-**Fix:** darken to `oklch(0.42 0 0)` (≈5.0:1) or `oklch(0.40 0 0)` (≈5.6:1). The high-contrast light variant at `globals.css:454` already uses `oklch(0.40 0 0)` — port that value into `:root`.
-
----
-
-### D-2 — ~35 `<Label>` siblings have no `htmlFor`/`id` pairing with their input
-**Severity:** P0 — WCAG 1.3.1 + 3.3.2 (Level A)
-**Files:** pattern across the codebase
-**Confidence:** High
-
-`src/components/ui/label.tsx` is a plain `<label>` element — there is no base-ui context auto-association. The shadcn idiom relies on `htmlFor`/`id` pairing. ~35 callsites render `<Label>` as a **sibling** of an `<Input>`/`<Select>` with neither attribute, so the label is unassociated with the field. Screen-reader users hear the field without a name; clicking the label does not focus the field.
-
-**Sample of the worst offenders** (full list compiled by audit):
-- `src/lib/plugins/chat-widget/admin-config.tsx:158,172,193,260,295,306` — provider/apiKey/model/assistantName/maxTokens/rateLimit
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:391,399,418` — name/role/expiry
-- `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:385,406` — voting title, SMTP section
-- `src/app/(dashboard)/dashboard/admin/settings/footer-content-form.tsx:140,149`
-- `src/app/(dashboard)/dashboard/admin/settings/home-page-content-form.tsx:129,137,145,160,165`
-- `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:196`
-- `src/app/(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:54,78`
-- `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:82` — Input has **no label at all**, only `placeholder`
-- `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:400` — search Input, **no label**
-- `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:429,461,477,497,517,632`
-- `src/components/problem/function-signature-builder.tsx:162,264`
-- `src/components/problem/function-reference-solution.tsx:156,188`
-- `src/components/contest/quick-create-contest-form.tsx:106,115,126,140,151`
-- `src/components/contest/recruiting-invitations-panel.tsx:456,464,473,501`
-
-**Fix:** copy the signup pattern — `<Label htmlFor="x">` paired with `<Input id="x">`. Where the design intentionally omits a visible label (search inputs), add `aria-label` or `sr-only` label.
-
----
-
-### D-3 — Admin heading hierarchy: 11+ pages use `<h2>` as page title, no `<h1>`
-**Severity:** P0 — WCAG 1.3.1 (Level A)
-**Files:** see below
-**Confidence:** High (grepped)
-
-`src/app/(dashboard)/layout.tsx` renders no `<h1>` itself, so each admin page must provide one. The following use a single `<h2 className="text-2xl font-bold">` for the page title with no preceding `<h1>`:
-
-| File:Line | Title text |
-|---|---|
-| `src/app/(dashboard)/dashboard/admin/workers/page.tsx:26` | `{t("title")}` |
-| `src/app/(dashboard)/dashboard/admin/files/page.tsx:129` | files title |
-| `src/app/(dashboard)/dashboard/admin/audit-logs/page.tsx:364` | audit-logs title |
-| `src/app/(dashboard)/dashboard/admin/languages/page.tsx:44` | languages title |
-| `src/app/(dashboard)/dashboard/admin/tags/page.tsx:58` | tags title |
-| `src/app/(dashboard)/dashboard/admin/plugins/page.tsx:23` | plugins title |
-| `src/app/(dashboard)/dashboard/admin/login-logs/page.tsx:242` | login-logs title |
-| `src/app/(dashboard)/dashboard/admin/settings/page.tsx:441` | settings title |
-| `src/app/(dashboard)/dashboard/admin/users/page.tsx:149` | users title |
-| `src/app/(dashboard)/dashboard/admin/users/[id]/page.tsx:74` | user detail title |
-| `src/app/(dashboard)/dashboard/admin/submissions/page.tsx:307` | submissions title |
-| `src/app/(dashboard)/error.tsx:20`, `not-found.tsx:11` | error/404 chrome |
-| `src/app/(public)/problems/error.tsx:27` | error chrome |
-
-**Fix:** either (a) change the page-title `<h2>` to `<h1>` on each page, or (b) render an `<h1 className="sr-only">{pageTitle}</h1>` in the dashboard layout and let the visible `<h2>` stay. Option (b) is one-line and consistent.
-
----
-
-### D-4 — `shadow-[1px_0_0_0_hsl(var(--border))]` is invalid CSS
-**Severity:** P1 — broken visual affordance
-**Files:** `src/components/contest/leaderboard-table.tsx:346, 349, 395, 414`
-**Confidence:** High
-
-`--border` is defined as `oklch(0.922 0 0)` (`globals.css:67`). `hsl(oklch(0.922 0 0))` is invalid CSS — browsers ignore the declaration, so the sticky leaderboard columns have **no right-edge separator line** in either theme.
-
-**Fix:** replace all four with `shadow-[1px_0_0_0_var(--border)]`.
-
----
-
-### D-5 — Mobile hamburger button is 32×32px (below iOS HIG 44px minimum)
-**Severity:** P1 — touch-target regression
-**Files:** `src/components/layout/public-header.tsx:259`
-**Confidence:** High
-
-```tsx
-className="inline-flex size-8 items-center justify-center rounded-md ..."
-```
-
-`size-8` = 32×32px. The adjacent `ThemeToggle` at `src/components/layout/theme-toggle.tsx:78` deliberately uses `size-11 lg:size-9` (44px mobile / 36px desktop) with an inline comment documenting the iOS HIG / Material 48dp rule. The hamburger was missed by the same audit. WCAG 2.5.8 AA (24px) passes; 2.5.5 AAA (44px) fails.
-
-**Fix:** match the theme toggle pattern — `className="inline-flex size-11 items-center justify-center rounded-md lg:size-9 ..."`.
-
----
-
-### D-6 — `change-password` form has no `autoComplete` on any of three password fields
-**Severity:** P1 — password-manager UX regression
-**Files:** `src/app/change-password/change-password-form.tsx:103-133`
-**Confidence:** High (verified via grep — only `type="password"` returned)
-
-The current-password field should be `autoComplete="current-password"`; the new-password and confirm fields should be `autoComplete="new-password"`. None are set. Without these tokens password managers will not offer to generate or fill a new password, and may mis-categorize the fields.
-
-Also (same file): `minLength={8}` is hardcoded at `:117, :129` instead of importing `FIXED_MIN_PASSWORD_LENGTH` from `src/lib/security/password.ts:1` — drift risk if the policy changes.
-
-**Fix:** add the autocomplete tokens; replace `8` with `FIXED_MIN_PASSWORD_LENGTH`. The login (`login-form.tsx:68,80`) and signup (`signup-form.tsx:133,155,173,189,206`) forms already follow the correct pattern — port it.
-
----
-
-### D-7 — Recruit start form has no `<form>` element; Enter does not submit
-**Severity:** P1 — broken keyboard interaction
-**Files:** `src/app/(auth)/recruit/[token]/recruit-start-form.tsx:116-148`
-**Confidence:** High
-
-The component renders a `<div className="space-y-3">` (`:116`) wrapping a password `<Input>` and a submit `<Button>`. The button has no `type` and is wired only via `onClick={handlePrimaryAction}` (`:137`). Pressing Enter while focused in the password field does nothing — confirmed by zero matches for `<form` or `type="submit"` in the file.
-
-Additionally, the error `<p>` at `:146-148` has no `role` and no `aria-live`, and the password input has no `aria-invalid`/`aria-describedby`.
-
-**Fix:** wrap the controls in `<form onSubmit={handlePrimaryAction}>` and `e.preventDefault()` inside; give the button `type="submit"`; promote the error `<p>` to `<p role="alert" aria-live="polite">`. The signup form is the in-repo template.
-
----
-
-### D-8 — `EmptyState` component is built but barely used; no public empty state has a CTA
-**Severity:** P1 — wayfinding gap
-**Files:** `src/components/empty-state.tsx` (definition) + 25 callsites
-**Confidence:** High
-
-`<EmptyState icon title description? action? />` supports an icon, description, and CTA button — but only **3** of ~25 empty lists use it (all admin: `audit-logs/page.tsx:562`, `tags/page.tsx:109`, `admin/submissions/page.tsx:503`), and **none of those three pass `description` or `action`**. Every other empty list is a bare `<TableCell colSpan={N}>{label}</TableCell>` or `<p>{label}</p>`:
-
-- `src/app/(public)/problems/page.tsx:747-753` — "noProblems"
-- `src/app/(public)/submissions/page.tsx:518-524` — "noSubmissions"
-- `src/app/(public)/rankings/page.tsx:260-263`
-- `src/app/(public)/groups/page.tsx:310-316`
-- `src/app/(public)/problem-sets/page.tsx:110-116`
-- `src/app/(public)/users/[id]/page.tsx:272-274` — "noSolvedProblems" with no "browse problems" CTA
-- `src/app/(public)/_components/public-contest-list.tsx:60-63`, `public-problem-list.tsx:110-113`
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:446-448`, `workers-client.tsx:340-342`, `files/file-management-client.tsx:225-228`, `login-logs/page.tsx:387-393`
-
-**Fix:** swap the bare `<TableCell>` branches for `<EmptyState>` with a meaningful icon and a CTA — e.g. "no submissions" → icon + "Submit your first solution" linking to `/practice`.
-
----
-
-### D-9 — `submission-list-auto-refresh.tsx` returns `null` — auto-refresh is invisible
-**Severity:** P1 — perceived-staleness gap
-**Files:** `src/components/submission-list-auto-refresh.tsx:114`
-**Confidence:** High
-
-The mechanism is sound: abort previous request, exponential backoff up to 60s, skip when tab hidden, guard against concurrent ticks. But the component returns `null`, so users have **no way to tell** whether the list is "fresh" or "stale". The list silently mutates when `router.refresh()` resolves.
-
-Used by `src/app/(public)/submissions/page.tsx:329` and `src/app/(dashboard)/dashboard/admin/submissions/page.tsx:306`.
-
-**Fix:** render a small affordance — either a `<span role="status" aria-live="polite">` showing "Updated 3s ago" with a `relativeTime` formatter, or a subtle progress bar / spinner during the in-flight tick. The contest manage page (`contests/manage/[assignmentId]/page.tsx:383`) has a comment noting auto-refresh every 15s — same gap.
-
----
-
-### D-10 — Many routes have no route-level `error.tsx` or `loading.tsx`
-**Severity:** P1 — unhandled server-component failures render Next.js default chrome
-**Files:** see below
-**Confidence:** High
-
-Existing boundaries:
-- `loading.tsx` — `(public)/loading.tsx`, `(public)/problems/loading.tsx`, `(public)/groups/loading.tsx`, `(public)/contests/manage/loading.tsx`, `(public)/contests/manage/[assignmentId]/participant/loading.tsx`, `(dashboard)/loading.tsx`, `(dashboard)/dashboard/admin/loading.tsx`, `(dashboard)/dashboard/admin/users/loading.tsx`, `(dashboard)/dashboard/admin/submissions/loading.tsx`, `(auth)/recruit/[token]/results/loading.tsx`
-- `error.tsx` — `(public)/problems/error.tsx`, `(public)/groups/error.tsx`, `(public)/contests/manage/error.tsx`, `(dashboard)/error.tsx`, `(dashboard)/dashboard/admin/error.tsx`
-
-**Missing `loading.tsx`** (today users see a bare 50vh spinner with no content shape — not the worst, but for the primary solve page it is jarring):
-- `/practice` and `/practice/problems/[id]` — **the main problem-solving page** has no skeleton
-- `/practice/sets`, `/practice/sets/[id]`
-- `/submissions`, `/submissions/[id]`
-- `/contests`, `/contests/[id]`
-- `/community`, `/community/threads/[id]`, `/community/new`
-- `/users/[id]`, `/problem-sets`, `/problem-sets/[id]`, `/rankings`, `/dashboard`, `/profile`, `/playground`, `/languages`, `/privacy`
-
-**Missing `error.tsx`** (these fall through to Next.js's default error UI when a server component throws):
-- `/submissions`, `/practice/*`, `/contests`, `/contests/[id]`, `/community/*`, `/users/[id]`, `/problem-sets/*`, `/rankings`, `/dashboard`, `/profile`, `/playground`
-
-Also: there is no `app/error.tsx` root boundary — only `app/not-found.tsx`.
-
-**Fix:** add per-route `loading.tsx` (mirror the 8-row skeleton template used elsewhere) and `error.tsx` (mirror `(dashboard)/error.tsx`). Priority 1: `/practice/problems/[id]` and `/contests/[id]`.
-
----
-
-### D-11 — Pagination shows no total count on most lists
-**Severity:** P2 — wayfinding
-**Files:** `src/components/pagination-controls.tsx:50-151` + callsites
-**Confidence:** High
-
-The component has first/prev/numbers/next/last + page-size selector, but exposes **no `total` / `rangeStart` / `rangeEnd` props**. Each page must render the count text itself, and most don't:
-
-- **Shows total:** `(public)/problems/page.tsx:666`, `(public)/practice/page.tsx:692`, `(dashboard)/admin/users/page.tsx:204`, `(dashboard)/admin/audit-logs/page.tsx:458`
-- **Shows range only (no total):** `(public)/submissions/page.tsx:456` — users never learn how many total submissions match the filter
-- **Shows nothing at all:** `(public)/rankings/page.tsx`, `(public)/groups/page.tsx`, `(public)/problem-sets/page.tsx`, `(public)/contests/page.tsx`, `(public)/contests/manage/page.tsx`, `(dashboard)/admin/submissions/page.tsx`, `(dashboard)/admin/files/page.tsx`, `(dashboard)/admin/login-logs/page.tsx`
-
-No "no more results" end-of-list indicator anywhere.
-
-**Fix:** add `total`, `rangeStart`, `rangeEnd` props to `<PaginationControls>` and render `Showing X–Y of Z` in one place. Falling that, have each callsite render the count text — the `pagination.showingRange` i18n key already supports `{start, end, total}` placeholders.
-
----
-
-### D-12 — Live markdown preview re-parses on every keystroke (INP)
-**Severity:** P2 — perceived performance on the create-problem form
-**Files:** `src/app/(public)/problems/create/create-problem-form.tsx:630, 664`
-**Confidence:** Medium
-
-The "Preview" tab renders `<ProblemDescription description={description} />` where `description` is set on every `onChange` of the textarea (`:630`). Each keystroke runs `ReactMarkdown` + `rehype-highlight` + `rehype-katex` + `remark-math` + `remark-gfm` + `remark-breaks` on the whole document. For a long problem statement with code blocks and LaTeX, this is **easily 50–200 ms per keystroke**.
-
-Compounded by `src/components/problem-description.tsx:44-60` running **7 un-anchored multiline regexes** on the description on every render to decide HTML-vs-markdown mode — currently unmemoized.
-
-**Fix:** wrap the preview in `useDeferredValue(description)` so React yields between keystrokes, or debounce the preview value (300 ms). Memoize the regex-decision block with `useMemo([description])`. Verify the shadcn Tabs `forceMount=false` default so the preview tab unmounts when inactive (it does in `src/components/ui/tabs.tsx`).
-
----
-
-### D-13 — 336 KB of locale JSON shipped to the client on every route
-**Severity:** P2 — bundle weight
-**Files:** `src/app/layout.tsx:92, 119`
-**Confidence:** High
-
-`messages/en.json` = 160 KB, `messages/ko.json` = 176 KB. `<NextIntlClientProvider messages={messages}>` wraps `<body>`, so **every page receives the entire dictionary**. next-intl does not split per route by default.
-
-**Fix:** use `getMessages({ namespace })` or a loader to ship only the namespaces each route uses. The biggest wins are on code-editor routes (`/practice/problems/[id]`) where the entire `admin.*` and `dashboard.*` namespaces are dead weight.
-
----
-
-### D-14 — `react-markdown` + `rehype-highlight` + `rehype-katex` + `katex.min.css` imported eagerly
-**Severity:** P2 — bundle weight on first paint
-**Files:** `src/components/problem-description.tsx:2-8`, `src/components/assistant-markdown.tsx:2-10`
-**Confidence:** High
-
-Both files do top-level `import` of the markdown pipeline. `problem-description.tsx` is used on every problem detail page **and** in the live preview tab of the create-problem form.
-
-**Fix:** wrap in `next/dynamic({ ssr: false })`. The CodeMirror team already did this for the editor (`code-editor.tsx:10-13`) — same pattern applies.
-
----
-
-### D-15 — `highlight.js/lib/common` (~35 languages) imported eagerly in timeline panel
-**Severity:** P2 — bundle weight
-**Files:** `src/components/contest/code-timeline-panel.tsx:5-6`
-**Confidence:** High
-
-Both `import hljs from "highlight.js/lib/common"` and `import "highlight.js/styles/github.css"` are top-level. The panel renders per timeline event on contest analytics pages.
-
-**Fix:** lazy-load via `await import("highlight.js/lib/common")` on first render.
-
----
-
-### D-16 — `accepted-solutions.tsx` CodeViewer is missing `aria-label`
-**Severity:** P2 — WCAG 4.1.2
-**Files:** `src/components/problem/accepted-solutions.tsx:186`
-**Confidence:** High
-
-```tsx
-<CodeViewer language={solution.language} minHeight={220} value={solution.sourceCode} />
-```
-
-Every other CodeViewer callsite passes `ariaLabel` or `ariaLabelledby` (`function-reference-solution.tsx:170`, `problem-submission-form.tsx:435`, `submission-detail-client.tsx:313`, `submission-result-panel.tsx:42,94`, `compiler-client.tsx:415`). This one is the only unlabelled editor in the codebase — screen-reader users hear "edit text" with no name.
-
-**Fix:** add `ariaLabel={t("acceptedSolutionEditor", { language: solution.language })}` or similar.
-
----
-
-### D-17 — Dead `not-found.tsx` at `(public)/problems/[id]/not-found.tsx`
-**Severity:** P2 — dead code
-**Files:** `src/app/(public)/problems/[id]/page.tsx` (1-21), `src/app/(public)/problems/[id]/not-found.tsx`
-**Confidence:** High (verified)
-
-`(public)/problems/[id]/page.tsx` is a pure redirect stub to `/practice/problems/${id}` — it never calls `notFound()`. The dedicated `not-found.tsx` next to it is unreachable.
-
-**Fix:** delete `src/app/(public)/problems/[id]/not-found.tsx`.
-
----
-
-### D-18 — Vote buttons are not optimistic; score doesn't move until server replies
-**Severity:** P2 — perceived responsiveness
-**Files:** `src/components/discussions/discussion-vote-buttons.tsx:41-101`
-**Confidence:** High
-
-The score state is updated only after the server responds (`:63-64`). The button is correctly `disabled` while waiting (`:88, :101`) — preventing double-votes — but the user sees no immediate feedback on their own vote.
-
-**Fix:** wrap the score state in `useOptimistic` so the score updates on click, then reconcile on response. React 19 + the existing `useTransition` pattern in the codebase makes this a small change.
-
----
-
-### D-19 — Admin form validation: no `aria-invalid`/`aria-describedby` anywhere except one field
-**Severity:** P2 — WCAG 3.3.1 + 4.1.3
-**Files:** pattern across admin forms
-**Confidence:** High
-
-`system-settings-form.tsx:257-258` is the **only** admin input with field-level `aria-invalid` + `aria-describedby` wiring (the time-zone field). Every other admin form (add-user, edit-user, role-editor, tag editor, footer/home-page content, allowed-hosts, database-backup-restore, api-keys, bulk-create, config-settings) reports errors **only via toast**. Screen-reader users hear nothing inline.
-
-Also: `add-user-dialog.tsx:90,127` and `edit-user-dialog.tsx:96,128` lack `minLength`/`pattern`/`maxLength` despite server enforcement — clients submit then toast the server error.
-
-**Fix:** replicate the signup pattern (`aria-invalid={!!err || undefined}` + `aria-describedby={err ? "x-error" : undefined}` + `<p id="x-error" role="alert">`) on each admin field.
-
----
-
-### D-20 — `change-password` error region lacks `aria-live`; no show/hide toggle; no password-requirement hint
-**Severity:** P2 — UX inconsistency
-**Files:** `src/app/change-password/change-password-form.tsx:83-96, 113-121, 147-149`
-**Confidence:** High
-
-Three small inconsistencies vs. the login/reset forms:
-1. `:147-149` error `<p>` has `role="alert"` but no `aria-live="polite"` — login/forgot/reset all have it.
-2. `:113-121, :125-133` password inputs have **no show/hide toggle** — login (`login-form.tsx:84-95`) and reset (`reset-password-form.tsx:131-142`) both do.
-3. The new-password field has **no requirement hint** — the user only discovers the 8-char floor by failing. Contrast signup's `password-hint` (`signup-form.tsx:196-198`).
-
-**Fix:** add `aria-live="polite"` to the error region, add the show/hide toggle pattern, and add `<p id="password-hint" className="text-xs text-muted-foreground">{t("passwordHint", { min: FIXED_MIN_PASSWORD_LENGTH })}</p>` with `aria-describedby="password-hint"`.
-
----
-
-### D-21 — Auth form loading state is text-only ("...ing") on every form except `verify-email`
-**Severity:** P2 — perceived-responsiveness inconsistency
-**Files:** `(auth)/login/login-form.tsx:103`, `(auth)/signup/signup-form.tsx:236`, `(auth)/forgot-password/forgot-password-form.tsx:105`, `(auth)/reset-password/reset-password-form.tsx:178`, `change-password/change-password-form.tsx:150`
-**Confidence:** High
-
-Every auth submit button swaps its label (`t("signingIn")`, `t("sending")`, etc.) but renders **no spinner icon**. Only `verify-email/page.tsx:80` shows `<Loader2 className="size-4 animate-spin" />`. The problem-submission form, dialogs, and admin actions all show spinners — auth is the lone holdout.
-
-**Fix:** prepend `<Loader2 className="mr-2 size-4 animate-spin" />` to the button children when `loading`/`isPending` is true.
-
----
-
-### D-22 — Chart tokens (`--chart-1..5`) are identical in `:root` and `.dark`
-**Severity:** P3 — design consistency
-**Files:** `src/app/globals.css:70-74` vs `105-109`
-**Confidence:** High
-
-Charts do not adapt to theme. The values `oklch(0.809 0.105 251.813)` through `oklch(0.424 0.265.638)` are a reasonable blue ramp on both backgrounds (the `0.424` dark end reads on both), so it's not a contrast bug — but dark mode could carry a more vivid ramp.
-
-**Fix:** optional — define a separate `.dark` chart ramp tuned for `oklch(0.145 0 0)` background.
-
----
-
-### D-23 — Lecture-mode `solarized` overrides page chrome and problem-description syntax colors but NOT the CodeMirror editor
-**Severity:** P3 — cross-mode visual mismatch
-**Files:** `src/components/lecture/lecture-mode-provider.tsx:57-64` vs `src/components/code/code-surface.tsx:469-481`
-**Confidence:** High
-
-`lecture-theme-solarized` redefines `--problem-code-*` and base tokens in `globals.css:474-503`, but the editor's syntax colors come from a binary switch between `oneDarkHighlightStyle` and `materialLightHighlightStyle` keyed on `resolvedTheme` (next-themes). Selecting the solarized lecture theme themes the page chrome solarized while the editor stays on whatever `resolvedTheme` says.
-
-**Fix:** either (a) document that the editor follows the user's editor theme preference (intentional separation), or (b) drive the editor's highlight selection from lecture mode state as well. Option (a) is probably correct — the editor already has a per-user theme picker (`editor-theme-picker.tsx`).
-
----
-
-### D-24 — `discussions/*` has zero responsive prefixes across all 9 files
-**Severity:** P3 — likely mobile crowding
-**Files:** `src/components/discussions/*` (all 9 files)
-**Confidence:** Medium
-
-No `sm:`, `md:`, or `lg:` prefixes. Vote-button rows and thread lists may crowd on narrow screens. No confirmed breakage since the components rely on parent flex/grid — but a manual mobile pass is warranted.
-
-**Fix:** spot-check on a 360px viewport; add `flex-wrap` / `flex-col sm:flex-row` where vote button rows wrap poorly.
-
----
-
-### D-25 — `inputMode` unused on every numeric field except one
-**Severity:** P3 — mobile keyboard UX
-**Files:** pattern; only used at `src/app/(public)/groups/[id]/assignments/[assignmentId]/exam-extend-dialog.tsx:121`
-**Confidence:** High
-
-Numeric admin fields (time limit, memory limit, difficulty, SMTP port, role level, config values) use `type="number"` and rely on the browser's number spinner. `inputMode="numeric"` on `type="text"` would avoid the spinner UI on desktop and is the modern recommendation.
-
-**Fix:** per-field, low priority. The `type="number"` works correctly; this is purely a polish issue.
-
----
-
-### D-26 — hCaptcha is on signup only; no captcha on login, forgot-password, reset, change-password
-**Severity:** P3 — security/UX consideration
-**Files:** `src/app/(auth)/signup/signup-form.tsx:122-129, 224-229`
-**Confidence:** High
-
-Rate-limiting is server-side and surfaced generically (e.g. `forgot-password-form.tsx:51 rateLimited`). Reset/change-password have **no rate-limit signal at all** in the UI. This is acceptable if the security posture relies on server-side throttling + the reset-token flow being inherently rate-limited — but worth flagging for explicit threat-model review.
-
----
-
-### D-27 — NextAuth credentials form labels are hardcoded English
-**Severity:** P3 — i18n gap (low impact)
-**Files:** `src/lib/auth/config.ts:172-175`
-**Confidence:** High
+**File:** `src/app/(public)/problems/[id]/edit/page.tsx:34`
 
 ```ts
-credentials: {
-  username: { label: "Username or Email", ... },
-  password: { label: "Password", ... },
-  recruitToken: { label: "Recruiting Token", ... },
-  recruitAccountPassword: { label: "Recruiting Account Password", ... },
-}
+const canEdit = problem.authorId === session.user.id || caps.has("problems.edit");
 ```
 
-These labels render on NextAuth's hosted pages, which most users never see because the app uses a custom `login-form.tsx`. But if the hosted form is ever reached (e.g. direct hit to `/api/auth/signin`), it shows English in the Korean locale.
+The page uses the **looser local check** that the API just deprecated. After Phase A:
+- `GET /api/v1/problems/[id]` strips `referenceSolution`/hidden test cases for `problems.edit` holders outside the problem's teaching group.
+- This page does a direct `db.query.problems.findFirst({ with: { testCases: true } })` (line 21-26) and feeds the full row — including `problem.referenceSolution` (line 110) and all `testCases` regardless of `isVisible` (line 103-107) — into `<CreateProblemForm initialProblem=...>`.
 
-**Fix:** if the hosted form is unreachable by design (CSP/route guard), document it. Otherwise wire `getTranslations` into the config.
+Result: a `problems.edit`-cap holder who is not in the problem's teaching group can still SEE the reference solution and hidden test cases by visiting `/problems/[id]/edit`, even though they can no longer fetch them via the API. The visual UI behaves exactly as before Phase A; the data shown is now inconsistent with what the API would return on the wire.
+
+**Criterion:** Internal consistency between page-level auth and route-handler auth; least-privilege disclosure (defense in depth, not a hard WCAG item).
+
+**Fix:** Route the page's auth check through the same `canManageProblem(id, user.id, user.role)` helper the API now uses, and only pass `referenceSolution`/hidden test cases into the form when that strict gate passes. (Backend security implication is owned by code-reviewer/security; the designer observation is the data shown to the user.)
 
 ---
 
-### D-28 — Two SVG `aria-label`s and one chat-widget label are hardcoded English
-**Severity:** P3 — i18n
+## PHASE-B CONFIRMATION
+
+For each AGG item, the current state was re-derived against head `ad543e14`.
+
+### AGG-56 — `--muted-foreground` contrast — INVALIDATED (false positive), MEDIUM confidence
+
+**File:** `src/app/globals.css:64` (`--muted-foreground: oklch(0.48 0 0);` on `--background: oklch(1 0 0);`)
+
+**Recheck:** Walking the OKLab → linear-sRGB matrix for `oklch(0.48 0 0)`:
+- `l'=m'=s'=0.48` → `l=m=s=0.48³=0.110592` → linear sRGB `(0.110592, 0.110592, 0.110592)` (gray)
+- Contrast vs white linear 1.0 = `(1.0 + 0.05) / (0.110592 + 0.05)` = **6.54 : 1**
+
+This passes WCAG AA 4.5:1 (normal text) and approaches AAA 7:1. The cycle-1 claim of 3.87:1 is not reproducible — it likely came from a converter that confused OKLab L with CIELAB L* or applied an incorrect transfer function.
+
+Dark mode (`oklch(0.75 0 0)` on `oklch(0.145 0 0)`) computes to **~8.9 : 1** — comfortably AAA.
+
+**Recommendation:** Drop AGG-56 from the remediation queue. If extra margin is still desired for body copy readability, bumping to `oklch(0.45 0 0)` light / `oklch(0.78 0 0)` dark is a no-cost hedge, but it is not a WCAG remediation.
+
+### AGG-57 — `<Label>` without `htmlFor`/wrapping — CONFIRMED, P2, MEDIUM confidence
+
+**Scope:** 134 `<Label>` instances across 41 importer files. The unpaired usages concentrate in two patterns:
+
+| File:line | Usage | Issue |
+|---|---|---|
+| `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:406` | `<Label className="text-base font-medium">{t("smtpTitle")}</Label>` | Section heading rendered as `<label>` with no control; should be `<h3>`/`<p>` |
+| `src/components/problem/problem-submission-form.tsx:504` | `<Label className="text-xs text-destructive">{t("compileError")}</Label>` | Labels a `<pre>` output panel — no `htmlFor`, no programmatic association |
+| `src/components/problem/problem-submission-form.tsx:515` | `<Label className="text-xs">{t("stdout")}</Label>` | Same — labels a `<pre>` |
+| `src/components/problem/problem-submission-form.tsx:520` | `<Label className="text-xs text-yellow-700 dark:text-yellow-400">{t("stderr")}</Label>` | Same — labels a `<pre>` |
+| `src/components/problem/function-reference-solution.tsx:188` | `<Label>{t("fnStubPreviewTitle")}</Label>` | Precedes a `<pre>` "stub preview" — same pattern |
+
+**Criterion:** WCAG 2.2 Level A 1.3.1 (Info and Relationships) and 4.1.2 (Name, Role, Value). A `<label>` element with no form control creates a programmatic label that resolves to nothing for AT.
+
+**Fix:** For section headings, swap `<Label>` → `<h3 className="text-base font-medium">`. For output-panel labels, either (a) wrap the `<pre>` in `<label>{t("…")}<pre>…</pre></label>` so the label wraps the output, or (b) use `<p>` + `<pre aria-labelledby={…}>`. (The cycle-1 count of "~35" is an over-count of Label siblings that ARE correctly paired; the actually broken set is ~5–10.)
+
+### AGG-58 — Admin pages use `<h2>` for page title — CONFIRMED, P1, HIGH confidence
+
+**Files (page.tsx):** `admin/workers`, `admin/files`, `admin/settings`, `admin/audit-logs`, `admin/languages`, `admin/login-logs`, `admin/tags`, `admin/plugins`, `admin/plugins/chat-logs`, `admin/plugins/[id]`, `admin/users/[id]`, `admin/submissions`, `admin/submissions/[id]` — 13 pages emit `<h2 className="text-2xl font-bold">{t("title")}</h2>` as the page's first heading with no `<h1>` preceding it.
+
+Two admin pages (`admin/page.tsx`, `admin/roles/page.tsx`) correctly use `<h1>`.
+
+The shell layouts (`(dashboard)/layout.tsx`) do not render an `<h1>` app title either, so the admin route tree has no `<h1>` at all for the affected 13 pages. Breadcrumbs and sidebar do not compensate: breadcrumbs are not in an `<h1>`, and the sidebar is a `<nav>`.
+
+**Criterion:** WCAG 2.2 Level A 1.3.1 — heading hierarchy; the page's main heading must be `<h1>` so AT users can navigate by heading.
+
+**Fix:** Replace the page-title `<h2 className="text-2xl font-bold">…</h2>` with `<h1 className="text-2xl font-bold">…</h1>` in the 13 listed files. (Alternative: render a visually-hidden `<h1 className="sr-only">{t("title")}</h1>` and keep the visible `<h2>`.)
+
+### AGG-59 — `leaderboard-table.tsx` invalid `hsl(var(--border))` — CONFIRMED, P1, HIGH confidence
+
+**Files:** `src/components/contest/leaderboard-table.tsx:346, 349, 395, 414`
+
+```tsx
+<TableHead className="sticky left-0 z-[5] w-16 bg-background text-center shadow-[1px_0_0_0_hsl(var(--border))]">
+```
+
+`--border` is `oklch(0.922 0 0)` in `:root` and `oklch(1 0 0 / 10%)` in `.dark`. Wrapping an oklch value in `hsl(…)` produces an invalid color: `hsl(oklch(0.922 0 0))` is not parseable. Browsers drop the entire `box-shadow` declaration, so the intended 1-px column separator on the two sticky columns (rank, name) does not render in either theme. Sticky columns visually merge into the adjacent cell — a real usability defect on dense leaderboards.
+
+**Criterion:** Visual polish + scannability on data-dense views; no WCAG criterion (the separator is decorative).
+
+**Fix:** Drop the `hsl( … )` wrapper:
+```diff
+- shadow-[1px_0_0_0_hsl(var(--border))]
++ shadow-[1px_0_0_0_var(--border)]
+```
+or apply `border-r` on the sticky `<th>`/`<td>` since the cells are already positioned. (See UI-2/UI-3 for two more sites with the same `hsl(var(--token))` pattern that need the same fix.)
+
+### AGG-60 — Recruit start form has no `<form>`; error lacks `aria-live` — CONFIRMED, P1, HIGH confidence
+
+**File:** `src/app/(auth)/recruit/[token]/recruit-start-form.tsx:115-148`
+
+```tsx
+return (
+  <div className="space-y-3">
+    {requiresAccountPassword && (
+      <>
+        <label htmlFor="recruit-account-password">…</label>     {/* correctly paired */}
+        <Input id="recruit-account-password" … />                {/* but no <form> ancestor */}
+        <p className="text-xs text-muted-foreground">…</p>
+      </>
+    )}
+    <Button … onClick={handlePrimaryAction} disabled={loading}>  {/* no type="submit" */}
+      …
+    </Button>
+    {error && (
+      <p className="text-sm text-destructive text-center">{error}</p>   {/* no aria-live */}
+    )}
+```
+
+Three coupled defects:
+1. **No `<form>` element.** The `<Input id="recruit-account-password">` is paired with its `<label htmlFor>` correctly, but Enter-key submit does not fire because there is no `<form onSubmit>` to bubble to. The `<Button>` is wired only to `onClick`, so a keyboard user who types a password and presses Enter sees nothing happen.
+2. **No `aria-live` on the error `<p>`.** When `executeStart` rejects, `setError(...)` updates state, but the error `<p>` only renders on next paint with no announcement. Screen-reader users get no feedback that the start failed.
+3. **`disabled={loading}`** on the button without `aria-busy`. Acceptable, but `aria-busy="true"` on the form container is more communicative.
+
+Sibling forms in `(auth)/*` (login, signup, reset-password, forgot-password) all use the canonical `<form onSubmit>` pattern — only recruit-start diverges.
+
+**Criterion:** WCAG 2.2 Level A 3.2.2 (Predictable: consistent input), Level A 4.1.3 (Status Messages — `aria-live`), and 2.1.1 (Keyboard: Enter submits).
+
+**Fix:**
+```diff
+- <div className="space-y-3">
++ <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void handlePrimaryAction(); }}>
+   …
+-  <Button … onClick={handlePrimaryAction} disabled={loading}>
++  <Button type="submit" … disabled={loading}>
+   …
+-  {error && <p className="text-sm text-destructive text-center">{error}</p>}
++  {error && (
++    <p role="alert" className="text-sm text-destructive text-center">{error}</p>
++  )}
++ </form>
+```
+Move the `AlertDialog` outside the form (its own action already triggers `executeStart`). Do not nest `<form>` inside `AlertDialogContent` (its buttons should still work).
+
+### AGG-61 — `<EmptyState>` coverage and missing `loading.tsx`/`error.tsx` — CONFIRMED, P1, HIGH confidence
+
+**Coverage on head:**
+- `loading.tsx` files: **10** across 67 leaf `page.tsx` routes (~15%)
+- `error.tsx` files: **5** across 67 leaf `page.tsx` routes (~7%)
+- **60 leaf page directories have NEITHER** a `loading.tsx` nor an `error.tsx` at their own level.
+
+Inherited boundaries exist at major branches: `(public)/loading.tsx`, `(dashboard)/loading.tsx`, `(dashboard)/dashboard/admin/loading.tsx`, `(public)/problems/loading.tsx`, `(public)/groups/loading.tsx`, `(public)/contests/manage/loading.tsx`, plus parallel `error.tsx` files at the same branches. So the user does see *some* loading affordance — but it appears at the topmost segment that owns the boundary, not at the route they navigated to. Deep leaves (every admin detail page, every contest detail page, profile, rankings, submissions, community) show the parent layout's spinner while their own segment resolves, with no per-route empty/error state.
+
+`<EmptyState>` is used at 7 sites (3 unique components: `admin/submissions`, `admin/audit-logs`, `admin/tags`). The other ~20 empty-list surfaces in the app (problems list, contests list, problem-sets list, groups list, community list, etc.) use ad-hoc inline `<p className="text-muted-foreground">…</p>` patterns.
+
+**Criterion:** Perceived performance (Core Web Vitals LCP/INP — a local loading state reduces INP perception), and resilience (`error.tsx` is Next.js's only way to recover from a server-component throw without a full-page 500).
+
+**Fix:** Prioritize the highest-traffic deep leaves first: `contests/[id]/`, `contests/[id]/scoreboard`, `contests/manage/[assignmentId]/...`, `practice/problems/[id]`, `problems/[id]/edit`, `community/...`, `profile/[id]`, `submissions/[id]`. Each needs its own `loading.tsx` (Skeleton matching the page chrome) and `error.tsx` (Card with retry button). Lower priority: standardize `<EmptyState>` for list routes — current inconsistency is a P2 visual-rhythm problem.
+
+### AGG-62 — Live markdown preview re-parses per keystroke — CONFIRMED, P2, MEDIUM confidence
+
+**Files:** `src/app/(public)/problems/create/create-problem-form.tsx:629-668`, `src/components/problem-description.tsx:38-119`
+
+```tsx
+<TabsContent value="preview">
+  <div className="min-h-[200px] rounded-md border px-3 py-2 text-sm">
+    {description.trim() ? (
+      <ProblemDescription description={description} editorTheme={editorTheme} />   // bound to live state
+    ) : …}
+```
+
+`ProblemDescription` runs `react-markdown` + `remark-gfm` + `remark-breaks` + `remark-math` + `rehype-highlight` + `rehype-katex({ strict: true, maxExpand: 100 })` on every render. There is no `React.memo`, no `useDeferredValue`, no `useTransition`. The write tab's `<Textarea value={description} onChange={setDescription}>` updates state on every keystroke, which re-renders the parent; if Base UI's `TabsContent` keeps the panel mounted (it does in the default config — only `hidden` is toggled), the preview re-parses on every keypress.
+
+For a 200-line problem statement with code blocks and math, re-parsing is 50–200ms per keystroke (above the 50ms INP "needs improvement" threshold). Authoring latency on slow devices is noticeably janky.
+
+**Criterion:** INP / perceived responsiveness; no WCAG criterion.
+
+**Fix:**
+```ts
+const deferredDescription = useDeferredValue(description);
+// …
+<ProblemDescription description={deferredDescription} editorTheme={editorTheme} />
+```
+`useDeferredValue` lets React yield between keystroke and re-parse, dropping intermediate frames. Optional second pass: wrap `ProblemDescription` in `React.memo` so unrelated prop changes (e.g. `editorTheme`) don't re-parse when description hasn't changed.
+
+---
+
+## NEW UI/UX FINDINGS
+
+### UI-1 (P1, HIGH confidence) — `text-muted-foreground/60` and `text-foreground/60` produce ~2:1 contrast in light mode
+
 **Files:**
-- `src/components/contest/analytics-charts.tsx:90` — `aria-label="Score distribution bar chart"`
-- `src/components/contest/analytics-charts.tsx:321` — `aria-label="Problem solve times chart"`
-- `src/lib/plugins/chat-widget/chat-widget.tsx:289` — `aria-label="Chat"`
+- `src/components/resource-usage-bar.tsx:77, 98` — `<span className="text-muted-foreground/60">/ {formatValue(limit, …)}</span>`
+- `src/components/layout/public-header.tsx:306` — eyebrow text in avatar dropdown: `<p className="… text-muted-foreground/60">…</p>`
+- `src/components/ui/tabs.tsx:66` — inactive `TabsTrigger`: `text-foreground/60` (light) / `text-muted-foreground` (dark)
+- `src/app/(dashboard)/error.tsx:23` — error stack hint: `<p className="text-xs text-muted-foreground/70 font-mono">`
 
-**Confidence:** High
+**Math (light mode):** `oklch(0.48 0 0)` at 60% opacity over `oklch(1 0 0)`:
+- linear sRGB of `oklch(0.48)` ≈ 0.110592, white = 1.0
+- Composited: `0.4·1.0 + 0.6·0.110592 = 0.4664`
+- Contrast vs white = `(1.0 + 0.05) / (0.4664 + 0.05)` = **2.03 : 1** — fails WCAG AA 4.5:1
 
-Screen-reader users in the Korean locale hear these in English.
+`text-foreground/60` (`oklch(0.145 0 0)` at 60% over white) composites to ~0.4018 → **2.32 : 1** — also fails.
 
-**Fix:** route through `useTranslations` and add ko entries.
+In **dark mode**, the same utilities pass comfortably (~5.7–8.9:1) because the dark background is already near-black.
+
+**Criterion:** WCAG 2.2 Level AA 1.4.3 (Contrast — Minimum).
+
+**Fix:** Drop the `/60` modifier on these tertiary text colors in light mode. If the visual hierarchy needs de-emphasis, use the next-tier token (`text-muted-foreground` alone, ~6.5:1) or a font-weight/size step rather than opacity. For inactive tabs specifically, `text-muted-foreground` is the right baseline; reserve opacity-based de-emphasis for non-text decorative elements.
+
+### UI-2 (P1, HIGH confidence) — `sidebar.tsx` invalid `hsl(var(--sidebar-border))` / `hsl(var(--sidebar-accent))` shadows
+
+**File:** `src/components/ui/sidebar.tsx:473`
+
+```tsx
+"bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]"
+```
+
+Same defect class as AGG-59. `--sidebar-border` is `oklch(1 0 0 / 10%)` in dark mode and `oklch(0.922 0 0)` in light mode; wrapping in `hsl(…)` is invalid. The class is on `SidebarMenuAction`'s hover ring, so hover affordance on the menu-action button is silently invisible.
+
+**Criterion:** Consistency with design-token system (post-AGG-59 cleanup); visible hover state for keyboard/mouse users on a destructive-adjacent control.
+
+**Fix:** `shadow-[0_0_0_1px_var(--sidebar-border)]` and `hover:shadow-[0_0_0_1px_var(--sidebar-accent)]` — drop the `hsl()` wrapper.
+
+### UI-3 (P1, HIGH confidence) — `tag-form-fields.tsx` inline `hsl(var(--foreground))` borderColor
+
+**File:** `src/app/(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:63`
+
+```tsx
+borderColor: value.color === c ? "hsl(var(--foreground))" : "transparent",
+```
+
+Same oklch-in-hsl defect on a color-swatch picker. The selected swatch loses its border highlight in both themes (the declaration is dropped by the CSS parser).
+
+**Criterion:** Visible selection state on a form control (WCAG 2.2 Level A 4.1.2 — "states" half).
+
+**Fix:** `borderColor: value.color === c ? "var(--foreground)" : "transparent"`.
+
+### UI-4 (P2, HIGH confidence) — `<html nonce={nonce}>` is invalid HTML
+
+**File:** `src/app/layout.tsx:100`
+
+```tsx
+<html lang={locale} suppressHydrationWarning className={pretendard.variable} nonce={nonce}>
+```
+
+Per HTML spec, the `nonce` attribute is valid only on `<script>`, `<style>`, `<link>`, `<iframe>`, etc. — **not** on `<html>`. React renders it as an attribute on `<html>`, but browsers ignore it for CSP purposes. The actual CSP `nonce` delivery path is the `Content-Security-Policy` HTTP response header; `<html nonce>` is dead weight that misleads future maintainers.
+
+**Criterion:** HTML validity; CSP correctness (no UI symptom, but misleads maintainers).
+
+**Fix:** Remove `nonce={nonce}` from `<html>`. The `NonceProvider` already delivers nonces to `<Script>` elements that need them. Verify by inspecting response headers (not DOM) that `Content-Security-Policy: script-src 'self' 'nonce-…'` is set on the HTTP response.
+
+### UI-5 (P2, MEDIUM confidence) — Viewport config missing `viewport-fit` and `themeColor`
+
+**File:** `src/app/layout.tsx:23-26`
+
+```ts
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+};
+```
+
+Missing:
+- `viewportFit: "cover"` — required for `env(safe-area-inset-*)` to work on notched/Dynamic-Island devices; the recruit flow and code editor are full-screen experiences where safe-area matters.
+- A `themeColor` (light/dark pair) — browsers use this for OS chrome tinting on mobile and for the PWA install UI; currently no theme color is declared anywhere the browser can read.
+- No `maximum-scale` cap — current config allows user zoom (good for WCAG AAA 1.4.4; do not change).
+
+**Criterion:** Mobile UX polish; WCAG 2.2 Level AAA 1.4.4 (current config is fine on zoom; flag is for missing polish only).
+
+**Fix:**
+```ts
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)",  color: "#242424" },
+  ],
+};
+```
+
+### UI-6 (P2, MEDIUM confidence) — `api-keys` and `discussions` admin pages render no heading at the server boundary
+
+**Files:** `src/app/(dashboard)/dashboard/admin/api-keys/page.tsx:1-30`, `src/app/(dashboard)/dashboard/admin/discussions/page.tsx`
+
+Both server components return a client component (`<ApiKeysClient>` / `<DiscussionModerationList>`) without any server-rendered heading. Visually equivalent to a server-rendered `<h1>` once client JS loads, but two issues: (a) the heading is hidden until client hydration (LCP/CLS risk on hard navigation); (b) inconsistency with sibling admin pages that render their `<h2>` (AGG-58) directly in `page.tsx`.
+
+**Criterion:** AGG-58 pattern continuation; perceived-performance LCP.
+
+**Fix:** Subsumed by the AGG-58 fix. When adding `<h1>` to admin pages, also add one to `api-keys/page.tsx` (the existing in-client heading should become `<h2>`) and `discussions/page.tsx` (the `<h1>` inside `DiscussionModerationList` should become `<h2>` once a page-level `<h1>` exists).
+
+### UI-7 (P2, LOW confidence) — `console.error` left in production component bundle
+
+**Files:**
+- `src/components/problem/problem-import-button.tsx:49`
+- `src/components/submissions/_components/comment-section.tsx:79`
+- `src/components/discussions/discussion-post-form.tsx:48`
+- `src/components/discussions/discussion-post-delete-button.tsx:30`
+- `src/components/discussions/discussion-thread-form.tsx:54`
+- `src/components/discussions/discussion-thread-moderation-controls.tsx:78, 101`
+- `src/components/code/compiler-client.tsx:304`
+
+`console.error` in shipped components leaks to the browser console — visible to students who open devtools, who then file "is this an error?" issues. It also pollutes any future client-side telemetry.
+
+**Criterion:** Production hygiene; no WCAG criterion.
+
+**Fix:** Replace with a typed client-safe logger that no-ops in production or routes to telemetry. Low priority.
+
+### UI-8 (P2, MEDIUM confidence) — Design-token drift: hardcoded `bg-green-100`, `text-yellow-500`, `border-blue-300` bypass the semantic token system
+
+**Files (representative):**
+- `src/components/contest/leaderboard-table.tsx:84, 98, 327, 500-503` — yellow rank-1, blue frozen banner, green/blue/red verdict cells
+- `src/components/contest/anti-cheat-presentation.ts:19-28` — `bg-yellow-100 text-yellow-800`, `bg-blue-100 text-blue-800`, `bg-red-100 text-red-800`
+- `src/components/ui/badge.tsx:24` — `success: "bg-green-500/15 text-green-700 …"`
+- `src/components/assignment/assignment-overview.tsx:82`
+- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:483`
+- `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:240`
+- `src/components/contest/participant-timeline-view.tsx:179`
+
+The `--chart-1..5` tokens (`globals.css:69-73`) define a cohesive blue family but are unused outside `chart-*` consumers. Status colors (green/red/yellow/blue) are inlined as Tailwind palettes, which (a) does not adapt to lecture-mode color schemes (the `lecture-theme-*` classes from `lecture-mode-provider.tsx:61` will not recolor these), and (b) drifts from any future brand restyle.
+
+**Criterion:** Visual cohesion; lecture-mode accessibility (a low-vision user who selects a high-contrast lecture theme expects every status indicator to recolor).
+
+**Fix:** Add `--success`, `--warning`, `--info`, `--danger` semantic tokens to `globals.css` (suggested: `oklch(0.72 0.19 152)` green, `oklch(0.80 0.18 85)` yellow, `oklch(0.70 0.15 230)` blue, `oklch(0.62 0.22 25)` red — these match the existing Tailwind 700/100 pairs at AAA text-on-tint contrast), then map `bg-green-100` → `bg-success/15`, `text-green-700` → `text-success`, etc.
+
+### UI-9 (P2, LOW confidence) — `TabsContent` outline-none with no focus-visible replacement
+
+**File:** `src/components/ui/tabs.tsx:81`
+
+```tsx
+className={cn("flex-1 text-sm outline-none", className)}
+```
+
+Base UI's `TabsContent` can receive focus when navigated to via keyboard in some configurations. `outline-none` removes the default focus ring with no `focus-visible:ring-*` replacement. If focus lands on the panel (e.g. via screen-reader virtual cursor), the user sees no indicator.
+
+**Criterion:** WCAG 2.2 Level AA 2.4.7 (Focus Visible).
+
+**Fix:** Replace `outline-none` with `outline-none focus-visible:ring-2 focus-visible:ring-ring/50`. Low priority — only relevant if Base UI config gives the panel `tabindex`.
+
+### UI-10 (P2, MEDIUM confidence) — Sticky column `bg-background` mismatches the surrounding Card's `bg-card` row context
+
+**File:** `src/components/contest/leaderboard-table.tsx:345-414`
+
+The sticky header row uses `bg-background`; sticky left columns also use `bg-background`. The non-sticky data cells inherit the Card's `--card` background. In light mode `--background` and `--card` are both `oklch(1 0 0)` (identical), so no visible seam today. In **dark mode**, `--background` is `oklch(0.145 0 0)` and `--card` is `oklch(0.205 0 0)` — a ~7% lightness difference. As non-sticky cells scroll horizontally under the sticky column, the user sees a faint but visible color mismatch on the sticky column edge. Combined with the broken shadow from AGG-59 (no separator), the sticky columns look like a rendering bug rather than a deliberate UI.
+
+**Criterion:** Visual polish on data-dense UI (sticky column consistency in dark mode).
+
+**Fix:** Use `bg-card` (or `bg-inherit`) on sticky `<th>`/`<td>` so they match the table's row context, and add the proper separator per AGG-59. Pair this with the UI-2/UI-3 fixes.
 
 ---
 
-### D-29 — OG image declares `Inter` font but never fetches it; falls back to runtime default
-**Severity:** P3 — visual inconsistency on social cards
-**Files:** `src/app/og/route.tsx:39, 51`
-**Confidence:** High
+## KOREAN LETTER-SPACING AUDIT
 
-`ImageResponse` is constructed with only `size`; the inline styles declare `fontFamily: "Inter, Arial, sans-serif"`. Inter is not loaded anywhere in the app (the app uses Pretendard), and `next/og` requires an explicit `fonts: [{ name, data, weight }]` array to use a custom font. Result: OG images render in the runtime's fallback.
+**Verdict:** CLEAN. The codebase enforces the CLAUDE.md Korean letter-spacing rule consistently via two complementary mechanisms.
 
-**Fix:** either fetch Pretendard woff2 and pass it via `fonts`, or align the declared family with what the runtime ships.
+**Mechanism 1 — CSS custom property with `html:lang(ko)` override (`globals.css:131-136, 220-224`):**
+```css
+html {
+  --letter-spacing-body: -0.01em;
+  letter-spacing: var(--letter-spacing-body);
+}
+html:lang(ko) {
+  --letter-spacing-body: normal;
+  --letter-spacing-heading: normal;
+}
+```
+The `<html lang={locale}>` attribute is set correctly in `src/app/layout.tsx:100`. The override covers both body (`-0.01em`) and heading (`-0.02em`) rhythms.
 
----
+**Mechanism 2 — Per-component `locale !== "ko" ? " tracking-…" : ""` ternaries** at 20+ sites. Every Tailwind `tracking-*` utility on possibly-Korean text has the guard. The few unguarded `tracking-*` uses are provably safe:
+- `not-found.tsx:58`, `(public)/not-found.tsx:24` — `tracking-[0.2em]` on the literal string "404" (digits only).
+- `(public)/contests/join/contest-join-client.tsx:123` — `tracking-[0.35em]` with `font-mono` on access-code input (alphanumeric only, per inline comment).
+- `components/contest/access-code-manager.tsx:154` — `tracking-widest` with `font-mono` on access codes (same).
+- `components/ui/dropdown-menu.tsx:242-244` — explanatory comment, no class.
 
-### D-30 — SEO hreflang `?locale=ko` URL is generated for crawlers but not consulted by `getRequestConfig`
-**Severity:** P3 — SEO consistency
-**Files:** `src/lib/locale-paths.ts` (buildLocalePath) vs `src/i18n/request.ts`
-**Confidence:** High
+**Mechanism 3 — Per-string Hangul detection in dynamic image content (`src/app/og/route.tsx:15-22`):**
+```ts
+function hasHangul(value: string): boolean {
+  return /[ᄀ-ᇿ㄰-㆏가-힣]/.test(value);
+}
+```
+OG title/description can be arbitrary user content (problem names, contest titles) where `locale` doesn't reliably reflect glyph language. Per-string detection is the right call.
 
-The `?locale=ko` hreflang URL is in metadata, but `getRequestConfig` resolves locale via `x-locale-override` header → cookie → `accept-language` → system setting default → `"en"`. A human hitting `?locale=ko` directly still resolves via cookie/Accept-Language.
-
-**Fix:** either consume the `locale` search param inside `request.ts`, or stop generating the `?locale=ko` hreflang URL and rely on `accept-language` + the cookie.
-
----
-
-### D-31 — Korean honorific register mixes 해요체 and 하십시오체 within the same namespace
-**Severity:** P3 — copy polish
-**Files:** `messages/ko.json` (esp. `auth.*`)
-**Confidence:** High
-
-Rough counts across all 2,899 Korean strings: **279 해요체**, **143 하십시오체**, 2,477 noun/short-label. Within the `auth.*` namespace:
-- `auth.signInDescription` → "계정에 로그인**하세요**" (하십시오체)
-- `auth.signUpDescription` → "공개 사용자 계정을 만들**어요**" (해요체)
-- `auth.passwordHint` → "...만들어 **주세요**" (하십시오체)
-- `auth.invalidEmail` → "...입력**하세요**" (하십시오체)
-
-Plus two stiff calques: `admin.settings.loginRateLimitWindowMsHint` "시간 창" (literal "time window"), and `problems.fnFloatRelativeErrorHint` "~입니다" in a tooltip.
-
-**Fix:** standardize on **하십시오체** for imperatives/errors and **해요체** for status/toasts, or pick one throughout. Replace "시간 창" with "시간 범위" or "기간".
+**No new findings.** Recommendation: encode the pattern as a `cn()` helper (`trackingFor(locale, "tight")`) or ESLint rule to prevent regressions — housekeeping, not a defect.
 
 ---
 
-### D-32 — `workers-client.tsx` admin table — verify `overflow-x-auto` wrapper
-**Severity:** P3 — possible mobile horizontal-scroll bug
-**Files:** `src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx` (~line 343)
-**Confidence:** Low (unverified)
+## FINAL SWEEP
 
-Every other admin table wraps its `<Table>` in `<div className="overflow-x-auto">` (audit-logs:462, login-logs:328, users:207, files:138). The workers table was not confirmed to have the wrapper in the immediate grep output. If missing, columns overflow the viewport on mobile.
+**Themes/dark mode:** `next-themes` with `attribute="class"` and `defaultTheme="system"` (`layout.tsx:121-127`). `.dark` flips tokens correctly. `disableTransitionOnChange` is set, avoiding the 200ms color flash. One risk: the lecture-mode overlay (`lecture-mode-provider.tsx:61`: `html.classList.add('lecture-theme-<color>')`) adds a class to `<html>` alongside `.dark` — verify a light lecture-theme class doesn't conflict with `.dark` selectors. The CSS for `.lecture-theme-*` is not in `globals.css`; if it lives in a JS-injected `<style>`, it deserves an audit for token coverage.
 
-**Fix:** verify and add `<div className="overflow-x-auto">` wrapper if absent.
+**Reduced motion:** `globals.css:138-145` honors `prefers-reduced-motion: reduce` globally (animation-duration: 0.01ms, transition-duration: 0.01ms, scroll-behavior: auto). Good. `@keyframes shake` (line 150) and `pulse-slow` (line 158) are gated by the same media query.
 
----
+**Color scheme consistency with oklch tokens:** Mostly clean — every design token is oklch. Three `hsl(var(--token))` sites remain (AGG-59, UI-2, UI-3) and need the same one-line fix. After those, the migration from HSL to oklch is complete.
 
-## Information architecture notes (no findings, observations)
+**Forms:** All authentication forms (`login`, `signup`, `reset-password`, `forgot-password`) use `<form onSubmit>` and `type="submit"` buttons correctly. Only `recruit-start-form.tsx` diverges (AGG-60). All submit buttons correctly set `disabled={loading}`.
 
-- **Top-level IA is sound.** Public nav = Problems / Submissions / Contests / Rankings / Groups / Playground / Problem-sets / Practice / Users / Profile / Languages. Admin under `/dashboard/admin/*` with `Users / Submissions / Workers / Files / Tags / Languages / Audit logs / Login logs / Plugins / API keys / Settings`. Each list page has filter + search + pagination; each detail page has clear primary action.
-- **Two dashboards** is initially confusing: `/dashboard` (user-facing role-aware cards) vs `/dashboard/admin` (admin tools). The header dropdown surfaces both. Worth a quick UX test with new admin users.
-- **`/problems` vs `/practice`** — `/problems` is the legacy list route, `/practice/problems` is the solve route, `/practice/problems/[id]` is the detail page. The legacy `/problems/[id]` is a pure redirect stub (D-17). The split is fine but the URL story could be simplified.
-- **The unused `src/components/ui/sidebar.tsx`** (709 lines, shadcn pattern) is shipped but has zero callsites — the actual chrome is `public-header.tsx`. Either delete it or wire it up; carrying 700 lines of dead UI primitive code is a maintenance liability.
+**Keyboard navigation:** Focus-trap selectors in `public-header.tsx:95, 107` and `code-editor.tsx:64` use proper focusable selectors including `[tabindex]:not([tabindex="-1"])`. `score-timeline-chart.tsx:88` correctly adds `tabIndex={0} role="img" aria-label` to SVG points.
 
----
+**ARIA live regions:** 49 `aria-live` / `role=status` / `role=alert` / `aria-busy` / `aria-invalid` attributes across the codebase — reasonable coverage. Gap: `recruit-start-form.tsx` (AGG-60) and most form-error `<p>` elements use plain `<p className="text-destructive">` without `role="alert"`. A sweep to add `role="alert"` to user-facing error text would be a P3 cleanup.
 
-## Affordance notes
+**Stack/dependency hygiene:** Tailwind 4, Base UI `@base-ui/react@^1.4.1`, Next 16, React 19 — current and idiomatic. `lucide-react@^1.8.0` is unusual (lucide-react's mainline historically sits at 0.4xx); verify this is the new 1.x line adopted intentionally, not a typo'd pin.
 
-- `src/components/ui/button.tsx:9` correctly applies `cursor-pointer` on buttons and `disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50` on disabled — good.
-- `src/components/ui/input.tsx:12` mirrors the disabled affordance.
-- Focus rings: every interactive primitive has `focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2`. Strong, consistent keyboard affordance.
-- Hover states: nav links use `hover:bg-accent hover:text-accent-foreground`. Buttons use `hover:bg-primary/90` etc. No dead hover states.
+**Confidence summary table:**
 
----
-
-## CodeMirror theming notes
-
-- `src/components/code/code-surface.tsx:316` reads `resolvedTheme` from `next-themes` and switches `oneDarkHighlightStyle` ↔ `materialLightHighlightStyle` via the highlight compartment (`:469-481`). Correct.
-- `baseTheme` at `:50-93` uses `var(--code-surface-background)`, `var(--code-surface-caret)`, `var(--code-surface-foreground)`, `var(--code-surface-selection)`, `var(--code-surface-gutter)`, `var(--code-surface-border)`, `var(--code-surface-placeholder)` — all defined in `globals.css:170-198` with `color-mix` overrides in `.code-surface-danger`.
-- iOS guards at `:171-175` disable `drawSelection()` on iPad/iPhone (UIKit conflict).
-- `autocapitalize: "off"`, `autocorrect: "off"`, `spellcheck: "false"` at `:292-294`.
-- `EditorView.lineWrapping` on by default (`:307`).
-- Escape binding at `:197-203` blurs the editor — explicitly cited as WCAG 2.1.2 "No Keyboard Trap".
-- `Mod-Enter` submit shortcut at `:356-362` — won't fire on soft keyboards; mobile users tap submit.
-- 36 editor themes registered in `src/lib/code/editor-themes.ts` with `isDark` flag for light/dark categorization. Default light theme (`material-lighter`) defined inline at `code-surface.tsx:96-134` with accessible contrast (`#7C4DFF` keyword on `var(--code-surface-background)`).
-
----
-
-## Quick-win fix priority
-
-| ID | Severity | Effort | Fix |
+| ID | Severity | Confidence | Type |
 |---|---|---|---|
-| D-1 | P0 | 1 line | `--muted-foreground: oklch(0.42 0 0)` in `:root` |
-| D-3 | P0 | 11 lines | `<h2>` → `<h1>` (or add sr-only `<h1>` in dashboard layout) |
-| D-2 | P0 | ~35 sites | Add `htmlFor`/`id` pairs |
-| D-4 | P1 | 4 lines | Replace `hsl(var(--border))` with `var(--border)` |
-| D-5 | P1 | 1 line | `size-8` → `size-11 lg:size-9` |
-| D-6 | P1 | 3 attrs | Add `autoComplete` to change-password fields |
-| D-7 | P1 | ~10 lines | Wrap recruit form in `<form onSubmit>`; promote error `<p>` to `role="alert"` |
-| D-8 | P1 | ~25 sites | Swap bare `<TableCell colSpan>` for `<EmptyState>` with CTA |
-| D-9 | P1 | ~30 lines | Render timestamp/spinner in auto-refresh component |
-| D-10 | P1 | ~20 files | Add `loading.tsx` and `error.tsx` to listed routes |
-| D-16 | P2 | 1 line | Add `ariaLabel` to CodeViewer |
-| D-17 | P2 | delete file | Remove dead `not-found.tsx` |
-| D-20 | P2 | ~10 lines | Add `aria-live`, show/hide, hint to change-password |
-| D-21 | P2 | 5 sites | Prepend `<Loader2 animate-spin>` to auth buttons |
+| REG-1 | P2 | HIGH | Regression check (no UI surface) |
+| REG-2 | P1 | MEDIUM | Auth-check consistency (page vs API) |
+| AGG-56 | — | MEDIUM | INVALIDATED (recheck: 6.54:1 passes AA) |
+| AGG-57 | P2 | MEDIUM | Confirm (5–10 real sites, not 35) |
+| AGG-58 | P1 | HIGH | Confirm (13 admin pages) |
+| AGG-59 | P1 | HIGH | Confirm (4 leaderboard sites) |
+| AGG-60 | P1 | HIGH | Confirm (recruit form) |
+| AGG-61 | P1 | HIGH | Confirm (60 leaves lack local boundary) |
+| AGG-62 | P2 | MEDIUM | Confirm (useDeferredValue fix) |
+| UI-1 | P1 | HIGH | New — opacity-reduced text contrast |
+| UI-2 | P1 | HIGH | New — sidebar hsl(var()) invalid |
+| UI-3 | P1 | HIGH | New — tag-form hsl(var()) invalid |
+| UI-4 | P2 | HIGH | New — html nonce attribute invalid |
+| UI-5 | P2 | MEDIUM | New — viewport polish |
+| UI-6 | P2 | MEDIUM | New — heading in client component |
+| UI-7 | P2 | LOW | New — console.error in bundle |
+| UI-8 | P2 | MEDIUM | New — design-token drift |
+| UI-9 | P2 | LOW | New — TabsContent focus ring |
+| UI-10 | P2 | MEDIUM | New — sticky column bg mismatch |
 
----
-
-## Final checklist verdict
-
-- Information architecture: **Pass** (minor nav simplification possible)
-- Affordances: **Pass** (consistent hover/focus/disabled states)
-- Focus/keyboard nav: **Pass** (mobile drawer, ESC, focus restoration, no keyboard traps)
-- WCAG 2.2 accessibility: **Fail** — D-1 (AA contrast), D-2 (Level A labels), D-3 (Level A headings)
-- Responsive: **Pass with caveats** — D-5 (hamburger target), D-24 (discussions)
-- Loading/empty/error states: **Fail** — D-8, D-9, D-10
-- Form validation UX: **Mixed** — auth forms strong (except D-6, D-7, D-20, D-21); admin forms weak (D-19)
-- Dark/light mode correctness: **Pass** — minor D-22, D-23
-- i18n parity: **Pass** — minor D-27, D-28, D-30, D-31
-- Korean letter-spacing compliance: **Pass** — exemplary
-- Perceived performance: **Mixed** — D-12 (INP), D-13 (bundle), D-14, D-15 (lazy-load)
-- CodeMirror theming: **Pass** — best-in-class
+**Recommended fix order:** AGG-59 → UI-2 → UI-3 (same one-line CSS fix, ship together). Then AGG-58 (heading hierarchy). Then AGG-60 (form semantics). Then UI-1 (opacity contrast). Then AGG-61 (loading/error boundaries, scoped to top 10 deep leaves). Drop AGG-56 entirely.

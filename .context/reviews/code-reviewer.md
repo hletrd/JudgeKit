@@ -1,148 +1,122 @@
-# Code Review — Final Consolidated Report
+# Cycle 2 — code-reviewer
 
-**Repository:** judgekit @ HEAD `0b0ac198`
-**Scope:** Code quality, logic correctness, SOLID, maintainability, error handling, edge cases, missed invariants, data-flow consistency
-**Mode:** READ-ONLY (delivered inline by code-reviewer agent; persisted by orchestrator for provenance.)
-**Files examined end-to-end:** ~160 files across `src/lib/**`, `src/app/api/v1/**` (all 113 routes), and all 14 Rust source files.
-**Total unique findings:** 68 (deduplicated across lanes)
+Repo: `/Users/hletrd/flash-shared/judgekit` · Head: `ad543e14` · Cycle-1 head: `0b0ac198` · Scope: regression-check 12 Phase A fixes, confirm Phase B backlog, hunt new issues.
 
-### By Severity
-- **CRITICAL: 1**
-- **HIGH: 9**
-- **MEDIUM: 28**
-- **LOW: 30**
-
-### Recently-fixed areas — re-verified CORRECT
-Per-problem export `canManageProblem` gate; docker import-time throw → logged error; user-deletion audit after commit; reset/verify token single-use via conditional UPDATE; trusted-registries validation; Rust services fail-closed on missing auth tokens. All confirmed.
+Gates run: `npm run lint` PASS (exit 0) · `npx tsc --noEmit` 1 error in test file only (see LOW-2) · `npm run test:unit` 2949/2951 pass, 2 timeouts (see LOW-1 + pre-existing flake) · `npm run build` did not complete in 9 min (process stalled at ~1% CPU, killed; not a regression signal — lint+tsc+unit cover the change surface) · `cargo test` not re-run (validation.rs env-race fix verified by inspection — `grep set_var/remove_var` returns nothing).
 
 ---
 
-### CRITICAL (1)
+## REGRESSION CHECK (Phase A, 12/12)
 
-**[CRITICAL] CR-1 — Group DELETE IDOR: capability-only auth, no ownership check**
-`src/app/api/v1/groups/[id]/route.ts:188-213` · Confidence HIGH (personally verified)
-```ts
-export const DELETE = createApiHandler({
-  auth: { capabilities: ["groups.delete"] },   // capability only
-  handler: async (req, { user, params }) => {
-    const { id } = params;                     // arbitrary URL id
-    ...
-    await tx.delete(groups).where(eq(groups.id, id));  // NO ownership check
-```
-The sibling PATCH (line 127) correctly calls `canManageGroupResourcesAsync`. DELETE skips it. Scenario: any user whose role grants `groups.delete` sends `DELETE /api/v1/groups/<any-group-id>`; the handler cascade-deletes the group (assignments, enrollments, contest config) as long as it has zero submissions. Fix: mirror the PATCH gate — fetch `instructorId`, call `canManageGroupResourcesAsync`, deny unless `groups.view_all` or owner/co-instructor.
+All 12 fixes re-read in full context. All 12 achieve their stated purpose and introduce **no production-code regression**.
 
----
-
-### HIGH (9)
-
-**[HIGH] CR-2 — `problems/[id]` GET leaks `referenceSolution` + hidden test cases via variable shadow**
-`src/app/api/v1/problems/[id]/route.ts:60, 65, 72-82` · Confidence HIGH (personally verified)
-Local `const canManageProblem = caps.has("problems.edit") || authorId === user.id` shadows the imported strict function. PATCH (line 101) and DELETE correctly call `await canManageProblem(id, user.id, user.role)` (which enforces group scope). The GET uses the loose boolean, so a non-author `problems.edit` holder reads any problem's reference solution and every hidden test case. Fix: rename the local, gate through the imported function.
-
-**[HIGH] CR-3 — `admin/api-keys/[id]` PATCH lets any `system.settings` holder disable higher-privilege keys**
-`src/app/api/v1/admin/api-keys/[id]/route.ts:51-86` · Confidence HIGH (verified)
-Escalation check fires only when `body.role !== undefined`. Mutating `isActive`/`expiryDays`/`name` skips the role check entirely, and the SELECT (line 51) doesn't fetch the existing role. A level-1 ops role can `PATCH {isActive:false}` against a super_admin-owned key. Fix: fetch existing key's role, verify `canManageRoleAsync(user.role, existing.role)` before any field update.
-
-**[HIGH] CR-4 — Restore/import audit event destroyed by the import transaction**
-`src/app/api/v1/admin/restore/route.ts:151-163`; `migrate/import/route.ts:98-107` · Confidence HIGH
-`recordAuditEvent` fires BEFORE `importDatabase()`, which truncates `auditEvents`. The repo already fixed this exact pattern for user deletion (`76e27d31`). Fix: `recordAuditEventDurable(...)` post-commit.
-
-**[HIGH] CR-5 — Restore returns 500 "restoreFailed" AFTER the DB was already replaced**
-`src/app/api/v1/admin/restore/route.ts:165-189` · Confidence HIGH
-`importDatabase` commits; `restoreParsedBackupFiles` runs after. A file-stage throw reports "failure" while the production DB has silently swapped. Fix: best-effort file stage with honest partial-success body, or stage + atomically swap.
-
-**[HIGH] CR-6 — Pre-restore snapshot does not capture uploaded files**
-`src/lib/db/pre-restore-snapshot.ts:54-125` · Confidence HIGH
-Only the DB is snapshotted; uploads are overwritten with no rollback artifact. Fix: parallel uploads tar/zip, or operator acknowledgement.
-
-**[HIGH] CR-7 — Backup-with-files loads DB + uploads + ZIP into memory**
-`src/lib/db/export-with-files.ts:162-250` · Confidence HIGH
-Peak memory ≈ 3–4× backup size. Admin-triggered self-DoS. Fix: streaming ZIP.
-
-**[HIGH] CR-8 — Prompt injection into the chat-widget LLM (sanitizer bypassed)**
-`src/app/api/v1/plugins/chat-widget/chat/route.ts:374-375, 433-436`; `tools.ts:208` · Confidence HIGH (personally verified)
-`body.messages` and tool results pushed raw into the prompt; the codebase ships `sanitizePromptInput` and applies it in `auto-review.ts:163`, but the chat path never imports it. Academic-integrity vector on an exam/recruiting judging platform. Fix: apply `sanitizePromptInput` to every user-supplied string and tool result; frame untrusted tool outputs as data.
-
-**[HIGH] CR-9 — `TRUSTED_PROXY_HOPS=0` trusts attacker-controlled `X-Forwarded-For`**
-`src/lib/security/ip.ts:91-99` · Confidence HIGH (personally verified)
-Comment says `=0` means "no trusted proxies"; code trusts the LAST XFF entry unconditionally, defeating rate-limit buckets, audit IPs, and the judge IP allowlist. Fix: skip XFF path when `trustedHops === 0`.
-
-**[HIGH] CR-10 — Default-nginx XFF spoofing (append, not rebuild)**
-`src/lib/security/ip.ts:79-99` · Confidence MEDIUM (personally verified; deployment-dependent)
-Default `TRUSTED_PROXY_HOPS=1` + nginx's default `$proxy_add_x_forwarded_for` (appends). Attacker pre-sets `X-Forwarded-For: fake_ip`; `clientIndex = 0` selects `fake_ip`. Only correct when the proxy strips+rebuilds. Fix: document required nginx config; prefer trusted-proxy `X-Real-IP`.
+**A1** `40250e63` env 0600 + startup guard — VERIFIED. `src/lib/security/env.ts:182-211`. Minor gap: `resolveLoadedEnvFilePath` returns first existing candidate only — see LOW-5.
+**A2** `7548c7a6` restore audit post-commit — VERIFIED. `restore/route.ts:151-180`. Comment claim "mirroring user-deletion durable helper" slightly inaccurate (both use fire-and-forget `recordAuditEvent`, not `recordAuditEventDurable`). Residual crash-window loss = AGG-41 (Phase B), not a regression.
+**A3** `f9d72920` group DELETE IDOR — VERIFIED. `groups/[id]/route.ts:197-217`. `instructorId` selected inside `for("update")` tx; `canManageGroupResourcesAsync` + `groups.view_all`.
+**A4** `b10e5216` student→co_instructor — VERIFIED. `instructors/route.ts:87-89`. `getRoleLevel(targetUser.role) <= 0`.
+**A5** `08ac027a` api-key PATCH escalation — VERIFIED, but see NEW-H1 (DELETE sibling not hardened). `api-keys/[id]/route.ts:51,86-90`.
+**A6** `35d08f2a` chat-widget sanitize — PARTIAL. `sanitizePromptInput` on both branches; threat-surface comment claims Zod validation that does not exist (LOW-3). Functional security preserved by `context.userId` scoping.
+**A7** `ac5289f3` XFF spoofing hops=0 — VERIFIED. `ip.ts:97`. `trustedHops === 0` skips XFF entirely.
+**A8** `dcaf9109` compiler import throw — VERIFIED, with test nit (LOW-2). `execute.ts:64-73`.
+**A9** `4b93c5ff` function export fields — VERIFIED, with field gap: `defaultLanguage` still omitted (LOW-4). `export/route.ts:21-23`.
+**A10** `1f6d15d4` Rust validation env-race — VERIFIED. Pure `_with_config` variants; `grep set_var/remove_var/unsafe` clean across all three crates.
+**A11** `d4efef27b` problems/[id] GET strict — VERIFIED. `route.ts:65`. Consistent with PATCH (L106)/DELETE (L227).
+**A12** `b860f53a` git clean removal — VERIFIED, with flaky test (LOW-1). `check-migration-drift.sh:77-105`.
 
 ---
 
-### MEDIUM (28 — representative)
+## PHASE-B CONFIRMATION
 
-- **CR-11** `admin/roles/[id]` PATCH/DELETE allow editing/deleting roles above actor's level — `roles/[id]/route.ts:52`.
-- **CR-12** `groups/[id]/instructors` POST doesn't verify target is staff-level (can promote a student to co_instructor) — `instructors/route.ts:54`.
-- **CR-13** `groups/[id]` PATCH ownership transfer accepts any active user — `route.ts:142`.
-- **CR-14** `plugins/chat-widget/chat` doesn't verify caller can access `context.problemId` — `chat/route.ts:289`.
-- **CR-15** `community/threads/[id]/posts` POST missing `canAccessProblem` for editorial/solution scopes — `posts/route.ts:38`.
-- **CR-16** `community/votes` POST missing `canAccessProblem` for solution scope — `votes/route.ts:61`.
-- **CR-17** `submissions/[id]/events` SSE re-auth omits `canAccessSubmission` re-check (up to 30s stale access) — `events/route.ts:459`.
-- **CR-18** `contests/[assignmentId]/anti-cheat` Origin check silently skipped when AUTH_URL unset — `anti-cheat/route.ts:63`.
-- **CR-19** `contests/[assignmentId]/invite` POST doesn't verify target user is active — `invite/route.ts:91`.
-- **CR-20** Anti-cheat per-IP rate limit frames honest candidates on shared NAT — `anti-cheat/route.ts:35`. Move to post-auth per-user key.
-- **CR-21** Audit 5s fire-and-forget buffer lost on hard crash (SIGKILL/OOM) — `audit/events.ts:163`.
-- **CR-22** Audit log injection via newlines in `userAgent`/scalars (CSV export) — `request-context.ts:7`.
-- **CR-23** Audit write outside caller's transaction — false trail on rollback — pattern across callers.
-- **CR-24** Per-problem AI-disable check fails open on DB error — `chat/route.ts:289`.
-- **CR-25** Content-Disposition malformation via unsanitized filename extension — `files/[id]/route.ts:118`.
-- **CR-26** hCaptcha verification throws uncaught on network failure — `hcaptcha.ts:60`.
-- **CR-27** Plaintext decryption fallback for hCaptcha/SMTP/plugin secrets — `hcaptcha.ts:23`, `smtp.ts:54`, `plugins/secrets.ts:61`.
-- **CR-28** Deadlock risk in parallel multi-key rate-limit `SELECT FOR UPDATE` — `rate-limit.ts:183`.
-- **CR-29** Integer overflow in rate-limiter backoff — `rate-limiter-rs/src/main.rs:263`.
-- **CR-30** code-similarity `/compute` no submission-count cap → O(n²) DoS — `code-similarity-rs/src/main.rs:76`.
-- **CR-31** Function-judging only registered for `cpp23` — `registry.ts:10` (verified).
-- **CR-32** auto-review duplicate-comment TOCTOU — `auto-review.ts:134`.
-- **CR-33** False-positive TLE on timer-vs-close race — `compiler/execute.ts:464`.
-- **CR-34** No advisory lock against concurrent restores — `restore/route.ts`.
-- **CR-35** Long REPEATABLE READ export blocks vacuum — `db/export.ts:88`.
-- **CR-36** CSRF Origin check skipped when Origin header absent — `csrf.ts:56`.
-- **CR-37** Token-budget amplification via unbounded `editorCode` (100 KB) — `chat/route.ts:55`.
-- **CR-38** SMTP header-injection surface in subject construction — `email/templates.ts:59`.
+`git log 0b0ac198..ad543e14` contains only the 12 Phase A commits + docs commit. None of the Phase B backlog is fixed/obsolete. AGG-44 (rate-limiter overflow) **confirmed non-issue**: `MAX_CONSECUTIVE_BLOCKS_EXP = 4` (`rate-limiter-rs/src/main.rs:40`), so `2u64.pow(exp)` max = 16. Phase C "verify-first" item can be closed.
+
+AGG-20 partial only: `execute.ts:728` chmod 0o700 happy-path, but fallback paths at **L742 and L749 still chmod 0o777**. Still valid.
 
 ---
 
-### LOW (30 — grouped)
-Rust validator/TS divergence; dead docker.rs branches; code-similarity `as char` UTF-8 mangling; hand-rolled calendar in docker.rs; unbounded cleanup loops; missing snapshot checksum; HTTP 499 non-standard; cleanup endpoint config leak; migrate-import error collapse; unbounded compiler time limit; `serializeJudgeCommand` arg loss; stale-claim timeout; ip-allowlist cache; surrogate-pair split; double `getDbNow`; bcrypt/argon2 timing; PII in unencrypted JWT; length-only password policy; capability cache invalidation; workspace chmod 0777; shell denylist misses `&`; local-registry-with-port rejected; orphaned uploads accumulate; ZIP manifest optional; contest access-token SQL inlined in 4 routes; `expiryDays` cap asymmetric in PATCH; stats uses `deadline` not `lateDeadline`; bulk invitations 500 sequential locks; accepted-solutions `total` includes opted-out; queue-status leaks hidden test count; admin test-email SMTP relay surface; chat-logs query params unvalidated; forgot-password CSRF-exempt; raw auth handlers skip no-store header; host-header poisoning residual.
+## FINDINGS — NEW
+
+### CRITICAL
+
+**NEW-C1 — Silent data loss when restoring an export that omits any known table**
+- Files: `src/lib/db/import.ts:127-148` (truncate-then-skip); validation gap at `src/lib/db/export.ts:305-364` (`validateExport`)
+- Confidence: HIGH
+- Problem: `importDatabase` runs `tx.delete(table)` on every entry of `getReversedTableOrder()` unconditionally, then iterates `getTableOrder()` and does `if (!tableData || tableData.rowCount === 0) continue;` (L145). A table present in the live schema but absent from the incoming export has already been truncated and is never refilled. `validateExport` only checks that *present* tables are known — never asserts all known tables are present.
+- Failure scenario: Operator restores an archive produced before `discussionThreads`/`examSessions`/`recruitingInvitations`/`contestAccessTokens`/`scoreOverrides`/`codeSnapshots` existed. Export validates clean. Truncate wipes those tables. Insert loop `continue`s. Transaction commits `success: true`. Tables empty.
+- Fix: In `validateExport` (or before truncate), compute `knownTables - presentTables`; reject with `missingTables`, or skip truncation of absent tables. Mirror in `admin/migrate/validate/route.ts:83`.
+
+### HIGH
+
+**NEW-H1 — api-keys DELETE skips the `canManageRoleAsync` gate A5 added to PATCH**
+- File: `src/app/api/v1/admin/api-keys/[id]/route.ts:110-132`
+- Confidence: HIGH
+- Problem: DELETE requires only `system.settings`; fetches `existing` as `{id, name}` (L114) — never fetches `role`; no `canManageRoleAsync` check. Any admin with `system.settings` can DELETE a super_admin-owned API key.
+- Fix: Fetch `existing.role`; apply the same `canManageRoleAsync(user.role, existing.role) || user.role === existing.role` gate as PATCH (L86-90). Direct gap in A5's coverage.
+
+**NEW-H2 — Contest `accessCode` leaked to enrolled students via unprojected SELECT**
+- Files: `src/app/api/v1/groups/[id]/assignments/route.ts:56-68` (list); `groups/[id]/assignments/[assignmentId]/route.ts:25-44` (detail)
+- Confidence: HIGH
+- Problem: Both GETs call `db.query.assignments.findMany/findFirst` with no top-level `columns` projection. RQB returns every column including `accessCode` (`schema.pg.ts:348`). Otherwise gated behind `contests.manage_access_codes` AND `canManageContest` at `contests/[assignmentId]/access-code/route.ts`.
+- Fix: Add `columns: {...}` omitting `accessCode`/`freezeLeaderboardAt` for non-managers; branch on `canManageGroupResourcesAsync`.
+
+**NEW-H3 — Pre-restore snapshot failure does not abort the destructive import**
+- Files: `src/app/api/v1/admin/restore/route.ts:149-160`; `src/lib/db/pre-restore-snapshot.ts:54-125` (returns `null` on every failure mode); same shape at `admin/migrate/import/route.ts:109-110, 210-211`
+- Confidence: HIGH
+- Problem: `takePreRestoreSnapshot` returns `null` on mkdir/chmod/pipeline/stat failures. The restore route captures `preSnapshotPath` and proceeds to `importDatabase` regardless of whether the snapshot succeeded.
+- Fix: Treat `null` as a hard precondition failure in both routes; return 500 `preRestoreSnapshotFailed` before calling `importDatabase`.
+
+**NEW-H4 — Language config accepts arbitrary `dockerImage` with no allowlist check**
+- Files: `src/app/api/v1/admin/languages/route.ts:16,71,92` (POST); `admin/languages/[language]/route.ts` (PATCH)
+- Confidence: HIGH
+- Problem: POST/PATCH accepts `dockerImage: z.string().min(1).max(200)` with no call to `isAllowedJudgeDockerImage`/`isLocalJudgeDockerImage` (which exist in `judge/docker-image-validation.ts` and are enforced in `admin/docker/images/build/route.ts:62,78`). The stored value is what the Rust worker pulls and runs.
+- Failure scenario: `system.settings` holder sets `dockerImage: "attacker-registry/pwn:latest"` → worker pulls and executes student code inside attacker-controlled image.
+- Fix: Reuse `isAllowedJudgeDockerImage` + `isLocalJudgeDockerImage` in POST and PATCH.
+
+**NEW-H5 — Judge `/claim` shared-token fallback when `workerId` absent**
+- Files: `src/app/api/v1/judge/claim/route.ts:171-180`; `src/lib/judge/ip-allowlist.ts` default-open; `judge/poll/route.ts` accepts shared token when `submission.judgeWorkerId` is null
+- Confidence: MEDIUM (exploitability depends on misconfig: leaked shared token + no IP allowlist)
+- Problem: Per-worker `secretTokenHash` hardening only applies when `workerId` is supplied; the `else` falls back to shared `JUDGE_AUTH_TOKEN`. Default-open IP allowlist + leaked shared token → arbitrary source claims submissions and POSTs verdicts.
+- Fix: Default-deny judge routes when no IP allowlist configured; remove shared-token fallback on `/judge/claim`.
+
+**NEW-H6 — Editorial thread content readable without problem access**
+- Files: `src/app/(public)/community/threads/[id]/page.tsx:83-91` (and `generateMetadata` at L26)
+- Confidence: HIGH
+- Problem: Access gate only covers `scopeType === "problem" || "solution"`. `editorial`-scoped threads skip the `canReadProblemDiscussion` check. `generateMetadata` leaks title/description/author before body renders.
+- Fix: Add `"editorial"` to the scope check in both `CommunityThreadDetailPage` and `generateMetadata`.
+
+### MEDIUM
+
+**NEW-M1** — Three community routes use three different scope-coverage sets. Centralize `assertProblemScopedThreadAccess` covering `{problem, solution, editorial}`. (Overlaps SEC-9.)
+**NEW-M2** — SSE submission-events re-checks identity, not submission access. `submissions/[id]/events/route.ts:462-477`. (AGG-28.)
+**NEW-M3** — Contest export JSON path serves full PII with no audit when `?download=1` omitted. `contests/[assignmentId]/export/route.ts:58,113-125`.
+**NEW-M4** — Backup ZIP without `backup-manifest.json` bypasses all integrity verification. `export-with-files.ts:282-295,310-344`.
+**NEW-M5** — `admin/settings` PUT mutates privilege-affecting fields with no password re-confirmation. `admin/settings/route.ts:37-148`.
+**NEW-M6** — `roles` PATCH does not check actor level vs target role's CURRENT level. `admin/roles/[id]/route.ts:52-138`. (AGG-25.)
+**NEW-M7** — Recruiting-token brute-force lockout bypassable with concurrent requests. `recruiting-invitations.ts:533-622,96-115`.
+**NEW-M8** — ZIP-bomb slow-path decompresses each entry fully before applying the per-entry cap. `files/validation.ts:96-107`.
+**NEW-M9** — Anti-cheat Origin enforcement silently disabled when `AUTH_URL` unset. `contests/[assignmentId]/anti-cheat/route.ts:63-79`. (AGG-29.)
+
+### LOW (capped at 8)
+
+**LOW-1** A12 flaky migration-drift test times out at 30s. `tests/unit/infra/migration-drift-cleanup.test.ts:16`. Bump timeout to 120s.
+**LOW-2** A8 test writes `process.env.NODE_ENV` directly, tripping `tsc --noEmit` TS2540. `tests/unit/compiler/execute-implementation.test.ts:68`. Use the cast pattern.
+**LOW-3** A6 threat-surface comment claims Zod validation that does not exist. `tools.ts:68-74`.
+**LOW-4** A9 export omits `defaultLanguage`. `export/route.ts:15-33`.
+**LOW-5** A1 startup guard only checks the first existing env file. `env.ts:150-169`.
+**LOW-6** CSV "truncated" `#`-prefixed row breaks RFC-4180 parsers. `contests/[assignmentId]/export/route.ts:176`.
+**LOW-7** `/api/v1/health` leaks `APP_VERSION`/uptime to anonymous. `health/route.ts:8-42`.
+**LOW-8** `isTrustedServerActionOrigin` returns true for missing Origin when `NODE_ENV !== "production"`. `server-actions.ts:20-44`.
 
 ---
 
-### Open Questions (surfaced, not blocking)
-- **CR-OQ1** API-key CSRF bypass on destructive migration endpoints when `_apiKeyAuth` — needs `system.backup` admin-only confirmation.
-- **CR-OQ2** NextAuth v5 beta session shape when JWT lacks `sub` — `assertAuth` checks `!session` not `!session.user.id`; runtime verification needed.
-- **CR-OQ3** Is `groups.delete` capability granted to per-teacher custom roles in production? If only super_admin holds it, CR-1 is functionally contained — but the IDOR is a latent single-misconfiguration-away critical regardless.
+## Open Questions (surfaced, not blocking)
+
+- Custom-role privilege escalation via capability-preservation + level adjustment + self-reassignment (= NEW-M6).
+- Possible unbounded memory growth during ZIP restore (~700 MB heap peak). Overlaps AGG-21.
+- JSON-body import path bypasses file-extension safety net. `admin/migrate/import/route.ts:46-128`.
+- `extractLinkedFileIds` regex unanchored. `problem-links.ts:1-4`.
 
 ---
 
-### Positive Observations
-- **Permissions model mostly well-stratified** — `canManageProblem` stricter than `canAccessProblem`; `canManageContest` uniformly enforced on contest writes; TOCTOU-safe sub-resource writes via `getSubmissionReviewGroupIds`.
-- **Atomic token redemption** — recruiting `UPDATE...WHERE status='pending' AND expires_at>NOW() RETURNING`; reset/verify conditional `WHERE usedAt IS NULL`.
-- **Rate-limit core uses `SELECT FOR UPDATE`**; realtime uses `pg_advisory_xact_lock`; SSE auth recheck every 30s.
-- **Argon2id at OWASP params** with transparent rehashing; constant-time token comparison via ephemeral HMAC.
-- **Cross-user anti-cheat forgery prevented** — `userId` bound to JWT; server-only event types excluded from client schema.
-- **Plugin secrets AES-256-GCM encrypted at rest**, redacted in every GET, never reach browser.
-- **Tool dispatch is a closed allowlist** with per-user DB scoping; no SSRF (hardcoded provider URLs).
-- **Layered sandbox** (`--network=none`, `--cap-drop=ALL`, `--read-only`, user 65534, optional gVisor+seccomp).
-- **ZIP restore has robust path-traversal guards** (`parseBackupZip`, `resolveStoredPath`).
-- **No SQL injection** (Drizzle parameterization throughout); **no hardcoded secrets, no `eval`/`new Function` on user input** (grep-verified).
+## Recommendation
 
----
-
-### Recommendation
-
-**REQUEST CHANGES — one CRITICAL must be fixed before any release.**
-
-Fix-on-first-pass order:
-1. **CR-1** (CRITICAL, group-destruction IDOR) — mirror the PATCH handler's `canManageGroupResourcesAsync` gate. One block of code, today.
-2. **CR-2** (reference-solution leak via variable shadow) — rename the local boolean and route through the imported `canManageProblem`. The fix already exists in the same file (PATCH/DELETE use it correctly).
-3. **CR-3** (api-key PATCH escalation gap) — fetch existing role, gate every field mutation on `canManageRoleAsync`.
-4. **CR-8** (LLM prompt injection) — one import + two call sites; the sanitizer already exists.
-5. **CR-9/CR-10** (XFF trust) — small change to `extractClientIp`, broad blast-radius reduction.
-6. **CR-4/CR-5/CR-6/CR-7** (restore/backup pipeline) — `recordAuditEventDurable` + streaming ZIP + honest partial-success + upload snapshot.
-7. The MEDIUM queue.
-
-**Coverage:** Direct personal verification of `permissions.ts`, `groups/[id]/route.ts` PATCH+DELETE, `problems/[id]/route.ts` GET+PATCH, `admin/api-keys/[id]/route.ts`, `users/[id]/route.ts`, `problems/[id]/export/route.ts`, `db/pre-restore-snapshot.ts`, `docker/client.ts`, `email/index.ts`, `auth/{reset-password,verify-email}/route.ts`, `contests/join/route.ts`, `files/[id]/route.ts`, `participants/route.ts`, `submissions/[id]/events/route.ts`, `plugins/chat-widget/{chat,tools,providers}`, `assignments/{access-codes,recruiting-invitations}`, `realtime-coordination.ts`, `rate-limit-core.ts`, `security/{ip,csrf,password,encryption,token-hash,hcaptcha,rate-limit,api-rate-limit}.ts`, `auth/{config,permissions}.ts`, `audit/events.ts`, all 14 Rust files; sub-agent deep passes across db, compiler, judge, function-judging, api, assignments, plugins, email, anti-cheat, ops, files, and the full 113-route `src/app/api/v1` tree.
+**REQUEST CHANGES** — 1 CRITICAL + 6 HIGH block ship: NEW-C1, NEW-H1, NEW-H2, NEW-H3, NEW-H4, NEW-H5, NEW-H6. 9 MEDIUM worth scheduling (NEW-M1, NEW-M6 confirmed exploitable). 4 LOWs (LOW-1..4) are direct side-effects of Phase A commits. Phase B entirely still-valid; Phase C AGG-44 resolved-as-non-issue.

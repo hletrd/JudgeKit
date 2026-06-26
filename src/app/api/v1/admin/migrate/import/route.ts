@@ -7,7 +7,7 @@ import { importDatabase } from "@/lib/db/import";
 import { validateExport, isSanitizedExport, type JudgeKitExport } from "@/lib/db/export";
 import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
 import { MAX_IMPORT_BYTES, readJsonBodyWithLimit, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
-import { recordAuditEvent } from "@/lib/audit/events";
+import { recordAuditEventDurable } from "@/lib/audit/events";
 import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
@@ -95,17 +95,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "sanitizedExportNotRestorable" }, { status: 400 });
       }
 
-      recordAuditEvent({
-        actorId: user.id,
-        actorRole: user.role,
-        action: "system_settings.data_imported",
-        resourceType: "system_settings",
-        resourceId: "database",
-        resourceLabel: "Database import",
-        summary: `Importing database from ${data.sourceDialect} export (${data.exportedAt})`,
-        request,
-      });
-
       const preSnapshotPath = await takePreRestoreSnapshot(user.id);
       // Abort if the emergency-rollback snapshot failed, unless the operator
       // explicitly opted into the break-glass (disk-full recovery). See restore
@@ -126,6 +115,22 @@ export async function POST(request: NextRequest) {
           preRestoreSnapshotPath: preSnapshotPath,
         }, { status: 500 });
       }
+
+      // Record the import audit AFTER `importDatabase` commits, using the
+      // DURABLE helper. The import transaction TRUNCATEs every table including
+      // auditEvents, so a pre-import audit row would be wiped; the durable
+      // awaited insert also survives a hard crash in the 5s buffer window.
+      await recordAuditEventDurable({
+        actorId: user.id,
+        actorRole: user.role,
+        action: "system_settings.data_imported",
+        resourceType: "system_settings",
+        resourceId: "database",
+        resourceLabel: "Database import",
+        summary: `Imported database from ${data.sourceDialect} export (${data.exportedAt})`,
+        details: { skippedTables: result.skippedTables },
+        request,
+      });
 
       return NextResponse.json({
         success: true,
@@ -206,17 +211,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "sanitizedExportNotRestorable" }, { status: 400 });
     }
 
-    recordAuditEvent({
-      actorId: user.id,
-      actorRole: user.role,
-      action: "system_settings.data_imported",
-      resourceType: "system_settings",
-      resourceId: "database",
-      resourceLabel: "Database import",
-      summary: `Importing database from ${data.sourceDialect} export (${data.exportedAt})`,
-      request,
-    });
-
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
     if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") {
       logger.error(
@@ -234,6 +228,19 @@ export async function POST(request: NextRequest) {
         preRestoreSnapshotPath: preSnapshotPath,
       }, { status: 500, headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
     }
+
+    // Post-commit durable audit (see multipart path rationale).
+    await recordAuditEventDurable({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "system_settings.data_imported",
+      resourceType: "system_settings",
+      resourceId: "database",
+      resourceLabel: "Database import",
+      summary: `Imported database from ${data.sourceDialect} export (${data.exportedAt})`,
+      details: { skippedTables: result.skippedTables },
+      request,
+    });
 
     return NextResponse.json({
       success: true,

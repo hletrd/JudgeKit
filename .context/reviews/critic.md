@@ -1,282 +1,133 @@
-# Critic Review — judgekit HEAD 0b0ac198
-
-**Date**: 2026-06-26
-**Reviewer**: Critic (structured multi-perspective, ADVERSARIAL mode escalated after CRIT-1)
-**Scope**: Full change surface — src/lib/{judge,security,api,db,docker,compiler,actions,auth,anti-cheat,submissions,problems,contests,assignments,recruiting,plugins,realtime,data-retention,files}, src/app/api/v1, judge-worker-rs/src, rate-limiter-rs/src, code-similarity-rs/src, deploy-docker.sh, docs/
+# Cycle 2 — critic
 
 **VERDICT: REVISE**
 
----
+**Overall Assessment**: Phase A delivered 10/12 solid fixes at mostly the right altitude (A3, A8, A9, A10, A11, A12 are clean; A1, A4, A5 are sound). However, **A2 (restore audit) does not deliver what AGG-3 explicitly asked for or what the plan claimed** — it uses fire-and-forget `recordAuditEvent` instead of the `recordAuditEventDurable` variant that already exists and is used for less-critical operations (role changes, settings). **A7 closes the XFF hole but relocates the spoof surface to an unconditionally-trusted `X-Real-IP` header.** **A6 adds a security comment where the plan promised Zod schemas.** Phase B scope is mostly defensible; AGG-1 + AGG-3-durable are the highest-leverage picks this cycle. No silent security drops detected in Phase C, but one AGG-ID inconsistency needs fixing.
 
-## Overall Assessment
-
-The codebase is well-engineered in several critical areas (DB import atomicity, submission state machine, Docker sandboxing, ZIP slip defense, CSV injection mitigation). The recently-fixed items from the prior cycle are genuinely resolved. However, a single CRITICAL finding undermines the entire disaster-recovery story: the pre-restore snapshot — the ONLY rollback mechanism for the most destructive operation in the system — silently strips authentication fields, making it incapable of restoring login state. This is compounded by a chain of MAJOR data-integrity gaps in the backup/restore pipeline.
-
-## Pre-commitment Predictions vs Actuals
-
-| Prediction | Result |
-|---|---|
-| Fixed items would be partial fixes | Mostly FALSE — prior-cycle fixes are solid; 3 of 7 doc contradictions genuinely resolved |
-| Doc-fidelity issues persist | PARTIALLY TRUE — CSRF/auth/privacy docs fixed, but full-fidelity backup doc still contradicts code |
-| Security gating inconsistent across admin endpoints | TRUE — Pattern C inconsistency, migrate/validate missing rate limit, audit-logs discriminator mismatch |
-| Backup/restore transaction ordering still broken | TRUE — DB still commits before files restored; additionally discovered snapshot strips auth fields |
-| Resource cleanup leaks on error paths | FALSE — Rust TempDir Drop is correct; TS compiler cleanup adequate |
+**Pre-commitment Predictions vs Actuals**:
+- Predicted A2 might still lose audit on edge cases → **CONFIRMED** (fire-and-forget; lost on crash).
+- Predicted A6 would miss a branch → partially confirmed: systemContent is admin-controlled (safe), but Zod validation was replaced with a comment.
+- Predicted A7 might break `=0` semantics → **CONFIRMED** (X-Real-IP residual spoof).
+- Predicted A10 would use a serial-mutex band-aid → **WRONG**: it did the proper pure-function refactor. Good.
 
 ---
 
-## Critical Findings (blocks execution / data loss)
+## REGRESSION CHECK
 
-### CRIT-1: Pre-restore snapshot silently strips all authentication fields — DR rollback is broken
-
-**Confidence**: HIGH
-**Evidence**:
-- `src/lib/db/pre-restore-snapshot.ts:84-86` calls `streamDatabaseExport({ sanitize: false })`.
-- `src/lib/db/export.ts:104-106`: when `sanitize=false`, `activeRedactionMap = EXPORT_ALWAYS_REDACT_COLUMNS`.
-- `src/lib/security/secrets.ts:36-42`: `EXPORT_ALWAYS_REDACT_COLUMNS` includes `users.passwordHash`, `sessions.sessionToken`, `accounts.{refresh_token,access_token,id_token}`, `apiKeys.encryptedKey`, `systemSettings.{hcaptchaSecret,smtpPass}`.
-- `src/lib/db/export.ts:139-143`: redacted columns are set to `null` in the output.
-- `src/lib/db/pre-restore-snapshot.ts:34-38` comment claims: `"The snapshot is full-fidelity (sanitize=false) — it is the operator's own emergency rollback artifact... Because it contains password hashes, encrypted column ciphertexts, and JWT secrets in their stored form"` — **this claim is FALSE**.
-
-**Why this matters**: The pre-restore snapshot is the safety net for `importDatabase()`, which truncates and replaces every table. If a restore goes wrong and the operator rolls back using the snapshot:
-- Every user's `passwordHash` is `null` → **nobody can log in**
-- All `sessions.sessionToken` are `null` → all sessions invalidated
-- All OAuth `accounts` tokens are `null` → social login broken
-- All `apiKeys.encryptedKey` are `null` → all API integrations broken
-- `systemSettings.hcaptchaSecret` and `smtpPass` are `null` → registration and email broken
-
-The snapshot exists specifically to enable rollback, but it cannot restore the authentication subsystem. Password hashes are permanently lost — there is no way to recover them from the null'd export.
-
-**Realist Check**: Survives at CRITICAL. Realistic worst case: operator restores from a bad backup, attempts rollback, entire user base is locked out. Detection is immediate (first login attempt fails) but fix requires database surgery (manual password resets for every user). No mitigating factors — the snapshot never leaves the system, so applying `ALWAYS_REDACT` to it serves no security purpose. This involves permanent data loss (password hashes cannot be reconstructed).
-
-**Fix**: The pre-restore snapshot must bypass redaction entirely. Add a `redactionOverride` option to `streamDatabaseExport`:
-```typescript
-export function streamDatabaseExport(options: {
-  signal?: AbortSignal;
-  sanitize?: boolean;
-  dbNow?: Date;
-  redactSecrets?: boolean; // default true; false for internal snapshots
-} = {}): ReadableStream<Uint8Array>
-```
-When `redactSecrets === false`, set `activeRedactionMap = {}` (no redaction). Then call `streamDatabaseExport({ sanitize: false, redactSecrets: false })` from `takePreRestoreSnapshot`. The snapshot file is already mode 0o600 in a 0o700 directory — the file-system permissions are the correct defense for an on-disk artifact that never leaves the host.
+| ID | Fix | Verdict | Notes |
+|---|---|---|---|
+| A1 | env perms + startup guard | **PASS (minor gaps)** | All `.env*` files confirmed 0600; guard correctly throws on group/other bits. Guard walks the candidate list and returns the FIRST existing — if multiple exist with different perms, only one is inspected. Deploy-time files (`.env.deploy*`) aren't in the candidate list (acceptable: not loaded at runtime). |
+| A2 | restore audit durable | **FAIL — see C-1** | Moved post-commit (fixes truncate-wipe) but uses fire-and-forget `recordAuditEvent`, not `recordAuditEventDurable` that AGG-3 explicitly named. |
+| A3 | group DELETE IDOR | **PASS** | `instructorId` fetched inside tx with `for("update")`; `canManageGroupResourcesAsync` + `groups.view_all` gate mirrors PATCH/GET. Negative-authz test asserts `dbDeleteMock` not called. |
+| A4 | student→co_instructor | **PASS** | `getRoleLevel <= 0` gate; 409 `instructorRoleInvalid` is consistent with sibling ownership-transfer gate (`groups/[id]/route.ts:161`). |
+| A5 | api-keys PATCH escalation | **PASS (benign edge)** | `targetRole = body.role ?? existing.role` correctly consults existing role. Null-role case is benign (null-role key has no privileges). |
+| A6 | chat-widget sanitize | **PARTIAL — see C-2** | `body.messages` and `toolResult` sanitized; systemContent is admin-controlled (verified — no hole). But plan's "Zod-validate `toolArgs` per tool" was delivered as a comment only. |
+| A7 | XFF `TRUSTED_PROXY_HOPS=0` | **PARTIAL — see C-3** | XFF path correctly skipped when `trustedHops === 0`. Falls through to unconditionally-trusted `X-Real-IP`. |
+| A8 | compiler import-time throw | **PASS** | `logger.error` replaces `throw`; test asserts module loads + `executeCompilerRun` returns the configError stderr. |
+| A9 | function export fields | **PASS** | `problemType/functionSpec/referenceSolution` added to SELECT; route test + validator round-trip test are real (would fail on buggy version). |
+| A10 | Rust validation env-race | **PASS (best fix of the set)** | Proper root-cause: pure `validate_docker_image_with_config(image, is_production, trusted_prefixes)`; tests inject config. No `unsafe set_var`. |
+| A11 | problem GET strict gate | **PASS (perf note — F-1)** | Routes through `canManageProblem` (DB hit) replacing local-only check. Test asserts referenceSolution + hidden testCases stripped for out-of-group `problems.edit` holder. |
+| A12 | migration drift git clean | **PASS (edge — F-3)** | Surgical node-based restore replaces `git clean -fd`. Source-text test + behavior test. |
 
 ---
 
-## Major Findings (causes significant rework)
+## CRITICAL / MAJOR REGRESSION FINDINGS
 
-### CRIT-2: Restore commits DB transaction before files are written to disk
+### C-1 — A2 restore audit is NOT durable despite AGG-3 explicitly requiring it (MAJOR)
+- **Confidence**: HIGH
+- **Evidence**:
+  - AGG-3 (`_aggregate.md:52-56`) says: `"Use a post-commit durable audit (recordAuditEventDurable) mirroring the user-deletion fix."`
+  - Plan A2 says: `"record the restore audit AFTER importDatabase commits (post-commit), reusing the durable-audit helper used by user deletion."`
+  - Actual fix `src/app/api/v1/admin/restore/route.ts:168` calls `recordAuditEvent({...})` — **not awaited, not the Durable variant**.
+  - The plan's reference is doubly wrong: user-deletion itself uses fire-and-forget `recordAuditEvent` (`src/app/api/v1/users/[id]/route.ts:506`, verified), NOT durable. So "mirror user-deletion" was never going to produce a durable audit.
+  - `recordAuditEventDurable` (`src/lib/audit/events.ts:275`) exists precisely for this — `"Durably record a security-critical audit event: insert it IMMEDIATELY and await the write, so the integrity-trail entry survives a hard crash (SIGKILL/OOM/docker kill)"` — and is already used for **less** critical operations: role changes, system settings, exam sessions.
+- **Why this matters (Realist Check)**: A database restore is the single most destructive admin operation (TRUNCATEs every table). It is the operation most likely to run under memory pressure (large import) and the one where the integrity trail matters most. `recordAuditEvent` pushes to a 5s in-memory buffer that is wiped on hard crash. Survives Realist Check at MAJOR — never downgrade integrity-trail findings.
+- **Fix**: `await recordAuditEventDurable({...})` (one-line change; the helper already falls back to buffer on insert failure so it never throws). Update the Phase B AGG-41 entry to reference this site explicitly.
 
-**Confidence**: HIGH
-**Evidence**:
-- `src/app/api/v1/admin/restore/route.ts:165`: `const result = await importDatabase(data);` — DB transaction commits here.
-- `src/app/api/v1/admin/restore/route.ts:177`: `filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);` — files written AFTER DB commit.
-- `src/lib/db/export-with-files.ts:351-360`: `restoreParsedBackupFiles` loops through uploads calling `writeUploadedFile` one at a time. If any write fails (disk full, EACCES, I/O error), the function throws and the loop stops. The DB is already committed.
+### C-2 — A6 "Zod-validate toolArgs per tool" was delivered as a comment, not schemas (MAJOR → MINOR after Realist Check)
+- **Confidence**: HIGH
+- **Evidence**: Plan A6: `"Zod-validate toolArgs per tool; add threat-surface comment at executeTool."`. Diff only adds the comment at `src/lib/plugins/chat-widget/tools.ts:68-74` but the switch cases were unchanged. Handlers use ad-hoc coercion: `Number(args.limit) || 5` (`tools.ts:131`), `String(args.submissionId ?? "")` (`tools.ts:169`).
+- **Recalibration**: MAJOR → **MINOR** (plan-impl gap, not a security regression). Every handler re-scopes DB lookups to `context.userId` / `context.problemId` (verified across all 5 handlers), so there is **no exploitable IDOR today**.
+- **Fix**: Either add the per-tool Zod schemas (small effort) or amend the plan/Phase B to explicitly drop Zod in favor of the documented scoping contract. Don't leave the comment promising validation that doesn't exist.
 
-**Why this matters**: If `writeUploadedFile` fails partway (e.g., disk full at file N of M), the system is left in a state where:
-- The DB is fully replaced and references all M files.
-- Files 1..N-1 are on disk.
-- Files N..M are missing.
-- There is no automatic recovery — the route returns 500 but leaves the system half-restored.
-- The pre-restore snapshot (CRIT-1) cannot help because it's DB-only (no file snapshot) AND strips auth fields.
-
-**Fix**: Write files BEFORE committing the DB transaction, or use a two-phase approach: (1) write all files to a staging directory, (2) commit DB, (3) atomically move files into place. At minimum, surface a detailed error listing which files failed so the operator can recover manually.
-
-### CRIT-3: Pre-restore snapshot failure is silently ignored
-
-**Confidence**: HIGH
-**Evidence**:
-- `src/lib/db/pre-restore-snapshot.ts:122-124`: on failure, returns `null`.
-- `src/app/api/v1/admin/restore/route.ts:149`: `const preSnapshotPath = await takePreRestoreSnapshot(user.id);` — return value is used only in the audit log summary, never checked.
-- The destructive `importDatabase(data)` at line 165 proceeds regardless of whether the snapshot succeeded.
-
-**Why this matters**: If the snapshot fails (disk full, permission denied, export-stream error), the operator's only rollback artifact is gone, but the most destructive operation in the system proceeds anyway. The safety net vanishes silently — the operator sees `preRestoreSnapshotPath: null` in the audit log, but the restore has already completed by the time anyone checks.
-
-**Fix**: Abort the restore if `takePreRestoreSnapshot` returns `null`:
-```typescript
-const preSnapshotPath = await takePreRestoreSnapshot(user.id);
-if (!preSnapshotPath) {
-  return NextResponse.json(
-    { error: "snapshotFailedRestoreAborted" },
-    { status: 503 }
-  );
-}
-```
-
-### CRIT-4: Backup silently omits files missing from disk
-
-**Confidence**: HIGH
-**Evidence**:
-- `src/lib/db/export-with-files.ts:222-229`: if `access(resolveStoredPath(record.storedName))` or `readUploadedFile()` throws for a DB-referenced file, the catch only increments `skipped++` and continues. The manifest only includes successfully-read files (line 215-220).
-- `src/lib/db/export-with-files.ts:232`: `skipped` count is logged server-side only.
-- `src/app/api/v1/admin/backup/route.ts:90-100`: the route returns the ZIP as a binary stream. There is no JSON metadata channel — the `skipped` count is NOT surfaced to the operator downloading the backup.
-
-**Why this matters**: A backup that looks successful can be missing files. The backup ZIP is internally consistent (manifest matches ZIP contents), but the DB export references files that aren't in the ZIP. On restore:
-- `importDatabase` inserts DB rows referencing the missing files.
-- `restoreParsedBackupFiles` only restores files that were in the ZIP.
-- The system ends up with DB rows pointing to non-existent files (broken images, broken attachments).
-
-**Fix**: Either (a) fail the backup if any DB-referenced file is missing from disk (`if (skipped > 0) throw new Error("backupIncomplete")`), or (b) include a `skipped` manifest entry and surface it in the API response. Option (a) is safer — a backup with missing files is a signal of data integrity problems that should be investigated, not silently shipped.
-
-### CRIT-5: Non-atomic file writes — crash leaves truncated file under valid name
-
-**Confidence**: HIGH
-**Evidence**:
-- `src/lib/files/storage.ts:27-29`: `writeUploadedFile` calls `await writeFile(resolveStoredPath(storedName), data, { mode: 0o644 })` directly.
-- No temp-file + rename pattern. No `fsync`.
-- `restoreParsedBackupFiles` (export-with-files.ts:355-356) calls `writeUploadedFile` which overwrites existing files. Prior bytes are destroyed before the new write is known to be durable.
-
-**Why this matters**: A process crash or power loss mid-write leaves a truncated file under a valid `storedName`. A later read returns truncated bytes with no error. For file uploads and restores, this is silent data corruption. The lack of `fsync` means the OS write buffer may not be flushed even if the `writeFile` promise resolves.
-
-**Fix**: Use write-to-temp-then-rename:
-```typescript
-export async function writeUploadedFile(storedName: string, data: Buffer): Promise<void> {
-  await ensureUploadsDir();
-  const finalPath = resolveStoredPath(storedName);
-  const tmpPath = finalPath + ".tmp-" + randomBytes(8).toString("hex");
-  await writeFile(tmpPath, data, { mode: 0o644 });
-  await rename(tmpPath, finalPath); // atomic on POSIX
-}
-```
-
-### CRIT-6: Docs claim full-fidelity backup includes "all fields" — code redacts auth fields
-
-**Confidence**: HIGH
-**Evidence**:
-- `docs/data-retention-policy.md:48`: `"**Full-fidelity** ('?full=true') — all fields included."`
-- `src/lib/db/export.ts:104-106`: full-fidelity mode (`sanitize: false`) still applies `EXPORT_ALWAYS_REDACT_COLUMNS`, which nullifies `users.passwordHash`, `sessions.sessionToken`, `accounts` OAuth tokens, `apiKeys.encryptedKey`, and `systemSettings.{hcaptchaSecret,smtpPass}`.
-- `src/lib/security/secrets.ts:33-34`: comment says these are `"most sensitive fields that must never leave the system"` — intentional redaction, but contradicts the doc claim.
-
-**Why this matters**: An operator relying on a full-fidelity backup for disaster recovery will discover at restore time that all passwords, sessions, API keys, and SMTP/hCaptcha secrets are gone. The docs promise "all fields included"; the code delivers a partial export. This is the same root cause as CRIT-1, but affects the portable export/backup path, not just the internal snapshot.
-
-**Fix**: Either (a) update `docs/data-retention-policy.md:48` to accurately state which fields are always redacted (e.g., `"Full-fidelity ('?full=true') — all fields except auth credentials (passwordHash, session tokens, OAuth tokens, API key material, SMTP/hCaptcha secrets), which are always redacted for security."`), or (b) if the intent is truly "all fields" for DR backups, introduce a separate export mode that bypasses `ALWAYS_REDACT` for operator-initiated local backups (with appropriate warnings and file permissions). Option (a) is the minimal fix; option (b) is the functional fix.
+### C-3 — A7 leaves X-Real-IP as an unconditionally-trusted spoof surface (MAJOR)
+- **Confidence**: HIGH
+- **Evidence**: Fix `src/lib/security/ip.ts:97` correctly skips XFF when `trustedHops === 0`. But `src/lib/security/ip.ts:113-117` trusts `X-Real-IP` whenever XFF is absent — with **no hop validation, no proxy trust check**. When `TRUSTED_PROXY_HOPS=0` (the SEC-8 scenario — "no trusted proxies"), every header is client-controlled, including `X-Real-IP`. The result drives rate-limit keys, audit IPs, and the judge IP allowlist (the ip-allowlist test was rewritten to use `x-real-ip`, confirming the allowlist keys off it).
+- **Mitigating factor**: in deployments behind nginx (per CLAUDE.md), nginx sets X-Real-IP and should overwrite client-supplied values — but the code does not verify this. Keep MAJOR.
+- **Fix**: When `trustedHops === 0`, also skip `X-Real-IP` and fall through to `request.socket.remoteAddress` (the actual socket peer). Reserve `X-Real-IP` trust for `trustedHops > 0` deployments where a proxy is guaranteed to set it.
 
 ---
 
-## Minor Findings (suboptimal but functional)
+## PHASE-B CRITIQUE
 
-### CRIT-7: Compiler workspace chmod 0o777 — overly broad permissions
+**Highest-leverage this cycle (pick these first):**
+1. **AGG-1 (restore DB-before-files atomicity)** + **AGG-3/C-1 (durable audit)**. Together these fully close the restore integrity story. C-1 is a one-line change; doing it now (not "next cycle") removes the most embarrassing gap from Phase A.
+2. **AGG-2 (snapshot/full-fidelity redacts auth)**. After a restore-from-snapshot, **nobody can log in**. Silent correctness hole in the documented disaster-recovery path — higher priority than its Phase B placement suggests.
+3. **AGG-41 (unawaited `recordAuditEvent` at security-critical sites)**. Verified: **117 fire-and-forget `recordAuditEvent({` sites** in `src/app/api/`. Recommend a sub-cycle that converts the destructive/privilege routes (user delete, group delete, problem delete, api-key mutations, restore).
 
-**Evidence**: `src/lib/compiler/execute.ts:738,745` (TS) and `judge-worker-rs/src/runner.rs:800-803` (Rust) both set the workspace to `0o777`. Source files are set to `0o666`.
-**Why it's minor**: The Docker sandbox (`--user 65534:65534`, `--network=none`, `--cap-drop=ALL`, seccomp) contains the blast radius. The 0o777 is needed so the `nobody` user inside the container can write to the bind-mounted workspace. But 0o755 (after `chown` to 65534) would suffice and prevent any co-located non-root process from tampering.
-**Fix**: After successful `chown` to `SANDBOX_UID:SANDBOX_GID`, use `chmod(workspaceDir, 0o755)` instead of `0o777`. The chown already ran, so the owner (65534) has rwx. Only fall back to 0o777 if chown fails (the current fallback path).
+**Mis-scoped / under-specified:**
+- **AGG-10 (plaintext-decryption fallback default)** — migration is the hard part and is unscoped: rollback if a key is unwrappable after flip? Add: explicit opt-in flag name, one-shot migration script, and detection for already-plaintext secrets (don't double-encrypt).
+- **AGG-17 (`MAX_TIME_LIMIT_MS` silent clamp)** — "raise default / warn" is under-specified: raise to *what*? The clamp hides a config error; the right fix is **reject** over-limit problems at authoring time, not warn-at-runtime.
+- **AGG-25..30 "Authz medium queue"** is bundled as one line item — too coarse to be actionable. Split into individual entries with file:line, or they will silently languish.
 
-### CRIT-8: releaseClaimedSubmission read-then-write race
-
-**Evidence**: `src/app/api/v1/judge/claim/route.ts:71-102`: SELECTs `judgeClaimToken` (line 77-81), checks it (line 83-85), then UPDATEs without re-checking the token in the WHERE clause (lines 87-94). Under READ COMMITTED, a concurrent re-claim can commit between SELECT and UPDATE, and this UPDATE overwrites the new claim with `status=pending`.
-**Why it's minor**: Self-heals when the new worker reports (the claim token still matches on poll). Produces transient wrong state but no data loss.
-**Fix**: Add `WHERE judge_claim_token = claimToken` to the UPDATE and check rowCount.
-
-### CRIT-9: migrate/validate missing rate limit
-
-**Evidence**: `src/app/api/v1/admin/migrate/validate/route.ts:10-23` performs auth, CSRF, and capability checks but has no `consumeApiRateLimit` call. All four sibling routes (backup, migrate/export, migrate/import, restore) have rate limits.
-**Why it's minor**: The endpoint parses uploaded JSON/multipart up to `MAX_IMPORT_BYTES`, which is a CPU/memory surface. But it requires `system.backup` capability (admin-only), limiting exposure.
-**Fix**: Add `consumeApiRateLimit(request, "admin:migrate-validate")` after the capability check.
-
-### CRIT-10: Deploy INCLUDE_WORKER defaults to true — app-server footgun
-
-**Evidence**: `deploy-docker.sh:186`: `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"`. The CLAUDE.md mandates `INCLUDE_WORKER=false` for algo.xylolabs.com, but the script default is the opposite. No host-based auto-detection.
-**Why it's minor**: Documented in CLAUDE.md and the script's own comments reference the June 2026 algo.xylolabs.com incident caused by building judge images on the app server. But the default is still the dangerous option.
-**Fix**: Either default to `false` (safer; dedicated-worker hosts set `INCLUDE_WORKER=true` explicitly), or add hostname-based detection.
-
-### CRIT-11: audit-logs admin/instructor discriminator uses wrong capability
-
-**Evidence**: `src/app/api/v1/admin/audit-logs/route.ts:51` declares entry capability `system.audit_logs`, but line 70 uses `caps.has("users.edit")` to decide admin vs instructor view scope. A custom role with `system.audit_logs` but not `users.edit` is silently treated as an instructor (scoped view).
-**Why it's minor**: Fails closed (more restrictive, not less). No privilege escalation.
-**Fix**: Use a dedicated capability (e.g., `audit_logs.view_all`) as the discriminator, matching the declared entry capability.
-
-### CRIT-12: Pattern C inline capability checks — fragile and inconsistent
-
-**Evidence**: 6 route files (roles, workers, workers/stats, chat-logs) use `createApiHandler` without the declarative `auth: { capabilities: [...] }` block, instead performing `caps.has(...)` manually inside the handler body. The capability gate is correct today but easy to forget when adding new handlers.
-**Fix**: Migrate to declarative `auth: { capabilities: [...] }` in the handler config.
+**Phase C deferrals — no silent security drops, with one bookkeeping exception:**
+- AGG-44 (rate-limiter overflow) Phase C entry is **appropriate** — "verify-first, not a silent drop".
+- SEC-16/17/20/21, ARCH-6/8/9/10 deferrals are documented with severity/confidence preserved and concrete exit criteria. Acceptable.
+- **AGG-12 inconsistency (bookkeeping)**: Plan Phase C says `"AGG-12 / SEC-12 postcss XSS via next"` but `_aggregate.md:107-110` AGG-12 is the **`next-auth@5.0.0-beta.31` exact-pin** finding (a different issue). Reconcile the ID so the postcss tracking isn't orphaned. `npm ls postcss` shows `next@16.2.9` bundles `postcss@8.4.31` — the "keep next bumped" exit is fine, just fix the AGG-ID.
 
 ---
 
-## What's Missing (gaps, unhandled edge cases)
+## FINDINGS (new — multi-persona)
 
-- **No file-level snapshot in pre-restore**: The snapshot only captures DB state. If a restore overwrites or deletes uploaded files, there is no file-level rollback. Combined with CRIT-1 (snapshot strips auth) and CRIT-2 (DB commits before files), the restore path has no reliable rollback for either DB auth state or file state.
-- **No backup completeness verification**: There is no post-backup check that verifies all DB-referenced files are present in the ZIP. The manifest validates integrity of included files but not completeness against the DB export.
-- **User deletion hard-deletes submission source code**: `src/lib/actions/user-management.ts:212` + `schema.pg.ts:470` cascade-deletes all submissions. No soft-delete for academic-integrity evidence retention. If an instructor needs to investigate plagiarism after deleting a user, the evidence is gone.
-- **Orphaned file bytes on disk after user deletion**: `schema.pg.ts:1229` sets `files.uploadedBy` to null via cascade, but nothing cleans up the bytes in `uploads/`. Combined with no unreferenced-upload sweep, disk slowly leaks.
-- **Lazy realtime-slot cleanup**: `src/lib/realtime/realtime-coordination.ts:104-109` only sweeps expired SSE slots on new acquisitions. Idle deployments accumulate rows.
-- **Rate limiter is single-instance only**: `rate-limiter-rs/src/main.rs` uses in-memory `DashMap`. Multiple replicas would each enforce limits independently, effectively multiplying the allowed rate. Documented in `docs/deployment.md` but worth flagging.
-- **No circuit breaker for code-similarity service**: If the similarity service is unavailable, anti-cheat similarity checks either fail silently or block. Need to verify the degraded-mode behavior.
+### F-1 — `canManageProblem` DB hit added to every problem GET (perf regression on hot path) — MAJOR
+- **Persona**: SRE / staff engineer · **Confidence**: HIGH · **File**: `src/app/api/v1/problems/[id]/route.ts:65`
+- **Problem**: A11 replaced a local check (both already-fetched values) with `await canManageProblem(id, user.id, user.role)`, which hits the DB to resolve teaching-group membership. This runs on every problem view — including every student opening a problem during a contest. The old code made 0 extra DB calls; the new code makes ≥1 per view.
+- **Fix**: Either (a) extend the `problemStub` SELECT to include the teaching-group join so the gate is local, or (b) memoize `canManageProblem` per request, or (c) fast-path students (who can never manage) with a role-level short-circuit before the DB call.
 
----
+### F-2 — `recordAuditEvent` vs `recordAuditEventDurable` is an abstraction footgun (117 sites) — MINOR
+- **Persona**: New contributor / staff engineer · **Confidence**: HIGH · **File**: `src/lib/audit/events.ts:252` (fire-and-forget) vs `:275` (durable)
+- **Problem**: The A2 author defaulted to `recordAuditEvent` exactly because it's the default everywhere (117 call sites vs ~5 durable). This is how AGG-3's explicit "use durable" instruction got silently lost.
+- **Fix**: Rename to `bufferAuditEvent` / `persistAuditEvent`; add a lint rule or JSDoc `@security-critical` tag; or add a code-comment block at `recordAuditEvent` directing security-critical callers to the durable variant.
 
-## Ambiguity Risks
+### F-3 — A12 drift-cleanup would discard developer's staged changes if a tracked drizzle file is modified by both probe and developer — MINOR
+- **Persona**: DBA · **Confidence**: MEDIUM · **File**: `scripts/check-migration-drift.sh:90-104`
+- **Problem**: Cleanup diffs `before`/`after` porcelain **strings**. If a developer has staged changes to a tracked drizzle file (`"M  file.sql"`) and the probe further modifies it (`"MM file.sql"`), the strings differ → treated as probe-only → `git checkout -- file.sql` → **discards both probe and developer changes**. The test only covers untracked-file preservation.
+- **Fix**: Parse the path independent of status code and compare path sets, or `git stash push -- drizzle/` before the probe and `git stash pop` after.
 
-- `docs/data-retention-policy.md:48` says `"all fields included"` for full-fidelity — Interpretation A: every column including passwordHash/sessionToken/etc. / Interpretation B: all fields except those in ALWAYS_REDACT. Code implements B; docs imply A. Risk: operator assumes a DR backup contains auth state and discovers otherwise at restore time.
+### F-4 — A1 startup guard inspects only the first existing env file in priority order — MINOR
+- **Persona**: SRE · **Confidence**: HIGH · **File**: `src/lib/security/env.ts:147-160` (`resolveLoadedEnvFilePath`)
+- **Problem**: Returns the first existing entry of `[.env.production.local, .env.local, .env.production, .env]`. Next.js loads ALL matching env files, not just the first. A world-readable `.env` coexisting with a 0600 `.env.production.local` is never flagged.
+- **Fix**: Iterate ALL existing candidates and assert each is 0600.
 
----
+### F-5 — `.env.deploy.auraedu` is an undocumented fourth deploy target — MINOR
+- **Confidence**: HIGH · **File**: `.env.deploy.auraedu` (gitignored, 0600 — not a leak)
+- **Problem**: CLAUDE.md documents `algo` and `worker-0`; the plan lists `.env.deploy`, `.env.deploy.algo`, `.env.deploy.worv`. A fourth target `auraedu` exists with no doc/plan provenance.
+- **Fix**: Add `auraedu` to the deploy-targets doc or confirm it's stale and remove.
 
-## Multi-Perspective Notes
+### F-6 — A2 audit summary says "files pending" but file restoration runs AFTER the audit — MINOR
+- **Persona**: DBA · **Confidence**: HIGH · **File**: `src/app/api/v1/admin/restore/route.ts:168-184`
+- **Problem**: `recordAuditEvent` fires at L168 (action `system_settings.database_restored`, implying success), then `restoreParsedBackupFiles` runs at L183. If file restoration throws, the audit already recorded success while the HTTP response says `restoreFailed` — contradictory signals during incident triage.
+- **Fix**: Record the audit AFTER file restoration completes, or record a second `database_restore_files_failed` audit on partial failure.
 
-- **Security**: Docker sandboxing is strong (network=none, cap-drop=ALL, seccomp, no-new-privileges, read-only rootfs, uid 65534). Worker token comparison is timing-safe (HMAC + timingSafeEqual). CSRF protection is multi-layered (X-Requested-With + sec-fetch-site + origin). File uploads validate magic bytes. CSV injection is mitigated. Plugin configs use AES-256-GCM. These are genuinely well done. The main security concern is CRIT-1: the ALWAYS_REDACT policy, while well-intentioned, is applied to an internal on-disk artifact where it serves no purpose and breaks DR.
-
-- **Executor (plan implementation perspective)**: The fix for CRIT-1 is small and well-contained — add a `redactSecrets` parameter to `streamDatabaseExport` and pass `false` from `takePreRestoreSnapshot`. CRIT-3 is a one-line guard. CRIT-4 and CRIT-5 are moderate refactors of the file I/O layer.
-
-- **Stakeholder**: The DR story is the weakest link. An operator following the docs will believe full-fidelity backups and pre-restore snapshots can restore the full system. They cannot restore auth state. This is the highest-priority fix.
-
-- **Skeptic**: The strongest argument that CRIT-1 is not a real problem: "passwordHash should never be in any file, even a local snapshot — if the snapshot file is stolen, passwordHash could be cracked." Counter: the snapshot is mode 0o600 in a 0o700 directory on the same host that runs the DB with the raw passwordHash. The file-system permissions are equivalent to the DB access controls. Refusing to write passwordHash to the snapshot does not improve security — it only breaks the rollback capability.
-
----
-
-## Verified Fixed (prior cycle — confirmed resolved)
-
-| Item | Status | Evidence |
-|---|---|---|
-| CSRF doc mechanism | FIXED | `docs/api.md:78-83` now documents `X-Requested-With: XMLHttpRequest`, matching `csrf.ts:40` |
-| Auth bearer doc | FIXED | `docs/authentication.md:12-15` documents `Authorization: Bearer jk_...`, matching `api/auth.ts:66` |
-| Privacy retention doc | FIXED | `docs/privacy-retention.md:24-28` periods match `data-retention.ts:1-16` |
-| Language sync overwrites admin overrides | FIXED | `sync-language-configs.ts:46-63` only backfills empty/null fields |
-| Per-problem export canManageProblem gate | VERIFIED | `submissions/export/route.ts:45-72` uses row-level scoping via review groups |
-| Restore ZIP audit pending count | VERIFIED | `restore/route.ts:159` uses `pendingUploadedFiles.length` |
-| Docker import-time throw | VERIFIED | `docker/client.ts:22-29` logs error instead of throwing |
-| User deletion audit post-commit | VERIFIED | `user-management.ts:214` records audit after `db.delete` succeeds |
+### LOW findings (capped at 6)
+- **L-1** A5: `targetRole = body.role ?? existing.role` — when `existing.role` is null, `canManageRoleAsync(user.role, null)` returns true (null has level -1). Benign but undocumented. `src/app/api/v1/admin/api-keys/[id]/route.ts:86`.
+- **L-2** A6 sanitizer test pins one payload (`"Ignore previous instructions"` → `[REDACTED]`). A different phrasing bypasses the test assertion without bypassing the sanitizer — brittle. `tests/unit/api/plugins.route.test.ts:486+`.
+- **L-3** A8 `RUNNER_AUTH_DISABLED=1` in production isn't covered by the new tests. The logger.error still fires when auth is explicitly disabled — possibly noisy. `src/lib/compiler/execute.ts:62-66`.
+- **L-4** A12 `DRIFT_BEFORE`/`DRIFT_AFTER` parsing assumes porcelain v1 with no renames; undocumented. `scripts/check-migration-drift.sh:81-105`.
+- **L-5** A1 chmod of the six env files isn't captured in git (modes aren't versioned). Re-clone won't get 0600 automatically — only the startup guard catches it. Worth a setup-script line.
+- **L-6** A7 `Math.max(0, parsed)` clamps negative `TRUSTED_PROXY_HOPS` to 0 (fail-closed for XFF) — good — but the X-Real-IP fallthrough means negative values still trust a header. `src/lib/security/ip.ts:15`.
 
 ---
 
-## Verified Solid (no issues found)
+## FINAL SWEEP
 
-- **DB import atomicity** (`import.ts:125-212`): genuine single-transaction with clean rollback, schema-drift defense.
-- **Submission state machine** (`judge/claim-query.ts`, `worker-staleness-sweep.ts`): stale-claim reclaim, background sweep, optimistic-lock fence on report. No stuck-in-judging path.
-- **Rust executor cleanup** (`runner.rs:794`): `tempfile::TempDir` with Drop cleanup on all paths.
-- **ZIP slip defense** (`export-with-files.ts:318-323`): path normalization, traversal rejection, manifest integrity (sha256 + byteLength).
-- **CSV injection** (`csv/escape-field.ts:9-14`): prefixes dangerous leading chars with tab.
-- **Test/seed endpoint** (`test/seed/route.ts`): hard-gated by env var, 404 in production, timing-safe token comparison.
+**Missing / unhandled**:
+- No concurrent-restore lock (two admins hitting POST `/restore` simultaneously interleave TRUNCATEs). AGG-21..24 in Phase B — flag for this cycle given the destructive blast radius.
+- The 5s audit buffer window is silently relied upon for security-critical low-frequency events across 117 sites.
+- No test asserts the restore audit survives a flush failure (C-1 scenario). The A2 test only asserts `importDatabaseMock` called before `recordAuditEventMock` — it does NOT assert durability or await behavior.
 
----
+**Ambiguity risks**:
+- Plan A2 `"reuse the durable-audit helper used by user deletion"` → Interpretation A: use `recordAuditEventDurable` (AGG-3 literal). Interpretation B: mirror whatever user-deletion does (fire-and-forget). Executor chose B; AGG-3 wanted A. **Risk**: the security-critical durability property is silently unmet (C-1).
+- A7 plan `"fall through to socket remote address / X-Real-IP"` → Interpretation A: socket ONLY. Interpretation B: trust X-Real-IP unconditionally. Executor chose B; SEC-8's intent was A. **Risk**: spoof surface relocated, not closed (C-3).
 
-## Verdict Justification
-
-**REVISE**. The review escalated to ADVERSARIAL mode after discovering CRIT-1 (pre-restore snapshot strips auth fields), which indicated a systemic issue in the backup/restore pipeline. The adversarial sweep then surfaced CRIT-2 through CRIT-6, confirming a pattern: the DR path was designed with good individual components (atomic DB import, streaming export, manifest verification) but the integration has critical gaps around the DB-vs-files boundary and the redaction policy's over-application to internal artifacts.
-
-CRIT-1 alone justifies REVISE because it means the system's only rollback mechanism for its most destructive operation cannot restore authentication — defeating its entire purpose. The fix is small and well-scoped.
-
-The prior-cycle fixes are genuinely solid (3 of 7 doc contradictions resolved, language sync fixed, recently-fixed items verified). The codebase's sandboxing, import atomicity, and submission state machine are well-engineered. The issues are concentrated in the backup/restore pipeline and doc-fidelity around export modes.
-
-**To upgrade to ACCEPT**: fix CRIT-1 (snapshot must bypass redaction), CRIT-3 (abort on snapshot failure), and CRIT-6 (doc accuracy). CRIT-2, CRIT-4, CRIT-5 can be addressed in a follow-up as they require moderate refactoring.
-
----
-
-## Coverage
-
-| Area | Examined | Method |
-|---|---|---|
-| src/lib/db/export.ts, export-with-files.ts, import.ts, pre-restore-snapshot.ts | Full read | Direct |
-| src/app/api/v1/admin/ (28 route files) | Full audit | Parallel agent + direct verify |
-| src/lib/security/ (csrf, secrets, timing, api-rate-limit) | Full read | Direct |
-| src/lib/compiler/execute.ts | Targeted read | Direct |
-| judge-worker-rs/src/ (runner.rs, docker.rs, config.rs) | Targeted grep + read | Direct |
-| rate-limiter-rs/src/main.rs | Full read | Direct |
-| code-similarity-rs/src/ | Targeted grep | Direct |
-| src/lib/judge/ (claim-query, sync-language-configs, worker-staleness) | Full read | Direct + agent |
-| src/lib/realtime/realtime-coordination.ts | Targeted grep | Agent |
-| src/lib/files/ (storage, validation) | Full read | Direct |
-| src/lib/plugins/secrets.ts | Targeted read | Direct |
-| src/lib/csv/escape-field.ts | Full read | Direct |
-| deploy-docker.sh | Targeted sections | Direct |
-| docs/ (api, authentication, privacy-retention, data-retention-policy, deployment) | Targeted sections | Direct + agent |
-| src/app/api/v1/judge/ (claim, poll, heartbeat, deregister, register) | Targeted read | Direct |
-| src/lib/actions/user-management.ts | Targeted grep | Agent |
-| src/lib/db/schema.pg.ts (FK cascade rules) | Targeted grep | Agent |
-| Rust rate-limiter concurrency (DashMap) | Full read | Direct |
-| Docker sandbox flags | Full grep | Direct |
+**Verdict Justification**: THOROUGH mode throughout. Issues are localized (A2/A6/A7 implementation-vs-plan gaps), not systemic across all 12 fixes (A3/A8/A9/A10/A11/A12 are genuinely clean). Realist Check applied: C-2 downgraded MAJOR→MINOR; C-1 and C-3 held at MAJOR. For an upgrade to ACCEPT: (1) convert A2 to `await recordAuditEventDurable(...)`; (2) either add the A6 Zod schemas or amend the plan to drop them; (3) gate A7's X-Real-IP on `trustedHops > 0`; (4) reconcile the AGG-12 ID inconsistency.

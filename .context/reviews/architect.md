@@ -1,162 +1,130 @@
-# Architecture & Design Review — judgekit @ HEAD `0b0ac198`
+# Cycle 2 — architect
 
-**Scope:** coupling/cohesion, layering, app↔worker↔DB boundary correctness, deploy topology vs CLAUDE.md, queue/transaction design, error contract, startup races, schema/index design, config sources of truth.
-**Mode:** READ-ONLY (delivered inline by architect agent; persisted by orchestrator for provenance).
-
-## Summary
-
-The core architecture is sound: the judge-claim atomic SQL (`FOR UPDATE SKIP LOCKED` + per-worker capacity CTE + optimistic claim-token fence), per-worker secret hashing, the dockerfile/image validators mirrored across TS and Rust, and the destructive-migration guard are all well-engineered with documented invariants. The previously-fixed items I verified (startup sync, docker client fallback, destructive-push detection) are correctly in place. However, I found a **HIGH-severity inconsistency** in the runner-token contract between the two TS modules that import it, a **HIGH-severity deploy-defaults footgun** that contradicts CLAUDE.md, and several medium-severity items around migration-journal integrity, transaction semantics during build, and the trust boundary at the worker host's Docker socket.
-
-## Previously-Flagged Items — Verification Status
-
-| Item | Status | Evidence |
-|---|---|---|
-| Startup language-sync overwriting admin hotfixes | **FIXED** | `src/lib/judge/sync-language-configs.ts:46-63` only backfills when `!record.runCommand` or `record.compileCommand == null`. No overwrite path. `SKIP_INSTRUMENTATION_SYNC=1` opt-out at L83. |
-| Docker client local fallback gated in prod | **FIXED** | `src/lib/docker/client.ts:49-50` — `ALLOW_LOCAL_DOCKER_ADMIN = NODE_ENV !== "production" || JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN === "1"`. |
-| Destructive migration detection | **FIXED** | `deploy-docker.sh:1078-1082` captures push output, greps for `data loss\|are you sure\|warning:.*destructive\|please confirm`, calls `die()`. |
-| App-only deploy topology defaults | **PARTIALLY FIXED — see ARCH-2** | Per-target overrides exist in `.env.deploy.algo` but the script's own defaults invert CLAUDE.md and the per-target files are not auto-sourced. |
-
-## Findings
-
-### ARCH-1 — Import-time throw in compiler/execute.ts contradicts the explicit fix applied to its sibling module
-**Severity: HIGH | Confidence: high**
-**File:** `src/lib/compiler/execute.ts:64-69`
-
-Commit `26cff8e4` ("fix(docker): replace import-time throw with logged error for missing runner token") replaced the import-time throw in `src/lib/docker/client.ts` with a logged error + generic `configError` API response, with an explicit rationale: production misconfiguration should not crash the process at import, and deployment details should not leak via the HTTP error. The fix was applied **only to `docker/client.ts`**. The structurally identical guard in `src/lib/compiler/execute.ts:64-69` was left as a hard `throw`:
-
-```ts
-if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
-  throw new Error("RUNNER_AUTH_TOKEN must be set in production when COMPILER_RUNNER_URL is configured. ...");
-}
-```
-
-This is worse than the docker/client.ts case because `execute.ts` sits on the **hot judging path** — it is imported by the API route that runs on every compiler-run request, not only by an admin-only image-management route. A misconfigured `RUNNER_AUTH_TOKEN` in production would crash the Next.js server process at first import (or at module pre-evaluation) rather than degrade to a logged `configError`. The sibling module already proves the correct pattern (`emitConfigErrorLog` + `WORKER_DOCKER_API_CONFIG_ERROR_CODE`).
-
-**Recommendation (low effort, high impact):** Mirror the `docker/client.ts:26-47` pattern here — log the error once at import, set a module-level `COMPILER_RUNNER_CONFIG_ERROR` constant (the variable already exists at L80-83 but is computed *after* the throw), and surface it via `tryRustRunner` / `executeCompilerRun`'s existing error-return contract (the `stderr: COMPILER_RUNNER_CONFIG_ERROR` path at L637-647 already handles this case — it just cannot be reached when the import-time throw fires first).
+**Scope:** regression-check the 12 cycle-1 Phase A fixes (head `ad543e14`); architecture-lens evaluation of the Phase B backlog plus the performance lane (no perf-reviewer registered); new arch/design risks across app/worker/schema/deploy. READ-ONLY. Every finding cites file:line.
 
 ---
 
-### ARCH-2 — Deploy topology defaults contradict CLAUDE.md; per-target env files not auto-sourced
-**Severity: HIGH | Confidence: high**
-**Files:** `deploy-docker.sh:184-187, 119-123`; `.env.deploy.algo`; `.env.deploy.worv`
+## REGRESSION — Phase A (12 fixes)
 
-CLAUDE.md mandates: *"When deploying to algo.xylolabs.com, always use `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, `INCLUDE_WORKER=false`."* The script-level defaults are the exact inverse:
+Verified all 12 against code. **11 match existing patterns cleanly with no layering/coupling regression. 1 (A2) inherited a weaker helper than the plan intended.**
 
-```bash
-SKIP_LANGUAGES="${SKIP_LANGUAGES:-false}"      # L184
-INCLUDE_WORKER="${INCLUDE_WORKER:-true}"       # L186
-BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}" # L187 → resolves to INCLUDE_WORKER (= true)
-```
+| ID | Status | Evidence | Pattern-match |
+|---|---|---|---|
+| A1 env 0600 + guard | CLEAN | `src/lib/security/env.ts:182-211` (`assertLoadedEnvFilePermissions`), `:150-169` (resolver) | Production-only, no-op when env injected via process env. Correct threat model. |
+| A2 restore audit post-commit | **PARTIAL — see REG-1** | `src/app/api/v1/admin/restore/route.ts:168-180` | Post-commit placement correct; **wrong helper chosen**. |
+| A3 group DELETE IDOR | CLEAN | `src/app/api/v1/groups/[id]/route.ts:198-231` | Fetches `instructorId` inside tx under `for("update")`, then `canManageGroupResourcesAsync` + `caps.has("groups.view_all")`. Mirrors PATCH (`:127-134`) and GET (`:64-69`) exactly. |
+| A4 instructors POST target-role | CLEAN | `src/app/api/v1/groups/[id]/instructors/route.ts:87-89` | `getRoleLevel(targetUser.role) <= 0` gate mirrors PATCH ownership-transfer at `groups/[id]/route.ts:160`. |
+| A5 api-keys PATCH escalation | CLEAN | `src/app/api/v1/admin/api-keys/[id]/route.ts:51,86-90` | `targetRole = body.role ?? existing.role` applies `canManageRoleAsync` to ALL mutations (name/isActive/expiryDays), not only role. Correct generalization. |
+| A6 chat-widget sanitize | CLEAN | `src/app/api/v1/plugins/chat-widget/chat/route.ts:373-376` (no-tools), `:508` (tool-result); threat-surface comment at `src/lib/plugins/chat-widget/tools.ts:68-71` | `sanitizePromptInput` on both branches; per-tool Zod-validation contract documented in `executeTool`. |
+| A7 XFF `=0` | CLEAN | `src/lib/security/ip.ts:91-97` | `if (trustedHops > 0 && parts.length >= trustedHops + 1)` — `=0` skips XFF entirely, falls through to X-Real-IP/socket. |
+| A8 compiler logged-error | CLEAN | `src/lib/compiler/execute.ts:64-87` | Mirrors `src/lib/docker/client.ts` (commit `26cff8e4`) verbatim: log-once + `COMPILER_RUNNER_CONFIG_ERROR` constant consumed downstream. ARCH-1 recommendation followed precisely. |
+| A9 function export fields | CLEAN | `src/app/api/v1/problems/[id]/export/route.ts:13-65` | `problemType`/`functionSpec`/`referenceSolution` added to SELECT and serialized object; export gated behind `canManageProblem` (`:38`). |
+| A10 Rust validation env-race | CLEAN | `judge-worker-rs/src/validation.rs:55-95` (pure `validate_docker_image_with_config`), `:137-260` (tests inject config) | No `unsafe set_var/remove_var` in tests; env-reading boundary isolated at `:91-95`/`:107-111`. Parallel-safe. |
+| A11 problems GET strict | CLEAN + generalized — see REG-2 | `src/app/api/v1/problems/[id]/route.ts:65` | Routed through strict `canManageProblem`; local boolean removed from GET. |
+| A12 migration-drift git clean | CLEAN | `scripts/check-migration-drift.sh:77-105` | Replaced `git clean -fd` with targeted `rmSync` (untracked) + `git checkout --` (tracked) of probe footprint only, diffed against pre-probe porcelain state. |
 
-The safety overrides live in **per-target files** (`.env.deploy.algo:17-19` correctly sets all three to the CLAUDE.md values). However `deploy-docker.sh:119-123` sources only the generic `.env.deploy` — it does NOT read `.env.deploy.algo`/`.env.deploy.worv`, and no wrapper script does either (`grep -l` for those filenames across `*.sh` and `scripts/*.sh` returns empty). Operators must manually copy the target file to `.env.deploy` before each run, or remember to export the vars inline.
-
-This is a single-typo production footgun: a bare `./deploy-docker.sh` against `algo.xylolabs.com` will attempt to build language images and start a judge worker on the app-only host.
-
-**Recommendation (medium effort, high impact):** Either (a) invert the script defaults to match CLAUDE.md (`INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, `SKIP_LANGUAGES=true`) so the safe case is the default and integrated targets must opt in, or (b) accept a `--target=algo` flag that sources `.env.deploy.${target}` explicitly, failing if the file is missing. Option (a) is safer because it makes the CLAUDE.md rule the default and removes the silent-failure mode.
-
----
-
-### ARCH-3 — Migration journal has duplicate-prefix files and a tag gap; `drizzle-kit migrate` escape hatch is broken
+### REG-1 — A2 used the buffered audit helper; restore audit has a residual ~5s crash-loss window
 **Severity: MEDIUM | Confidence: high**
-**Files:** `drizzle/pg/*.sql`; `drizzle/pg/meta/_journal.json`
+**File:** `src/app/api/v1/admin/restore/route.ts:168` (uses `recordAuditEvent`); cf. `src/lib/audit/events.ts:252-262` (buffered) vs `:275-285` (`recordAuditEventDurable`)
 
-The `drizzle/pg/` directory contains **four pairs of files sharing the same numeric prefix**: `0012_*`, `0016_*`, `0027_*`, `0028_*`. There is also a gap: prefixes `0029`–`0032` are absent from the filesystem while the journal jumps from `0028` to `0033`. The `_journal.json` (idx 0–36) lists a subset of these tags.
+The plan (A2) said "reuse the durable-audit helper used by user deletion." That premise was inaccurate: user deletion at `src/app/api/v1/users/[id]/route.ts:506` also uses the **buffered** `recordAuditEvent`, not `recordAuditEventDurable`. The implementer faithfully mirrored the user-deletion pattern, so the fix is correct *re: the transaction-truncation issue* (the audit is now post-`importDatabase` commit at `:168`, so it survives the TRUNCATE inside the import tx at `src/lib/db/import.ts:125-139`).
 
-Production sidesteps this because `deploy-docker.sh:1050-1082` uses `drizzle-kit push` (live schema-vs-DB diff) rather than journal replay. However, the deploy comment block at L1042–1044 explicitly documents `drizzle-kit migrate` as a supported escape hatch ("For journal-driven migrations instead, change `drizzle-kit push` to `drizzle-kit migrate` here…"). An operator following that instruction today would either hit duplicate-prefix resolution errors or silently skip every unjournalled file — neither outcome is what the comment promises.
+However, a DB restore is the single most destructive admin action in the system, and its audit is the one an operator most needs to survive a hard crash. The buffered helper pushes to `_auditBuffer` and flushes on a 5s timer / threshold (`events.ts:255-261`). If the process is OOM-killed or `docker kill`ed in that window — or during the subsequent `restoreParsedBackupFiles` call at `restore/route.ts:182-184` which runs *after* the audit is buffered — the restore audit is lost. `recordAuditEventDurable` (which `await`s the insert) is already used for lower-stakes actions: `admin/settings/route.ts:119`, `admin/roles/route.ts:126`, `admin/roles/[id]/route.ts:118,189`.
 
-**Recommendation (medium effort, medium impact):** Either delete the duplicated files (after confirming neither variant carries schema state not already in `schema.pg.ts`), or regenerate the journal via `drizzle-kit generate` on a clean checkout. At minimum, add a CI check that fails when `drizzle/pg/*.sql` prefixes collide or when the file count diverges from `_journal.json` entries.
+**Fix direction:** swap `recordAuditEvent({...})` → `await recordAuditEventDurable({...})` at `restore/route.ts:168`, and add it before the file-restore step (so a file-restore crash still leaves a durable restore audit). The user-deletion pattern should arguably be upgraded the same way, but restore is the priority.
 
----
+### REG-2 — A11 generalization: no sibling GET reads hidden problem data without the strict gate
+**Severity: NONE (informational) | Confidence: high**
+**Files:** `src/app/api/v1/problems/[id]/route.ts:45-87` (GET, fixed); `src/app/api/v1/problems/[id]/compute-expected/route.ts:52-54`; PATCH/DELETE at `route.ts:98-106,222-227`
 
-### ARCH-4 — `execTransaction` silently drops transaction semantics during the Next.js build phase
-**Severity: MEDIUM | Confidence: high**
-**File:** `src/lib/db/index.ts:90-98`
-
-```ts
-export function execTransaction<T>(fn: (tx: TransactionClient) => Promise<T> | T): Promise<T> {
-  if (isBuildPhase) {
-    return Promise.resolve(fn(db as unknown as TransactionClient));  // NO transaction
-  }
-  return db.transaction(async (tx) => transactionContext.run(true, () => fn(tx as TransactionClient)));
-}
-```
-
-The comment warns that atomicity is unavailable during `phase-production-build`, but the function still **runs the callback** against the dummy build-phase drizzle instance instead of short-circuiting or throwing. The `rawQueryOne` guard at `src/lib/db/queries.ts:56` logs a warning if called inside a transaction (good), but `execTransaction` itself has no such tripwire — code that calls it during build silently executes non-atomically against what is effectively a stub connection. The risk is latent today because build phase doesn't serve HTTP, but any future code path that imports a rate-limit or advisory-lock helper at build time will fail invisibly.
-
-**Recommendation (low effort, low impact today, high if violated):** In the build phase, either (a) make `execTransaction` a typed no-op that throws on invocation (`throw new Error("execTransaction unavailable during build phase")`) to fail loud, or (b) return a resolved dummy without calling `fn` (matches the pattern already used by other build-phase stubs). Document the chosen contract in the JSDoc.
+The local-boolean author check (`isAuthor = problem.authorId === user.id`) survives only on **PATCH, DELETE, and compute-expected POST** — and all three *chain* it with a strict `canManageProblem` gate afterward (`route.ts:106,227`; `compute-expected/route.ts:54`). The local boolean there is a deliberate cheap pre-filter before the expensive strict gate; it is not the authorization decision. **GET was the only route that used the local boolean as the actual hidden-data gate, and A11 fixed it.** No further generalization is required for correctness.
 
 ---
 
-### ARCH-5 — Startup awaits have no top-level deadline; instrumentation can hang ~5 minutes
-**Severity: MEDIUM | Confidence: medium**
-**File:** `src/instrumentation.ts:33-36`; `src/lib/judge/sync-language-configs.ts:90-107`
+## PHASE-B ARCHITECTURE
 
-`register()` awaits `syncLanguageConfigsOnStartup()` (which itself has a 10-retry × 30s-backoff cap ≈ 5 min worst case) and `initializeSettings()` with no enclosing deadline. If the DB is slow or unreachable, the Next.js server stays in instrumentation and never begins serving health checks — the Docker healthcheck (`docker-compose.production.yml` app service) starts failing only after its own grace period, masking the real cause.
+### High-leverage items (data-integrity / coupling reduction)
 
-**Recommendation (low effort, medium impact):** Wrap the two awaits in a `Promise.race` against an overall deadline (e.g. 60s), and on timeout log a structured error and continue starting the server in a degraded mode (or exit nonzero so the orchestrator restarts). The individual retry caps are necessary but not sufficient — the instrumentation layer needs its own SLO.
+**PHB-1 / AGG-1 — Restore DB↔files atomicity gap is real and well-bounded (HIGH leverage, needs design before code)**
+`src/app/api/v1/admin/restore/route.ts:151` (DB import commits) then `:182-184` (`restoreParsedBackupFiles`) — files restore *after* the DB transaction commits with no compensating action on failure. If `restoreParsedBackupFiles` throws, the catch at `:193` returns 500 but the DB is already fully replaced and references uploads that are absent from disk. The pre-restore snapshot (`takePreRestoreSnapshot` at `:149`) is the right mitigation and is correctly in place. **Design note for the full fix:** stage files to a sibling dir; DB import in one tx; atomic rename only after commit; a sweep that deletes uploads referenced by the old DB but not the new. Do NOT scope this as "wrap import+files in one transaction" — the filesystem is not transactional.
 
----
+**PHB-2 / AGG-2 — Snapshot export mode needs an auth-model design, not just a redaction flag (HIGH leverage, needs design)**
+`src/lib/db/export.ts:48,74,105-106` — `EXPORT_ALWAYS_REDACT_COLUMNS` is unconditionally merged. A `mode: "snapshot"` that bypasses it is architecturally correct *only if* the snapshot path is gated separately (at-rest encryption; a distinct capability stricter than `system.backup`; audit differentiation; retention/auto-prune). Without these, flipping the bypass creates a secret-exfiltration path.
 
-### ARCH-6 — Worker-side Docker socket ACL lives in code, not in the proxy
-**Severity: MEDIUM | Confidence: medium**
-**Files:** `docker-compose.worker.yml:14-29`; `docker-compose.production.yml:50-66`; `judge-worker-rs/src/validation.rs:54-75`
+### Mis-scoped / under-scoped Phase B items
 
-Both compose files enable `POST=1`, `DELETE=1`, `ALLOW_START=1`, `ALLOW_STOP=1` on the `tecnativa/docker-socket-proxy`. The "only `judge-*` images" rule is enforced in worker Rust code (`validation.rs:25`) and again in the TS compiler path (`execute.ts:338`), but the docker-socket-proxy itself has no image-name ACL — it can't, the API surface doesn't support it. A worker binary compromise (RCE in the runner, memory corruption, supply-chain compromise of the image) bypasses the validator and gains near-arbitrary container-spawn capability on the host.
+**PHB-3 / AGG-18 + PERF-2 — The Rust similarity sidecar cap is mis-scoped as a perf item; it is a DoS-boundary item (HIGH)**
+`code-similarity-rs/src/main.rs:23,196` — the sidecar's only guard is `MAX_COMPUTE_BODY_BYTES = 16 MB`. There is **no `submissions.len()` cap**. The TS caller caps at 500 (`src/lib/assignments/code-similarity.ts:236,379`), but the sidecar is reachable from the docker bridge; a leaked/bruteable sidecar token turns into fleet CPU/OOM exhaustion via the O(n²) loop. **Fix is small:** add `const MAX_SUBMISSIONS: usize = 500; if submissions.len() > MAX_SUBMISSIONS { return StatusCode::PAYLOAD_TOO_LARGE }` at the sidecar boundary.
 
-The historical impact is already documented in `docker-compose.worker.yml:18-25` (the 14h silent `compile_error` fleet sweep from 2026-05-17, caused merely by `POST=0` — a far more benign misconfiguration than a worker compromise). Mitigations today are: `--network=none`, `--cap-drop=ALL`, `--read-only`, `--user 65534:65534`, seccomp profile, and the documented-but-disabled `JUDGE_OCI_RUNTIME=runsc` gVisor hardening.
+**PHB-4 / AGG-14 + ARCH-2 — Deploy defaults still contradict CLAUDE.md; misclassified as Phase B backlog (should be HIGH, low-effort)**
+`deploy-docker.sh:184-187` — script defaults remain `SKIP_LANGUAGES=false`, `INCLUDE_WORKER=true`, `BUILD_WORKER_IMAGE=auto`. `deploy-docker.sh:119-123` sources only `.env.deploy`, never `.env.deploy.algo`/`.env.deploy.worv` (the per-target files exist with correct safe values but no wrapper sources them). A bare `./deploy-docker.sh` against `algo.xylolabs.com` violates CLAUDE.md's mandatory app-only rule. Fix is a 3-line default inversion OR a `--target=` flag. See NEW-1.
 
-**Recommendation (high effort, defense-in-depth impact):** Promote gVisor (`runsc`) from optional to recommended in production after the validation pass described in `docs/judge-worker-gvisor.md`. gVisor is the only control that contains a worker-compromise scenario at the OCI-runtime layer rather than relying on the worker's own input validation. Trade-off: gVisor adds ~10-20% syscall overhead and requires host install — not appropriate for the smallest targets, but appropriate for the multi-tenant `algo.xylolabs.com` fleet.
-
----
-
-### ARCH-7 — `releaseClaimedSubmission` uses SELECT-then-UPDATE; pattern inconsistent with poll route
-**Severity: LOW | Confidence: medium**
-**File:** `src/app/api/v1/judge/claim/route.ts:71-102`
-
-```ts
-const [current] = await tx.select({ judgeClaimToken: submissions.judgeClaimToken })
-  .from(submissions).where(eq(submissions.id, submissionId)).limit(1);
-if (current?.judgeClaimToken !== claimToken) return;
-await tx.update(submissions).set({ status: "pending", ... })
-  .where(eq(submissions.id, submissionId));
-```
-
-Under Postgres' default READ COMMITTED, this SELECT-then-UPDATE inside one transaction is not a true compare-and-swap: a concurrent writer can modify `judgeClaimToken` between the SELECT and the UPDATE, and this UPDATE would clobber it. In practice the upstream `FOR UPDATE SKIP LOCKED` in `buildClaimSql` and the optimistic-lock fence in `poll/route.ts:164` (`WHERE id = ? AND judge_claim_token = ?`) make this safe — but the inconsistency is itself the smell. The poll route uses CAS; the claim-cleanup path does not.
-
-**Recommendation (low effort, low impact):** Make the cleanup UPDATE conditional: `.where(and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken)))` and drop the SELECT. Behavior is preserved, the read round-trip is removed, and the contract matches the poll route.
+### AGG-36..40 (realtime/perf) — architecture-lens triage
+- **SSE advisory lock (PERF-3):** `src/lib/realtime/realtime-coordination.ts` global lock is the most leverage-worthy; sharded counter design. Schema: add a `category` column derived from the key prefix.
+- **Rankings CTE ×3 (PERF-4):** `src/app/(public)/rankings/page.tsx` — public + unauthenticated + no `revalidate`. `export const revalidate = 60` is the cheap win.
+- **Backup memory (PERF-1):** `src/lib/db/export-with-files.ts:162-250` — streaming rewrite. Admin-only, infrequent → MEDIUM urgency.
 
 ---
 
-### ARCH-8 — System settings cache is process-local with a 60s TTL; multi-instance drift
-**Severity: LOW | Confidence: medium**
-**File:** `src/lib/system-settings-config.ts:84-194`
+## PERFORMANCE (covering the absent perf-reviewer lane)
 
-The settings cache (`cached`, `cachedAt`) is module-level and process-local. `getConfiguredSettings()` returns the cached value for up to 60s, then triggers an async background reload. In a deployment with `APP_INSTANCE_COUNT > 1` (an architecture the codebase explicitly supports — see `realtime-coordination.ts:23-25`), an admin's settings update is visible to different instances on different schedules for up to 60s. The realtime module has multi-instance guards; the settings cache does not.
+| ID | File:line | Class | Arch note |
+|---|---|---|---|
+| PERF-1 | `src/lib/db/export-with-files.ts:162-250` | memory | Structural — needs streaming rewrite. |
+| PERF-2 | `code-similarity-rs/src/main.rs:23` | DoS/CPU | See PHB-3 — reclassified as boundary. |
+| PERF-3 | `src/lib/realtime/realtime-coordination.ts:73-140` | lock contention | Structural — sharded design. |
+| PERF-4 | `src/app/(public)/rankings/page.tsx:59-198` | repeated CTE | Cheap ISR win first. |
+| PERF-5/6 | `contests/.../announcements/route.ts:49`; `.../clarifications/route.ts:49-58` | unbounded query + JS filter | Push predicate to SQL. |
+| PERF-7 | `src/app/api/v1/submissions/route.ts:345-393` | global count under per-user lock | Move global-cap check outside the per-user advisory lock. |
+| PERF-9 | `src/app/api/v1/admin/audit-logs/route.ts:73-105` | IN-array balloon | Replace precomputed `IN(...)` with `EXISTS` subqueries. |
 
-**Recommendation (medium effort, low-medium impact):** Either publish a settings invalidation event through the existing Postgres-backed coordination channel (`realtimeCoordination` table) so all instances invalidate on write, or shorten the TTL to a few seconds and accept the read amplification cost.
-
----
-
-### ARCH-9 — `submissions.judgeClaimToken` lacks a uniqueness guarantee
-**Severity: LOW | Confidence: high**
-**File:** `src/lib/db/schema.pg.ts:485`
-
-`judgeClaimToken` is `text` with no unique index and no NOT NULL constraint; `judgeWorkerId` carries no FK to `judge_workers`. Both are intentional given the transient claim lifecycle (NULL after finalize; worker rows may be reaped). However, the correctness of the optimistic-lock fence relies entirely on `nanoid()` collision resistance. A unique partial index (`create unique index on submissions (judge_claim_token) where judge_claim_token is not null`) would convert a hyperventilated-collision into a deterministic DB error rather than a silent double-finalize attempt.
-
-The supporting indexes are well-designed: `submissions_queue_claim_idx` (status, submittedAt, id) at L511 directly serves the `buildClaimSql` `ORDER BY s.submitted_at ASC, s.id ASC` path, and `submissions_stale_claim_idx` (status, judgeClaimedAt, submittedAt, id) at L512 serves the stale-claim reaper. No query-pattern gaps there.
-
-**Recommendation (low effort, low impact):** Add the partial unique index as a defense-in-depth measure; on collision, the claiming transaction fails and the worker retries on its next poll — already the documented self-healing behavior.
+**No NEW perf issues beyond the cycle-1 set.**
 
 ---
 
-### ARCH-10 — Redundant `secret_token` drop logic across migration file and deploy script
-**Severity: LOW | Confidence: high**
-**Files:** `drizzle/pg/0020_drop_judge_workers_secret_token.sql`; `deploy-docker.sh:1003-1024`
+## NEW RISKS
 
-The deprecated `judge_workers.secret_token` column is dropped by both the journal migration `0020_*` and the runtime backfill-then-drop block in the deploy script. On `drizzle-kit push`-deployed targets (production today) the SQL migration file is dead code — `push` doesn't replay it. On `drizzle-kit migrate`-deployed targets (the documented escape hatch), the runtime block runs as an idempotent no-op. Both code paths exist indefinitely; future maintainers must reason about which one is canonical.
+### NEW-1 — Deploy topology: per-target env files are documentation, not configuration (HIGH)
+**Confidence: high** | `deploy-docker.sh:119-123` (sources only `.env.deploy`); `.env.deploy.algo`, `.env.deploy.worv` (never sourced by any script)
 
-**Recommendation (low effort, low impact):** Add a one-line comment in both files cross-referencing the other and noting which is authoritative under each deploy strategy; or consolidate into the deploy script only and delete the migration file (the runtime block is required regardless because `push` won't apply the migration).
+The safety overrides mandated by CLAUDE.md live in per-target files that no shell script reads. CLAUDE.md states the algo deploy rule in imperative, mandatory terms ("always use"), but the code's default is the exact inverse. Single-typo production footgun. Same root issue as cycle-1 ARCH-2; top new-risk item. See PHB-4.
 
-## Final Verdict
+### NEW-2 — Worker cleanup ops (`docker inspect`/`kill`/`rm`) have no timeout (MEDIUM)
+**Confidence: high** | `judge-worker-rs/src/docker.rs:164` (`inspect_container_state`), `:216` (`kill_container`), `:223` (`remove_container`)
 
-The architecture's load-bearing invariants (claim atomicity, optimistic-lock fence, per-worker auth, deploy destructive-change guard) are correctly implemented and well-documented. **ARCH-1 and ARCH-2 should be treated as production-blocking** — both are silent-failure modes that contradict explicitly-stated design intent (commit `26cff8e4` for ARCH-1; CLAUDE.md for ARCH-2). ARCH-3 through ARCH-6 are correctness/debt issues with real but bounded blast radius. ARCH-7 through ARCH-10 are hardening items worth scheduling but not blocking.
+The container `wait` is correctly wrapped in `tokio::time::timeout` (`:421`), but the three cleanup helpers all `await` with **no timeout** and discard errors. If the Docker daemon wedges, these hang indefinitely, leaking the executor's concurrency slot. AGG-16/DBG-2 (Phase B) — still open. **Fix:** wrap each in `tokio::time::timeout(Duration::from_secs(10), ...)`; a leaked container name is recoverable on the next orphan sweep (`:614`), a hung `await` is not.
+
+### NEW-3 — No `catch_unwind` in the worker executor hot path (MEDIUM)
+**Confidence: medium** | `judge-worker-rs/src/executor.rs` (no `catch_unwind` outside `#[cfg(test)]`)
+
+A panic in `spawn_blocking` judge work propagates uncaught and tears down the task without a final status report — submission stays in `judge_claimed` until the staleness reaper eventually requeues it. AGG-15/FDR-1 (Phase B). Defense-in-depth (won't catch aborts/signal kills).
+
+### NEW-4 — Migration journal: 4 duplicate-prefix SQL file pairs remain (MEDIUM)
+**Confidence: high** | `drizzle/pg/0012_*`, `0016_*`, `0027_*`, `0028_*` (each prefix appears twice)
+
+File count equals journal-entry count, so the bijection guard added in `scripts/check-migration-drift.sh:34-59` passes. But `drizzle-kit migrate` (the documented escape hatch) would still hit prefix-collision ambiguity. Production sidesteps via `drizzle-kit push`, but the escape hatch is silently broken. Cycle-1 ARCH-3, still open.
+
+### NEW-5 — `execTransaction` silently no-ops transaction semantics during build (LOW)
+**Confidence: high** | `src/lib/db/index.ts:90-98`
+
+The build-phase branch still *runs the callback* against the build-phase drizzle stub instead of short-circuiting. Latent today; future code that imports a rate-limit/advisory-lock helper at build time will execute non-atomically and invisibly. **Fix:** make the build-phase branch `throw` on invocation (fail loud).
+
+### NEW-6 — App↔worker token distinctness parity (LOW)
+**Confidence: high** | `judge-worker-rs/src/config.rs:133-163` (worker rejects `RUNNER_AUTH_TOKEN === JUDGE_AUTH_TOKEN`); `src/lib/compiler/execute.ts:59-87` (TS side has no equivalent distinctness check)
+
+An operator who reuses one token for both purposes gets a hard failure on the worker but only a silent accept on the app's local-fallback path. One-line parity check.
+
+---
+
+## FINAL SWEEP
+
+The 12 Phase A fixes are architecturally sound. 11 faithfully matched existing patterns. Only A2 carried forward a suboptimal helper choice (REG-1, MEDIUM) traceable to an inaccurate premise in the plan itself. No layering or coupling regressions; A11 generalization question resolved cleanly.
+
+**Top priorities for the next cycle, in order:**
+1. **NEW-1 / PHB-4** (deploy defaults invert CLAUDE.md) — lowest effort, highest risk reduction.
+2. **PHB-3 / PERF-2** (similarity sidecar has no submission cap) — small fix, reclassify as DoS-boundary.
+3. **REG-1** (restore audit durability) — one-line `recordAuditEventDurable` swap.
+4. **NEW-2 / AGG-16** (worker cleanup timeouts).
+5. **PHB-1 / AGG-1** (restore atomicity) — needs staging-then-rename design first.
+
+**Capped LOW findings (6):** REG-2 (informational), NEW-5, NEW-6, ARCH-8, ARCH-9, ARCH-10. All have concrete exit criteria; none are security/correctness/data-loss.
