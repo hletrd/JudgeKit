@@ -81,9 +81,14 @@ fn is_production_mode() -> bool {
         .unwrap_or(false)
 }
 
-/// Validate that a docker image reference is safe (no protocol, alphanumeric start).
-/// In production (JUDGE_PRODUCTION_MODE=1), requires non-empty trusted registries
-/// and rejects images without a trusted registry prefix.
+/// Validate that a docker image reference is safe (no protocol, alphanumeric
+/// start, `judge-*` image name).
+///
+/// Production behavior (`JUDGE_PRODUCTION_MODE=1`): requires a NON-empty
+/// trusted-registry list. When that list is set, unqualified local `judge-*`
+/// images are still accepted, but any registry-prefixed image must match a
+/// trusted prefix. (The prior wording — "rejects images without a trusted
+/// registry prefix" — was inaccurate: unqualified judge-* tags are allowed.)
 ///
 /// This is the env-reading boundary kept for production callers; tests should
 /// call [`validate_docker_image_with_config`] instead so they never mutate the
