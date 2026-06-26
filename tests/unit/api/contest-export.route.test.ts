@@ -8,6 +8,7 @@ const {
   rawQueryOneMock,
   rawQueryAllMock,
   recordAuditEventMock,
+  recordAuditEventDurableMock,
 } = vi.hoisted(() => ({
   canViewAssignmentSubmissionsMock: vi.fn(),
   computeContestRankingMock: vi.fn(),
@@ -15,6 +16,7 @@ const {
   rawQueryOneMock: vi.fn(),
   rawQueryAllMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
+  recordAuditEventDurableMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/handler", () => ({
@@ -51,6 +53,7 @@ vi.mock("@/lib/db/queries", () => ({
 
 vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: recordAuditEventMock,
+  recordAuditEventDurable: recordAuditEventDurableMock,
 }));
 
 describe("GET /api/v1/contests/[assignmentId]/export", () => {
@@ -115,7 +118,10 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     );
   });
 
-  it("does not record an export audit event for the panel's background JSON fetch", async () => {
+  it("audits the panel's background JSON PII read via the durable audit path (C3-AGG-1)", async () => {
+    // The recruiter-candidates-panel fetches `?format=json` with no `download=1`.
+    // Prior to C3-AGG-1 the JSON path was gated on `isDownload` and this primary
+    // UI read returned full PII with zero audit trail. It must now be audited.
     const { GET } = await import("@/app/api/v1/contests/[assignmentId]/export/route");
     const response = await GET(
       new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=json"),
@@ -125,6 +131,47 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     expect(response.status).toBe(200);
     const json = await response.json();
     expect(json[0]).toMatchObject({ name: "Alice", username: "alice" });
+    // Durable audit fires even without download=1, capturing the programmatic read.
+    expect(recordAuditEventDurableMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contest.export_downloaded",
+        resourceId: "assignment-1",
+        details: expect.objectContaining({ format: "json", download: false }),
+      })
+    );
+    // The legacy buffered path is NOT used for the JSON branch anymore.
     expect(recordAuditEventMock).not.toHaveBeenCalled();
+  });
+
+  it("audits an explicit JSON download with download=1 via the durable path", async () => {
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/export/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=json&download=1"),
+      { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
+    );
+
+    expect(response.status).toBe(200);
+    expect(recordAuditEventDurableMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contest.export_downloaded",
+        details: expect.objectContaining({ format: "json", download: true }),
+      })
+    );
+  });
+
+  it("audits anonymized JSON reads with the anonymized action (C3-AGG-1)", async () => {
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/export/route");
+    const response = await GET(
+      new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=json&anonymized=1"),
+      { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
+    );
+
+    expect(response.status).toBe(200);
+    expect(recordAuditEventDurableMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "contest.export_downloaded_anonymized",
+        details: expect.objectContaining({ anonymized: true }),
+      })
+    );
   });
 });

@@ -5,7 +5,7 @@ import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { computeContestRanking } from "@/lib/assignments/contest-scoring";
 import { getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
-import { recordAuditEvent } from "@/lib/audit/events";
+import { recordAuditEvent, recordAuditEventDurable } from "@/lib/audit/events";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
 import { escapeCsvField } from "@/lib/csv/escape-field";
 
@@ -110,19 +110,21 @@ export const GET = createApiHandler({
       }));
 
       const jsonSuffix = `${anonymized ? "-anonymized" : ""}-export`;
-      if (isDownload) {
-        recordAuditEvent({
-          actorId: user.id,
-          actorRole: user.role,
-          action: anonymized ? "contest.export_downloaded_anonymized" : "contest.export_downloaded",
-          resourceType: "assignment",
-          resourceId: assignmentId,
-          resourceLabel: assignment.title,
-          summary: `${anonymized ? "Downloaded anonymized" : "Downloaded"} contest export for "${assignment.title}"`,
-          details: { format, anonymized },
-          request: req,
-        });
-      }
+      // Audit EVERY JSON PII read, not only explicit downloads. The
+      // recruiter-candidates-panel fetches `?format=json` with no
+      // `download=1`, so gating on `isDownload` left the primary UI read
+      // path unaudited. Durable so the row survives a crash. See C3-AGG-1.
+      await recordAuditEventDurable({
+        actorId: user.id,
+        actorRole: user.role,
+        action: anonymized ? "contest.export_downloaded_anonymized" : "contest.export_downloaded",
+        resourceType: "assignment",
+        resourceId: assignmentId,
+        resourceLabel: assignment.title,
+        summary: `${anonymized ? "Read anonymized" : "Read"} contest export for "${assignment.title}"`,
+        details: { format, anonymized, download: isDownload },
+        request: req,
+      });
       return NextResponse.json(
         truncated ? { data, truncated: true, totalEntries: entries.length } : data,
         {
