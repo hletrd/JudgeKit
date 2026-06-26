@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import CreateProblemForm from "@/app/(public)/problems/create/create-problem-form";
 import { ProblemDeleteButton } from "../problem-delete-button";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { canManageProblem } from "@/lib/auth/permissions";
 import { getResolvedPlatformMode, getEffectiveModeRestrictions } from "@/lib/system-settings";
 import { getUserPreferences } from "@/lib/user-preferences";
 import Link from "next/link";
@@ -31,7 +32,13 @@ export default async function EditProblemPage({ params }: { params: Promise<{ id
 
   const caps = await resolveCapabilities(session.user.role);
   const prefs = await getUserPreferences(session.user.id);
-  const canEdit = problem.authorId === session.user.id || caps.has("problems.edit");
+  // Route the edit-page gate through the same strict, group-scoped
+  // canManageProblem used by the PATCH/DELETE APIs (A11). The previous local
+  // check (author || caps.has("problems.edit")) admitted out-of-group
+  // problems.edit holders and handed them hidden test cases + the reference
+  // solution in initialProblem, even though the API would refuse the save —
+  // a read leak of problem secrets (designer cycle-2 REG-2).
+  const canEdit = await canManageProblem(problem.id, session.user.id, session.user.role);
   const canOverrideTestCases = caps.has("problems.delete");
 
   if (!canEdit) {
