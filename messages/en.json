@@ -1617,7 +1617,11 @@
       "dockerfileNotFound": "Dockerfile not found",
       "imageTagMustStartWithJudge": "Only judge-* images are allowed",
       "imageTagMustBeLocalJudge": "Only local judge-* images can be built",
-      "unsupportedFileFormat": "Only JSON export files or ZIP backup archives are supported."
+      "unsupportedFileFormat": "Only JSON export files or ZIP backup archives are supported.",
+      "reconfirmLabel": "Confirm with your password",
+      "reconfirmHint": "Required to save security-sensitive changes.",
+      "passwordReconfirmRequired": "Enter your current password to save security-sensitive changes.",
+      "invalidPassword": "Current password is incorrect."
     },
     "files": {
       "title": "File Management",

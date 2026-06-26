@@ -21,6 +21,7 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
   const tCommon = useTranslations("common");
   const [hosts, setHosts] = useState<string[]>(initialHosts);
   const [newHost, setNewHost] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   function handleAdd() {
@@ -50,7 +51,7 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
     setIsLoading(true);
 
     try {
-      const result = await updateSystemSettings({ allowedHosts: hosts });
+      const result = await updateSystemSettings({ allowedHosts: hosts, currentPassword });
 
       if (!result.success) {
         toast.error(t(result.error ?? "updateError"));
@@ -109,6 +110,22 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
           ))}
         </div>
       )}
+
+      <div className="space-y-2">
+        <label htmlFor="allowed-hosts-current-password" className="text-sm font-medium">
+          {t("reconfirmLabel")}
+        </label>
+        <Input
+          id="allowed-hosts-current-password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          placeholder="••••••••"
+          autoComplete="current-password"
+          required
+        />
+        <p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>
+      </div>
 
       <Button type="submit" disabled={isLoading}>
         {isLoading ? tCommon("loading") : tCommon("save")}

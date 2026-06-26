@@ -147,4 +147,32 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
     expect(res.status).toBe(200);
     expect(verifyAndRehashPasswordMock).not.toHaveBeenCalled();
   });
+
+  it("does NOT wipe unspecified sensitive fields on a cosmetic-only PUT (C4-N1)", async () => {
+    // A PUT touching only siteTitle must not overwrite hcaptchaSecret/publicSignupEnabled
+    // with defaults. Previously the unconditional baseValues wiped them as a side effect.
+    const onConflictMock = vi.fn().mockResolvedValue(undefined);
+    dbInsertMock.mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoUpdate: onConflictMock }),
+    });
+
+    const { PUT } = await import("@/app/api/v1/admin/settings/route");
+    const res = await PUT(makePut({ siteTitle: "New Title" }));
+    expect(res.status).toBe(200);
+
+    expect(onConflictMock).toHaveBeenCalledTimes(1);
+    const setArg = onConflictMock.mock.calls[0]?.[0]?.set ?? onConflictMock.mock.calls[0]?.[0];
+    // siteTitle is supplied → present; the sensitive fields are NOT supplied → absent.
+    expect(setArg).toMatchObject({ siteTitle: "New Title" });
+    expect(setArg).not.toHaveProperty("hcaptchaSecret");
+    expect(setArg).not.toHaveProperty("publicSignupEnabled");
+    expect(setArg).not.toHaveProperty("platformMode");
+  });
+
+  it("requires reconfirm for the exam-integrity toggle allowAiAssistantInRestrictedModes (C4-3)", async () => {
+    const { PUT } = await import("@/app/api/v1/admin/settings/route");
+    const res = await PUT(makePut({ allowAiAssistantInRestrictedModes: true }));
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "passwordReconfirmRequired" });
+  });
 });

@@ -142,19 +142,9 @@ describe("GET /api/v1/problems/[id]/accepted-solutions", () => {
           shareAcceptedSolutions: true,
           acceptedSolutionsAnonymous: true,
         },
-        {
-          submissionId: "submission-2",
-          userId: "user-2",
-          username: "bob",
-          language: "python",
-          sourceCode: "print(2)",
-          codeLength: 8,
-          executionTimeMs: 11,
-          memoryUsedKb: 120,
-          submittedAt: new Date("2026-04-16T00:00:00.000Z"),
-          shareAcceptedSolutions: false,
-          acceptedSolutionsAnonymous: false,
-        },
+        // submission-2 (bob, opted out) is no longer in the mock result set:
+        // the list SELECT now applies eq(users.shareAcceptedSolutions, true) in
+        // SQL (C4-N3), so opted-out authors never consume pageSize/offset slots.
       ]));
 
     const { GET } = await import("@/app/api/v1/problems/[id]/accepted-solutions/route");

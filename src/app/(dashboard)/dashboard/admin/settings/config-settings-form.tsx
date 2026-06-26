@@ -37,6 +37,7 @@ export function ConfigSettingsForm({
     return v;
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
 
   function handleChange(key: string, val: string) {
     setValues((prev) => ({ ...prev, [key]: val }));
@@ -67,7 +68,7 @@ export function ConfigSettingsForm({
         }
       }
 
-      const result = await updateSystemSettings(payload);
+      const result = await updateSystemSettings({ ...payload, currentPassword });
 
       if (!result.success) {
         toast.error(t(result.error ?? "updateError"));
@@ -113,6 +114,21 @@ export function ConfigSettingsForm({
           </p>
         </div>
       ))}
+      <div className="space-y-2">
+        <label htmlFor="config-settings-current-password" className="text-sm font-medium">
+          {t("reconfirmLabel")}
+        </label>
+        <Input
+          id="config-settings-current-password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          placeholder="••••••••"
+          autoComplete="current-password"
+          required
+        />
+        <p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>
+      </div>
       <Button type="submit" disabled={isLoading}>
         {isLoading ? tCommon("loading") : tCommon("save")}
       </Button>

@@ -10,6 +10,7 @@ import { DEFAULT_PLATFORM_MODE, GLOBAL_SETTINGS_ID } from "@/lib/system-settings
 import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
 import { encrypt } from "@/lib/security/encryption";
+import { requireSettingsReconfirm } from "@/lib/security/sensitive-settings";
 import { isTrustedServerActionOrigin } from "@/lib/security/server-actions";
 import { checkServerActionRateLimit } from "@/lib/security/api-rate-limit";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -87,6 +88,18 @@ export async function updateSystemSettings(
       success: false,
       error: parsedInput.error.issues[0]?.message ?? "updateError",
     };
+  }
+
+  // Password reconfirmation when the action touches any privilege-affecting
+  // key. The shared `requireSettingsReconfirm` helper + SENSITIVE_SETTINGS_KEYS
+  // are used by BOTH the server action (the real UI write path) AND the REST
+  // route, so the gate cannot drift between writers. This closes the cycle-3
+  // bypass where every admin UI form submitted through this action with no
+  // password (ARCH-1, C3-AGG-7, C4-3). `currentPassword` is an optional field
+  // on SystemSettingsInput.
+  const reconfirm = await requireSettingsReconfirm(input, session.user);
+  if (!reconfirm.ok) {
+    return { success: false, error: reconfirm.error };
   }
 
   const {

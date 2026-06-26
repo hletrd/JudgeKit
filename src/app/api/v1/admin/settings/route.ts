@@ -1,46 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
-import { systemSettings, users } from "@/lib/db/schema";
+import { systemSettings } from "@/lib/db/schema";
 import { DEFAULT_PLATFORM_MODE, getSystemSettings, GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
 import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
 import { encrypt, redactSecret } from "@/lib/security/encryption";
-import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { SECRET_SETTINGS_KEYS } from "@/lib/security/secrets";
+import {
+  requireSettingsReconfirm,
+  settingsReconfirmToResponse,
+} from "@/lib/security/sensitive-settings";
 import { systemSettingsSchema } from "@/lib/validators/system-settings";
 import { getDbNowUncached } from "@/lib/db-time";
 import { recordAuditEventDurable } from "@/lib/audit/events";
 
-/**
- * Settings keys that affect security posture. Mutating any of these requires
- * password reconfirmation so a stolen session cookie cannot silently weaken
- * the platform (disable hCaptcha, raise rate limits, open public signup,
- * widen allowedHosts, etc.). Mirrors the restore/backup/migrate reconfirm
- * gate. See C3-AGG-7 / NEW-M5.
- */
-const SENSITIVE_SETTINGS_KEYS = [
-  "platformMode",
-  "allowedHosts",
-  "publicSignupEnabled",
-  "emailVerificationRequired",
-  "signupHcaptchaEnabled",
-  "hcaptchaSiteKey",
-  "hcaptchaSecret",
-  "communityUpvoteEnabled",
-  "communityDownvoteEnabled",
-  "smtpPass",
-  "loginRateLimitMaxAttempts",
-  "loginRateLimitWindowMs",
-  "loginRateLimitBlockMs",
-  "apiRateLimitMax",
-  "apiRateLimitWindowMs",
-  "submissionRateLimitMaxPerMinute",
-  "submissionMaxPending",
-  "sessionMaxAgeSeconds",
-] as const;
+// `SENSITIVE_SETTINGS_KEYS` + the reconfirm gate now live in
+// `@/lib/security/sensitive-settings` and are shared with the server action so
+// the gate cannot drift between the two writers (ARCH-1).
 
 function redactSecretSettings(settings: Record<string, unknown>): void {
   for (const key of SECRET_SETTINGS_KEYS) {
@@ -87,26 +65,14 @@ export const PUT = createApiHandler({
     } = body;
 
     // Password reconfirmation when the PUT touches any privilege-affecting
-    // key (C3-AGG-7 / NEW-M5). Mirrors the restore/backup/migrate gate.
-    const touchesSensitiveKey = SENSITIVE_SETTINGS_KEYS.some(
-      (key) => (body as Record<string, unknown>)[key] !== undefined
+    // key. The shared `requireSettingsReconfirm` helper + SENSITIVE_SETTINGS_KEYS
+    // are now used by BOTH the REST route and the server action so the gate
+    // cannot drift between writers (ARCH-1, C3-AGG-7, C4-3).
+    const reconfirmResponse = settingsReconfirmToResponse(
+      await requireSettingsReconfirm(body, user),
     );
-    if (touchesSensitiveKey) {
-      if (!currentPassword) {
-        return NextResponse.json({ error: "passwordReconfirmRequired" }, { status: 401 });
-      }
-      const [dbUser] = await db
-        .select({ passwordHash: users.passwordHash })
-        .from(users)
-        .where(eq(users.id, user.id))
-        .limit(1);
-      if (!dbUser?.passwordHash) {
-        return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
-      }
-      const { valid } = await verifyAndRehashPassword(currentPassword, user.id, dbUser.passwordHash);
-      if (!valid) {
-        return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
-      }
+    if (reconfirmResponse) {
+      return reconfirmResponse;
     }
 
     const hasNewKeys = (hcaptchaSiteKey && hcaptchaSiteKey.length > 0) || (hcaptchaSecret && hcaptchaSecret.length > 0);
@@ -133,21 +99,57 @@ export const PUT = createApiHandler({
       Object.entries(restConfig).filter(([k]) => (allowedConfigKeys as readonly string[]).includes(k))
     );
 
+    // Only write a field when it was actually supplied. The unconditional
+    // `baseValues` previously defaulted every field on each PUT, so a request
+    // touching only `{ siteTitle }` silently wiped `hcaptchaSecret`,
+    // `publicSignupEnabled`, `platformMode`, etc. — and that side-effect wipe
+    // also bypassed the reconfirm gate (the body carried no sensitive key yet
+    // cleared sensitive columns). Mirrors the `hasOwnInput` guard already used
+    // by the twin server action (C4-N1).
+    const hasOwnInput = (key: string) =>
+      Object.prototype.hasOwnProperty.call(body, key);
+
     const baseValues: Record<string, unknown> = {
-      siteTitle: siteTitle ?? null,
-      siteDescription: siteDescription ?? null,
-      siteIconUrl: siteIconUrl ?? null,
-      timeZone: timeZone ?? null,
-      platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
-      aiAssistantEnabled: aiAssistantEnabled ?? true,
-      allowAiAssistantInRestrictedModes: allowAiAssistantInRestrictedModes ?? false,
-      allowStandaloneCompilerInRestrictedModes: allowStandaloneCompilerInRestrictedModes ?? false,
-      publicSignupEnabled: publicSignupEnabled ?? false,
-      signupHcaptchaEnabled: signupHcaptchaEnabled ?? false,
-      hcaptchaSiteKey: hcaptchaSiteKey ?? null,
-      hcaptchaSecret: hcaptchaSecret ? encrypt(hcaptchaSecret) : null,
       updatedAt: await getDbNowUncached(),
     };
+
+    if (hasOwnInput("siteTitle")) {
+      baseValues.siteTitle = siteTitle ?? null;
+    }
+    if (hasOwnInput("siteDescription")) {
+      baseValues.siteDescription = siteDescription ?? null;
+    }
+    if (hasOwnInput("siteIconUrl")) {
+      baseValues.siteIconUrl = siteIconUrl ?? null;
+    }
+    if (hasOwnInput("timeZone")) {
+      baseValues.timeZone = timeZone ?? null;
+    }
+    if (hasOwnInput("platformMode")) {
+      baseValues.platformMode = platformMode ?? DEFAULT_PLATFORM_MODE;
+    }
+    if (hasOwnInput("aiAssistantEnabled")) {
+      baseValues.aiAssistantEnabled = aiAssistantEnabled ?? true;
+    }
+    if (hasOwnInput("allowAiAssistantInRestrictedModes")) {
+      baseValues.allowAiAssistantInRestrictedModes = allowAiAssistantInRestrictedModes ?? false;
+    }
+    if (hasOwnInput("allowStandaloneCompilerInRestrictedModes")) {
+      baseValues.allowStandaloneCompilerInRestrictedModes =
+        allowStandaloneCompilerInRestrictedModes ?? false;
+    }
+    if (hasOwnInput("publicSignupEnabled")) {
+      baseValues.publicSignupEnabled = publicSignupEnabled ?? false;
+    }
+    if (hasOwnInput("signupHcaptchaEnabled")) {
+      baseValues.signupHcaptchaEnabled = signupHcaptchaEnabled ?? false;
+    }
+    if (hasOwnInput("hcaptchaSiteKey")) {
+      baseValues.hcaptchaSiteKey = hcaptchaSiteKey ?? null;
+    }
+    if (hasOwnInput("hcaptchaSecret")) {
+      baseValues.hcaptchaSecret = hcaptchaSecret ? encrypt(hcaptchaSecret) : null;
+    }
 
     // Add numeric config values (undefined = not in payload, null = clear to default)
     for (const [key, val] of Object.entries(filteredConfig)) {

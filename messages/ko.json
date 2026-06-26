@@ -1617,7 +1617,11 @@
       "dockerfileNotFound": "Dockerfile을 찾을 수 없어요",
       "imageTagMustStartWithJudge": "judge-* 형식의 이미지만 쓸 수 있어요",
       "imageTagMustBeLocalJudge": "로컬 judge-* 이미지만 빌드할 수 있어요",
-      "unsupportedFileFormat": "JSON 내보내기 파일 또는 ZIP 백업 아카이브만 지원합니다."
+      "unsupportedFileFormat": "JSON 내보내기 파일 또는 ZIP 백업 아카이브만 지원합니다.",
+      "reconfirmLabel": "비밀번호 확인",
+      "reconfirmHint": "보안 관련 설정을 저장하려면 필요해요.",
+      "passwordReconfirmRequired": "보안 관련 설정을 저장하려면 현재 비밀번호를 입력해 주세요.",
+      "invalidPassword": "현재 비밀번호가 맞지 않아요."
     },
     "files": {
       "title": "파일 관리",

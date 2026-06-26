@@ -125,6 +125,7 @@ export function SystemSettingsForm({
     initialAllowStandaloneCompilerInRestrictedModes
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
   const [timeZoneError, setTimeZoneError] = useState(false);
   const platformPolicy = useMemo(() => getPlatformModePolicy(platformMode), [platformMode]);
   // The mode forces AI off in restricted modes; the override re-enables control.
@@ -188,6 +189,7 @@ export function SystemSettingsForm({
         ...(hcaptchaSecret !== initialHcaptchaSecretMasked ? { hcaptchaSecret } : {}),
         defaultLanguage: normalizedDefaultLanguage || undefined,
         defaultLocale: (defaultLocale || undefined) as "en" | "ko" | undefined,
+        currentPassword,
       });
 
       if (!result.success) {
@@ -525,6 +527,22 @@ export function SystemSettingsForm({
           </div>
         </div>
       )}
+
+      <div className="space-y-2">
+        <label htmlFor="system-settings-current-password" className="text-sm font-medium">
+          {t("reconfirmLabel")}
+        </label>
+        <Input
+          id="system-settings-current-password"
+          type="password"
+          value={currentPassword}
+          onChange={(e) => setCurrentPassword(e.target.value)}
+          placeholder="••••••••"
+          autoComplete="current-password"
+          required
+        />
+        <p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>
+      </div>
 
       <Button type="submit" disabled={isLoading}>
         {isLoading ? tCommon("loading") : tCommon("save")}

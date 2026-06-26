@@ -82,15 +82,18 @@ export const GET = createApiHandler({
       })
       .from(submissions)
       .innerJoin(users, eq(submissions.userId, users.id))
-      .where(whereClause)
+      // Apply the same shareAcceptedSolutions filter as the count query above
+      // so the list matches `total` and pagination is computed entirely in SQL
+      // (C4-N3). Previously the list SELECT used the unfiltered whereClause and
+      // then JS-filtered, so non-sharing authors consumed pageSize/offset slots
+      // and a page rendered fewer than pageSize solutions.
+      .where(and(whereClause, eq(users.shareAcceptedSolutions, true)))
       .orderBy(...orderByClause)
       .limit(pageSize)
       .offset(offset);
 
     return apiSuccess({
-      solutions: solutions
-        .filter((solution) => solution.shareAcceptedSolutions)
-        .map((solution) => ({
+      solutions: solutions.map((solution) => ({
           submissionId: solution.submissionId,
           // Anonymous solutions must not leak the author's userId; otherwise
           // the id alone could deanonymize via the user detail endpoint.
