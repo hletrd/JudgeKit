@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => {
 
     dbInsertValues: vi.fn(),
     dbInsertOnConflictDoUpdate: vi.fn(),
+
+    // Shared settings-reconfirm gate (ARCH-1). Defaults to "passed" so the
+    // existing behaviour tests exercise the mutation path; the dedicated
+    // reconfirm test below overrides this to assert the gate fires.
+    requireSettingsReconfirm: vi.fn<() => Promise<{ ok: true }>>().mockResolvedValue({ ok: true }),
   };
 });
 
@@ -52,6 +57,10 @@ vi.mock("@/lib/system-settings-config", () => ({
 
 vi.mock("@/lib/security/hcaptcha", () => ({
   isHcaptchaConfigured: vi.fn(() => Promise.resolve(true)),
+}));
+
+vi.mock("@/lib/security/sensitive-settings", () => ({
+  requireSettingsReconfirm: mocks.requireSettingsReconfirm,
 }));
 
 vi.mock("@/lib/security/encryption", () => ({

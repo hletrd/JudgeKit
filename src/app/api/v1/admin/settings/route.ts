@@ -60,9 +60,10 @@ export const PUT = createApiHandler({
       hcaptchaSiteKey,
       hcaptchaSecret,
       allowedHosts,
-      currentPassword,
       ...restConfig
     } = body;
+    // `currentPassword` stays in `restConfig`; the shared reconfirm helper reads
+    // it from `body`, and the allowedConfigKeys filter drops it before write.
 
     // Password reconfirmation when the PUT touches any privilege-affecting
     // key. The shared `requireSettingsReconfirm` helper + SENSITIVE_SETTINGS_KEYS

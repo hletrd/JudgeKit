@@ -135,6 +135,7 @@ describe("POST /api/v1/judge/poll", () => {
             findFirst: vi.fn().mockResolvedValue({
               id: "submission-1",
               status: "judging",
+              judgeWorkerId: "worker-1",
             }),
           },
         },
