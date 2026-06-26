@@ -1,116 +1,100 @@
-# Cycle 3 — verifier
+# Cycle-4 Verifier Report — evidence-based correctness check
 
-## Verification Report
+Repo: `/Users/hletrd/flash-shared/judgekit` · Cycle 4/100 · Method: read every cited line + its covering test; no assumptions.
 
-### Verdict
-**Status**: PASS · **Confidence**: high · **Blockers**: 0
-
-### Evidence
-| Check | Result | Command/Source | Output |
-|-------|--------|----------------|--------|
-| Lint | pass | `npm run lint` | exit 0, no findings |
-| Unit tests (full) | pass | `npm run test:unit` | 375 files / 2968 tests passed, 40.81s, 0 flakes |
-| Targeted vitest (13 files) | pass | `npx vitest run <cycle-1+2 test files>` | 13 files / 90 tests passed |
-| Rust tests (judge-worker) | pass | `cargo test --manifest-path judge-worker-rs/Cargo.toml` | 73 passed, 0 failed |
-| Rust tests (code-similarity) | pass | `cargo test --manifest-path code-similarity-rs/Cargo.toml` | 49 passed, 0 failed (incl. `submission_cap_boundary`) |
-| Migration drift | pass | `npm run db:check` | "Everything's fine 🐶🔥" + "no drift" |
-| Code inspection | pass | Read of all 13 cited code files + 13 cited test files at HEAD `207623f9` | every fix present; every cited test exists and asserts the claimed behavior |
+Legend: VERIFIED (stated behavior matches code, test covers it) · PARTIAL (core holds but a real gap exists) · FAILED (stated behavior does not match code).
 
 ---
 
-## Per-fix verification (cycle 1 + 2 shipped items)
+## A. Cycle-1/2/3 fixes — stated-behavior vs. actual-code
 
-Status key: VERIFIED = code present + test asserts behavior + test is non-tautological. PARTIALLY-VERIFIED = wiring pinned by source-grep only (access-helper behavior covered elsewhere). UNVERIFIED = no evidence. REGRESSION-FOUND = current state contradicts the claim.
+### 1. `admin/roles/[id]/route.ts` — "no admin can edit a role whose current level exceeds their own" → **VERIFIED**
+- Gate at `src/app/api/v1/admin/roles/[id]/route.ts:94-96`: `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403)`.
+- Uses the **current** DB level (`role.level` from the L59-63 SELECT), fires **before any mutation** — the UPDATE is at L121-124, after the super-admin (L72), builtin-level (L78), set-above-own (L84), and cap-grant (L102) gates. Ordering correct.
+- Test `tests/unit/api/admin-roles.route.test.ts:294-331` drives exactly the lateral cap-strip (`{capabilities: []}` on a level-4 role by a level-3 admin) and asserts `cannotEditHigherRole` 403. Strong coverage.
+- Nuance (not a defect): strict-`>`, so an admin can still edit a role at its **own** level — matches the stated wording ("exceeds their own"). PATCH does not lock the row (no `FOR UPDATE` like DELETE), but the only concurrent action that could raise the target's level is itself gated by `updates.level > creatorLevel`, so the TOCTOU is not privilege-escalating.
 
-| # | Commit | Claim | Status | Code evidence | Test evidence |
-|---|--------|-------|--------|---------------|---------------|
-| 1 | `51af8537` | import.ts skips truncating tables absent from the export | VERIFIED | `src/lib/db/import.ts:146-153` — `if (!data.tables[tableName]) { result.skippedTables.push(tableName); … continue; }` before `tx.delete(table)` | BEHAVIORAL: `tests/unit/db/import-implementation.test.ts:59-93` injects an export with only `users`, asserts `deleteMock` NOT called with `examSessions`, IS called with `users`, and `result.skippedTables` contains `examSessions`. Non-tautological — fails on revert. |
-| 2 | `c12ce8af` | api-keys DELETE gated on canManageRole | VERIFIED | `src/app/api/v1/admin/api-keys/[id]/route.ts:114-123` — selects `existing.role`, gates `!canManage && user.role !== existing.role → 403 cannotAssignHigherRole` before `db.delete` | BEHAVIORAL: `tests/unit/api/api-keys.route.test.ts:286-308` (deny higher-priv key, 403, `dbDeleteMock not called`) + `:311-333` (allow when canManage, 200, delete called once). Asserts `canManageRoleAsync` called with `("manager","super_admin")`. |
-| 3 | `3ed15bd6` | snapshot-null aborts destructive import (restore + migrate both paths) | VERIFIED | `src/app/api/v1/admin/restore/route.ts:156-161`; `src/app/api/v1/admin/migrate/import/route.ts:110-118` AND `:221-227` — `if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") → 500 preRestoreSnapshotFailed` before `importDatabase(data)` | BEHAVIORAL: `tests/unit/api/admin-backup-security.route.test.ts:342-365` — mocks `takePreRestoreSnapshotMock` to null, asserts 500 + `importDatabaseMock not called`. Migrate paths share the identical guard text (verified by grep at both line ranges). |
-| 4 | `c4ef40ab` | language POST + PATCH validate dockerImage against judge allowlist | VERIFIED | `src/app/api/v1/admin/languages/route.ts:70-72` (POST); `src/app/api/v1/admin/languages/[language]/route.ts:48-50` (PATCH) — both call `isAllowedJudgeDockerImage(body.dockerImage.trim())` → 422 `invalidDockerImage` | BEHAVIORAL: `tests/unit/api/admin-languages.route.test.ts` — three tests assert POST rejects `attacker-registry/pwn:latest` (422, no insert), POST accepts `judge-python:3.12` (201), PATCH rejects `evil.example.com/root:latest` (422, no update). |
-| 5 | `3196e6d1` | assignment GETs (list + detail) strip contest accessCode for non-managers | PARTIALLY-VERIFIED | list: `src/app/api/v1/groups/[id]/assignments/route.ts:41-49` (now selects `instructorId`), `:80-85` (`if (!canManage) for (a of groupAssignments) delete a.accessCode`); detail: `…/[assignmentId]/route.ts:43-57` (fetches group.instructorId, gates, deletes) | SOURCE-GREP ONLY: `tests/unit/api/group-assignments-access-code-strip.test.ts` reads the route file text and regex-matches `canManageGroupResourcesAsync(` + `if (!canManage)[…]*delete .*accessCode`. Pins the wiring contract but does NOT exercise the access decision or the delete. A regression that breaks `canManageGroupResourcesAsync` semantics would not be caught here (that helper has its own coverage). Risk: low–medium. |
-| 6 | `7518a5e1` | community problem-linked scope centralized via PROBLEM_LINKED_SCOPES | VERIFIED | `src/lib/discussions/permissions.ts:19-37` defines `PROBLEM_LINKED_SCOPES = ["problem","editorial","solution"]`, `isProblemLinkedScope`, `canAccessProblemScopedThread`. All four consumers route through it: page (`src/app/(public)/community/threads/[id]/page.tsx:26,83`), posts (`…/[id]/posts/route.ts:41`), create (`threads/route.ts:18,42`), votes (`votes/route.ts:64,67`) — confirmed by grep. | BEHAVIORAL: `tests/unit/discussions/permissions.test.ts:23-50` asserts scope membership, null-scope handling, delegation to `canAccessProblem` for problem-linked scopes, and that `canAccessProblem` is NOT consulted for general scope. Non-tautological. |
-| 7 | `a336de90` | restore + migrate audits durable and post-file-restore | VERIFIED | restore: `src/app/api/v1/admin/restore/route.ts:178-221` — `restoreParsedBackupFiles` runs in try/catch BEFORE the audit; failure path writes a DURABLE `database_restore_files_failed` audit and surfaces snapshot path; success path `await recordAuditEventDurable(…)` AFTER file restore. Migrate: `import/route.ts:118-131` and `:232-244` — both `await recordAuditEventDurable` AFTER `importDatabase` commits (pre-import buffered audit removed). | BEHAVIORAL: `admin-backup-security.route.test.ts:399-423` (post-commit durable audit ordering, `recordAuditEventMock not called`), `:427-464` (audit fires AFTER `restoreParsedBackupFilesMock`, summary contains "2 files written"), `:466+` (file-restore failure → durable failure audit + snapshot path surfaced). `recordAuditEventDurableMock` is typed with a call signature so `.calls[0][0]` is type-checked. |
-| 8 | `594f89b0` | TS compiler workspace 0o700 on chown success, 0o777 only as fallback | VERIFIED | `src/lib/compiler/execute.ts:742-757` — try-block: `chmod(workspaceDir, 0o700)` + `chmod(sourcePath, 0o600)` on chown success; catch-block (CAP_CHOWN unavailable): `0o777`/`0o666` fallback with the warn log | SOURCE-GREP: `tests/unit/compiler/execute-implementation.test.ts:5-18` asserts the source contains both `0o700`/`0o600` (success) and `0o777`/`0o666` (fallback). Pins both branches; fails if someone widens the success branch back. |
-| 9 | `68dc2ad0` | docker inspect/kill/rm wrapped in 10s timeout | VERIFIED | `judge-worker-rs/src/docker.rs:172-199` (inspect), `:242-258` (kill), `:260-275` (rm) — each wraps the `docker … output()` future in `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS=10), …)`; on `Err(_elapsed)` logs warn + returns default/moves on (orphan sweep reaps) | No dedicated Rust unit test for the timeout branch (async process + timeout is hard to deterministically unit-test). Verified by: (a) `cargo test` 73/73 pass (no compile regression from the match-return shape), (b) code-read confirms the timeout wrap on all three helpers. Risk: low — the change is mechanical and the orphan-sweep recovery is documented. |
-| 10 | `d5b20d3d` | code-similarity sidecar caps submissions at 500 | VERIFIED | `code-similarity-rs/src/main.rs:25-33` (`MAX_SUBMISSIONS = 500`, `exceeds_submission_cap`), `:93-103` (`if exceeds_submission_cap(…) → 413 PAYLOAD_TOO_LARGE`) | BEHAVIORAL: `code-similarity-rs/src/main.rs:246-262` `submission_cap_boundary` — asserts `!exceeds(500)`, `!exceeds(499)`, `exceeds(501)`, `exceeds(5000)`, `MAX_SUBMISSIONS == 500`. `cargo test` 49/49 pass. |
-| 11 | `90bcfcff` | problems/[id]/edit page gates on strict canManageProblem | PARTIALLY-VERIFIED | `src/app/(public)/problems/[id]/edit/page.tsx:12,38-44` — imports `canManageProblem`; `const canEdit = await canManageProblem(problem.id, session.user.id, session.user.role)`; the loose `author || caps.has("problems.edit")` is gone | SOURCE-GREP ONLY: `tests/unit/api/problem-edit-page-strict-gate.test.ts` regex-matches the `canManageProblem` import + call site + asserts the old loose check is absent. Pins the wiring contract but does NOT exercise the access decision (which is covered by the existing `canManageProblem` test suite referenced in cycle-1 A11). Risk: low. |
-| 12 | `6b383ff0` | Phase-A side-effects: defaultLanguage export, chat-widget comment, test type fixes | VERIFIED | export: `src/app/api/v1/problems/[id]/export/route.ts:33` adds `defaultLanguage: true` to the SELECT columns; chat-widget: `src/lib/plugins/chat-widget/tools.ts:70-76` reworded comment (no behavioral claim); test type fixes in 3 test files (NODE_ENV record cast, durableMock typing, transaction loose cast) | BEHAVIORAL: `tests/unit/api/problems-export.route.test.ts:108` (FUNCTION_PROBLEM_ROW now includes `defaultLanguage: "python"`) + `:167` (asserts response contains `defaultLanguage: "python"`). Non-tautological — would fail on revert. The two test-only type fixes are validated by `test:unit` running clean. |
-| 13 | `07bab8dd` | validation.rs docstring correction + AGENTS.md env-perms note | VERIFIED | `judge-worker-rs/src/validation.rs:84-94` — docstring now says "requires a NON-empty trusted-registry list … unqualified local `judge-*` images are still accepted" (matches actual behavior); `AGENTS.md:427` — extended note documents cycle-1 A1 `assertLoadedEnvFilePermissions` guard at `src/lib/security/env.ts:182,200` | DOC-ONLY change. `cargo test validation` 8/8 still pass (no behavior change). The guard referenced in AGENTS.md is present at `src/lib/security/env.ts:182` (`assertLoadedEnvFilePermissions`) + `:200` (`(stats.mode & 0o077) !== 0`), wired at `src/instrumentation.ts:29`. |
+### 2. `admin/settings/route.ts` — "stolen session cannot silently weaken security posture" → **PARTIAL**
+- Reconfirm gate works for the listed keys: `src/app/api/v1/admin/settings/route.ts:91-110` (password required + verified when any `SENSITIVE_SETTINGS_KEYS` key is present). Tests `tests/unit/api/admin-settings-reconfirm.test.ts:123-149` cover require / reject / bypass.
+- **Gap (the fix missed privilege-affecting keys).** The PUT accepts and persists `allowAiAssistantInRestrictedModes` and `allowStandaloneCompilerInRestrictedModes` (destructured L78-79, written to `baseValues` L143-144) but **neither is in `SENSITIVE_SETTINGS_KEYS` (L24-43)**. Both directly weaken restricted/exam-mode integrity (enable AI assistant / standalone compiler during a locked-down exam). A stolen session can flip either without reconfirm — exactly the "silent weaken" the gate exists to stop. See Net-new N1.
+- Side defect (N2): `emailVerificationRequired` IS in the sensitive list (L28) but is neither destructured nor in `allowedConfigKeys` (L118-130), so it is silently dropped from every PUT — a dead key that triggers a pointless reconfirm and is not actually settable via this route.
 
-**Cycle-1 + cycle-2 total: 11/13 VERIFIED, 2/13 PARTIALLY-VERIFIED (source-grep wiring tests where the access helper is covered elsewhere), 0 UNVERIFIED, 0 REGRESSION-FOUND.**
+### 3. `contests/[assignmentId]/export/route.ts` — "every contest-export PII read is audited" → **VERIFIED**
+- JSON branch audits **unconditionally** via the durable path: `src/app/api/v1/contests/[assignmentId]/export/route.ts:117-127` runs for anonymized and non-anonymized alike, before the L128 return; no early return between L89 and L127. Comment explicitly calls out the prior `isDownload`-gating bug (C3-AGG-1).
+- Tests `tests/unit/api/contest-export.route.test.ts` cover all three JSON reads: background (L121-144, asserts durable fires + legacy NOT called), explicit download (L146-160), anonymized (L162-176). CSV audited via the buffered path (L182).
+- Minor inconsistency (N5): JSON uses `recordAuditEventDurable` (crash-safe) while CSV uses `recordAuditEvent` (buffered). The claim is about JSON PII reads, which holds; flagged only for durability parity.
 
----
+### 4. `submissions/[id]/events/route.ts` — "revoked group access closes SSE within one re-auth tick" → **VERIFIED**
+- Re-auth IIFE re-runs the **authorization** gate, not just identity: `src/app/api/v1/submissions/[id]/events/route.ts:475-482` re-fetches the reader (`columns: { userId, assignmentId }`) then `canAccessSubmission(refreshedReader, …)`; close on missing row or denial. Identity check (L467) precedes authz (L479).
+- `AUTH_RECHECK_INTERVAL_MS = 30_000` (L33); the check rides on `onPollResult` which the shared poll timer (L214) fires every `ssePollIntervalMs` for every subscriber, so closure latency is bounded by the 30s re-auth tick.
+- Test `tests/unit/api/submission-events-reauth-authorization-implementation.test.ts` is a source-text contract (rationale: driving the long-lived loop past 30s is disproportionate). It pins the load-bearing strings and the identity-before-authz ordering. Acceptable for this wiring invariant.
 
-## C2-H7 (X-Real-IP) re-examination — current behavior at HEAD
+### 5. `recruiting-invitations.ts` — "admin metadata-edit can no longer regress the brute-force counter" → **VERIFIED**
+- SELECT is `.for("update")` **inside a transaction**: `src/lib/assignments/recruiting-invitations.ts:396` `db.transaction`, L401 `.for("update")`. Merge preserves `_sys.*` keys (L407-412) and new metadata cannot contain `_sys.*` (`findInternalKeyViolation` L380-385). The status (revoke) branch reuses the same locked merge (L414-429) — consistent.
+- Serialization is real because the counter side (`incrementFailedRedeemAttempt` L96-105) is an atomic `jsonb_set` UPDATE (row-locked at statement time); under READ COMMITTED the FOR UPDATE select and the atomic increment cannot clobber each other.
+- Tests `tests/unit/assignments/recruiting-invitation-metadata-race.test.ts`: assert `for("update")` invoked (L114) and `_sys.*` keys survive the merge (L132-138). Coverage is on the changed side, which is the side that mattered.
 
-**File**: `src/lib/security/ip.ts:67-114` (read in full).
+### 6. Community threads/votes — "all four surfaces share one scope gate" → **VERIFIED**
+- Four surfaces, all routing through the centralized `PROBLEM_LINKED_SCOPES` set in `src/lib/discussions/permissions.ts:17` via the helpers (none inlines a literal scope list):
+  1. create thread — `community/threads/route.ts:29` (`canAccessProblemScopedThread`)
+  2. create post — `community/threads/[id]/posts/route.ts:41`
+  3. vote — `community/votes/route.ts:83`
+  4. page read — `community/threads/[id]/page.tsx:83-91` (`isProblemLinkedScope` + `canReadProblemDiscussion`)
+- DELETE/moderation routes (`threads/[id]/route.ts`, `posts/[id]/route.ts`) are intentionally gated by `canModerateDiscussions` (global mod cap), not scope — correct.
+- No read-side leak: `grep "export const GET" src/app/api/v1/community/` returns nothing; the only read path is the server-component page, which fail-closes via `canReadProblemDiscussion`.
 
-**Current behavior (post-revert `23851d69`):**
-- XFF path: gated on `trustedHops > 0 && parts.length >= trustedHops + 1` (cycle-1 A7 fix preserved). At `TRUSTED_PROXY_HOPS=0` the XFF block is skipped entirely.
-- **X-Real-IP path: UNCONDITIONAL.** `ip.ts:111-115` — `const realIp = headers.get("x-real-ip")?.trim(); if (realIp && isValidIp(realIp)) return …` runs regardless of `trustedHops`. The cycle-2 gate (`if (trustedHops > 0)`) was removed by the revert.
+### 7. `judge-worker-rs/src/main.rs` catch_unwind — "panicking executor reports runtime_error + dead-letter, does not leak the slot" → **VERIFIED** (with one low-sev edge)
+- Spawn body `main.rs:559-590`: `catch_unwind` wraps `executor::execute` (L570-572); on `Err(payload)` it logs and calls `executor::report_panic` (L579-587) → `report_with_retry(... "runtime_error" ...)` (`executor.rs:918-937`), whose retry-exhausted fallback writes a `DeadLetterEntry` JSON (`executor.rs:961-969`, L1027+). `active_tasks.fetch_sub(1)` at L589 runs after the `if let`, so it fires on both Ok and Err-panic. The real concurrency slot (semaphore `_permit`, L562) is released by RAII drop on every path.
+- Edge (N3, low): `fetch_sub` is statement-after-`report_panic`. If `report_panic` itself panics, the spawn task unwinds — `_permit` still drops (slot released) but `fetch_sub` is skipped, so the heartbeat `active_tasks` counter drifts +1. Requires a double-panic; cosmetic (reporting counter only).
 
-**What does `trustedHops=0` actually trust now?** It trusts the **X-Real-IP header unconditionally** as long as XFF is absent/unusable. So at `TRUSTED_PROXY_HOPS=0`, a request with `X-Real-IP: 1.2.3.4` and no XFF returns `1.2.3.4` — client-controlled.
+### 8. `judge-worker-rs/src/runner.rs` — "interactive compiler runs no longer leave user source world-r/w" → **VERIFIED**
+- Workspace: chown 65534 then `workspace_mode = if chown_ok { 0o700 } else { 0o777 }` (`runner.rs:837-854`). Source file: chown 65534 then `source_mode = if source_chown_ok { 0o600 } else { 0o666 }` (L874-881). Neither is world r/w on the happy path.
+- Wording nit only: the claim says "0o700 on workspace **and source**"; source is actually **0o600** (correct for a non-executable file, and stricter than 0o700). Pinned by source-text test `runner.rs:199-213`.
 
-**Is the revert safe given the deployed nginx config?**
-- The deployed nginx config (`deploy-docker.sh:1281,1296,1308,1320,1353,1368,1380,1392`) sets `proxy_set_header X-Real-IP $remote_addr;` at every location block. This OVERWRITES any client-supplied X-Real-IP with the actual TCP peer address. Confirmed at 8 separate proxy locations.
-- The XFF header is set to `$remote_addr` (NOT `$proxy_add_x_forwarded_for`), so XFF also carries only the real peer — but at `hops=0` the XFF path is skipped anyway, so X-Real-IP is the load-bearing signal.
-- The judge ip-allowlist tests (`tests/unit/judge/ip-allowlist.test.ts:7-21`) explicitly pin `TRUSTED_PROXY_HOPS=0` to model the deployed worker-to-app path and inject the worker IP via X-Real-IP. The full suite (2968/2968) confirms this contract holds.
+### 9. `judge-worker-rs/src/executor.rs` A10c clamp warn → **VERIFIED**
+- Warn fires exactly when the silent clamp bites: `executor.rs:533-540` warns on `submission.time_limit_ms > max_time_limit_ms()`; the actual clamp is L547-548 `MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()))`. The warn condition == the `min()` reduction condition.
 
-**Verdict on the revert: SAFE for the current deployed configuration.** Every documented nginx location overwrites X-Real-IP from `$remote_addr`, so the spoof surface the critic named (C-3 / NEW-H7) does not exist on the deployed path.
+### 10. `problems/[id]/accepted-solutions/route.ts` A10b count filter → **VERIFIED**
+- Count now matches the rendered list: `accepted-solutions/route.ts:51-55` `from(submissions).innerJoin(users).where(and(whereClause, eq(users.shareAcceptedSolutions, true)))`; the list applies the same filter post-hoc (L92 `.filter(s => s.shareAcceptedSolutions)`). `total` no longer overcounts opted-out authors. Test updated to mock the `innerJoin` chain (`problem-accepted-solutions.route.test.ts`).
 
-**Residual risk (deferred, not resolved):** MEDIUM · confidence high. The spoof surface re-appears for ANY production ingress that (a) bypasses nginx and hits the app port directly, or (b) uses a different proxy config that forwards a client-supplied X-Real-IP without overwriting. The revert commit message explicitly records the exit criterion: "verify every production nginx config overwrites X-Real-IP; if any target forwards it client-controlled, re-open with a proxy-trust flag rather than breaking the allowlist." This is correctly tracked as deferred in `plan/cycle-2`, not silently dropped. **Recommendation**: keep the deferral, but add a CI grep assertion that every `proxy_pass` location in `deploy-docker.sh` carries `proxy_set_header X-Real-IP $remote_addr;` so a future config edit cannot silently re-open the spoof surface. (Read-only review — no implementation.)
+### 11. Assignment routes A10a freezeLeaderboardAt strip → **VERIFIED**
+- Detail route: `groups/[id]/assignments/[assignmentId]/route.ts:57-58` strips `accessCode` + `freezeLeaderboardAt` for `!canManage`. List route: `groups/[id]/assignments/route.ts:84-85` strips both inside the `!canManage` loop. Confirmed in current tree.
 
----
-
-## Test-adequacy assessment
-
-| Fix | Test type | Catches revert? | Notes |
-|-----|-----------|-----------------|-------|
-| 51af8537 skip-truncate | Behavioral | YES | Mock-tx observes which tables are deleted. |
-| c12ce8af DELETE gate | Behavioral | YES | Asserts 403 + `db.delete` not called + canManageRoleAsync args. |
-| 3ed15bd6 snapshot-null abort | Behavioral | YES | Mocks snapshot to null, asserts `importDatabase` not called. (Restore path; migrate paths share the guard text but have no dedicated test — see Gaps.) |
-| c4ef40ab dockerImage allowlist | Behavioral | YES | POST + PATCH both exercised; rejects attacker-registry, accepts judge-*. |
-| 3196e6d1 accessCode strip | Source-grep | WIRING ONLY | No behavioral assertion on the strip; access helper covered elsewhere. |
-| 7518a5e1 scope centralization | Behavioral | YES | Direct unit tests on the helper; would fail if scope set shrinks. |
-| a336de90 durable post-file audit | Behavioral | YES | Asserts durable helper called, ordering vs file-restore, failure-audit path. |
-| 594f89b0 compiler 0o700 | Source-grep | WIRING ONLY | Pins both chmod branches in source. |
-| 68dc2ad0 docker timeouts | None (mechanical) | COMPILE-ONLY | No dedicated unit test for the timeout branch; `cargo test` confirms it compiles + the unchanged helpers still work. |
-| d5b20d3d sidecar cap | Behavioral | YES | Boundary unit test on `exceeds_submission_cap`. |
-| 90bcfcff edit page gate | Source-grep | WIRING ONLY | Pins the call site + absence of old check. |
-| 6b383ff0 defaultLanguage export | Behavioral | YES | Asserts response includes defaultLanguage. |
-| 07bab8dd docstring + AGENTS note | Doc-only | N/A | No behavior to test; cross-referenced guard verified present. |
-
-**Adequacy verdict**: Strong. 8/13 fixes have dedicated behavioral tests that fail on revert. 3/13 are pinned by source-grep wiring contracts (the underlying access helpers they route through have their own behavioral coverage). 1/13 (docker timeouts) is a mechanical wrap validated by compilation + existing helper tests. 1/13 is doc-only. No tautological tests found — every assertion binds to a load-bearing code element.
+### 12. PB-1 A10e test rename → **VERIFIED**
+- Commit `6ec17d6e` renames the factually-wrong "records audit before deletion" title and adds a post-commit ordering test asserting no audit is written when `db.delete` rejects — protects commit `76e27d31` (post-commit audit ordering). File: `tests/unit/actions/user-management.test.ts`.
 
 ---
 
-## Gaps
+## B. Deferred items — are the deferral reasons still accurate?
 
-- **G-1 (LOW)** Migrate-import snapshot-abort has no dedicated behavioral test. The restore path is covered by `admin-backup-security.route.test.ts:342-365`, but the two migrate-import code paths (`import/route.ts:110-118` and `:221-227`) share the identical guard text with no test that mocks `takePreRestoreSnapshot` to null against the migrate route. A regression that removed only the migrate guard would not be caught. Risk: low (the guard is textually identical and was added in the same commit). Suggestion: add one migrate-route behavioral test mirroring the restore one.
-- **G-2 (LOW)** Votes route null-problemId skip is inconsistent with posts route. `votes/route.ts:71` uses `if (problemId) { canAccessProblem(…) }`, so a problem-linked thread with a null `problemId` skips the access check. The posts route uses `canAccessProblemScopedThread`, which DENIES in that case. This is pre-existing (the original `problem|editorial` check had the same `if (problemId)` shape), not introduced by the cycle-2 fix, but the centralization did not uniformly close it. Risk: low (requires a malformed DB row with a problem-linked scopeType and null problemId, which the create route does not produce in the normal path). Suggestion: replace the inline check with `canAccessProblemScopedThread` for parity.
-- **G-3 (LOW)** C2-H7 X-Real-IP spoof surface is deferred, not resolved. Safe today only because every deployed nginx location overwrites the header. No automated guard prevents a future nginx config edit from re-opening it. Suggestion: add a CI grep asserting every `proxy_pass` location in `deploy-docker.sh` carries `proxy_set_header X-Real-IP $remote_addr;`.
-- **G-4 (LOW, informational)** Three cycle-2 fixes (accessCode strip, edit-page gate, compiler 0o700) rely on source-grep contracts. This is a deliberate and documented trade-off (the source-grep inventory baseline was bumped 155→157 in `1fb1af0f` to account for the two new ones), and the underlying helpers have behavioral coverage, but the routes themselves are not behaviorally exercised. Acceptable as-is; flagging only so future regressions in the route wiring are caught by the grep, not by behavior.
-
----
-
-## Green-but-broken / flaky test scan
-
-- **No green-but-broken tests found.** Inspected the loud pino log output from the full `test:unit` run (ZodErrors, "Network error" from the rate-limiter sidecar mock, "Worker has no secretTokenHash", "preRestoreSnapshotFailed"-adjacent warnings) — every one is an EXPECTED negative-path log emitted by a passing test that asserts the error handling. None masks a failure.
-- **No flaky tests observed.** The cycle-1 A12 environmental timeout (drizzle-kit generate > 30s test timeout) did NOT recur — the full suite including `migration-drift-cleanup.test.ts` completed in 40.81s with 2968/2968 passing. Either the runner warmed up or the testTimeout was effectively sufficient this run. The cycle-1 verifier's suggestion to bump `testTimeout` for that test remains a reasonable hardening step but is no longer a live gate risk.
-- **Full-suite duration**: 40.81s wall (transform 31.9s, tests 111.42s aggregate across workers). Healthy; no pathological slow test.
+| Item | Cited lines | Deferral reason | Still accurate? |
+|---|---|---|---|
+| **NEW-H5** ip-allowlist default-open | `src/lib/judge/ip-allowlist.ts:160-166` | default-open is intentional for worker access | **Yes.** L164 `if (!allowlist) return true`; comment L163 "allow all (temporary for worker access)". Judge routes are token-gated, so default-open is documented + bounded. |
+| **C3-1** export redaction at sanitize:false | `src/lib/db/export.ts:104-106` | always-redact set still applies when sanitize=false | **Yes.** L104-106 `sanitize ? merge(...) : EXPORT_ALWAYS_REDACT_COLUMNS` — the always-redact columns are stripped regardless of sanitize. |
+| **AGG-10** plugin-secrets plaintext fallback default | `src/lib/plugins/secrets.ts:61` | default-true during migration | **Yes (reason accurate).** L61 `options?.allowPlaintextFallback ?? true`; comment L52-56 documents the migration. **Caveat:** no mechanism forces migration to completion, so plaintext plugin secrets can persist indefinitely — the deferral is open-ended. |
+| **NEW-M8** files zip slow-path full materialization | `src/lib/files/validation.ts:96-107` | slow path fully decompresses | **Yes (reason accurate, risk persists).** L98 `entry.async("uint8array")` fully materializes each entry **before** the L100 per-entry cap check. A data-descriptor zip bomb (no size metadata → skips the fast path) can OOM the process before the cap fires. Deferral characterizes the code correctly; the underlying OOM risk is unresolved. |
 
 ---
 
-## FINAL SWEEP
+## C. Net-new findings (tight; evidence-cited)
 
-- **Per-fix**: 11/13 VERIFIED with behavioral or compile evidence; 2/13 PARTIALLY-VERIFIED with source-grep wiring contracts whose underlying helpers have behavioral coverage; 0 UNVERIFIED; 0 REGRESSION-FOUND.
-- **C2-H7**: revert is SAFE for the current deployed nginx config (8 locations overwrite X-Real-IP from `$remote_addr`); the underlying spoof concern is correctly deferred with a documented exit criterion.
-- **Gates**: lint clean · `test:unit` 2968/2968 · `cargo test` judge-worker 73/73 · `cargo test` code-similarity 49/49 · `db:check` in sync. All honestly green with fresh output.
-- **No green-but-broken or flaky tests** in this run.
-- **Regression risk to adjacent features**: low. The community centralization touches 4 surfaces but routes them through one tested helper; the restore-audit reordering keeps the post-commit invariant; the import skip-truncate is additive (only changes behavior for tables absent from the export).
+- **N1 — `likely` · `medium` — Settings reconfirm misses restricted-mode bypass toggles.**
+  `src/app/api/v1/admin/settings/route.ts`: `allowAiAssistantInRestrictedModes` (L78, L143) and `allowStandaloneCompilerInRestrictedModes` (L79, L144) are writable and persisted but absent from `SENSITIVE_SETTINGS_KEYS` (L24-43). A stolen session can enable the compiler or AI assistant inside a restricted/exam-mode contest with no password reconfirm — a direct security-posture weakening that the C3-AGG-7 gate was written to prevent. `aiAssistantEnabled` is the borderline sibling (platform-wide feature toggle). Suggested fix: add the two restricted-mode keys (and consider `aiAssistantEnabled`) to the sensitive set. Test gap: `admin-settings-reconfirm.test.ts` only asserts keys already in the list, so it would not catch this.
 
-### Recommendation
-**APPROVE**
+- **N2 — `confirmed` · `low` — Dead sensitive key.**
+  `settings/route.ts:28` lists `emailVerificationRequired` in `SENSITIVE_SETTINGS_KEYS`, but it is neither destructured (L72-87) nor in `allowedConfigKeys` (L118-130), so every PUT silently drops it. Net effect: the key triggers a needless reconfirm yet can never be changed via this route. Either wire it into the writable set or drop it from the sensitive list.
 
-All 13 cycle-1+2 shipped fixes are present at HEAD `207623f9` with matching implementation evidence, and 11/13 carry behavioral or compile-regression tests that fail on revert (the remaining 2/13 are source-grep wiring contracts over helpers covered elsewhere). Fresh gate output: `test:unit` 2968/2968, `cargo test` 122/122 across both Rust crates, lint clean, `db:check` in sync, zero flakes. The C2-H7 revert is safe for the deployed nginx config (verified — 8 `proxy_set_header X-Real-IP $remote_addr;` locations) and the residual spoof surface is correctly tracked as deferred. Four LOW-severity follow-ups (migrate-route test, votes null-problemId parity, nginx-overwrite CI grep, source-grep vs behavioral trade-off) are documented above but do not block approval.
+- **N3 — `likely` · `low` — catch_unwind double-panic leaks the `active_tasks` counter.**
+  `judge-worker-rs/src/main.rs:589` `active_tasks.fetch_sub(1)` sits after `executor::report_panic(...)`. If `report_panic` itself panics, the spawn task unwinds past `fetch_sub`, so the heartbeat counter drifts +1 per occurrence. The semaphore slot (`_permit`, L562) is still released by drop, so real concurrency is unaffected — reporting-counter drift only. A `catch_unwind` around `report_panic` (or moving `fetch_sub` into a guard/`Drop`) closes it.
+
+- **N4 — `confirmed` · `low-medium` — ZIP-bomb OOM before per-entry cap (pre-existing, deferred).**
+  `src/lib/files/validation.ts:98` fully decompresses each entry before the L100 size check on the data-descriptor slow path. A crafted archive with data descriptors bypasses the fast-path header check and can force a multi-GB allocation before rejection. Matches the NEW-M8 deferral; re-flagged because it remains exploitable. Streaming-decompress with a running byte cap would close it.
+
+- **N5 — `confirmed` · `low` — Contest-export CSV audit is non-durable.**
+  `contests/[assignmentId]/export/route.ts:182` uses buffered `recordAuditEvent` while the JSON branch (L117) uses `recordAuditEventDurable`. A crash between CSV generation and flush loses the PII-read audit row. Not a regression (JSON is the path C3-AGG-1 targeted); durability parity only.
+
+---
+
+## D. Verdict
+
+No FAILED fixes. All 12 cited fixes do what their commits claim. The single PARTIAL is the settings reconfirm gate (N1): it works for the keys it lists but omits the restricted-mode bypass toggles, leaving a real exam-integrity weakening path without reconfirm. Deferred items are characterized accurately; two (AGG-10, NEW-M8) carry risks that persist open-endedly. Net-new findings are otherwise low severity.

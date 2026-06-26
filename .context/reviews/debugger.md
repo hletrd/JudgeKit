@@ -1,460 +1,447 @@
-# Cycle 3 — debugger
+# Cycle 4 — debugger
 
 Scope: latent-bug / failure-mode / regression review of JudgeKit at head
-`207623f9`. Three jobs: (1) REGRESSION-check the 14 cycle-2 Phase A fixes
-against the specific edge cases the mission named; (2) FAILURE-MODE analysis
-of the restore/import, judge-execution, and SSE pipelines; (3) hunt NET-NEW
-latent bugs.
+`edd45cc5`. Cycle 4 of 100. The cycle-3 surface is `207623f9` + 8 cycle-3
+fixes (43 commits green, converging — do not inflate). Three jobs, exactly as
+mission-scoped: (a) REGRESSION-check the 5 named cycle-3 fixes against their
+edge cases; (b) CLOSE or RE-CONFIRM the cycle-3 debugger residuals **R1..R4**;
+(c) hunt NET-NEW latent bugs (error/edge paths, async cleanup, signal
+handling, leaks).
 
-Evidence basis: full read of every cited file at the cited lines; cross-check
-of the Rust worker (`docker.rs`, `executor.rs`, `main.rs`), the restore/import
-routes, the import engine, the SSE events route, the judge `/claim` route, the
-IP extraction + allowlist, the recruiting-token path, and the audit helpers.
-The prior cycle-2 debugger review (`.context/reviews/debugger.md` at
-`ad543e14`) is the baseline; items closed this cycle are marked, items that
-still reproduce are re-confirmed.
+Evidence basis: full read of every cited file at the cited lines —
+`judge-worker-rs/src/main.rs` (spawn body + shutdown + heartbeat),
+`executor.rs` (report_panic / report_with_retry / dead-letter / chown-chmod),
+`runner.rs` (execute_run chown+0o700), `docker.rs` (cleanup sweep / inspect /
+kill / rm), `src/lib/assignments/recruiting-invitations.ts` (tx + FOR UPDATE),
+`src/app/api/v1/admin/settings/route.ts` (password reconfirm),
+`src/app/api/v1/submissions/[id]/events/route.ts` (SSE re-auth IIFE),
+`src/lib/auth/permissions.ts` (`canAccessSubmission` field shape),
+`src/lib/security/password-hash.ts` (`verifyAndRehashPassword`), and
+`src/lib/compiler/execute.ts` (R1). The cycle-3 debugger review
+(`.context/reviews/debugger.md` at `207623f9`) is the baseline.
 
 Severity legend: CRITICAL / HIGH / MEDIUM / LOW. Confidence: HIGH / MED / LOW.
-Status tag: **REGRESSION** (introduced or left open by a cycle-2 fix),
-**REPRODUCES** (Phase B item confirmed still real at head), **CONFIRMED-FIXED**
-(closed by a cycle-2 change), **NET-NEW**.
+Validation tag: **confirmed** (read + logically proven at head),
+**likely** (read + strong inference), **needs-manual-validation** (requires
+runtime/docker to nail down).
 
 ---
 
 ## EXECUTIVE SUMMARY
 
-The two highest-priority cycle-2 debugger items (R1/F2 durable restore audit,
-DBG-2 cleanup timeouts) are **CONFIRMED-FIXED** — the restore audit is now
-`await recordAuditEventDurable(...)`, moved to after `restoreParsedBackupFiles`,
-with a dedicated `database_restore_files_failed` durable failure audit; and
-`inspect_container_state`/`kill_container`/`remove_container` are all wrapped
-in `tokio::time::timeout(Duration::from_secs(10))`.
+All 5 cycle-3 fixes are **CONFIRMED correct** on the mission's named edge
+cases — no regression introduced. Each carries at most a LOW-severity residual
+that is either a pre-existing shared limitation (runner mirrors executor) or a
+theoretical cancel-path fragility with no trigger today.
 
-The cycle-2 fixes, however, opened two **REGRESSION**-class residual leaks in
-the Rust worker cleanup path that the mission specifically asked about, plus
-the compiler 0o700 hardening is only half-applied. The restore/import
-atomicity gap (F1) and the SSE re-auth hole (NEW-M2) still reproduce. No
-CRITICAL data-loss regression was found in the cycle-2 surface.
+**R1..R4 all STILL OPEN at head** — none were touched by the cycle-3 commits
+(the cycle-3 LOW batch `6ec17d6e` only added the AGG-17 clamp `warn!`, PB-1,
+and the freezeLeaderboardAt/count fixes). They are re-confirmed below at the
+same severity, not inflated, not dropped.
+
+One **NET-NEW MEDIUM** found: the periodic orphan sweep runs un-timeout'd
+`docker ps`/`docker rm` directly in the worker main loop, so a wedged dockerd
+hangs the entire loop (no polling, no shutdown). This is the symmetric gap the
+cycle-3 R2/R4 per-submission hardening left un-guarded — highest-ROI worker
+item this cycle.
 
 **Top action items, ranked:**
-1. **R2** (HIGH) — Rust orphan sweep only reaps `status=exited`; a running
-   `oj-*` container whose `kill`/`rm` timed out is leaked indefinitely.
-   Pair with R4 (`kill_on_drop`) for a complete fix.
-2. **R1** (MEDIUM) — compiler `execute.ts` chown-FAILURE branch still
-   `chmod 0o777/0o666`; A9 hardened only the success branch.
-3. **F1** (MEDIUM, REPRODUCES) — `restoreParsedBackupFiles` non-atomic writes;
-   partial uploads persist on failure after DB commit.
-4. **F3** (MEDIUM, REPRODUCES) — SSE re-auth does not re-run
-   `canAccessSubmission`; revoked group access keeps streaming.
-5. **R3** (LOW/MED) — `inspect_container_state` timeout returns
-   `oom_killed:false`, masking a real OOM in the verdict.
+1. **N1** (MEDIUM) — `cleanup_orphaned_containers` has no timeout on its
+   `docker ps`/`docker rm`; awaited inline in the main loop → wedged dockerd
+   freezes the worker. Pair with R2/R4 for a complete cleanup-hardening pass.
+2. **R2** (HIGH) — orphan sweep filters `status=exited` only; running `oj-*`
+   leaked by a timed-out kill/rm is never reaped, contradicting the
+   "orphan sweep will reap" log promise (docker.rs:255,273).
+3. **R3** (LOW/MED) — inspect timeout returns `oom_killed:false`, masking a
+   real OOM in the verdict.
+4. **R4** (LOW) — no `kill_on_drop(true)` on the cleanup Commands → orphaned
+   `docker` CLI children under wedged dockerd.
+5. **R1** (LOW) — compiler chown-failure catch still 0o777/0o666 (intentional
+   CAP_CHOWN-less fallback; partial-chown EPERM sub-case still present).
+
+No CRITICAL data-loss / capacity-wedge regression was found in the cycle-3
+surface. The catch_unwind, recruiting-tx, settings-reconfirm, and SSE re-auth
+fixes all behave correctly under their named failure paths.
 
 ---
 
-## REGRESSION — cycle-2 Phase A fixes (mission edge cases)
+## (a) REGRESSION — cycle-3 fixes vs. mission edge cases
 
-### R1 — A9 compiler 0o700 hardening ONLY covers the chown-success branch; chown-failure still world-writable (MEDIUM / confidence HIGH / REGRESSION)
-- Fix commit: `594f89b0` · File: `src/lib/compiler/execute.ts:739-757`
-- The mission asked: *"0o700: does chown still succeed before chmod? what if
-  chown fails?"*
-- A9 correctly hardens the **success** branch: after `chown(workspaceDir,
-  SANDBOX_UID, SANDBOX_GID)` + `chown(sourcePath, …)` it sets `0o700`/`0o600`
-  (L746-747). **But the `catch` fallback (L755-756) is unchanged at
-  `chmod(workspaceDir, 0o777)` + `chmod(sourcePath, 0o666)`** — exactly the
-  pre-A9 behavior. So the world-readable/writable window the fix targeted
-  persists for every deployment where the compiler process lacks `CAP_CHOWN`
-  (rootless dev containers, macOS local fallback, any non-root app server).
-- Note the Rust mirror (`executor.rs:331-360`) behaves identically —
-  `target_mode = if chown_ok { 0o700 } else { 0o777 }` — so the two are
-  consistent and the broad fallback is intentional (without `CAP_CHOWN` there
-  is no other way to grant uid-65534 write access). The residual risk is
-  therefore **accepted by design**, not an oversight; it is restated here
-  because the cycle-2 plan (A9) claimed to "mirror the Rust 0o700/0o600
-  hardening" and DBG-4 was only partially closed.
-- **Partial-failure sub-case (LOW/MED)**: if `chown(workspaceDir)` succeeds
-  (L740) but `chown(sourcePath)` throws (L741), control enters the catch with
-  `workspaceDir` already owned by 65534. The catch then runs
-  `chmod(workspaceDir, 0o777)` on a dir the process no longer owns. If the
-  compiler process is non-root with only `CAP_CHOWN` (no `CAP_FOWNER`), this
-  `chmod` throws `EPERM`, which is **not** wrapped in a try/catch — it
-  propagates to the outer `finally` (L841) and the whole compile attempt
-  throws. Runs-as-root deployments (the Docker default) are unaffected; only
-  the unusual non-root-with-CAP_CHOWN-only shape trips.
-- Reproduction (chown-failure branch): run the app/worker as a non-root user
-  without `CAP_CHOWN`, trigger any local-fallback compile; the workspace is
-  created `0o777` for its lifetime.
-- Fix (minimal): no code change required for the broad mode (it is
-  load-bearing for CAP_CHOWN-less hosts); instead reclassify DBG-4 as
-  "accepted fallback, documented" and add a best-effort guard so the
-  partial-chown sub-case does not throw — wrap the catch's `chmod` calls in
-  their own try/catch and proceed with whatever mode succeeded (or abort the
-  compile with a clear configError rather than a raw EPERM).
+### A — `catch_unwind` executor panic recovery: CONFIRMED on Ok + panic; dead-letter survives DB outage; _permit always dropped (LOW residuals noted)
+- Commit `45473b20` · Files: `judge-worker-rs/src/main.rs:559-591`, `executor.rs:899-928` (`report_panic`), `executor.rs:971-1066` (`report_with_retry` + dead-letter)
+- Mission questions, answered:
+  - **`active_tasks` decremented exactly once on every path?** On the **Ok**
+    path `catch_unwind` returns `Ok`, the `if let Err` arm is skipped, and
+    `active_tasks.fetch_sub(1, Relaxed)` (main.rs:589) runs **exactly once**.
+    On the **caught-panic** path `catch_unwind` returns `Err`, `report_panic`
+    is awaited, control falls through to the same single `fetch_sub` —
+    **exactly once**. There is only one `fetch_sub` call site in the task, so
+    double-decrement is structurally impossible. ✓
+  - **Dead-letter survives a DB outage?** **Yes.** `report_panic` →
+    `report_with_retry` (executor.rs:971) retries the HTTP `report_result` 3×
+    (1s, 2s backoff, L1003), then on exhaustion writes a `DeadLetterEntry`
+    JSON file to `config.dead_letter_dir` via `fs::write` (L1046). A DB
+    outage manifests as the app server's `/report` returning 5xx → retries
+    exhaust → **local filesystem** dead-letter. The dead-letter fails only on
+    a *filesystem* fault (disk full / EIO / perms), logged "Result is lost"
+    (L1035/1043/1052). The DB layer is not on this path. ✓
+  - **Outer task still drops `_permit`?** **Yes.** `_permit` (main.rs:562) is
+    the first binding in the `async move` block; a `Semaphore::OwnedSemaphorePermit`
+    releases on `Drop`. On Ok, caught panic, double-panic (unwind), or task
+    cancellation, the permit is dropped → semaphore slot released. ✓
+- **Residual A1 (LOW / HIGH confidence / likely):** `report_panic` is NOT
+  wrapped in `catch_unwind`. If it itself panics (a "double panic"), the
+  unwind skips `fetch_sub` (main.rs:589) → `active_tasks` drifts up by 1 per
+  occurrence. Narrow: `report_panic` is a thin wrapper over `report_with_retry`
+  (network + fs I/O, no `.unwrap()`), and `format!("executor panicked: {msg}")`
+  on a `String` cannot panic. The drift is also self-bounded because the task's
+  `JoinHandle.await` surfaces the JoinError at shutdown (main.rs:633-634) and
+  the semaphore slot still releases via `_permit` drop. Cosmetic capacity
+  over-report to the heartbeat only.
+- **Residual A2 (LOW / HIGH confidence / confirmed):** `active_tasks` is a
+  manual `fetch_add`/`fetch_sub`, NOT RAII like `_permit`. On any future task
+  `abort()` or cancel-mid-await, `fetch_sub` is skipped while `_permit` still
+  releases → the two capacity views diverge (`active_tasks` over-counts,
+  reported to the server as `available = concurrency.saturating_sub(active)`
+  at main.rs:364-365, heartbeated at L369). **No `abort()` exists for executor
+  tasks today** (task_handles are awaited gracefully at L632, never aborted;
+  only `runner_handle` is aborted at L651), so this is a footgun for future
+  maintainers, not a current drift. Fix (cheap, future-proof): replace the
+  manual counter with a `struct ActiveTaskGuard(AtomicUsize)` that increments
+  on creation and decrements on `Drop`, mirroring the permit — then every path
+  including cancel is correct by construction.
+- **Idempotency check (no double-report):** `executor::execute` reports
+  exactly once — every `report_error`/`report_result` site is followed by
+  `return` (executor.rs:314, 359, …; final `report_result` is last). A panic
+  therefore always occurs *before* any report, so `report_panic` cannot
+  produce a second verdict for a submission that already received one. ✓
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
 
-### R2 — A10 cleanup timeouts + orphan sweep only reaps `status=exited` → timed-out kills leak running containers (HIGH / confidence HIGH / REGRESSION)
-- Fix commits: `68dc2ad0` (timeouts) · Files: `judge-worker-rs/src/docker.rs:242-276`
-  (kill/rm), `docker.rs:642-681` (orphan sweep), `judge-worker-rs/src/main.rs:492`
-- The mission asked: *"timeout wrapper: does it leak the container if the
-  timeout fires? does the orphan sweep reap it?"*
-- The timeout wrappers themselves are correct (`inspect_container_state` L173,
-  `kill_container` L243, `remove_container` L261 each wrap `Command::output()`
-  in `tokio::time::timeout(Duration::from_secs(10))`). The regression is in the
-  interaction with the orphan sweep: `cleanup_orphaned_containers` (L642-681)
-  runs `docker ps -a --filter name=oj- --filter status=exited` (L647-651) —
-  **it filters `status=exited` exclusively.** A container that is still
+### B — `runner.rs` chown + 0o700: CONFIRMED mirrors executor; same shared chmod-after-chown EPERM limitation (LOW, not a new regression)
+- Commit `527a9d60` · File: `judge-worker-rs/src/runner.rs:837-881`
+- Mission questions, answered:
+  - **TOCTOU between chown and chmod?** `tempfile::TempDir` creates the dir at
+    `0o700` (Unix default). `chown` does not change mode, so between `chown`
+    (L837) and `set_permissions(0o700)` (L849) the mode is `0o700` throughout
+    — **no world-writable window** exists. The post-chown owner is 65534; only
+    65534/root (i.e. the sandbox) can access, which is the intent. ✓
+  - **Failure mode if 65534 (nobody) doesn't exist in the container?**
+    **Non-issue.** `chown` and file-access checks operate on the **numeric
+    uid**, not `/etc/passwd`. The container runs `--user 65534:65534`
+    (numeric); the kernel matches uid, not a name. No name lookup is involved
+    in the access path. ✓
+  - **chown succeeds but chmod fails — does the 0o777/0o666 fallback let the
+    container run?** **No fallback for this case, by design — and executor.rs
+    behaves identically.** The fallback mode (`0o777`/`0o666`) is selected
+    only when `chown` *fails* (`chown_ok`/`source_chown_ok` false). If chown
+    *succeeds* the selected mode is `0o700`/`0o600`, and a subsequent
+    `set_permissions` failure returns via `?` (runner.rs:854,881) →
+    `execute_run` returns `Err(String)` → the `/run` HTTP handler surfaces an
+    error (no container spawned). executor.rs (executor.rs:343-360) is the
+    same shape: chmod failure → `report_error` (runtime_error verdict) +
+    `return`. The narrow trigger — a non-root worker with **CAP_CHOWN but not
+    CAP_FOWNER**, so `chown` to 65534 succeeds and the now-non-owner `chmod`
+    EPERMs — is a **pre-existing shared limitation** of both files; runner.rs
+    now mirrors executor.rs rather than introducing a new divergence.
+    Common deployments (root worker; or no-caps dev worker where chown fails →
+    `0o777` fallback) are unaffected.
+- **Status: REGRESSION-CHECK PASSED (consistent with executor).** Verdict:
+  **confirmed**. The chmod-after-chown EPERM edge is restated as N3 (LOW),
+  not a regression.
+
+### C — recruiting metadata tx + FOR UPDATE: CONFIRMED — no deadlock, no lock upgrade, no serialization_failure at default isolation
+- Commit `ec48f84c` · File: `src/lib/assignments/recruiting-invitations.ts:386-448`
+- Mission questions, answered:
+  - **Deadlock with the atomic `jsonb_set` path?** **No.** Both the new tx
+    (`SELECT … FOR UPDATE` + `UPDATE`, L395-447) and the atomic counter
+    (`incrementFailedRedeemAttempt`, a single `UPDATE … WHERE id`) lock exactly
+    **one row** — the invitation row by `id`. A deadlock requires a circular
+    wait across ≥2 resources; with a single-row lock on both paths there is no
+    cycle. The tx locks the row at the `FOR UPDATE` read and holds it through
+    its own `UPDATE`; the atomic path locks it at its single `UPDATE`. They
+    purely serialize. ✓
+  - **Lock upgrade?** **No.** `SELECT … FOR UPDATE` already acquires the
+    strongest row-level lock (row-exclusive). The subsequent `UPDATE` on the
+    same row needs no upgrade — it re-acquires the same lock class on a row it
+    already holds. No lock-upgrade deadlock surface. ✓
+  - **Behavior under `serialization_failure`?** **Non-issue at deployed
+    isolation.** A repo-wide grep for `isolation|serializable|isolationLevel`
+    over `src/lib/db*` and `src/lib/db/` returned **zero hits** — drizzle
+    therefore runs the transaction at PostgreSQL's default **READ COMMITTED**,
+    under which `FOR UPDATE` does not raise `serialization_failure`. (Under a
+    future SERIALIZABLE flip, the tx would need retry-on-40001; not present
+    today.)
+- **Drizzle SQL-order sanity:** the chain `.where(eq(id)).for("update").limit(1)`
+    (L394-396) is reordered by drizzle's builder to emit `FOR UPDATE` *after*
+    `LIMIT` (valid PostgreSQL: `SELECT … LIMIT 1 FOR UPDATE`). No syntax-error
+    risk. ✓
+- **Semantic-preservation check:** when both `metadata` and `status` are set,
+    the status update now runs inside the tx with `WHERE status='pending'`
+    (L420-428) and throws `invitationCannotBeRevoked` (rowCount 0) → tx
+    rollback, which also rolls back the metadata merge. The legacy single-row
+    `UPDATE` had the same atomic semantics; behavior is preserved *plus* the
+    row lock. The non-metadata `status`-only path keeps the legacy plain
+    `UPDATE` (L441-453) — correct, since no read-modify-write needs
+    serialization there. ✓
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
+
+### D — settings PUT password reconfirm: CONFIRMED — throw path is a clean pre-mutation 500, no partial update
+- Commit `50af8196` · File: `src/app/api/v1/admin/settings/route.ts:85-112`
+  (gate), `src/lib/security/password-hash.ts:63-83`
+- Mission questions, answered:
+  - **Error path when `verifyAndRehashPassword` throws (not returns false)?**
+    The gate (L97-110) runs **before any settings mutation** — after
+    destructuring `body` (L78-82) and *before* `hasNewKeys` (L112) and the
+    `db.update(systemSettings)` write. So a throw from `verifyAndRehashPassword`
+    propagates to `createApiHandler`'s outer try/catch → **clean 500, no
+    settings row touched**. `verifyAndRehashPassword` itself wraps its only
+    side-effect (the rehash write) in try/catch (password-hash.ts:70-80) and
+    returns `{ valid }` — it does not throw on a rehash failure, only
+    potentially on a malformed `storedHash` inside `verifyPassword`. Either
+    way the gate is pre-mutation → no partial state. ✓
+  - **Partial-update rollback?** The settings write is a single
+    `db.update(systemSettings).set(...)` (one row, atomic). The only
+    preceding mutation is the optional rehash-on-valid (`users` row), an
+    intended transparent side-effect shared with restore/backup/migrate — if
+    the subsequent settings `UPDATE` fails, the rehash remains applied
+    (benign; re-hash-on-success pattern). No multi-row non-atomic mutation was
+    introduced. ✓
+- **Coverage check:** `SENSITIVE_SETTINGS_KEYS` (L24-44) covers the
+  privilege-affecting surface (`platformMode`, `allowedHosts`,
+  `publicSignupEnabled`, `emailVerificationRequired`, hCaptcha keys, SMTP
+  pass, all rate-limit ceilings, `sessionMaxAgeSeconds`). A `touchesSensitiveKey`
+  body scan (L92-94) triggers the gate whenever any is `!== undefined`, so
+  omitting `currentPassword` → 401 `passwordReconfirmRequired` (L96-98);
+  missing hash → 403 `authenticationFailed` (L103-105); wrong password → 403
+  `invalidPassword` (L107-109). Cosmetic keys (`siteTitle` etc.) remain
+  editable without reconfirm. ✓
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
+
+### E — SSE re-auth re-runs `canAccessSubmission`: CONFIRMED — deleted-row and throw both close cleanly; projection is exact
+- Commit `96105df5` · File: `src/app/api/v1/submissions/[id]/events/route.ts:471-487`
+- Mission questions, answered:
+  - **Submission row deleted mid-stream?** The re-fetch
+    `db.query.submissions.findFirst({ where: eq(id), columns:{userId,assignmentId} })`
+    (L475-478) returns `undefined` → `!refreshedReader` short-circuits to
+    `close()` (L479-482). Stream closes cleanly, no exception. ✓
+  - **`canAccessSubmission` throws?** The re-fetch + `canAccessSubmission`
+    call (L475-479) is inside the IIFE's `try { … } catch { close() }`
+    (L465-487), and the whole IIFE is terminated by `.catch(err => { logger.error; close() })`
+    (L504-513). A throw from either `findFirst` or `canAccessSubmission` →
+    `close()`. No unhandled rejection reaches the runtime. ✓
+  - **Projection sufficiency (the subtle one):** `canAccessSubmission`
+    (`src/lib/auth/permissions.ts:292-320`) declares
+    `submission: { userId: string; assignmentId: string | null }` and reads
+    **only** `submission.userId` (L307) and `submission.assignmentId` (L319).
+    The re-auth projects exactly `{ userId: true, assignmentId: true }`
+    (L477) — **no field is missing**, so the re-authorization decision is
+    identical to the stream-open gate (which passes the full row but only
+    consumes these two fields). No false-allow/false-deny from a partial
+    shape. ✓
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**. (The cycle-3
+  N4 interleave note — duplicate `event: result` under a precise tick race —
+  is still bounded by the `closed` guard + `.catch(close)` wrappers; not a
+  crash/leak. Unchanged, not restated.)
+
+---
+
+## (b) R1..R4 — status at head (`edd45cc5`)
+
+All four residuals **REPRODUCES / still open**. None were modified by any
+cycle-3 commit (verified by reading current head; the cycle-3 LOW batch
+`6ec17d6e` touched only AGG-17 clamp-warn, freezeLeaderboardAt, the
+accepted-solutions count filter, and PB-1 test rename). Severities unchanged
+from cycle 3 — not inflated, not dropped.
+
+### R1 — STILL OPEN (LOW / accepted fallback, HIGH confidence / confirmed)
+- `src/lib/compiler/execute.ts:748-757`. The chown-failure `catch` still sets
+  `chmod(workspaceDir, 0o777)` + `chmod(sourcePath, 0o666)` (L755-756). This
+  is the **intentional mirror** of the Rust fallback
+  (`executor.rs:342` `target_mode = if chown_ok { 0o700 } else { 0o777 }`) —
+  on a host without `CAP_CHOWN` there is no other way to grant uid-65534
+  write access. **DBG-4 remains accepted-by-design, documented.**
+- **Partial-chown sub-case still present (LOW/MED):** if
+  `chown(workspaceDir)` (L740) succeeds but `chown(sourcePath)` (L741)
+  throws, the `catch` runs `chmod(workspaceDir, 0o777)` on a dir now owned by
+  65534. On a non-root worker with CAP_CHOWN but not CAP_FOWNER this inner
+  `chmod` throws EPERM, is **not** wrapped, and propagates to the outer
+  `finally` (L841) — the compile attempt throws a raw EPERM. Runs-as-root
+  deployments unaffected. Same shared limitation class as B/N3.
+
+### R2 — STILL OPEN (HIGH / HIGH confidence / confirmed)
+- `judge-worker-rs/src/docker.rs:642-681`. `cleanup_orphaned_containers` runs
+  `docker ps -a --filter name=oj- --filter status=exited -q` (L647-651) — it
+  filters `status=exited` **exclusively**. A container that is still
   `running` after `kill_container`/`remove_container` timed out is invisible
-  to this sweep and is never reaped.
-- Failure scenario (step-by-step):
-  1. A submission times out (or the run completes) and control enters the
-     error arm (`docker.rs:518-521`) or timeout arm (`523-540`).
-  2. `kill_container` is invoked. The Docker daemon is momentarily wedged
-     (e.g. dockerd under memory pressure, `docker kill` blocked on an
-     unresponsive graphdriver). The 10s timeout fires; `kill_container`
-     logs "docker kill timed out; orphan sweep will reap" (L255) and returns.
-  3. `remove_container` (`docker rm -f`) is invoked next; if the daemon is
-     still wedged it also times out (L270-274) and returns without removing.
-  4. The container is still `running`. The orphan sweep on the next tick
-     filters `status=exited` only → the container is not listed → not reaped.
-  5. Repeat per wedged submission. The worker accumulates `oj-*` containers
-     until dockerd recovers or an operator intervenes, consuming memory/pids
-     quotas and eventually starving new runs.
-- The misleading part: the timeout warning explicitly says *"orphan sweep
-  will reap"* (L255, L273), but the sweep's filter contradicts that promise.
-- Contrast: the **TS**-side `cleanupOrphanedContainers`
-  (`src/lib/compiler/execute.ts:856-943`) does NOT have this gap — it queries
-  `docker ps -a` without a status filter and explicitly reaps stale `Up`
-  containers older than `MAX_CONTAINER_AGE_MS` (L897-928) via `docker rm -f`.
-  But that function keys on the `compiler-` name prefix (L865) and only runs
-  for the local compiler fallback; it does not touch `oj-*` judge containers,
-  which are exclusively the Rust worker's responsibility.
-- Fix (minimal): in `cleanup_orphaned_containers`, drop the `status=exited`
-  filter and add a stale-`running` branch mirroring the TS logic — for any
-  `oj-*` container whose `StartedAt` exceeds a sane bound (e.g.
-  `MAX_TIME_LIMIT_MS + compile budget + generous slack`, or a flat
-  `DOCKER_LEAK_REAP_MS`), emit `docker rm -f`. Exited/created/dead containers
-  continue to be reaped unconditionally.
+  to this sweep and is never reaped. The timeout warnings at `docker.rs:255`
+  and `docker.rs:273` say *"orphan sweep will reap"* — a **false promise**
+  given the filter.
+- Failure scenario unchanged from cycle 3: wedged dockerd → `kill`/`rm` time
+  out (10s) and return → container stays `running` → sweep filters it out →
+  leaks indefinitely, accumulating `oj-*` until memory/pid starvation.
+- Fix (minimal): drop the `status=exited` filter and add a stale-`running`
+  branch mirroring the TS reaper (`execute.ts:897-928`) — `docker rm -f` any
+  `oj-*` whose `StartedAt` exceeds `MAX_TIME_LIMIT_MS + compile budget + slack`.
 
-### R3 — `inspect_container_state` timeout masks OOM verdict (LOW→MED / confidence HIGH / REGRESSION)
-- File: `judge-worker-rs/src/docker.rs:172-199`
-- When the inspect timeout fires, the function returns a default
-  `ContainerInspect { oom_killed: false, duration_ms: None, memory_peak_kb: None }`
-  (L193-198). The caller in the success arm (L504-516) and timeout arm
-  (L527-538) then reports `oom_killed: false` to the verdict logic.
-- Failure scenario: a submission that legitimately OOM-killed inside its time
-  budget, whose post-run `docker inspect` then stalls past 10s (wedged
-  dockerd), is reported as a clean non-OOM exit with no memory peak. The
-  student sees a misleading verdict (e.g. a generic runtime_error or a
-  zero-exit "accepted" derived from the wrong state) instead of `oom_killed`.
-  Duration also falls back to wall-clock (`state.duration_ms.unwrap_or(wall)`,
-  L514/537) which is still correct, so only the OOM signal is lost.
-- Severity is bounded: the inspect timeout only fires under a wedged daemon,
-  which is itself the larger R2 problem. But it silently degrades verdict
-  accuracy at exactly the moment an operator is most likely to be debugging.
-- Fix (minimal): when the inspect timeout fires, emit a distinct
-  `tracing::warn!` that says "OOM/peak status unknown due to inspect timeout"
-  and have the caller treat `oom_killed` as `None` (unknown) rather than
-  `false`, so the verdict path can choose a conservative label instead of
-  asserting not-OOM. (Requires widening `ContainerInspect.oom_killed` to
-  `Option<bool>`; if that ripple is too large, the logging-only mitigation
-  still helps operators.)
+### R3 — STILL OPEN (LOW→MED / HIGH confidence / confirmed)
+- `judge-worker-rs/src/docker.rs:187-198`. On inspect timeout the function
+  returns `ContainerInspect { oom_killed: false, duration_ms: None, memory_peak_kb: None }`
+  (L193-197). The success-arm (L504-516) and timeout-arm (L527-538) callers
+  then report `oom_killed: false`, masking a genuine OOM whose post-run
+  `docker inspect` stalled past 10s. Duration falls back to wall-clock
+  (`unwrap_or(wall)`) which is still correct; only the OOM signal is lost.
+- Fix (minimal): emit a distinct `warn!` ("oom/peak unknown: inspect
+  timeout") and treat `oom_killed` as unknown (`Option<bool>`) so the verdict
+  can pick a conservative label instead of asserting not-OOM.
 
-### R4 — `tokio::process::Command` timeouts do not set `kill_on_drop` → orphaned `docker` CLI subprocesses (LOW / confidence HIGH / NET-NEW, exposed by A10)
-- Files: `judge-worker-rs/src/docker.rs:173-199, 243-258, 261-276`
-- `tokio::process::Command::output()` spawns a child. When
-  `tokio::time::timeout` returns `Err(_elapsed)`, the `output()` future is
-  dropped. tokio does **not** kill the child on drop unless `kill_on_drop(true)`
-  is set, and none of the three cleanup sites set it. The orphaned `docker
-  inspect/kill/rm` CLI process keeps running.
-- In practice these CLI commands are short-lived and self-terminate once
-  dockerd responds, so this is a transient process leak, not a permanent one.
-  It matters only under the same wedged-dockerd condition as R2, where the
-  orphaned CLI processes queue up against the unresponsive daemon.
-- Fix (minimal): chain `.kill_on_drop(true)` on each cleanup `Command` so the
-  CLI child is reaped when the timeout fires. Combined with R2's reap-stale-
-  running fix, the cleanup path becomes leak-free.
-
-### A1 / A7 / A10 / A11 — confirmed correct on the named edge cases
-- **A1 import.ts skip-truncate** (`51af8537`, `src/lib/db/import.ts:142-161`)
-  answers the mission's rowCount=0-vs-absent question correctly: the truncate
-  loop (L143-161) keys on `!data.tables[tableName]` (absent → skip+preserve +
-  pushed to `skippedTables`), while the import loop (L165-170) treats
-  `rowCount === 0` as "truncate happened, nothing to insert". So a present
-  empty table is emptied; an absent table is preserved. **Confirmed correct.**
-  See N2 for the one residual (partial-export FK hazard).
-- **A7 durable restore+migrate audit** (`a336de90`,
-  `restore/route.ts:183-221`, `migrate/import/route.ts:123-133,233-243`) —
-  confirmed: both routes `await recordAuditEventDurable(...)`, the restore
-  success audit fires AFTER `restoreParsedBackupFiles` (L209), and a
-  file-restore failure emits a separate `database_restore_files_failed`
-  durable audit (L183-196) BEFORE returning 500. R1/R2/F2 from cycle 2 are
-  **CLOSED**.
-- **A11 code-similarity cap** (`d5b20d3d`, `code-similarity-rs/src/main.rs:29-35,
-  96-104, 251-261`) — no off-by-one. `exceeds_submission_cap(count)` is
-  `count > MAX_SUBMISSIONS` (500), so exactly 500 is allowed and 501 is
-  rejected; the boundary test (L251-261) pins both edges plus the 5000-row DoS
-  case. **Confirmed correct.** See N1 for the unrelated deserialization-order
-  residual.
-- **A8 X-Real-IP revert** (`23851d69`) — the revert restored the head behavior
-  where `x-real-ip` is consulted whenever XFF is absent, independent of
-  `TRUSTED_PROXY_HOPS` (`src/lib/security/ip.ts:113-117`). This is the
-  documented C2-H7 deferral; restated in N3, not a new regression.
-
-### A3 / A4 / A5 / A6 / A12 / A13 / A14 / A15 — re-confirmed clean (no new failure mode)
-Spot-checked against the cycle-2 diff and current head:
-- A3 snapshot-null abort (`3ed15bd6`): both restore (`route.ts:156-161`) and
-  migrate-import multipart (`108-107`) + JSON-body (`215-220`) branches abort
-  with `preRestoreSnapshotFailed` 500 unless `ALLOW_UNSNAPSHOTTED_RESTORE=1`.
-- A4 language `dockerImage` allowlist, A5 accessCode projection, A6/A12
-  community `PROBLEM_LINKED_SCOPES`, A13 edit-page strict gate: unchanged and
-  sound at head.
+### R4 — STILL OPEN (LOW / HIGH confidence / confirmed)
+- `judge-worker-rs/src/docker.rs:175` (inspect), `:245` (kill), `:263` (rm).
+  None of the three cleanup `tokio::process::Command`s chain
+  `.kill_on_drop(true)`. On `tokio::time::timeout` `Err`, the `output()`
+  future is dropped and tokio does **not** kill the child without
+  `kill_on_drop` — the orphaned `docker inspect/kill/rm` CLI keeps queuing
+  against the unresponsive daemon. Transient (CLI self-terminates once dockerd
+  recovers), but compounds R2/N1 under a wedge.
+- Fix (minimal): `.kill_on_drop(true)` on each cleanup `Command`. Combined
+  with the N1 timeout and the R2 reap-stale-running branch, the cleanup path
+  becomes leak-free.
 
 ---
 
-## FAILURE-MODE ANALYSIS
+## (c) NET-NEW latent bugs
 
-### Restore / import pipeline
-
-#### F1 — `restoreParsedBackupFiles` writes uploads non-atomically; partial writes persist after DB commit (MEDIUM / confidence HIGH / REPRODUCES)
-- File: `src/lib/db/export-with-files.ts:351-360`
-  ```ts
-  for (const upload of uploads) {
-    await writeUploadedFile(upload.storedName, upload.buffer);
+### N1 — periodic orphan sweep has NO timeout on `docker ps`/`docker rm`; awaited inline in the main loop → wedged dockerd freezes the worker (MEDIUM / HIGH confidence / confirmed)
+- Files: `judge-worker-rs/src/docker.rs:642-681` (sweep body),
+  `judge-worker-rs/src/main.rs:505-508` (call site)
+- The cycle-3 R2/R4 hardening wrapped the **per-submission** `inspect` /
+  `kill` / `rm` in `tokio::time::timeout(10s)` (docker.rs:173, 243, 261) —
+  but the **periodic** `cleanup_orphaned_containers` sweep was left
+  un-guarded. Its `docker ps -a …` (docker.rs:643-654) and the batched
+  `docker rm` (docker.rs:665-668) are bare `Command::new("docker").output().await`
+  with **no timeout wrapper**.
+- Critically, the sweep is awaited **inline in the main loop**:
+  ```
+  if last_cleanup_at.elapsed() >= cleanup_interval {   // 300s
+      docker::cleanup_orphaned_containers().await;     // main.rs:506 — blocks here
+      last_cleanup_at = …;
   }
   ```
-- Sequential direct writes to the uploads dir, no staging, no per-file atomic
-  rename, no cleanup-on-failure. If write #3 of 10 throws (disk full /
-  permission / EIO), writes #1-2 are persisted to disk while #4-10 are absent,
-  and the function rejects.
-- This runs AFTER `importDatabase` already committed (restore route L163 →
-  L180), so the system is left split-state: the restored DB references uploads
-  that are partly missing. The cycle-2 A7 fix correctly records a durable
-  `database_restore_files_failed` audit and surfaces `preRestoreSnapshotPath`,
-  so the operator now has a trail — but the atomicity gap itself is unchanged.
-- This is the prior F1 / Phase B AGG-1; **re-confirmed reproduces at head**.
-- Fix (minimal, aligned with AGG-1 staging design): write each upload to a
-  staging path (`uploads/.staging/<restoreId>/<storedName>`), then `rename`
-  into place only after all writes succeed; on any failure, `rm -rf` the
-  staging dir and reject before any upload is visibly committed.
+  The shutdown `tokio::select!`s (permit acquire main.rs:512, poll
+  main.rs:529) are **below** this point and are never reached while the sweep
+  is pending. So when the 300s tick fires against a wedged dockerd:
+  1. `docker ps -a …` blocks indefinitely (no timeout, dockerd unresponsive).
+  2. The main loop stalls at main.rs:506 — no new polls, **no shutdown
+     response** (SIGTERM/SIGINT select is unreachable).
+  3. The heartbeat task (separate `tokio::spawn`, main.rs:353) keeps beating,
+     so the server still considers the worker alive — but it processes zero
+     submissions and cannot be drained gracefully. Operators must SIGKILL,
+     which leaves in-flight claims stuck until `staleClaimTimeoutMs`.
+- This is the **symmetric gap** to R2/R4: per-call cleanup is hardened,
+  periodic cleanup is not, and the periodic one runs on the hot loop. It is
+  the single highest-ROI worker-latent item this cycle.
+- Fix (minimal): wrap both Commands in `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS))`
+  (reuse the existing constant), chain `.kill_on_drop(true)` (also closes R4
+  for these two sites), and ideally move the sweep into its own
+  `tokio::spawn` (or wrap the call in `tokio::select!` with `&mut shutdown`)
+  so a hung sweep cannot block polling or shutdown. Verdict: **confirmed**.
 
-#### N2 — partial-export FK hazard when a parent is preserved but its child is replaced (LOW / confidence HIGH / NET-NEW, exposed by A1)
-- File: `src/lib/db/import.ts:142-233`
-- A1 made "table absent from export → preserve live rows" the behavior. The
-  failure mode this opens: export omits parent table P (P preserved with live
-  rows) but carries child table C. The truncate loop removes C's live rows
-  (reverse FK order), then the import loop inserts export-C's rows (forward
-  order) which reference export-P's primary keys. If export-P's keys differ
-  from live-P's keys, the C inserts FK-violate at COMMIT and the whole
-  transaction rolls back atomically.
-- This is **safe** (no data corruption — the rollback restores the original
-  state) but operator-facing: a "partial" backup from an older schema/version
-  that drops a parent table while keeping its child will fail the restore with
-  a generic `restoreFailed` + FK error in the log, with no message naming the
-  skipped-tables-vs-FK root cause.
-- Reproduction: export a DB, delete `data.tables["<parent>"]` from the JSON,
-  keep a child table that FK-references it, attempt restore → FK violation at
-  commit, transaction rolls back, restore fails.
-- Fix (minimal): in `importDatabase`, when `skippedTables.length > 0`, emit a
-  pre-flight notice (or augment `result.errors` with a non-fatal warning) so
-  the operator sees "parent table X was absent while child Y was present — FK
-  integrity cannot be guaranteed". Severity LOW because the failure is clean
-  and atomic.
+### N2 — `active_tasks` is manual `fetch_sub`, not RAII; `report_panic` is outside `catch_unwind` (LOW / HIGH confidence / likely)
+- Files: `judge-worker-rs/src/main.rs:557, 579-589`
+- See residual A1/A2 in §A. The permit is RAII (releases on every path); the
+  `active_tasks` counter is not. On a double-panic (`report_panic` panics)
+  `fetch_sub` is skipped; on any future task `abort()`/cancel, `fetch_sub` is
+  skipped while the permit releases → `active_tasks` over-counts, heartbeated
+  as reduced `available` capacity (main.rs:364-365,369). No `abort()` exists
+  for executor tasks today, so drift is latent-only.
+- Fix (cheap, defensive): a `struct ActiveTaskGuard(&AtomicUsize)` that
+  increments on `new()` and decrements on `Drop`, held alongside `_permit` in
+  the task body — makes every path (Ok, panic, double-panic, cancel) correct
+  by construction. Verdict: **likely**.
 
-### Judge execution pipeline
-
-#### DBG-2 follow-up — cleanup timeouts landed (R2/R3/R4 above document the residuals)
-The headline hang (post-`wait` inspect/kill/rm without any timeout) is
-**CLOSED** by A10. The residuals are R2 (orphan sweep does not reap running
-leaks), R3 (inspect timeout masks OOM), R4 (no `kill_on_drop`). No NEW
-unbounded-await site was found in the run path: the sandbox `wait` is timeout-
-wrapped (`docker.rs:469`), stdout/stderr drain into a bounded `take()` +
-`tokio::io::sink()` (`docker.rs:433-465`), and the `run_docker_once` arms all
-resolve to one of the three cleanup calls. Temp-dir lifecycle is RAII-safe
-(`tempfile::TempDir` in `executor.rs:301`, dropped on function exit including
-`tokio::select!` cancellation).
-
-#### R5 — `effective_time_limit_ms` clamps problem `time_limit_ms` to `MAX_TIME_LIMIT_MS` silently (LOW / confidence HIGH / NET-NEW, restated)
-- File: `judge-worker-rs/src/executor.rs` (`effective_time_limit_ms =
-  MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()))`)
-- A problem row whose `timeLimitMs` exceeds `MAX_TIME_LIMIT_MS` (default
-  30_000) is silently clamped down; the student sees a TLE they cannot explain
-  because the authored limit was higher. This is the prior AGG-17 / FDR-2 item;
-  **still reproduces**, no clamp-warn/reject at authoring. Restated because it
-  is a genuine failure mode on the judge path, not just a config nit.
-
-### SSE submission pipeline
-
-#### F3 — SSE re-auth does NOT re-run `canAccessSubmission`; revoked group access keeps streaming (MEDIUM / confidence HIGH / REPRODUCES)
-- File: `src/app/api/v1/submissions/[id]/events/route.ts:459-501`
-- The re-auth IIFE (L461-501) re-checks only `getApiUser(request)` and
-  `reAuthUser.id !== viewerId` (L466-470). It does **not** re-run
-  `canAccessSubmission`. Initial access is enforced once at stream setup
-  (L334). Therefore: a user who is removed from a group (or whose assignment
-  access is revoked) mid-stream continues to receive `status` heartbeats and
-  the terminal `result` event for that submission until the 30s re-auth tick
-  deactivates their *session*, which is a different gate.
-- Failure scenario: enrolled student opens SSE on a group-owned submission;
-  instructor removes them from the group; for the remainder of the
-  `sseTimeoutMs` window (default 300s) the student keeps receiving status
-  updates and the final result payload (which carries `results`, `testCase`
-  metadata, etc. — sanitized, but still post-revocation data).
-- This is the prior NEW-M2 / AGG-28 Phase B item; **confirmed reproduces**.
-- Fix (minimal): in the IIFE, after the `getApiUser` re-check, re-fetch the
-  submission row and re-await `canAccessSubmission(submission, reAuthUser.id,
-  reAuthUser.role)`; on false, `close()`.
-
-#### N4 — `onPollResult` re-auth branch can interleave with a synchronous terminal send (LOW / confidence MED / NET-NEW)
-- File: `src/app/api/v1/submissions/[id]/events/route.ts:452-522`
-- `onPollResult` decides per-tick whether to take the async re-auth IIFE path
-  (L461, returns at L502) or the synchronous path (L505-521). Two ticks can
-  fire close together: tick A enters the IIFE (awaiting `getApiUser`), tick B
-  — under the 30s threshold — runs the synchronous path and calls
-  `void sendTerminalResult()` (L512). sendTerminalResult awaits
-  `queryFullSubmission`; meanwhile tick A's IIFE resolves and *also* calls
-  `sendTerminalResult` (L487). Both then race to enqueue.
-- This is bounded by the `closed` guard (L368-370, checked inside
-  `sendTerminalResult` at L408/L412) and the `.catch(close)` wrappers, so the
-  worst case is a duplicate `event: result` line on the wire (clients already
-  dedupe on terminal event) — not a crash or a leak. The unhandled-rejection
-  surface is fully covered (every async branch ends in `.catch(close)`).
-- Severity LOW; confidence MED (requires a precise tick interleave within the
-  30s re-auth window).
-
----
-
-## NET-NEW latent bugs
-
-### N1 — code-similarity cap is enforced AFTER full JSON deserialization; 16 MiB payload still parses before rejection (LOW / confidence HIGH / NET-NEW)
-- File: `code-similarity-rs/src/main.rs:88-104`
-- `Json<ComputeRequest>` (axum's body collector + serde) fully materializes
-  `req.submissions` into a `Vec` BEFORE the handler runs `exceeds_submission_cap`
-  (L96). The `DefaultBodyLimit::max(16 MiB)` (L221) bounds total RAM for a
-  single request, but a 16 MiB JSON of tiny submissions can carry tens of
-  thousands of rows — all parsed and held in memory — before the >500 check
-  returns 413. The O(n²) similarity loop is correctly prevented from running,
-  but the JSON-parse CPU/RAM spike per request is not bounded by the
-  submission cap.
-- Exploitability is gated behind the bearer token (which is now fail-closed
-  at startup, L203-217), so this is a post-auth DoS surface only. Realistic
-  severity LOW.
-- Fix (minimal): either lower `MAX_COMPUTE_BODY_BYTES` to the smallest size
-  that still fits 500 max-length submissions, or move the cap into a custom
-  serde deserializer / `Bytes` extractor that aborts deserialization once the
-  running submission count exceeds 500.
-
-### N3 — `X-Real-IP` trusted whenever XFF is absent, regardless of `TRUSTED_PROXY_HOPS` (HIGH spoofing surface / confidence HIGH / REPRODUCES — the reverted A8 / C2-H7)
-- File: `src/lib/security/ip.ts:113-117`
-- At head, when a request carries no `x-forwarded-for` but does carry
-  `x-real-ip`, `extractClientIp` trusts `x-real-ip` verbatim with no hop
-  validation (L114-116). A8 tried to gate this on `trustedHops > 0` and was
-  reverted (`23851d69`) because the deployed nginx sets `X-Real-IP
-  $remote_addr`, overwriting any client value, and the judge `/claim`
-  IP-allowlist (`isJudgeIpAllowed`) depends on it.
-- The exit criterion recorded in the cycle-2 plan (verify every production
-  nginx overwrites `X-Real-IP`) is the correct re-open condition. **It has
-  not been verified this cycle**, so the spoofing surface is restated as
-  still-open: any code path that forwards a client-controlled `X-Real-IP`
-  without overwriting it (a misconfigured proxy, a direct-to-app request
-  bypassing nginx, a future deployment without the `proxy_set_header` line)
-  lets a client pick the IP that `isJudgeIpAllowed`,
-  `consumeUserApiRateLimit`, and the audit trail all see.
-- Downstream null-IP behavior is correct and fail-closed: when no IP can be
-  determined in production (`extractClientIp` returns `null` at L128),
-  `isJudgeIpAllowed` denies when an allowlist is configured (`ip-allowlist.ts:171`),
-  and the `/claim` rate-limiter falls back to a hash of the Authorization
-  header (`claim/route.ts:157-161`). No path where a null IP silently allows.
-- Fix (re-open condition): keep the revert until the nginx-config audit is
-  done; if any target forwards `X-Real-IP` client-controlled, gate it behind
-  an explicit `TRUST_X_REAL_IP=1` flag rather than the unconditional trust.
-
-### N5 — `recordAuditEventDurable` "never throws" contract does not extend to the buildAuditRow input shape (LOW / confidence MED / NET-NEW)
-- File: `src/lib/audit/events.ts:275-296` (`recordAuditEventDurable`)
-- The durable helper is documented and implemented as never-throwing (the
-  insert is wrapped; on failure it pushes to the buffer). Good. However, the
-  `buildAuditRow(input)` call (L277) runs BEFORE the try block and can throw
-  on a malformed `input.details` (e.g. an object containing a non-serializable
-  value such as a `BigInt`, a `Date` in a nested field that the column mapper
-  does not expect, or a circular reference). A throw from `buildAuditRow`
-  propagates out of `recordAuditEventDurable` to the caller.
-- At the two current call sites (restore `route.ts:209`, migrate-import
-  `route.ts:123/233`), the call is inside the route's outer `try` and a throw
-  would land in the `catch` → 500 `restoreFailed`/`importFailed`. The audit
-  row is lost AND the operator gets a generic error instead of the
-  post-commit success response. Subtle, because the DB commit already
-  happened.
-- Fix (minimal): move `buildAuditRow(input)` inside the try block (or wrap
-  the whole body in try/catch with a logger.warn fallback) so the
-  "never throws" contract actually holds end-to-end.
-
-### N6 — `importDatabase` response `partial: result.tableResults` is always `{}` on failure, masking per-table diagnostics (LOW / confidence HIGH / NET-NEW, cosmetic)
-- Files: `src/lib/db/import.ts:236-247`; consumers `restore/route.ts:165-172`,
-  `migrate/import/route.ts:110-117,223-230`
-- On any in-transaction failure, the outer catch clears
-  `result.tableResults = {}` (L243) — correct, since nothing committed. But
-  the routes still surface it as `partial: result.tableResults` in the 500
-  body. The field name implies per-table progress; the value is always empty.
-  Operators debugging a failed restore see `partial: {}` and gain nothing.
-- Not a correctness bug. Fix (cosmetic): rename the response field to
-  `rolledBack: true` (or omit `partial` on failure) so the payload does not
-  imply partial commit.
+### N3 — `runner.rs` chmod-after-chown EPERM (shared with `executor.rs`); fallback only on chown-FAILURE, not chmod-FAILURE (LOW / HIGH confidence / confirmed)
+- Files: `judge-worker-rs/src/runner.rs:837-881, 874-881`;
+  `judge-worker-rs/src/executor.rs:331-360`
+- Detailed in §B. The `0o777`/`0o666` fallback is selected only when `chown`
+  fails. If `chown` succeeds (mode → `0o700`/`0o600`) and the subsequent
+  `set_permissions` EPERMs (non-root worker with CAP_CHOWN but not
+  CAP_FOWNER, having just chowned the file away from itself), `runner.rs`
+  returns `Err` via `?` (no container spawned) and `executor.rs` reports
+  `runtime_error` + returns. Neither falls back to broad mode on a chmod
+  failure. Common deployments unaffected; narrow config-only trigger. Not a
+  cycle-3 regression — runner now mirrors executor. Verdict: **confirmed**.
 
 ---
 
 ## FINAL SWEEP
 
-- **Rust panics on the cleanup path**: the `child.stdout.take().expect(...)`
-  sites (`docker.rs:434,451`) are safe (child is spawned with all three stdios
-  piped, L407-409). No new `.unwrap()`/`.expect()` introduced by A10 in
-  production code. The `parse_timestamp_epoch_ms` guards negative totals
-  (L140-142) and the docker-zero-time `0001-01-01…` returns `None`
-  (`tests:637-639`) — confirmed by the prior cycle, still correct.
-- **Integer casts**: A10 introduced no new casts; the timeout is a flat
-  `Duration::from_secs(10)` with no arithmetic. No overflow surface.
-- **Cancellation safety**: `tempfile::TempDir` (Rust) and `finally { rm }`
-  (TS compiler) both release on cancel/crash. The restore uploads path (F1)
-  remains the only non-atomic FS write under cancellation pressure.
-- **Unhandled rejections on the SSE path**: every async branch in
-  `onPollResult` terminates in `.catch(close)` or is itself wrapped; the IIFE
-  at L461-501 ends in `.catch((err) => { … close() })` (L492-501). No
-  unhandled-rejection surface found. (The interleaving in N4 is duplicate-send
-  only.)
-- **Audit durability surface**: the cycle-2 A7 work closed the restore and
-  migrate-import durability gap. The remaining ~107 non-awaited
-  `recordAuditEvent` sites (AGG-41) are still buffered; none of the new
-  cycle-2 code added to this set (the two new restore/migrate audits both use
-  the awaited durable helper). N5 is the one new note on the durable helper's
-  build-input edge.
-- **No CRITICAL data-loss regression** was found in the cycle-2 surface. The
-  A1 skip-truncate logic, A3 snapshot-null abort, A4 image allowlist, and A7
-  durable-audit fixes all behave correctly on their named edge cases. The
-  regressions found (R1, R2, R3, R4) are residuals and incompleteness in the
-  A9/A10 hardening, not new destructive paths.
+- **Rust panics on the recovery path:** `panic_payload_message`
+  (main.rs:21-29) handles `String`, `&'static str`, and falls back to
+  `"<non-string panic>"` for any other `Box<dyn Any + Send>` — it cannot
+  itself panic (no unwrap). The three unit tests (main.rs:658-693) pin all
+  three branches. The `child.stdout.take().expect(...)` sites (docker.rs:434,451)
+  remain safe (child spawned with all three stdios piped). No new
+  `.unwrap()`/`.expect()` in production code from the cycle-3 commits.
+- **Integer / shift arithmetic:** main-loop backoff
+  `1u64 << (consecutive_empty_polls-1).min(BACKOFF_SHIFT_LIMIT)` (main.rs:602)
+  is shift-capped at 5 and `saturating_mul` + `.min(MAX_BACKOFF_MS)` — no
+  overflow. rate-limiter-rs `2u64.pow(exp)` (main.rs:262) with
+  `exp = consecutive_blocks.min(MAX_CONSECUTIVE_BLOCKS_EXP)` (L261) → max ×16,
+  then `.min(MAX_BLOCK_MS)`; `block_ms * multiplier` is config-sourced
+  (seconds-level), well within u64 — consistent with the AGG-44 non-issue.
+- **Cancellation / FS safety:** `tempfile::TempDir` (executor.rs:301,
+  runner.rs:827) releases on every exit including `?` and unwind. The
+  recruiting tx rolls back on any throw inside the callback (incl.
+  `invitationCannotBeRevoked`). The restore uploads path (cycle-3 F1)
+  remains the only non-atomic FS write under cancellation pressure — not
+  touched this cycle, still deferred (AGG-1).
+- **Unhandled rejections on the SSE path:** every async branch in
+  `onPollResult` ends in `.catch(close)` (events/route.ts:504-513, 524-529);
+  the new re-auth re-fetch sits inside the existing `try/catch{close}`. No
+  unhandled-rejection surface introduced. (The server-side empty-catch grep
+  returned only client-side fire-and-forget UI actions — localStorage, theme,
+  lecture-mode, recruit signOut — all acceptable.)
+- **Signal handling / shutdown:** SIGTERM/SIGINT cancel the polling selects
+  (main.rs:512-526, 529-546). Graceful shutdown awaits in-flight tasks
+  (main.rs:632-636) with **no overall timeout** — bounded in practice because
+  every docker op is 10s-timeout-wrapped and `report_with_retry` is ≤~3s +
+  one fs write, but a tightly-serialized slow network can stretch shutdown by
+  ~3s × in-flight count. The one true shutdown hazard is N1 (a hung sweep
+  blocks the select from ever being reached). Heartbeat is independently
+  spawned (main.rs:353) and cancelled via `CancellationToken` (L621).
+- **No CRITICAL data-loss / capacity-wedge regression** was found in the
+  cycle-3 surface. The 5 fixes are correct on their named edge cases; the
+  worker-cleanup residuals (R2/R3/R4 + N1) are the incompleteness left by
+  the per-submission hardening, not new destructive paths.
 
 ---
 
 ## References (all paths absolute)
 
-- `/Users/hletrd/flash-shared/judgekit/src/lib/compiler/execute.ts:728-757` —
-  R1 chown/chmod fallback still 0o777/0o666 (A9 partial).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:242-276` —
-  R2/R4 timeout-wrapped kill/rm.
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:642-681` —
-  R2 orphan sweep filters `status=exited` only; running `oj-*` leaks unreaped.
-- `/Users/hletrd/flash-shared/judgekit/src/lib/compiler/execute.ts:856-943` —
-  TS-side stale-running reaper (prefix `compiler-` only; does not cover `oj-*`).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:172-199` —
-  R3 inspect timeout returns `oom_killed:false`, masking OOM.
-- `/Users/hletrd/flash-shared/judgekit/src/lib/db/export-with-files.ts:351-360`
-  — F1 non-atomic `restoreParsedBackupFiles` (REPRODUCES).
-- `/Users/hletrd/flash-shared/judgekit/src/lib/db/import.ts:142-233` — A1
-  confirmed correct; N2 partial-export FK hazard.
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/restore/route.ts:163-221`
-  — A7 confirmed (durable, post-file-restore, failure audit).
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/submissions/[id]/events/route.ts:459-522`
-  — F3 SSE re-auth skips `canAccessSubmission` (REPRODUCES); N4 interleave.
-- `/Users/hletrd/flash-shared/judgekit/src/lib/security/ip.ts:113-117` — N3
-  X-Real-IP unconditional trust (reverted A8 / C2-H7).
-- `/Users/hletrd/flash-shared/judgekit/code-similarity-rs/src/main.rs:88-104,221`
-  — A11 cap confirmed correct; N1 post-deserialize cap.
-- `/Users/hletrd/flash-shared/judgekit/src/lib/audit/events.ts:275-296` — N5
-  `buildAuditRow` outside try; "never throws" contract gap.
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs` — R5
-  silent `MAX_TIME_LIMIT_MS` clamp (AGG-17, REPRODUCES).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/main.rs:559-591` —
+  §A catch_unwind spawn body (active_tasks/permit/report_panic).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs:899-928`
+  — §A `report_panic`; `:971-1066` `report_with_retry` + dead-letter (DB-outage survival).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/runner.rs:837-881`
+  — §B/N3 runner chown+0o700 (chmod-after-chown EPERM shared with executor).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs:331-360`
+  — §B/N3 executor chown+0o700 (fatal-on-chmod-fail, same shape).
+- `/Users/hletrd/flash-shared/judgekit/src/lib/assignments/recruiting-invitations.ts:386-448`
+  — §C tx + FOR UPDATE (single-row lock, READ COMMITTED).
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/settings/route.ts:85-112`
+  — §D password-reconfirm gate (pre-mutation).
+- `/Users/hletrd/flash-shared/judgekit/src/lib/security/password-hash.ts:63-83`
+  — §D `verifyAndRehashPassword` (rehash in try/catch, returns `{valid}`).
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/submissions/[id]/events/route.ts:471-513`
+  — §E SSE re-auth re-fetch + `canAccessSubmission` (inside try, `.catch(close)`).
+- `/Users/hletrd/flash-shared/judgekit/src/lib/auth/permissions.ts:292-320`
+  — §E `canAccessSubmission` reads only `{userId, assignmentId}` (projection exact).
+- `/Users/hletrd/flash-shared/judgekit/src/lib/compiler/execute.ts:748-757` —
+  R1 chown-failure catch still 0o777/0o666 (accepted fallback).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:642-681`
+  — R2 orphan sweep `status=exited` filter; **N1** un-timeout'd `docker ps`/`rm`.
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/main.rs:505-508`
+  — **N1** sweep awaited inline in main loop (blocks shutdown select).
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:187-198`
+  — R3 inspect timeout returns `oom_killed:false`.
+- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:175,245,263`
+  — R4 no `kill_on_drop(true)` on cleanup Commands.

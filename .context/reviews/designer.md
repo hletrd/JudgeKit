@@ -1,524 +1,223 @@
-# Cycle 3 — designer
+# Cycle 4 — designer
 
-**Focus:** Re-verify cycle-2 Phase-B carry-forward (AGG-57..AGG-62, UI-1..UI-10), confirm REG-2 strict gate landed (commit `90bcfcff`), re-confirm AGG-56 invalidation, and run a fresh WCAG 2.2 / Korean-letter-spacing / dark-mode / perceived-perf sweep on head `207623f9`.
+**Focus:** Re-validate the cycle-3 Designer P1 batch (AGG-58..AGG-61, UI-1..UI-13) that was DEFERRED in cycle 3, regression-check the three cycle-3 UI-adjacent changes (freezeLeaderboardAt strip, accepted-solutions count, rankings ISR), and run a final net-new WCAG 2.2 / color-only-state / Korean-letter-spacing / form-validation sweep.
 **Date:** 2026-06-27
-**HEAD reviewed:** `207623f9`
-**Method:** Static analysis only. Diff `ad543e14..207623f9 -- 'src/**/*.tsx'` returns only two touched files (`community/threads/[id]/page.tsx`, `problems/[id]/edit/page.tsx`) — the latter is the REG-2 fix; no new UI surface was added between cycles. All findings cite exact file:line selectors. Computed-style evidence is derived from the `--background`/`--foreground`/`--border` oklch tokens defined in `globals.css:55-100`. Dev-server browser pass was not feasible this cycle; the surface is unchanged since cycle 2, so static analysis is sufficient.
-**Framework detected:** Next.js 16.2.9 + React 19.2 + Tailwind 4 + shadcn-style (Base UI `@base-ui/react@1.4.1`) + next-intl 4.9 + next-themes 0.4.
+**HEAD reviewed:** `edd45cca`
+**Method:** Static analysis only. `git diff 207623f9..edd45cca --name-only -- 'src/**/*.tsx' 'src/**/*.css'` returns **ZERO** `.tsx`/`.css` files changed between cycle 3 and cycle 4 — every touched file is an API route (`.ts`) or lib. The JSX/CSS surface is byte-identical to cycle 3, so every cycle-3 designer finding is re-confirmed by re-reading the same selectors (not by assumption). Dev-server browser pass not feasible; evidence is selectors + classes + computed token math.
+**Framework (unchanged):** Next.js 16.2.9 + React 19.2 + Tailwind 4 + shadcn/Base UI `@base-ui/react@1.4.1` + next-intl 4.9 + next-themes 0.4.
 
 ---
 
-## REGRESSION
+## TL;DR (cycle 4 verdict)
 
-### REG-1 (—, HIGH confidence) — No UI files changed between cycle 2 and head `207623f9`
-
-**Evidence:** `git diff ad543e14..207623f9 --name-only -- 'src/**/*.tsx' 'src/**/*.css'`:
-- `src/app/(public)/community/threads/[id]/page.tsx` — 6-line tweak, no semantic UI change.
-- `src/app/(public)/problems/[id]/edit/page.tsx` — the REG-2 fix itself (see REG-2 below).
-
-No new components, no new globals.css edits, no new messages. Cycle-2 designer surface is intact.
-
-**Criterion:** Cycle-over-cycle regression risk = 0.
-
-### REG-2 (FIXED ✓, HIGH confidence) — Edit page now routes through strict `canManageProblem`
-
-**File:** `src/app/(public)/problems/[id]/edit/page.tsx:33-37`
-
-```ts
-// Route the edit-page gate through the same strict, group-scoped
-// canManageProblem used by the PATCH/DELETE APIs (A11). … (designer cycle-2 REG-2).
-const canEdit = await canManageProblem(problem.id, session.user.id, session.user.role);
-const canOverrideTestCases = caps.has("problems.delete");
-if (!canEdit) {
-  redirect(`/problems/${problem.id}`);
-}
-```
-
-`canManageProblem` (`src/lib/auth/permissions.ts:186-218`) is the group-scoped gate (passes only for org-wide admins via `groups.view_all`, the author, or a user who teaches a group linked via `problemGroupAccess`). The page only feeds `initialProblem.referenceSolution` (line 110) and the full `testCases` array (line 103) into `<CreateProblemForm>` *after* `canEdit` passes. The cycle-2 read-leak (out-of-group `problems.edit` holder could see hidden test cases + reference solution via the edit page even though the API refused the save) is closed. A regression test exists at `tests/unit/api/problem-edit-page-strict-gate.test.ts`.
-
-**Criterion:** Page-level auth now matches API-level auth (A11). No designer action required.
-
-**Fix:** None — close this item.
+- **Regression:** NONE. Zero UI files changed; the 3 UI-adjacent changes are all API-level and verified non-breaking for the rendered components (see REG-3..REG-5).
+- **Deferred Designer P1 batch:** ALL STILL PRESENT VERBATIM. None of AGG-58..AGG-61 or UI-1..UI-13 were addressed this cycle. The remediation plan (`plan/cycle-3-2026-06-27-review-remediation.md` Phase B) explicitly carries the whole batch forward. They are re-confirmed below with fresh line numbers — do not re-litigate; pick them up.
+- **Net-new:** Minimal (surface frozen). One quantified item — UI-14: 14 inline error `<p className="text-destructive">` without `role="alert"` (cycle 3 estimated "~14"; cycle 4 enumerates the exact set). Everything else I probed (icon-only buttons, color-only state, Korean letter-spacing) came back clean.
+- **Convergence:** Not inflating. Real, fixable P1 set is unchanged from cycle 3 (4 items + 3 one-liner CSS defects). The cheap batch fixes are unchanged and still ship-in-an-afternoon.
 
 ---
 
-## PHASE-B RE-CONFIRMATION (against head `207623f9`)
+## REGRESSION (cycle 3 → cycle 4)
 
-### AGG-56 — `--muted-foreground` contrast — INVALIDATED (carried forward), MEDIUM confidence
+### REG-3 (—, HIGH confidence) — No `.tsx`/`.css` changed between cycle 3 (`207623f9`) and cycle 4 (`edd45cca`)
 
-**Recheck at `globals.css:64`:** `--muted-foreground: oklch(0.48 0 0)` on `--background: oklch(1 0 0)`. OKLab → linear-sRGB matrix for `l=m=s=0.48` gives linear 0.110592; contrast vs white = `(1.0 + 0.05) / (0.110592 + 0.05)` = **6.54 : 1** — passes WCAG AA 4.5:1 (normal text) and approaches AAA 7:1. Dark mode (`oklch(0.75 0 0)` on `oklch(0.145 0 0)`) ≈ **8.9 : 1**. Drop from queue.
+**Evidence:** `git diff 207623f9..edd45cca --name-only -- 'src/**/*.tsx' 'src/**/*.css'` → empty. Touched files are all API routes / lib / Cargo: `api/v1/admin/roles/[id]/route.ts`, `api/v1/admin/settings/route.ts`, `api/v1/community/threads/route.ts`, `api/v1/community/votes/route.ts`, `api/v1/contests/[assignmentId]/export/route.ts`, `api/v1/groups/[id]/assignments/route.ts`, `api/v1/groups/[id]/assignments/[assignmentId]/route.ts`, `api/v1/problems/[id]/accepted-solutions/route.ts`, `api/v1/submissions/[id]/events/route.ts`, `lib/assignments/recruiting-invitations.ts`, `lib/validators/system-settings.ts`. No component, no page, no globals.css edit.
+**Criterion:** Cycle-over-cycle UI regression risk = 0.
 
-### AGG-57 — `<Label>` without `htmlFor`/wrapping — CONFIRMED, P2, MEDIUM confidence
+### REG-4 (CLEAN ✓, HIGH confidence) — `freezeLeaderboardAt` strip does not break the non-manager assignment card / leaderboard
 
-**Scope unchanged from cycle 2.** Representative broken sites on head:
+**Change:** `api/v1/groups/[id]/assignments/[assignmentId]/route.ts:55-58` and `api/v1/groups/[id]/assignments/route.ts:82-85` now `delete … freezeLeaderboardAt` for non-managers (parallel to the existing `accessCode` strip).
+**Consumer audit (UI side):** Every JSX reader of `freezeLeaderboardAt` is inside `AssignmentFormDialog`, which renders only under `{canManageGroup && (...)}` in `groups/[id]/page.tsx:287-288,374,380`. Managers still receive the field; non-managers never open the dialog. The non-manager assignment `<TableRow>` (`groups/[id]/page.tsx:343+`) renders title/description/deadline/problems — none read `freezeLeaderboardAt`. The leaderboard itself honors the freeze server-side (it shapes which score rows are returned), not via the client field. All three readers guard with `?:`/`?? null` anyway (`assignment-form-dialog.tsx:134`, `groups/[id]/page.tsx:333`, `contests/manage/[assignmentId]/page.tsx:259`).
+**Criterion:** No null-deref, no broken render. No designer action.
 
-| File:line | Usage | Issue |
-|---|---|---|
-| `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:385` | `<Label>{t("communityVotingTitle")}</Label>` | Section heading rendered as `<label>` with no control; should be `<h3>`/`<p>` |
-| `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:406` | `<Label className="text-base font-medium">{t("smtpTitle")}</Label>` | Same — section heading-as-label |
-| `src/components/problem/problem-submission-form.tsx:504` | `<Label className="text-xs text-destructive">{t("compileError")}</Label>` | Labels a `<pre>` output panel — no `htmlFor`, no programmatic association |
-| `src/components/problem/problem-submission-form.tsx:515` | `<Label className="text-xs">{t("stdout")}</Label>` | Same — labels a `<pre>` |
-| `src/components/problem/problem-submission-form.tsx:520` | `<Label className="text-xs text-yellow-700 dark:text-yellow-400">{t("stderr")}</Label>` | Same — labels a `<pre>` |
-| `src/components/problem/function-reference-solution.tsx:188` | `<Label>{t("fnStubPreviewTitle")}</Label>` | Precedes a `<pre>` (the `<pre>` does have its own `aria-label` at line 194 — duplicate labeling, still leaves the `<Label>` unpaired) |
+### REG-5 (CLEAN ✓, HIGH confidence) — accepted-solutions `total` now matches rendered rows; rankings ISR correctly skipped
 
-**Criterion:** WCAG 2.2 Level A 1.3.1 (Info and Relationships) and 4.1.2 (Name, Role, Value).
+**(a) accepted-solutions count:** `api/v1/problems/[id]/accepted-solutions/route.ts:55-59` now joins `users` and adds `eq(users.shareAcceptedSolutions, true)` to the count WHERE, matching the rendered list's `.filter((s) => s.shareAcceptedSolutions)` at line ~95. The `AcceptedSolutions` component (`components/problem/accepted-solutions.tsx:80`) consumes `{ total, solutions }` from the API, so the rendered "X results" now matches the row count. Correctness improvement; no rendering regression.
+**(b) rankings ISR:** `(public)/rankings/page.tsx:123` calls `await auth()`, which forces the route `dynamic`. There is no `export const revalidate`. A10d (ISR `revalidate=60`) was therefore correctly SKIPPED — it would have been a no-op. Confirmed by reading the page.
 
-**Fix:** For section headings, swap `<Label>` → `<h3 className="text-base font-medium">` (or `<p className="text-sm font-medium">` if it should not appear in the heading outline). For output-panel labels, use `<p id="stdout-label">` + `<pre aria-labelledby="stdout-label">`, or wrap the `<pre>` inside `<label>…<pre>…</pre></label>`.
+---
 
-### AGG-58 — Admin pages use `<h2>` for page title — CONFIRMED + BROADER than cycle 2, P1, HIGH confidence
+## DEFERRED DESIGNER P1 BATCH — re-confirmed verbatim on head `edd45cca`
 
-**Cycle-2 said:** 13 admin pages emit `<h2>` as page title with no `<h1>` preceding it.
-**Cycle-3 finding:** The defect extends well beyond the admin tree — it affects every primary public/dashboard route too. Pages confirmed on head `207623f9`:
+All items below were deferred in cycle 3 (`plan/cycle-3-2026-06-27-review-remediation.md` Phase B, "Designer P1 batch"). Because zero UI files changed this cycle, each is re-confirmed by re-reading the same selector. Line numbers refreshed.
 
-Admin (13):
-- `admin/workers/page.tsx:26`, `admin/settings/page.tsx:441`, `admin/files/page.tsx:129`, `admin/login-logs/page.tsx:242`, `admin/audit-logs/page.tsx:364`, `admin/languages/page.tsx:44`, `admin/tags/page.tsx:58`, `admin/plugins/page.tsx:23`, `admin/plugins/chat-logs/page.tsx:20`, `admin/plugins/[id]/page.tsx:26`, `admin/users/[id]/page.tsx:74`, `admin/submissions/page.tsx:307` — all `<h2 className="text-2xl font-bold">`.
-- (`admin/page.tsx:43` and `admin/roles/page.tsx:73` correctly use `<h1>`.)
+### AGG-58 — 27 pages emit `<h2>` as the page title with no `<h1>` — CONFIRMED, P1, HIGH confidence
 
-Public / dashboard (additional, not flagged in cycle 2):
-- `src/app/(public)/problems/page.tsx:547` — `<h2 className="text-2xl font-bold">{t("title")}</h2>`
-- `src/app/(public)/problems/[id]/edit/page.tsx:73` — `<h2 className="text-2xl font-bold">{t("editTitle")}</h2>` *(this is the same file cycle-2's REG-2 touched — the gate fix did not address the heading).*
-- `src/app/(public)/problems/create/page.tsx:94` — `<h2 className="text-2xl font-bold">`
-- `src/app/(public)/problem-sets/_components/problem-set-form.tsx:262` — `<h2 className="text-2xl font-bold">`
-- `src/app/(public)/groups/page.tsx:213` — `<h2 className="text-2xl font-bold">{t("title")}</h2>`
-- `src/app/(public)/groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx:175`
-- `src/app/(public)/profile/page.tsx:58` — `<h2 className="text-2xl font-bold">{t("title")}</h2>`
-- `src/app/(public)/dashboard/page.tsx:40` — `<h2 className="text-2xl font-bold">{t("title")}</h2>`
-- `src/app/(public)/contests/[id]/page.tsx:243` — `<h2 className="text-2xl font-bold sm:text-3xl truncate">{contest.title}</h2>`
-- `src/app/(public)/contests/manage/[assignmentId]/page.tsx:360`
-- `src/app/(public)/contests/manage/[assignmentId]/students/[userId]/page.tsx:121`
-- `src/app/(public)/contests/manage/[assignmentId]/participant/[userId]/submissions/page.tsx:118`
-- `src/app/(public)/practice/problems/[id]/rankings/page.tsx:129`
+**Criterion:** WCAG 2.2 Level A 1.3.1 (Info and Relationships) — heading hierarchy; AT users cannot jump-to-h1 on ~27 primary routes (the `(public)`/`(dashboard)` shell layouts render no `<h1>`).
 
-Shell layouts (`(public)/layout.tsx`, `(dashboard)/layout.tsx`) render no `<h1>` either. Breadcrumbs (`<header className="hidden md:block …">` in `(dashboard)/layout.tsx:67`) are not in a heading. Result: every page in the `(public)` and `(dashboard)` trees that uses an `<h2>` opener has no `<h1>` ancestor at all — screen-reader "jump to heading 1" yields nothing for ~30 routes.
+**Exact sites on head `edd45cca` (27 — `grep -rn '<h2 className="text-2xl font-bold' src/app`):**
 
-Sibling pages that **do** use `<h1>` correctly: `admin/page.tsx`, `admin/roles/page.tsx`, `(public)/languages/page.tsx:56`, `(public)/groups/[id]/analytics/page.tsx:101`, `(public)/playground/page.tsx:82`, `(public)/rankings/page.tsx:233`, `(public)/submissions/page.tsx:330`, `(public)/users/[id]/page.tsx:218`, the `_components/public-problem-detail.tsx:70` (so `practice/problems/[id]` is fine).
+Admin (12): `dashboard/admin/workers/page.tsx:26`, `files/page.tsx:129`, `audit-logs/page.tsx:364`, `settings/page.tsx:441`, `languages/page.tsx:44`, `login-logs/page.tsx:242`, `tags/page.tsx:58`, `plugins/page.tsx:23`, `plugins/chat-logs/page.tsx:20`, `plugins/[id]/page.tsx:26`, `users/[id]/page.tsx:74`, `submissions/page.tsx:307`. (`admin/page.tsx:43` and `admin/roles/page.tsx:73` already use `<h1>` — leave them.)
 
-**Criterion:** WCAG 2.2 Level A 1.3.1 — heading hierarchy; page main heading must be `<h1>` so AT users can navigate by heading.
+Public / dashboard (15): `(public)/problems/page.tsx:547`, `problems/[id]/edit/page.tsx:73`, `problems/create/page.tsx:94`, `problem-sets/_components/problem-set-form.tsx:262`, `problem-sets/page.tsx:66`, `groups/page.tsx:213`, `groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx:175`, `profile/page.tsx:58`, `dashboard/page.tsx:40`, `practice/problems/[id]/rankings/page.tsx:129`, `contests/manage/[assignmentId]/students/[userId]/page.tsx:121`, `contests/manage/[assignmentId]/participant/[userId]/submissions/page.tsx:118`. Plus the two `sm:text-3xl` contest title variants: `contests/[id]/page.tsx:243`, `contests/manage/[assignmentId]/page.tsx:360`.
 
-**Fix:** Replace `<h2 className="text-2xl font-bold">…</h2>` with `<h1 className="text-2xl font-bold">…</h1>` at the listed pages. Visual size is unchanged (the class is identical); only the semantics change. Cheap batch fix.
+**Fix:** Tag-only swap `<h2 …>→<h1 …>` (identical class → identical visual size). 27 one-line edits, ship as one commit. (`api-keys` and `discussions` have no server-rendered page heading at all — see UI-6.)
 
 ### AGG-59 — `leaderboard-table.tsx` invalid `hsl(var(--border))` — CONFIRMED, P1, HIGH confidence
 
-**Files (unchanged):** `src/components/contest/leaderboard-table.tsx:346, 349, 395, 414`
+**Selector (4 sites, unchanged):** `src/components/contest/leaderboard-table.tsx:346, 349, 395, 414` — `shadow-[1px_0_0_0_hsl(var(--border))]` on sticky rank/name `<th>`/`<td>`. `--border` is `oklch(0.922 0 0)` / `oklch(1 0 0 / 10%)` dark; `hsl(oklch(…))` is unparseable, so the whole `box-shadow` is dropped and the sticky-column separator never renders in either theme.
+**Fix:** `shadow-[1px_0_0_0_var(--border)]` (drop the `hsl(…)` wrapper), or `border-r border-border` on the sticky cells.
 
-```tsx
-<TableHead className="sticky left-0 z-[5] w-16 bg-background text-center shadow-[1px_0_0_0_hsl(var(--border))]">
-```
+### AGG-60 — Recruit start form: no `<form>`, error has no `aria-live`, no `aria-busy` — CONFIRMED, P1, HIGH confidence
 
-`--border` is `oklch(0.922 0 0)` (`:root`) / `oklch(1 0 0 / 10%)` (`.dark`). `hsl(oklch(…))` is not parseable; browsers drop the whole `box-shadow` declaration. The intended 1-px column separator on sticky rank/name columns does not render in either theme. Combined with UI-10 below, sticky columns visually merge into the adjacent cell.
-
-**Criterion:** Visual polish on data-dense UI (decorative — no WCAG criterion). Real usability defect on wide leaderboards.
-
-**Fix:** `shadow-[1px_0_0_0_var(--border)]` — drop the `hsl(…)` wrapper. Or apply `border-r border-border` on the sticky `<th>`/`<td>`.
-
-### AGG-60 — Recruit start form has no `<form>`; error lacks `aria-live` — CONFIRMED, P1, HIGH confidence
-
-**File (unchanged):** `src/app/(auth)/recruit/[token]/recruit-start-form.tsx:115-150`
-
-```tsx
-return (
-  <div className="space-y-3">                       // ← no <form>
-    {requiresAccountPassword && (
-      <>
-        <label className="block text-sm font-medium" htmlFor="recruit-account-password">…</label>
-        <Input id="recruit-account-password" type="password" … />     // Enter-key does nothing
-        <p className="text-xs text-muted-foreground">{t("accountPasswordHint")}</p>
-      </>
-    )}
-    <Button className="w-full" size="lg"
-      onClick={handlePrimaryAction} disabled={loading}>               // ← only onClick, no type="submit"
-      …
-    </Button>
-    {error && (
-      <p className="text-sm text-destructive text-center">{error}</p>  // ← no role="alert", no aria-live
-    )}
-```
-
-Same three coupled defects as cycle 2:
-1. No `<form>` ancestor — Enter-key submit does not fire.
-2. Error `<p>` has no `aria-live`/`role="alert"` — SR users get no failure announcement.
-3. `disabled={loading}` with no `aria-busy` on the form container.
-
-Sibling auth forms (`login-form.tsx:60`, `signup-form.tsx:125`, `reset-password-form.tsx:116`, `forgot-password-form.tsx:85`) all use canonical `<form onSubmit>`. `signup-form.tsx` is the model: `aria-invalid`, `aria-describedby`, and `role="alert"` on every field error.
-
+**Selector (unchanged):** `src/app/(auth)/recruit/[token]/recruit-start-form.tsx:116` wraps in `<div className="space-y-3">` (no `<form>`); Button at `:134-138` uses `onClick={handlePrimaryAction}` with no `type="submit"` (Enter-key does nothing in the password field); error at `:147` is `<p className="text-sm text-destructive text-center">{error}</p>` (no `role="alert"`/`aria-live`). Sibling auth forms (`login-form.tsx`, `signup-form.tsx`, `reset-password-form.tsx`, `forgot-password-form.tsx`) all use canonical `<form onSubmit>`.
 **Criterion:** WCAG 2.2 Level A 3.2.2 (Predictable), A 4.1.3 (Status Messages), A 2.1.1 (Keyboard).
+**Fix:** Wrap in `<form onSubmit={(e)=>{e.preventDefault(); void handlePrimaryAction();}}>`, make the Button `type="submit"`, add `role="alert"` to the error `<p>`. Keep the `<AlertDialog>` outside the form.
 
-**Fix:**
-```diff
-- <div className="space-y-3">
-+ <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); void handlePrimaryAction(); }}>
-   …
--  <Button … onClick={handlePrimaryAction} disabled={loading}>
-+  <Button type="submit" … disabled={loading}>
-   …
--  {error && <p className="text-sm text-destructive text-center">{error}</p>}
-+  {error && <p role="alert" className="text-sm text-destructive text-center">{error}</p>}
-+ </form>
-```
-Keep the `<AlertDialog>` outside the form; it already calls `executeStart` from its own action.
+### AGG-61 — 60 of 67 leaf routes lack a local `loading.tsx`/`error.tsx` — CONFIRMED, P1, HIGH confidence
 
-### AGG-61 — `<EmptyState>` coverage and missing `loading.tsx`/`error.tsx` — CONFIRMED, P1, HIGH confidence
+**Counts on head (unchanged):** 67 leaf `page.tsx`; **10** `loading.tsx` (~15%); **5** `error.tsx` (~7%). **60 leaf directories have NEITHER.** Existing boundaries: `(public)/`, `(public)/problems`, `(public)/groups`, `(public)/contests/manage`, `(dashboard)/`, `(dashboard)/dashboard/admin`, `(dashboard)/dashboard/admin/users`, `(dashboard)/dashboard/admin/submissions`, `(auth)/recruit/[token]/results`, `(public)/contests/manage/[assignmentId]/participant` (loading); `(public)`, `(public)/problems`, `(public)/groups`, `(public)/contests/manage`, `(dashboard)`, `(dashboard)/dashboard/admin` (error). Deep leaves (`contests/[id]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `users/[id]`, every admin detail page) show the parent layout's spinner while their own segment resolves, and a server-component throw becomes a full 500 with no in-place recovery.
+**Criterion:** Perceived performance (INP/LCP) + resilience (`error.tsx` is Next.js's only in-place recovery from a server throw).
+**Fix:** Add `loading.tsx` (skeleton matching page chrome) + `error.tsx` (Card + retry) to the top ~10 deep leaves: `contests/[id]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `users/[id]`, `submissions/[id]`, `problems/[id]`, `groups/[id]`, plus admin detail pages.
 
-**Coverage on head `207623f9`:**
-- `loading.tsx` files: **10** across 67 leaf `page.tsx` routes (~15%) — same set as cycle 2.
-- `error.tsx` files: **5** across 67 leaf `page.tsx` routes (~7%) — same set as cycle 2.
-- **60 leaf page directories have NEITHER** a local `loading.tsx` nor `error.tsx`.
+### UI-1 — `text-muted-foreground/60`, `text-foreground/60` ~2:1 contrast in light mode — CONFIRMED, P1, HIGH confidence
 
-Inherited boundaries: `(public)/loading.tsx`, `(public)/problems/loading.tsx`, `(public)/groups/loading.tsx`, `(public)/contests/manage/loading.tsx`, `(dashboard)/loading.tsx`, `(dashboard)/dashboard/admin/loading.tsx`, `(dashboard)/dashboard/admin/users/loading.tsx`, `(dashboard)/dashboard/admin/submissions/loading.tsx`, `(auth)/recruit/[token]/results/loading.tsx`, `(public)/contests/manage/[assignmentId]/participant/loading.tsx`. Plus parallel `error.tsx` at `(public)`, `(public)/problems`, `(public)/groups`, `(public)/contests/manage`, `(dashboard)`, `(dashboard)/dashboard/admin`.
-
-So the user does see *some* spinner — but it appears at the topmost segment that owns the boundary, not at the route they navigated to. Deep leaves (`contests/[id]/`, `contests/[id]/scoreboard`, `contests/manage/[assignmentId]/students/[userId]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `submissions`, `users/[id]`, every admin detail page) show the parent layout's spinner while their own segment resolves.
-
-`<EmptyState>` is used at 7 sites (admin/submissions, admin/audit-logs, admin/tags). The other ~20 empty-list surfaces use ad-hoc inline `<p className="text-muted-foreground">…</p>`.
-
-**Criterion:** Perceived performance (LCP/INP — a local loading state reduces INP perception) and resilience (`error.tsx` is Next.js's only way to recover from a server-component throw without a full 500).
-
-**Fix:** Top-priority deep leaves: `contests/[id]/`, `contests/[id]/scoreboard`, `contests/manage/[assignmentId]/students/[userId]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `users/[id]`, plus all `admin/[detail]` pages. Each needs its own `loading.tsx` (Skeleton matching page chrome) and `error.tsx` (Card with retry). Lower priority: standardize `<EmptyState>` for list routes.
-
-### AGG-62 — Live markdown preview re-parses per keystroke — CONFIRMED, P2, MEDIUM confidence
-
-**Files (unchanged):** `src/app/(public)/problems/create/create-problem-form.tsx:629-668`, `src/components/problem-description.tsx:38-119`.
-
-`grep -n 'useDeferredValue\|useTransition' create-problem-form.tsx` returns **nothing** — neither hook was added since cycle 2. `ProblemDescription` still runs `react-markdown` + `remark-gfm` + `remark-breaks` + `remark-math` + `rehype-highlight` + `rehype-katex({ strict: true, maxExpand: 100 })` on every render. The `<Textarea value={description} onChange={setDescription}>` updates state on every keystroke; Base UI's `TabsContent` keeps both panels mounted (only `hidden` is toggled), so the preview re-parses on every keypress. For a 200-line statement with code+math, re-parsing is 50–200ms per keystroke (above the INP "needs improvement" 50ms threshold).
-
-**Criterion:** INP / perceived responsiveness; no WCAG criterion.
-
-**Fix:**
-```ts
-const deferredDescription = useDeferredValue(description);
-// …
-<ProblemDescription description={deferredDescription} editorTheme={editorTheme} />
-```
-Optional: wrap `ProblemDescription` in `React.memo` so unrelated prop changes don't re-parse.
-
----
-
-## CARRY-FORWARD UI FINDINGS (re-verified on head `207623f9`)
-
-### UI-1 (P1, HIGH confidence) — `text-muted-foreground/60`, `text-foreground/60` produce ~2:1 contrast in light mode
-
-**Files (unchanged):**
-- `src/components/resource-usage-bar.tsx:77, 98` — `<span className="text-muted-foreground/60">/ {formatValue(limit, unit, locale)}</span>`
-- `src/components/layout/public-header.tsx:306` — eyebrow text in avatar dropdown
-- `src/components/ui/tabs.tsx:66` — inactive `TabsTrigger`: `text-foreground/60` (light) / `text-muted-foreground` (dark)
-- `src/app/(dashboard)/error.tsx:23` — error-id mono hint: `text-muted-foreground/70`
-
-**Math (light mode):** `oklch(0.48 0 0)` at 60% opacity over `oklch(1 0 0)` composites to `0.4·1.0 + 0.6·0.110592 = 0.4664`; contrast vs white = **2.03 : 1** — fails AA 4.5:1. `text-foreground/60` (`oklch(0.145 0 0)` at 60% over white) composites to ~0.4018 → **2.32 : 1** — also fails.
-
-Dark mode passes comfortably (~5.7–8.9:1) because the dark background is already near-black.
-
+**Sites (unchanged):** `components/resource-usage-bar.tsx:77, 98` (`text-muted-foreground/60`); `components/layout/public-header.tsx:306` (avatar-dropdown eyebrow `text-muted-foreground/60`); `components/ui/tabs.tsx:66` (inactive `TabsTrigger` `text-foreground/60`, with `dark:text-muted-foreground` override so dark is fine).
+**Math (light):** `oklch(0.48 0 0)` at 60% over white composites to ~0.466 → **2.03 : 1** (fails AA 4.5:1). `text-foreground/60` (`oklch(0.145 0 0)` at 60%) → ~**2.32 : 1** (fails). Dark mode passes.
 **Criterion:** WCAG 2.2 Level AA 1.4.3 (Contrast — Minimum).
+**Fix:** Drop `/60` in light mode; use `text-muted-foreground` alone (~6.5:1) or a weight/size step for hierarchy.
 
-**Fix:** Drop the `/60` modifier on these tertiary text colors in light mode. If visual hierarchy needs de-emphasis, use `text-muted-foreground` alone (~6.5:1), or a font-weight/size step rather than opacity. For inactive tabs, `text-muted-foreground` is the right baseline.
+### UI-2 — `sidebar.tsx` invalid `hsl(var(--sidebar-border))` / `hsl(var(--sidebar-accent))` — CONFIRMED, P1, HIGH confidence
 
-### UI-2 (P1, HIGH confidence) — `sidebar.tsx` invalid `hsl(var(--sidebar-border))` / `hsl(var(--sidebar-accent))`
+**Selector (unchanged):** `components/ui/sidebar.tsx:473` — `SidebarMenuButton` variant `"outline"`: `shadow-[0_0_0_1px_hsl(var(--sidebar-border))] … hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]`. Same oklch-in-hsl defect as AGG-59; the outline ring + hover ring are silently invisible.
+**Fix:** `shadow-[0_0_0_1px_var(--sidebar-border)]` + `hover:shadow-[0_0_0_1px_var(--sidebar-accent)]`.
 
-**File (unchanged):** `src/components/ui/sidebar.tsx:473`
+### UI-3 — `tag-form-fields.tsx` inline `hsl(var(--foreground))` borderColor — CONFIRMED, P1, HIGH confidence
 
-```tsx
-"bg-background shadow-[0_0_0_1px_hsl(var(--sidebar-border))] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]"
-```
+**Selector (unchanged):** `(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:63` — `borderColor: value.color === c ? "hsl(var(--foreground))" : "transparent"`. Selected color swatch loses its border highlight in both themes.
+**Criterion:** WCAG 2.2 Level A 4.1.2 (Name, Role, Value — "states").
+**Fix:** `"var(--foreground)"`.
 
-Same defect class as AGG-59. `--sidebar-border` is `oklch(0.922 0 0)` light / `oklch(1 0 0 / 10%)` dark; wrapping in `hsl(…)` is invalid. The class is on `SidebarMenuButton` variant `"outline"` — its hover ring is silently invisible.
+> Note: `grep -rn 'hsl(var(--' src --include=*.tsx --include=*.ts` (excluding `--radius`) returns **exactly these three files** (leaderboard-table ×4, sidebar ×1, tag-form-fields ×1). The HSL→oklch migration is otherwise complete; these 6 occurrences are the entire remaining set and can all be fixed by dropping the `hsl(…)` wrapper.
 
-**Fix:** `shadow-[0_0_0_1px_var(--sidebar-border)]` and `hover:shadow-[0_0_0_1px_var(--sidebar-accent)]`.
+### UI-4 — `<html nonce={nonce}>` is invalid HTML — CONFIRMED, P2, HIGH confidence
 
-### UI-3 (P1, HIGH confidence) — `tag-form-fields.tsx` inline `hsl(var(--foreground))` borderColor
+**Selector (unchanged):** `app/layout.tsx:100` — `<html … nonce={nonce}>`. Per HTML spec `nonce` is valid only on `<script>/<style>/<link>/<iframe>`, not `<html>`; browsers ignore it for CSP. The real nonce delivery is the CSP response header + `NonceProvider` (`:118`).
+**Fix:** Remove `nonce={nonce}` from `<html>`.
 
-**File (unchanged):** `src/app/(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:63`
+### UI-5 — Viewport missing `viewport-fit`/`themeColor` — CONFIRMED, P2, MEDIUM confidence
 
-```tsx
-borderColor: value.color === c ? "hsl(var(--foreground))" : "transparent",
-```
+**Selector (unchanged):** `app/layout.tsx:23-26` — `{ width: "device-width", initialScale: 1 }` only. Missing `viewportFit: "cover"` (needed for `env(safe-area-inset-*)` on the full-screen recruit flow + code editor) and a `themeColor` pair. (No `maximum-scale` cap — good for AAA 1.4.4; keep.)
+**Fix:** Add `viewportFit: "cover"` and `themeColor: [{ media: "(prefers-color-scheme: light)", color: "#ffffff" }, { media: "(prefers-color-scheme: dark)", color: "#242424" }]`.
 
-Same oklch-in-hsl defect on a color-swatch picker. The selected swatch loses its border highlight in both themes.
+### UI-6 — `api-keys` page has no heading; `discussions` heading is client-only — CONFIRMED, P2, MEDIUM confidence
 
-**Criterion:** WCAG 2.2 Level A 4.1.2 (Name, Role, Value — "states" half).
+**Selectors (unchanged):** `(dashboard)/dashboard/admin/api-keys/page.tsx` returns only `<ApiKeysClient>` — no `<h1>/<h2>/<h3>` server-side; the in-client `CardTitle` (`api-keys-client.tsx:325`) renders as a `<div>` (UI-13), so the page has **zero** heading semantics. `(dashboard)/dashboard/admin/discussions/page.tsx` defers its `<h1>` to the client (`discussion-moderation-list.tsx:46`) → hidden until hydration (LCP/CLS) and inconsistent with sibling pages.
+**Fix:** When applying AGG-58, add a server-rendered `<h1 className="text-2xl font-bold">` to both `page.tsx`; demote the in-client discussions `<h1>` to `<h2>`.
 
-**Fix:** `borderColor: value.color === c ? "var(--foreground)" : "transparent"`.
+### UI-7 — `console.error/log` in production component bundles — CONFIRMED, P2, LOW confidence
 
-### UI-4 (P2, HIGH confidence) — `<html nonce={nonce}>` is invalid HTML
+**Scale (unchanged from cycle 3):** 7 component files + 7 app-side dialog/form files. Component set: `submissions/_components/comment-section.tsx`, `problem/problem-import-button.tsx`, `discussions/discussion-post-form.tsx`, `discussions/discussion-post-delete-button.tsx`, `discussions/discussion-thread-moderation-controls.tsx`, `discussions/discussion-thread-form.tsx`, `code/compiler-client.tsx`. App set: `admin/roles/role-delete-dialog.tsx`, `admin/roles/role-editor-dialog.tsx`, `admin/languages/language-config-table.tsx`, `admin/settings/database-backup-restore.tsx`, `admin/users/bulk-create-dialog.tsx`, `problems/create/create-problem-form.tsx`, `groups/create-group-dialog.tsx`. Error-boundary `console.error` are correctly dev-gated — those are fine.
+**Fix:** Route through a typed client-safe logger that no-ops in production.
 
-**File (unchanged):** `src/app/layout.tsx:100`
+### UI-8 — Design-token drift: hardcoded `bg-green-*`/`text-yellow-*`/etc. — CONFIRMED, P2, MEDIUM confidence
 
-```tsx
-<html lang={locale} suppressHydrationWarning className={pretendard.variable} nonce={nonce}>
-```
+**Scale:** `grep -rEn '(bg|text|border)-(green|yellow|blue|red|orange|purple)-(100|200|300|500|600|700|800)'` returns ~64–74 hits (cycle 3 reported 74 with a slightly broader pattern). Pervasive in `contest/leaderboard-table.tsx`, `contest/anti-cheat-presentation.ts`, `ui/badge.tsx:24`, `contest/participant-timeline-view.tsx`, `api-keys-client.tsx`, `file-upload-dialog.tsx`. Status colors are inlined as Tailwind palettes and do NOT recolor under lecture-mode themes (`.lecture-theme-*` at `globals.css:404-500` redefine semantic tokens only).
+**Criterion:** Visual cohesion; lecture-mode accessibility (a low-vision user who picks a high-contrast lecture theme expects status indicators to recolor — they don't).
+**Fix:** Add `--success/--warning/--info/--danger` semantic tokens, map the inline palettes to them, and extend the lecture-theme blocks to redefine those four tokens.
 
-Per HTML spec, `nonce` is valid only on `<script>`, `<style>`, `<link>`, `<iframe>` — **not** on `<html>`. Browsers ignore it for CSP purposes. The actual CSP nonce delivery path is the `Content-Security-Policy` response header; `<html nonce>` is dead weight.
+### UI-9 — `TabsContent` `outline-none` with no `focus-visible` replacement — CONFIRMED, P2, LOW confidence
 
-**Fix:** Remove `nonce={nonce}` from `<html>`. The `NonceProvider` (line 117) already delivers nonces to `<Script>` elements that need them.
-
-### UI-5 (P2, MEDIUM confidence) — Viewport config missing `viewport-fit` and `themeColor`
-
-**File (unchanged):** `src/app/layout.tsx:23-26`
-
-```ts
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-};
-```
-
-Missing:
-- `viewportFit: "cover"` — required for `env(safe-area-inset-*)` on notched/Dynamic-Island devices; the recruit flow and code editor are full-screen experiences where safe-area matters.
-- A `themeColor` pair — browsers use this for OS chrome tinting on mobile and for PWA install UI.
-- (No `maximum-scale` cap — current config allows user zoom. Good for WCAG AAA 1.4.4; do not change.)
-
-**Fix:**
-```ts
-export const viewport: Viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)",  color: "#242424" },
-  ],
-};
-```
-
-### UI-6 (P2, MEDIUM confidence) — `api-keys` page has no heading at all; `discussions` page has heading only in client component
-
-**Files (unchanged):**
-- `src/app/(dashboard)/dashboard/admin/api-keys/page.tsx` returns only `<ApiKeysClient roleOptions={roleOptions} />`. The client component at `api-keys-client.tsx:325` uses `<CardTitle>{t("title")}</CardTitle>` — `CardTitle` renders as a `<div>` (`components/ui/card.tsx:31`), **not** a heading. There is **no `<h1>`/`<h2>`/`<h3>`** in the rendered tree for this page at all.
-- `src/app/(dashboard)/dashboard/admin/discussions/page.tsx` returns filter Badges plus `<DiscussionModerationList>`. The `<h1 className="text-3xl font-semibold">` is inside the client component (`discussion-moderation-list.tsx:46`), so (a) it is hidden until hydration (LCP/CLS risk on hard navigation), and (b) inconsistent with sibling admin pages that render the page `<h2>` server-side (per AGG-58, those `<h2>`s should be `<h1>`s).
-
-**Criterion:** AGG-58 continuation; WCAG 2.2 Level A 1.3.1 (heading hierarchy); perceived-performance LCP.
-
-**Fix:** When applying the AGG-58 batch `<h2>` → `<h1>`:
-- `api-keys/page.tsx` — add `<h1 className="text-2xl font-bold">{t("title")}</h1>` server-side; the in-client `CardTitle` stays as a card-level title.
-- `discussions/page.tsx` — add `<h1 className="text-2xl font-bold">{tModeration("title")}</h1>` server-side; the in-client `<h1>` in `discussion-moderation-list.tsx:46` should become `<h2>` once a page-level `<h1>` exists.
-
-### UI-7 (P2, LOW confidence) — `console.error` in production component bundles (EXPANDED since cycle 2)
-
-**Files on head `207623f9`** (cycle 2 listed 7; cycle 3 finds 14 in components + 6 in error boundaries — error boundaries are dev-only and OK; the component-side ones are not):
-
-| File:line | Note |
-|---|---|
-| `src/components/submissions/_components/comment-section.tsx:79` | Always logs |
-| `src/components/problem/problem-import-button.tsx:49` | Always logs |
-| `src/components/discussions/discussion-post-form.tsx:48` | Always logs |
-| `src/components/discussions/discussion-post-delete-button.tsx:30` | Always logs |
-| `src/components/discussions/discussion-thread-moderation-controls.tsx:78, 101` | Always logs |
-| `src/components/discussions/discussion-thread-form.tsx:54` | Always logs |
-| `src/components/code/compiler-client.tsx:304` | Always logs |
-| `src/app/(dashboard)/dashboard/admin/roles/role-delete-dialog.tsx:59` | NEW since cycle 2 |
-| `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx:107` | NEW since cycle 2 |
-| `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:180, 212, 248` | NEW since cycle 2 |
-| `src/app/(dashboard)/dashboard/admin/settings/database-backup-restore.tsx:160` | NEW since cycle 2 |
-| `src/app/(dashboard)/dashboard/admin/users/bulk-create-dialog.tsx:215` | NEW since cycle 2 |
-| `src/app/(public)/problems/create/create-problem-form.tsx:355` | Always logs |
-| `src/app/(public)/groups/create-group-dialog.tsx:44` | Always logs |
-
-`error.tsx` `console.error` (`(dashboard)/error.tsx`, `(dashboard)/dashboard/admin/error.tsx`, `(public)/problems/error.tsx`, `(public)/groups/error.tsx`) are correctly gated by `if (process.env.NODE_ENV === "development")` — those are fine.
-
-The component-side logs leak to the browser console in production. Students who open devtools see red errors and file "is this an error?" issues; the logs also pollute any future client telemetry.
-
-**Fix:** Replace with a typed client-safe logger that no-ops in production or routes to telemetry.
-
-### UI-8 (P2, MEDIUM confidence) — Design-token drift: hardcoded `bg-green-*`, `text-yellow-*`, `border-blue-*` bypass the semantic token system
-
-**Scale (unchanged from cycle 2):** `grep -rEn '(bg|text|border)-(green|yellow|blue|red|orange|purple)-(100|200|300|500|600|700|800)' src/components src/app` returns **74 hits**.
-
-Representative sites:
-- `src/components/contest/leaderboard-table.tsx:84, 98, 327, 500-503` — yellow rank-1, blue frozen banner, green/blue/red verdict cells.
-- `src/components/contest/anti-cheat-presentation.ts:19-28` — `bg-yellow-100 text-yellow-800`, `bg-blue-100 text-blue-800`, `bg-red-100 text-red-800`.
-- `src/components/ui/badge.tsx:24` — `success: "bg-green-500/15 text-green-700 …"`.
-- `src/components/contest/participant-timeline-view.tsx:179`, `src/components/assignment/assignment-overview.tsx:82`.
-- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:483`, `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:240`.
-
-The `--chart-1..5` tokens (`globals.css:69-73`) define a cohesive blue family but are unused outside chart consumers. Status colors are inlined as Tailwind palettes, which (a) does not adapt to lecture-mode color schemes (`.lecture-theme-dark/light/solarized` at `globals.css:404-500` only redefine semantic tokens, not Tailwind palettes), and (b) drifts from any future brand restyle.
-
-**Criterion:** Visual cohesion; lecture-mode accessibility (a low-vision user who selects a high-contrast lecture theme expects every status indicator to recolor — currently they don't).
-
-**Fix:** Add `--success`, `--warning`, `--info`, `--danger` semantic tokens to `globals.css` (suggested: `oklch(0.72 0.19 152)` green, `oklch(0.80 0.18 85)` yellow, `oklch(0.70 0.15 230)` blue, `oklch(0.62 0.22 25)` red — these match the existing Tailwind 700/100 pairs at AAA text-on-tint contrast), then map `bg-green-100` → `bg-success/15`, `text-green-700` → `text-success`, etc. Also extend the lecture-theme blocks to redefine these four tokens so lecture mode recolors status indicators consistently.
-
-### UI-9 (P2, LOW confidence) — `TabsContent` outline-none with no focus-visible replacement
-
-**File (unchanged):** `src/components/ui/tabs.tsx:81`
-
-```tsx
-className={cn("flex-1 text-sm outline-none", className)}
-```
-
-`TabsTrigger` (line 66) correctly has `focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring`, but `TabsContent` has bare `outline-none`. If focus lands on the panel (e.g. via screen-reader virtual cursor or programmatic focus), the user sees no indicator.
-
+**Selector (unchanged):** `components/ui/tabs.tsx:81` — `className={cn("flex-1 text-sm outline-none", className)}`. `TabsTrigger` (`:66`) has full `focus-visible:ring-[3px] …`; `TabsContent` does not.
 **Criterion:** WCAG 2.2 Level AA 2.4.7 (Focus Visible).
+**Fix:** `outline-none focus-visible:ring-2 focus-visible:ring-ring/50` (only load-bearing if the panel receives `tabindex`).
 
-**Fix:** Replace `outline-none` with `outline-none focus-visible:ring-2 focus-visible:ring-ring/50`. Low priority — only relevant if Base UI config gives the panel `tabindex`.
+### UI-10 — Sticky column `bg-background` mismatches Card `bg-card` in dark mode — CONFIRMED, P2, MEDIUM confidence
 
-### UI-10 (P2, MEDIUM confidence) — Sticky column `bg-background` mismatches the surrounding Card's `bg-card` row context (dark mode)
+**Selector (unchanged):** `contest/leaderboard-table.tsx:345-346,349` — sticky header row + sticky rank/name cells use `bg-background`. Light mode: `--background`=`--card`=`oklch(1 0 0)` (no seam). Dark mode: `--background`=`oklch(0.145 0 0)` vs `--card`=`oklch(0.205 0 0)` (~7% lightness delta) → visible color mismatch on the sticky edge as rows scroll under it. Combined with AGG-59 (no separator), sticky columns read as a rendering bug.
+**Fix:** `bg-card` (or `bg-inherit`) on sticky cells + the AGG-59 separator.
 
-**File (unchanged):** `src/components/contest/leaderboard-table.tsx:345-414`
+### UI-11 — All 5 `error.tsx` render `<h2>` not `<h1>` — CONFIRMED, P1, HIGH confidence
 
-Sticky header row, sticky rank cell, and sticky name cell all use `bg-background`. The non-sticky data cells inherit the Card's `--card` background. In light mode `--background` and `--card` are both `oklch(1 0 0)` (identical), so no visible seam. In **dark mode**, `--background` is `oklch(0.145 0 0)` and `--card` is `oklch(0.205 0 0)` — a ~7% lightness difference. As non-sticky cells scroll horizontally under the sticky column, the user sees a faint but visible color mismatch on the sticky column edge. Combined with the broken shadow from AGG-59 (no separator), the sticky columns look like a rendering bug.
+**Selectors (unchanged):** `(dashboard)/error.tsx:20`, `(dashboard)/dashboard/admin/error.tsx:27`, `(public)/problems/error.tsx:27`, `(public)/groups/error.tsx:27`, `(public)/contests/manage/error.tsx:29` — all `<h2 className="text-2xl font-semibold">{t("errorTitle")}</h2>`. When the boundary replaces the segment, the page's original heading is unmounted, leaving the error screen with no `<h1>`.
+**Criterion:** WCAG 2.2 Level A 1.3.1 / 4.1.2.
+**Fix:** Promote `<h2>` → `<h1>` in all 5 files (identical class).
 
-**Criterion:** Visual polish on data-dense UI (sticky column consistency in dark mode).
+### UI-12 — `discussion-moderation-list.tsx` `<h1>` at `text-3xl` drifts from sibling pages — CONFIRMED, P2, MEDIUM confidence
 
-**Fix:** Use `bg-card` (or `bg-inherit`) on sticky `<th>`/`<td>` so they match the table's row context, and add the AGG-59 separator.
+**Selector (unchanged):** `components/discussions/discussion-moderation-list.tsx:46` — `<h1 className="text-3xl font-semibold…">`. Sibling admin pages are `text-2xl font-bold`. After AGG-58/UI-6 normalize them to `<h1 className="text-2xl font-bold">`, discussions will be the lone `text-3xl` page.
+**Fix:** Normalize to `<h1 className="text-2xl font-bold">` (server-rendered in `page.tsx` per UI-6).
 
----
+### UI-13 — `<CardTitle>` is a `<div>`, so 143 card titles have no heading semantics — CONFIRMED (architectural), P2, LOW confidence
 
-## NEW UI/UX FINDINGS (cycle 3)
-
-### UI-11 (P1, HIGH confidence) — Error boundaries render `<h2>` instead of `<h1>`, leaving the error route with no `<h1>`
-
-**Files:**
-- `src/app/(dashboard)/error.tsx:23` — `<h2 className="text-2xl font-semibold">{t("errorTitle")}</h2>`
-- `src/app/(dashboard)/dashboard/admin/error.tsx:21` — `<h2 className="text-2xl font-semibold">{t("errorTitle")}</h2>`
-- `src/app/(public)/problems/error.tsx:18` — same
-- `src/app/(public)/groups/error.tsx` (parallel pattern)
-- `src/app/(public)/contests/manage/error.tsx` (parallel pattern)
-
-When a server component throws, Next.js replaces the segment's UI with the nearest `error.tsx`. The page's original `<h1>` (or `<h2>` per AGG-58) is unmounted; only the error boundary's `<h2>` remains. Result: every error screen has no `<h1>`, so AT users cannot jump to the page heading to learn what went wrong.
-
-**Criterion:** WCAG 2.2 Level A 1.3.1 (heading hierarchy); 4.1.2 (Name, Role, Value — the error banner should be the page's primary heading).
-
-**Fix:** Promote the error title `<h2>` to `<h1>` in all five `error.tsx` files. (Trivial — same class, just change the tag.)
-
-### UI-12 (P2, MEDIUM confidence) — `discussion-moderation-list.tsx` renders the page's only `<h1>` at `text-3xl` while sibling admin pages use `text-2xl`
-
-**File:** `src/components/discussions/discussion-moderation-list.tsx:46`
-
-```tsx
-<h1 className={`text-3xl font-semibold${headingTracking}`}>{title}</h1>
-```
-
-Sibling admin pages use `<h2 className="text-2xl font-bold">` (per AGG-58). When AGG-58's fix promotes those to `<h1 className="text-2xl font-bold">`, discussions will be the only admin page at `text-3xl font-semibold` — a visual-rhythm inconsistency. (This was implicit in UI-6 but worth calling out as a separate sizing fix.)
-
-**Criterion:** Visual rhythm consistency across the admin section.
-
-**Fix:** When applying the AGG-58 + UI-6 fix, normalize discussions' page heading to `<h1 className="text-2xl font-bold">` (server-rendered in `page.tsx`, see UI-6).
-
-### UI-13 (P2, LOW confidence) — `<CardTitle>` is a `<div>`, so 143 card titles have no heading semantics
-
-**File:** `src/components/ui/card.tsx:31-40`
-
-```tsx
-function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="card-title"
-      className={cn("text-base leading-snug font-medium …", className)}
-      {...props}
-    />
-  )
-}
-```
-
-`grep -rn '<CardTitle' src/app src/components` returns **143 sites**. None of them contribute to the document heading outline. Cards that act as visual sections (e.g. problem-statement card, leaderboard card, submission-form card) are not navigable as headings by AT users.
-
-This is a known shadcn-style tradeoff (avoid polluting the h-level outline with card chrome), and is usually fine. Raising it as P2 because the *consequence* interacts with AGG-58: pages whose only "heading-like" element is a `CardTitle` (e.g. `api-keys/page.tsx` per UI-6) end up with **zero** heading semantics at all.
-
-**Criterion:** WCAG 2.2 Level A 1.3.1 (Info and Relationships) — only in combination with AGG-58/UI-6; isolated card titles are acceptable.
-
-**Fix:** None required for cards that sit inside a page with a real `<h1>`. For card-as-page sections (e.g. api-keys), add an explicit `<h1>` per UI-6.
+**Selector (unchanged):** `components/ui/card.tsx:36-40` — `CardTitle` renders `<div data-slot="card-title">`. ~143 sites. Standard shadcn tradeoff; only a problem where a `CardTitle` is the page's *only* heading-like element (e.g. `api-keys` per UI-6). No action for cards nested under a real `<h1>`.
 
 ---
 
-## KOREAN LETTER-SPACING AUDIT
+## NEW UI/UX FINDINGS (cycle 4)
 
-**Verdict:** CLEAN. Same three complementary mechanisms as cycle 2; no regressions.
+### UI-14 — 14 inline error `<p className="text-destructive">` lack `role="alert"` (enumerated) — NEW, P3, MEDIUM confidence
 
-**Mechanism 1 — `html:lang(ko)` CSS override (`globals.css:131-136`):**
-```css
-html {
-  --letter-spacing-body: -0.01em;
-  letter-spacing: var(--letter-spacing-body);
-}
-html:lang(ko) {
-  --letter-spacing-body: normal;
-  --letter-spacing-heading: normal;
-}
-```
-`<html lang={locale}>` is set correctly in `src/app/layout.tsx:100`.
+Cycle 3's final sweep estimated "~14 form-error `<p>`s" without `role="alert"`/`aria-live`. Cycle 4 enumerates the exact set: `grep -rn '<p[^>]*text-destructive' src` returns 26 total; **14** have no `role="alert"`:
 
-**Mechanism 2 — Per-component `locale !== "ko" ? " tracking-…" : ""` ternaries** at 25+ sites. Sampled: `admin/page.tsx:38`, `home-page-content-form.tsx:50`, `languages/page.tsx:49-50`, `users/[id]/page.tsx:218`, `rankings/page.tsx:233`, `submissions/page.tsx:330`, `recruit/[token]/results/page.tsx:268-280`, `privacy/page.tsx:53`, `public-problem-set-detail.tsx:55`, `public-problem-set-list.tsx:35`, `discussion-thread-view.tsx:42`, `my-discussions-list.tsx:24`, `discussion-thread-list.tsx:46`, `discussion-moderation-list.tsx:42`, `user-stats-dashboard.tsx:60`, `not-found.tsx:60`, `(public)/not-found.tsx:25`. All Korean-aware.
+| File:line | Kind |
+|---|---|
+| `components/problem/function-signature-builder.tsx:156, 169, 186, 279` | Form-validation errors (4) |
+| `components/problem/function-test-case-editor.tsx:284, 305` | Form-validation errors (2) |
+| `components/contest/code-timeline-panel.tsx:138` | fetchError status |
+| `components/contest/anti-cheat-dashboard.tsx:339` | fetchError status |
+| `components/contest/analytics-charts.tsx:569` | fetchError status |
+| `components/contest/leaderboard-table.tsx:283` | fetchError status |
+| `components/contest/participant-anti-cheat-timeline.tsx:203` | fetchError status |
+| `(auth)/recruit/[token]/recruit-start-form.tsx:147` | already covered by AGG-60 |
+| `(auth)/signup/signup-form.tsx:218` | password-mismatch (icon+text, but no live region) |
+| `change-password/change-password-form.tsx:141` | password-mismatch (icon+text, but no live region) |
 
-**Mechanism 3 — Per-string Hangul detection in OG image content (`src/app/og/route.tsx:15-22`):**
-```ts
-function hasHangul(value: string): boolean {
-  return /[ᄀ-ᇿ㄰-㆏가-힣]/.test(value);
-}
-```
-Required because OG titles can be arbitrary user content (problem names, contest titles) where the `locale` doesn't reliably reflect glyph language.
-
-**Unguarded tracking utilities (all provably safe):**
-- `not-found.tsx:58`, `(public)/not-found.tsx:24` — `tracking-[0.2em]` on the literal string "404" (digits only, with explanatory comment).
-- `(public)/contests/join/contest-join-client.tsx:123` — `tracking-[0.35em]` with `font-mono` on access-code input (alphanumeric only, per inline comment).
-- `components/contest/access-code-manager.tsx:154` — `tracking-widest` with `font-mono` on access codes (same, with comment).
-
-**No new findings.** Housekeeping recommendation from cycle 2 still stands: encode the pattern as a `cn()` helper or ESLint rule to prevent regressions.
+**Criterion:** WCAG 2.2 Level A 4.1.3 (Status Messages) — SR users get no announcement when these errors appear.
+**Fix:** Add `role="alert"` (for validation/fetch errors that appear on a state change). For the password match/mismatch `<p>` in signup/change-password, also consider `aria-describedby` linking the `<p id>` to the confirm-password input. Purely additive attribute changes; no visual change. P3 because none block task completion and the surrounding inputs are still operable.
 
 ---
 
-## FINAL SWEEP
+## SWEEPS THAT CAME BACK CLEAN (cycle 4 — no new findings)
 
-**Themes / dark mode:** `next-themes` with `attribute="class"`, `defaultTheme="system"`, `disableTransitionOnChange` (`layout.tsx:121-127`). `.dark` flips tokens correctly. **Lecture-mode overlay** (cycle-2 unknown) now confirmed: `.lecture-mode.lecture-theme-{dark,light,solarized}` classes live at `globals.css:404-500` and redefine every semantic token including sidebar, problem-code, and chart colors. No `.dark` selector conflict because the lecture-mode classes are added to `<html>` alongside `.dark` and both target tokens (cascade resolves cleanly). ThemeToggle and LocaleSwitcher both have proper `aria-label`, 44x44 mobile touch targets, and `role="status" aria-busy="true"` Skeleton placeholders during hydration.
-
-**Reduced motion:** `globals.css:138-145` honors `prefers-reduced-motion: reduce` globally (animation/transition-duration 0.01ms, scroll-behavior auto). `@keyframes shake` and `pulse-slow` are gated. `ThemeToggle`'s spinners and sonner's icons all fall under the global gate.
-
-**Color scheme consistency with oklch tokens:** Every design token is oklch. **Three** `hsl(var(--token))` sites remain — AGG-59 (4 leaderboard sites), UI-2 (sidebar hover ring), UI-3 (tag-form swatch border) — and need the same one-line fix (`hsl(var(--X))` → `var(--X)`). After those, the HSL-to-oklch migration is complete.
-
-**Forms:** All canonical auth forms (`login`, `signup`, `reset-password`, `forgot-password`) use `<form onSubmit>` + `type="submit"` + `aria-invalid` + `aria-describedby` + `role="alert"` (signup-form is the model). Only `recruit-start-form.tsx` diverges (AGG-60). All submit buttons correctly set `disabled={loading}`. Audit of `text-destructive` form-error sites: 29 total, 15 have `role="alert"`, 13 inputs have `aria-invalid` — **gap: ~14 form-error `<p>`s use plain `<p className="text-destructive">` with no `role="alert"`/`aria-live`.** P3 cleanup.
-
-**Keyboard navigation:**
-- Skip-to-content link (`components/layout/skip-to-content.tsx`) is correctly implemented: `sr-only` until `:focus`, targets `#main-content`, contrast in both themes.
-- Mobile menu (`public-header.tsx:55-140`) implements a real focus trap: Escape closes, focus moves to first item on open, Tab wraps with Shift+Tab support, focus is restored to the toggle on close and on route change.
-- Sidebar menu items use `outline-hidden focus-visible:ring-2` consistently (`sidebar.tsx:392, 416, 467, 561, 668`).
-- Score-timeline-chart SVG points have `tabIndex={0} role="img" aria-label` (cycle-2 noted this; still good).
-- Select / DropdownMenu / AlertDialog / Dialog delegate keyboard semantics to `@base-ui/react` (which provides arrow-key nav, focus trap, type-ahead, Escape-to-close natively).
-- TabsContent focus gap is UI-9 above.
-
-**ARIA live regions:** 49 `aria-live` / `role=status` / `role=alert` / `aria-busy` / `aria-invalid` attributes across the codebase. Gaps: AGG-60 (recruit form) and ~14 form-error `<p>`s noted above.
-
-**`<main>` / landmarks:** Every layout (`app/page.tsx`, `not-found.tsx`, `(dashboard)/layout.tsx`, `(auth)/layout.tsx`, `(public)/layout.tsx`) renders `<main id="main-content">`. Skip link targets it correctly.
-
-**i18n / RTL:** Locale switcher persists via cookie + reload. Messages directory has `en.json` + `ko.json` only. No `dir="rtl"` or RTL handling — acceptable for a ko/en deployment; flag for any future Arabic/Hebrew addition.
-
-**Stack/dependency hygiene:** Tailwind 4, Base UI `@base-ui/react@^1.4.1`, Next 16.2.9, React 19.2, next-intl 4.9, next-themes 0.4. All current. `lucide-react@^1.8.0` is unusual (mainline historically sits at 0.4xx) — verify this is the new 1.x line adopted intentionally, not a typo'd pin (carried forward from cycle 2).
-
-**Confidence summary table:**
-
-| ID | Severity | Confidence | Type | Status vs cycle 2 |
-|---|---|---|---|---|
-| REG-1 | — | HIGH | Regression check (no UI surface changed) | new |
-| REG-2 | — | HIGH | Auth-check consistency | **FIXED ✓** |
-| AGG-56 | — | MEDIUM | Contrast | **INVALIDATED** (6.54:1 passes AA) |
-| AGG-57 | P2 | MEDIUM | Label without htmlFor | Confirm (5–10 sites) |
-| AGG-58 | P1 | HIGH | Heading hierarchy | Confirm + **expanded scope** (admin + ~14 public pages) |
-| AGG-59 | P1 | HIGH | leaderboard hsl(var()) | Confirm (4 sites) |
-| AGG-60 | P1 | HIGH | Recruit form | Confirm |
-| AGG-61 | P1 | HIGH | loading/error coverage | Confirm (60 leaves) |
-| AGG-62 | P2 | MEDIUM | useDeferredValue | Confirm |
-| UI-1 | P1 | HIGH | Opacity contrast | Confirm |
-| UI-2 | P1 | HIGH | sidebar hsl(var()) | Confirm |
-| UI-3 | P1 | HIGH | tag-form hsl(var()) | Confirm |
-| UI-4 | P2 | HIGH | `<html nonce>` invalid | Confirm |
-| UI-5 | P2 | MEDIUM | viewport polish | Confirm |
-| UI-6 | P2 | MEDIUM | api-keys (no heading) / discussions | Confirm + api-keys worsens (no heading at all) |
-| UI-7 | P2 | LOW | console.error | Confirm + **expanded** (7 → 14 component sites) |
-| UI-8 | P2 | MEDIUM | Design-token drift | Confirm (74 sites) |
-| UI-9 | P2 | LOW | TabsContent focus ring | Confirm |
-| UI-10 | P2 | MEDIUM | Sticky column bg mismatch | Confirm |
-| UI-11 | P1 | HIGH | error.tsx uses `<h2>` not `<h1>` | **NEW** |
-| UI-12 | P2 | MEDIUM | discussions h1 sizing drift | **NEW** |
-| UI-13 | P2 | LOW | CardTitle is a `<div>` | **NEW** (architectural note) |
+- **Icon-only buttons (`size="icon"`):** 11 sites; **all 11 carry `aria-label`** (`locale-switcher.tsx:58`, `code/copy-code-button.tsx:35`, `admin/workers/workers-client.tsx:135,189,206`, `admin/api-keys/api-keys-client.tsx:478`, `admin/settings/footer-content-form.tsx:166`, plus the layout theme/accessibility toggles). No net-new finding.
+- **Color-only state indicators:** audited the likely suspects — workers online/stale/offline is a Badge with a **text label** (`workers-client.tsx:74-84`, `statusVariant` maps to variant only); the disk-usage bar has full `role="progressbar" aria-valuenow aria-valuemin aria-valuemax aria-label` with the numeric `%` also shown as text (`language-config-table.tsx:384-394`); verdict colors in `leaderboard-table.tsx` always accompany a verdict string. No state is conveyed by hue alone.
+- **Korean letter-spacing (CLAUDE.md rule):** CLEAN. 44 `tracking-*` sites; every one is either behind a `locale !== "ko"` ternary (`headingTracking`), on `font-mono` alphanumeric access codes with an explanatory comment (`access-code-manager.tsx:154`, `contest-join-client.tsx:123`), on the literal numeric `"404"` (`not-found.tsx:58`, `(public)/not-found.tsx:24`), or on English-uppercase eyebrows with a comment (`public-header.tsx:305`, `public-home-page.tsx:75`, `recruit/[token]/results/page.tsx:268,279`). The `html:lang(ko)` token override (`globals.css:131-136`) is the global backstop. No regression.
+- **Modals / focus traps:** `Dialog`/`AlertDialog`/`Select`/`DropdownMenu` delegate keyboard + focus-trap to `@base-ui/react` (native arrow-key nav, type-ahead, Escape, focus restore). Mobile menu trap verified in cycle 3. Unchanged.
+- **Reduced motion / dark mode / landmarks / skip-link / i18n:** all unchanged from cycle 3's FINAL SWEEP (still good).
 
 ---
 
-## RECOMMENDED FIX ORDER
+## CONFIDENCE SUMMARY (cycle 4)
 
-**Quick batch 1 (one-line CSS fixes, ship together):** AGG-59 (4 leaderboard sites) → UI-2 (sidebar) → UI-3 (tag-form). Drop the `hsl(…)` wrappers around oklch tokens.
+| ID | Sev | Conf | Status vs cycle 3 |
+|---|---|---|---|
+| REG-3 | — | HIGH | new — zero UI files changed |
+| REG-4 | — | HIGH | new — freezeLeaderboardAt strip non-breaking |
+| REG-5 | — | HIGH | new — count fix correct; ISR correctly skipped |
+| AGG-58 | P1 | HIGH | Confirm (27 sites, exact list) |
+| AGG-59 | P1 | HIGH | Confirm (4 sites) |
+| AGG-60 | P1 | HIGH | Confirm |
+| AGG-61 | P1 | HIGH | Confirm (60 leaves) |
+| UI-1 | P1 | HIGH | Confirm |
+| UI-2 | P1 | HIGH | Confirm |
+| UI-3 | P1 | HIGH | Confirm |
+| UI-4 | P2 | HIGH | Confirm |
+| UI-5 | P2 | MED | Confirm |
+| UI-6 | P2 | MED | Confirm |
+| UI-7 | P2 | LOW | Confirm (14 files) |
+| UI-8 | P2 | MED | Confirm (~64–74 sites) |
+| UI-9 | P2 | LOW | Confirm |
+| UI-10 | P2 | MED | Confirm |
+| UI-11 | P1 | HIGH | Confirm (5 error.tsx) |
+| UI-12 | P2 | MED | Confirm |
+| UI-13 | P2 | LOW | Confirm (architectural) |
+| UI-14 | P3 | MED | **NEW** — 14 error `<p>` without `role="alert"` (enumerated) |
 
-**Quick batch 2 (heading hierarchy, ship together):** AGG-58 (`<h2>` → `<h1>` on ~27 pages) → UI-6 (add server-rendered `<h1>` to api-keys, discussions) → UI-12 (normalize discussions h1 sizing) → UI-11 (promote error.tsx `<h2>` → `<h1>` on 5 files). All are tag-only changes with identical classes.
+---
 
-**Form semantics:** AGG-60 (wrap recruit form in `<form onSubmit>`, add `role="alert"`, `type="submit"`).
+## RECOMMENDED FIX ORDER (unchanged from cycle 3 — none shipped)
 
-**Contrast:** UI-1 (drop `/60` opacity modifiers on tertiary text in light mode).
+**Batch 1 — one-line CSS (ship together, one commit):** AGG-59 (4 leaderboard sites) → UI-2 (sidebar) → UI-3 (tag-form). Drop `hsl(…)` wrappers around oklch tokens. These are the *entire* remaining `hsl(var(--token))` set.
 
-**Boundaries:** AGG-61 (add `loading.tsx` + `error.tsx` to top ~10 deep leaves).
+**Batch 2 — heading hierarchy (tag-only, one commit):** AGG-58 (`<h2>`→`<h1>` on 27 pages) → UI-6 (add server `<h1>` to api-keys + discussions) → UI-12 (normalize discussions sizing) → UI-11 (`<h2>`→`<h1>` in 5 error.tsx).
 
-**Polish / cleanup:** AGG-62 (useDeferredValue), UI-4 (drop `<html nonce>`), UI-5 (viewport cover + themeColor), UI-9 (TabsContent focus-visible), UI-10 (sticky column `bg-card`), UI-7 (typed logger), UI-8 (semantic status tokens + lecture-mode extension). UI-13 needs no action.
+**Batch 3 — form semantics:** AGG-60 (wrap recruit form in `<form onSubmit>`, `type="submit"`, `role="alert"`).
 
-**Drop entirely:** AGG-56 (false positive), REG-2 (fixed).
+**Batch 4 — contrast:** UI-1 (drop `/60` opacity modifiers on tertiary text in light mode).
+
+**Batch 5 — boundaries:** AGG-61 (`loading.tsx` + `error.tsx` on top ~10 deep leaves).
+
+**Cleanup (P2/P3, ride-along):** UI-14 (`role="alert"` on 14 error `<p>`), UI-4 (drop `<html nonce>`), UI-5 (viewport cover + themeColor), UI-9 (TabsContent focus-visible), UI-10 (sticky `bg-card`), UI-7 (typed logger), UI-8 (semantic status tokens + lecture-mode extension). UI-13 needs no action.
+
+**Batches 1 and 2 are the highest leverage and remain trivially cheap — they should not defer a fifth cycle.**

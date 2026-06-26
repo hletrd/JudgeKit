@@ -1,140 +1,119 @@
-# Cycle 3 — feature-dev-code-reviewer
+# Feature-Dev Code Reviewer — Cycle 4
 
-**Scope reviewed:** Regression-check of cycle-1+2 changes across the Rust crates (`judge-worker-rs`, `code-similarity-rs`, `rate-limiter-rs`) and the restore/import TS pipeline; re-validation of Phase B carry-forward items (AGG-15, AGG-17, AGG-43/45, AGG-54, AGG-55, N2); net-new sweep across the same surface. READ-ONLY.
-
-**Repo state:** HEAD `207623f9`. Carry-forward backlog from cycle 2 lives in `.context/reviews/feature-dev-code-reviewer.md` and `plan/cycle-{1,2}-2026-06-26-review-remediation.md`.
-
----
-
-## REGRESSION — Cycle-1+2 Fixes (all still correct)
-
-| Item | File:Line | Verdict | Evidence |
-|------|-----------|---------|----------|
-| **A10 env-race** | `judge-worker-rs/src/validation.rs:55-65, 142-265` | CORRECT | `validate_docker_image_with_config` is pure (no `unsafe set_var`). Tests inject `(image, is_production, trusted_prefixes)` explicitly. Env-reading wrappers (`parse_trusted_registries`, `is_production_mode`) remain only at the production caller boundary — tests never touch `std::env`. |
-| **A10 cleanup timeouts** | `judge-worker-rs/src/docker.rs:12, 172-276` | CORRECT | `DOCKER_CLEANUP_TIMEOUT_SECS = 10` wraps `inspect_container_state` (L173), `kill_container` (L243), `remove_container` (L261). Timeout arm logs at `warn!` and returns a default state; the orphan-container sweep on the next loop reaps anything left behind. |
-| **A11 500 cap** | `code-similarity-rs/src/main.rs:29, 33-35, 96-104, 247-262` | CORRECT | `exceeds_submission_cap(count) = count > MAX_SUBMISSIONS` with `MAX_SUBMISSIONS = 500`. Boundary test asserts `500` accepted, `501` rejected, `5000` rejected. No off-by-one. |
-| **AGG-44 rate-limiter** | `rate-limiter-rs/src/main.rs:40, 261-263` | NON-ISSUE | `exp = consecutive_blocks.min(MAX_CONSECUTIVE_BLOCKS_EXP=4)`; `2u64.pow(exp) ≤ 16`. No overflow path. Re-confirmed. |
-| **A8/A9 compiler no-throw + 0o700** | `src/lib/compiler/execute.ts:64-87, 728, 740-757` | CORRECT | Import-time throw replaced with `logger.error` at L69; captured in `COMPILER_RUNNER_CONFIG_ERROR` and surfaced as `configError` at L641-651. Workspace chmod 0o700 (L728) before chown attempt; on chown success stays 0o700/0o600, on failure falls back to 0o777/0o666. Matches `executor.rs` pattern. |
-
-**Minor stale comment** (cosmetic, confidence 30, not reported as a finding): `execute.ts:731` "Write source file (world-readable for sibling container access)" — the file is then chmod'd 0o600 (L737), so it is not world-readable. Comment predates the cycle-1 hardening.
+Repo: `/Users/hletrd/flash-shared/judgekit` (Next.js 16 + Drizzle/PostgreSQL + Rust judge worker).
+Scope: regression-check cycle-3 fixes (NEW-1, AGG-15), then deep review of the worker + judge path and net-new high-impact issues.
+Confidence scale: confirmed / likely / needs-manual-validation.
 
 ---
 
-## PHASE B CARRY-FORWARD — All Confirmed Still Real
+## (a) Regression check — both cycle-3 fixes VERIFIED LANDED
 
-### AGG-15 — Panicked executor leaves submission stuck in "queued" — STILL REAL
-**Confidence: 95** · **Severity: HIGH** · `judge-worker-rs/src/main.rs:489, 545-552`
+### NEW-1 — runner.rs workspace + source-file hardening — CONFIRMED CORRECT
+`judge-worker-rs/src/runner.rs:837-854` (workspace) and `:872-881` (source file):
 
-No `catch_unwind`/`AssertUnwindSafe` anywhere in `main.rs` (verified by grep across `judge-worker-rs/src`). The spawned body is:
-```rust
-let handle = tokio::task::spawn(async move {
-    let _permit = permit;
-    executor::execute(&client, &config, submission, worker_secret.as_deref()).await;
-    active_tasks.fetch_sub(1, Ordering::Relaxed);
-});
+- Workspace: `chown(workspace_dir, 65534, 65534)` → on success `0o700`, on chown failure logs a warning and falls back to `0o777`. Matches the executor pattern.
+- Source file: `chown(&source_path, 65534, 65534).is_ok()` → `0o600`, else `0o666` fallback.
+- The fallback semantics (`0o777` / `0o666` only when chown fails, i.e. rootless dev) are correct: in production (worker has CAP_CHOWN) the dirs/files are `0o700`/`0o600` owned by 65534, so a non-root host process as a different uid cannot read in-flight artifacts.
+- Consistent with the reference pattern at `executor.rs:331-360` (workspace chown → `0o700`/`0o777`). The runner sidecar is no longer the world-readable sibling.
+
+Verdict: fix landed correctly and is internally consistent with the executor.
+
+### AGG-15 — main.rs catch_unwind → runtime_error + dead-letter + active_tasks decrement — CONFIRMED CORRECT
+`judge-worker-rs/src/main.rs:559-590`:
+
+- `submission_id` and `claim_token` are captured **before** `submission` is moved into `executor::execute(...)` (lines 566-568), so they are available in the panic branch. Correct ordering.
+- `std::panic::AssertUnwindSafe(exec_fut).catch_unwind().await` — on panic, calls `executor::report_panic(...)` which routes through `report_with_retry` (`executor.rs:918-937` → `:971`) → 3 attempts with exponential backoff → on exhaustion, dead-letter JSON file (`executor.rs:1009-1061`) + `prune_dead_letter_dir(..., 1000)`. Verdict is `"runtime_error"`. Correct.
+- `active_tasks.fetch_sub(1, Relaxed)` runs at line 589 on **every** exit path of the task (normal completion and panic recovery), so the gauge cannot leak on panic. Correct.
+- `panic_payload_message` (`main.rs:22-29`) handles `String`, `&'static str`, and falls back to `"<non-string panic>"`. Correct.
+
+Verdict: fix landed correctly; the panic path now produces a real verdict instead of silently dropping the submission and skewing `active_tasks`.
+
+---
+
+## (b) Worker + judge path — deep review
+
+### F1 — Function-judging int64 precision is broken end-to-end — HIGH (confirmed)
+
+**Root cause (server layer):** `src/lib/judge/function-judging/serialization.ts:6`
+```ts
+case "int": case "long": return String(Math.trunc(Number(v)));
 ```
-A panic inside `executor::execute` bypasses BOTH `active_tasks.fetch_sub` (capacity drift upward) AND `report_with_retry` → no verdict, no dead-letter file. The submission stays in `status='judging'` until `staleClaimTimeoutMs` (5 min default). `task_handles.retain(|h| !h.is_finished())` (L489) silently drops the panicked handle.
+`Number(v)` coerces to IEEE-754 float64, which cannot represent every int64. Every integer with magnitude `> 2^53` (9007199254740992) is **silently rounded at encode time**, on the app server, before the worker or any adapter ever sees the value. This `encodeScalar` is reached by both the stdin args path (`encodeArgs` → `encodeJson` → `encodeScalar`) and the return-value path (`encodeValue` → `encodeJson` → `encodeScalar`).
 
-**Fix:** Wrap the body in `AssertUnwindSafe(executor::execute(...)).catch_unwind()` and on `Err` (panic) call a dead-letter write + decrement `active_tasks`.
+Concrete: author enters `9007199254740993` for an `int`/`long` param → serialized stdin arg becomes `9007199254740992`. Enter `9223372036854775807` (LLONG_MAX) → `Number()` rounds to `9223372036854775808`, which is **outside the int64 range** — the harness then receives a value that cannot be parsed by a strict int64 reader.
 
-### AGG-17 — `MAX_TIME_LIMIT_MS` default (30s) silently truncates server time limits — STILL REAL (worker-side)
-**Confidence: 90** · **Severity: MEDIUM** · `judge-worker-rs/src/executor.rs:28-33, 534-535`
+**Secondary (adapter layer):** Even if `serialization.ts` were fixed to emit full-precision integers, three adapters would still corrupt them because they parse ints through `double`:
+- C++ — `adapters/cpp.ts:47` `readInt()` → `(long long)llround(stod(...))`
+- Java — `adapters/java.ts:75` `readLong()` → `Math.round(Double.parseDouble(number()))`
+- C#  — `adapters/csharp.ts:78-80` `ReadLong()` → `(long)Math.Round(double.Parse(Number(), ...))`
 
-`max_time_limit_ms()` still defaults to `30_000`. Grep for `MAX_TIME_LIMIT_MS` across `*.yml`, `*.yaml`, `*.sh`, `*.env*`, `*.toml` returns **no matches** — no deployment sets it. The clamp `MIN_TIMEOUT_MS.max(time_limit_ms.min(max_time_limit_ms()))` therefore truncates any server-configured limit > 30s with no log.
+For comparison, the other adapters are exact for the in-text token: Python uses `json.loads` (arbitrary precision), Go uses `json.Unmarshal` into `int64` (full int64 range). JS/TS use `JSON.parse` → `Number` (inherently float64; not fixable without `BigInt`, acceptable to document).
 
-**NOTE — code-reviewer lane observed `validators/problem-management.ts:119` caps authoring at `max(10000)` (10s), so through the authoring UI the worker's 30s default never triggers. The worker-side concern remains valid for directly-imported problems / API-authored problems that bypass the UI validator, and the silent-clamp-without-log is still a debuggability gap. Recommend log a `warn!` whenever `submission.time_limit_ms > max_time_limit_ms()` so operators can spot truncation.** The safer synthesis is: the UI validator mitigates the common path, the worker-side warn is the cheap defense-in-depth fix.
+**Impact (why this is the highest-impact net-new finding):**
+1. *Test-case fidelity loss:* for any function problem whose `int`/`long` parameters or return exceed 2^53, the value actually judged is not the value the author wrote. A boundary test at LLONG_MAX becomes an out-of-range token.
+2. *False verdicts:* when `expectedOutput` is hand-authored for the intended full-precision value (or for a return that prints full-precision from e.g. C++ `std::to_string(long long)`), but the stdin arg is rounded, a correct submission computes on the wrong input and gets a wrong-answer verdict. The reverse (accepting a solution that is wrong on the real input) is also possible.
+3. *Harness fragility:* once a rounded token exceeds int64 range, the C++/Java/C# readers can throw/out-of-range and the submission dies with a misleading runtime error.
 
-**Fix:** Either raise the default to match the server-side ceiling, or log a `warn!` whenever `submission.time_limit_ms > max_time_limit_ms()`.
+**Fix (both layers must change together, or fixing one alone creates cross-language divergence):**
+- `serialization.ts:6`: serialize `int`/`long` without `Number()`. If the source value arrives as a JS `Number` it is already lossy at the boundary, so the input must be carried as a `string`/`bigint` through the authoring → DB → encode path and emitted verbatim, or validated/rejected at authoring time with a clear message when `!Number.isSafeInteger(v)`.
+- `adapters/cpp.ts:47`: replace `llround(stod(...))` with `strtoll`/`std::stoll` over an integer-only token.
+- `adapters/java.ts:75`: replace `Math.round(Double.parseDouble(number()))` with `Long.parseLong(...)` (integer token).
+- `adapters/csharp.ts:78-80`: replace `Math.Round(double.Parse(...))` with `long.Parse(..., InvariantCulture)`.
+- Document that JS/TS remain bounded to `Number.MAX_SAFE_INTEGER` for function judging.
 
-### AGG-43 / AGG-45 — Function-judging C++ family registry breadth — STILL REAL
-**Confidence: 90** · **Severity: MEDIUM** · `src/lib/judge/function-judging/registry.ts:10-30` · `src/lib/judge/function-judging/adapters/cpp.ts:180-186`
+Confidence: confirmed (the `Number()` truncation is a mathematical certainty; code paths traced through `encodeArgs`/`encodeValue` and all four adapters).
 
-`cppAdapter.language = "cpp23"` is the **only** C++ adapter registered. `FUNCTION_JUDGING_LANGUAGES` therefore contains `cpp23` but not `cpp20`, `cpp26`, `clang_cpp23`, `clang_cpp26`. Effects:
-- `src/lib/validators/problem-management.ts:106` rejects any `enabledLanguages` entry failing `supportsFunctionJudging`, so authors cannot enable function problems for those C++ variants.
-- `src/app/api/v1/submissions/route.ts:267` rejects submissions with `languageNotEnabledForProblem`.
-- `src/app/api/v1/judge/claim/route.ts:390` skips harness assembly for those languages.
+### F2 — Orphan sweep never reaps running `oj-*` containers; no startup sweep — MEDIUM (confirmed)
 
-Additionally, `DEFAULT_TEMPLATES` (`src/lib/judge/code-templates.ts:25`) and `src/lib/code/language-map.ts:9` reference `cpp17`, but `cpp17` is not in `Language` — orphaned references only.
+`judge-worker-rs/src/docker.rs:642-681` `cleanup_orphaned_containers()` filters `status=exited` only. It is invoked exclusively from the main loop every 300 s (`main.rs:505-508`) — never at startup. The normal-path cleanup in `run_docker_once` (`docker.rs:499-541`) does `kill_container` + `remove_container(-f)` and the graceful-shutdown path awaits in-flight tasks to completion (`main.rs:625-638`), so the happy paths self-clean. The gap is the ungraceful path:
 
-**Fix:** Register `cppAdapter` under an array of C++ aliases (or change `supportsFunctionJudging`/`getAdapter` to fall back to `cpp23` for any `cpp*`/`clang_cpp*` language).
+- A forced restart (deploy SIGTERM → SIGKILL after a short grace, OOM-kill of the worker, host reboot, or a worker panic outside `catch_unwind`) leaves every in-flight `oj-<uuid>` container in `running` state with no live parent to kill it. Because the orphan sweep matches `status=exited` only, and there is no startup sweep, those running containers are **never reaped** — they accumulate indefinitely, each pinning its `--memory`/`--pids-limit`/CPU share until manual `docker rm -f`. On a worker that runs N concurrent jobs and is redeployed, that is N leaked containers per deploy.
 
-### N2 — No wall-clock total-judging cap — STILL REAL
-**Confidence: 75** · **Severity: LOW-MEDIUM** · `judge-worker-rs/src/executor.rs:202-663`
+This matches and sharpens the prior R2 note: severity is MEDIUM, not low, because the trigger (a redeploy or worker crash with in-flight jobs) is a normal operational event, not a double-failure.
 
-A submission with `N` test cases and `run_all_test_cases=true` can hold a `Semaphore` permit for `N × (effective_time_limit_ms + DOCKER_RUN_OVERHEAD_BUDGET_MS)` wall-clock seconds. For a 100-case IOI problem at 5s/case that is ~10 minutes per submission. No outer envelope wraps the entire `execute_inner`. Combined with AGG-15 (panic path), a single wedged submission blocks a concurrency slot until the worker is restarted.
+**Fix:** add a one-shot startup sweep, before the main loop begins polling, that force-removes **all** `oj-*` containers regardless of status (e.g. `docker ps -a --filter name=oj- -q | xargs docker rm -f`). At startup there are no in-flight judgements, so nuking every `oj-*` container is safe. The existing every-5-min exited-only sweep can stay as-is (reaping `running` mid-loop would race in-flight judgements). Optionally add `kill_on_drop(true)` on the `docker run` child so a dropped handle also tears down the container.
 
-### AGG-54 — Migration journal duplicate-prefix — STILL REAL
-**Confidence: 85** · **Severity: LOW** · `drizzle/pg/meta/_journal.json:84-95, 215-235`
+Confidence: confirmed (sweep filter and sole call site verified; graceful-shutdown path verified to self-clean only when allowed to drain).
 
-Four numeric prefixes are duplicated in the journal:
-- `0012_public_signup_settings` (idx 11) vs `0012_flimsy_korg` (idx 12)
-- `0016_wandering_snowbird` (idx 16) vs `0016_fat_loki` (idx 30)
-- `0027_exam_mode_check_and_drift_catchup` (idx 27) vs `0027_upload_max_zip_setting` (idx 31)
-- `0028_striped_nicolaos` (idx 28) vs `0028_platform_mode_restriction_overrides` (idx 32)
+### F3 — `pids_limit` is a dead if/else; both branches `"128"` — LOW-MEDIUM (likely)
 
-The journal also jumps idx 32 → idx 33 with no `0029`–`0032` files on disk. Drizzle keys state by `tag` so applications don't break, but the redundant `IF NOT EXISTS` columns and the prefix collisions may cause `drizzle-kit generate` conflicts.
-
-### AGG-55 — Orphaned `min_password_length` column — STILL REAL
-**Confidence: 85** · **Severity: LOW** · `src/lib/db/schema.pg.ts:591`
-
-`minPasswordLength: integer("min_password_length")` is defined in the schema and present in every PG migration snapshot from `0000` to `0036`, but grep for `minPasswordLength` across `src/` returns **only** the schema definition — no reader, writer, validator, or UI consumer. Dead surface area carried through every backup/restore cycle.
-
----
-
-## NET-NEW FINDINGS
-
-### NEW-1 — `runner.rs` workspace hardcoded to 0o777, bypassing the cycle-1 hardening
-**Confidence: 82** · **Severity: MEDIUM** · `judge-worker-rs/src/runner.rs:805-816, 829-839`
-
-The Rust runner sidecar (the `/run` endpoint used by the in-browser compiler/test feature) still uses the pre-cycle-1 permissions model:
+`judge-worker-rs/src/docker.rs:319-323`:
 ```rust
-// Set permissions to 0o777 — allow nobody (65534) in sandbox container to access workspace
-tokio::fs::set_permissions(
-    workspace_dir,
-    std::os::unix::fs::PermissionsExt::from_mode(0o777),
-)
+let pids_limit = if options.phase == Phase::Compile {
+    "128"
+} else {
+    "128"
+};
 ```
-Source file is then written and chmod'd 0o666 with no `chown` to `65534:65534`. This is inconsistent with both siblings, which were hardened in cycle 1:
-- `executor.rs:331-360` does `chown(..., Some(65534), Some(65534))` then `0o700` (fallback `0o777` only on chown failure).
-- `execute.ts:728, 740-757` mirrors that chown+0o700/0o600 pattern.
+The preceding comment (lines 317-318) explicitly says “VM-based languages (JVM, BEAM, .NET, pwsh) spawn many threads even at runtime, so the run-phase limit must accommodate them,” yet the run branch is also `128`. Either the run-phase value was meant to be higher (e.g. 256/512) and was left at 128, or the branch is purely vestigial. In the first reading, JVM/.NET/Erlang submissions with GC+JIT+application threads can plausibly exceed 128 processes/threads (Linux `pids` cgroup counts threads) and fail with `Resource temporarily unavailable` → spurious runtime error for VM-language submissions. In the second reading it is harmless dead code. Either way the code does not match its own comment.
 
-Impact: on any worker host where the runner sidecar is enabled (`RUNNER_ENABLED=true`, the default), every interactive compiler run leaves the user's source world-read/writeable at `0o666` inside a world-traversable `0o777` workspace for the duration of the docker run. A co-tenant process or unprivileged host user can read other users' in-flight code or mutate it before the container reads it (TOCTOU). Lower severity than the executor path (which is submission judging) because the runner serves interactive testing only, but it is the same class of issue cycle 1 explicitly fixed elsewhere.
+**Fix:** pick one — raise the run-phase `pids_limit` for VM-based languages (keyed off `needs_exec_tmp` or a per-language flag), or delete the degenerate if/else and leave a single `let pids_limit = "128";` with a corrected comment.
 
-**Fix:** Replicate the `executor.rs` pattern — `chown` to `65534:65534` first, then `0o700` on success / `0o777` on `Err`. Mirror for the source file (`0o600` on success / `0o666` on `Err`).
+Confidence: likely (dead branch is certain; the *intent* to raise the run-phase limit is inferred from the comment — needs manual validation on whether 128 actually binds for the JVM/.NET images in practice).
 
-### NEW-2 — `validate_secure_judge_urls` skips `register`/`heartbeat`/`deregister` URLs
-**Confidence: 50** · **Severity: LOW** · `judge-worker-rs/src/config.rs:115`
+### AGG-43/45 — C++ family breadth in function judging — re-confirmed LOW / closed by design
 
-`Config::from_env` validates HTTPS only for `claim_url` and `report_url`. The other three (`register_url`, `heartbeat_url`, `deregister_url`) carry the same `JUDGE_AUTH_TOKEN` / per-worker secret in their `Authorization` header but are not checked. In practice all five derive from the same `JUDGE_BASE_URL` (so rejecting one rejects the config). Defense-in-depth, not exploitable. Below the 80 reporting threshold; included for completeness.
+The registry (`src/lib/judge/function-judging/registry.ts:10-18`) registers only `cpp23`. `languages.ts` also defines `cpp20` (line 220) and `clang_cpp23` (line 646), neither of which has an adapter, so `supportsFunctionJudging("cpp20" | "clang_cpp23")` is false. Unlike a latent bug, this is gated cleanly end-to-end: the function-problem language picker filters to `FUNCTION_JUDGING_LANGUAGES` (`problem-submission-form.tsx:84`), the submission API rejects unsupported languages with a 400 (`api/v1/submissions/route.ts:265-270`), and authoring validation requires at least one function-judging-capable enabled language (`validators/problem-management.ts:106`). Users never reach a confusing compile error. Closing as low/informational: if parity for `cpp20`/`clang_cpp23` is desired, point their registry key at the existing `cppAdapter` (the generated harness is standard C++ that all three front-ends compile).
 
----
-
-## FINAL SWEEP
-
-**Cycle-1+2 regression:** All five re-checked fixes verified correct. A10/A11/AGG-44 unchanged in behavior. A8/A9 hardening preserved. No regressions introduced by cycles 1–2.
-
-**Phase B carry-forward:** All six items re-confirmed with file:line evidence. **AGG-15 (panic-stuck submission) is still the highest-impact item** — every other Phase B item is medium-or-lower severity; AGG-15 alone can silently lose a verdict for 5 minutes with no audit trail.
-
-**Net-new bugs:**
-- **NEW-1 (confidence 82)** is the only Medium+ net-new finding: `runner.rs` workspace perms `0o777` is the missed sibling of the cycle-1 executor/compiler hardening. The fix is mechanical (port the `chown`+`0o700` pattern).
-- NEW-2 is below the reporting threshold (confidence 50) but noted for the next pass.
-
-**Recommended priority for cycle 3 remediation:**
-1. AGG-15 — `catch_unwind` in `main.rs` executor spawn (HIGH, ~5 lines + dead-letter fallback).
-2. NEW-1 — port the chown+0o700 pattern from `executor.rs` into `runner.rs` (MEDIUM, ~15 lines).
-3. AGG-17 — log a warning when `MAX_TIME_LIMIT_MS` clamps (MEDIUM, ~3 lines).
-4. AGG-43/45 — register `cppAdapter` under C++ family aliases (MEDIUM, registry change + tests).
-5. AGG-54 / AGG-55 — cleanup (LOW, no functional impact).
+### Executor run loop — no defects found
+Spot-checked the full judge flow (app queues → worker claims → executes → reports):
+- Fail-fast vs IOI partial scoring is correct: `executor.rs:648-654` breaks on first non-Accepted **unless** `submission.run_all_test_cases`, and `:658-662` derives the final status from the first non-Accepted result — so the partial-score denominator is not truncated.
+- TLE classification is delegated to the unit-tested `classify_test_case_verdict` using Docker-reported `duration_ms`, with the wall-clock kill timeout padded by `DOCKER_RUN_OVERHEAD_BUDGET_MS` so the buffer does not flip pass/fail semantics (`executor.rs:546-624`).
+- Empty-test-cases guard (`executor.rs:515-527`) and over-ceiling time-limit clamp with observability warn (`:529-540`) are correct.
+- Per-test cleanup via `temp_dir` drop on function exit is correct.
 
 ---
 
-**Relevant absolute paths inspected during this review:**
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/{validation,docker,executor,main,runner,config,api,comparator,types,languages}.rs`
-- `/Users/hletrd/flash-shared/judgekit/code-similarity-rs/src/main.rs`
-- `/Users/hletrd/flash-shared/judgekit/rate-limiter-rs/src/main.rs`
-- `/Users/hletrd/flash-shared/judgekit/src/lib/compiler/execute.ts`
-- `/Users/hletrd/flash-shared/judgekit/src/lib/judge/function-judging/{registry,adapters/cpp,assemble}.ts`
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/{restore,migrate/import}/route.ts`
-- `/Users/hletrd/flash-shared/judgekit/src/lib/db/{import,import-transfer,export-with-files,pre-restore-snapshot}.ts`
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/judge/claim/route.ts`
-- `/Users/hletrd/flash-shared/judgekit/drizzle/pg/meta/_journal.json`
+## (c) Net-new — nothing else at high impact
+
+After the sweep above, no additional high-impact correctness/maintainability issue in the worker + judge path. Minor note (not a finding): the executor leaves the source file at `0o666` unconditionally (`executor.rs:392-410`) rather than mirroring the runner’s `chown → 0o600 / 0o666` source hardening. This is acceptable in production because the parent workspace dir is `0o700` owned by 65534 (the `0o666` file is unreachable to other host uids through the locked parent), so it is a consistency nit, not a security gap.
+
+---
+
+## Priority order for the next plan
+
+1. **F1** (HIGH) — function-judging int64 precision: fix `serialization.ts:6` plus the C++/Java/C# adapter int readers as one coordinated change; add a regression test with an `int` value `> 2^53` run cross-language.
+2. **F2** (MEDIUM) — startup `oj-*` container sweep (all statuses) + optional `kill_on_drop`.
+3. **F3** (LOW-MEDIUM) — resolve the `pids_limit` dead branch (raise run-phase for VM languages, or delete the branch and fix the comment).
+
+NEW-1 and AGG-15 are verified landed and need no further action.

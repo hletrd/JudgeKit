@@ -1,166 +1,152 @@
-# Code Review — Cycle 3
+# Code Review — Cycle 4
 
-**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `207623f9` · **Cycle:** 3 (review-plan-fix loop)
-**Scope:** regression-check 13 cycle-1+2 fixes · validate 11 Phase B items · hunt net-new across whole repo
-**Coverage:** read 50+ files directly + 3 parallel exploration agents (authz inventory, race-conditions, injection/SSRF/path-traversal)
+**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `edd45cca` · **Cycle:** 4 (review-plan-fix loop)
+**Scope:** (a) regression-check 13 cycle-1/2/3 fixes · (b) re-validate deferred items · (c) net-new hunt
+**Coverage:** direct read of every priority-(a) file + twin server-action + schema + frontend form + cross-file sweep (`canAccessSubmission`, `onConflictDoUpdate` sites, invite/restore/migrate routes)
 
-**Files Reviewed:** 50+ direct, ~250 via agent fan-out
-**Total Issues:** 11 net-new + 8 Phase-B confirmations + 1 Phase-B resolved
+**Rigor note (per lead):** severity held tight. No CRITICAL. Findings trended 112→25 over cycles 1-3 and the changed surface is genuinely clean — this cycle produced 1 MEDIUM + 3 LOW, each with a concrete failure scenario. Nothing is inflated to keep the count up.
 
 ### By Severity
 - CRITICAL: 0
-- HIGH: 1 (C3-N1 metadata clobber race)
-- MEDIUM: 4 (C3-N2 audit gap, C3-N3 no re-confirm, C3-N4 role lateral-strip, C3-N5 SSE re-auth gap)
-- LOW: 4 (C3-N6 freezeLeaderboardAt, C3-N7 total mismatch, C3-N8 ZIP slow-path, C3-N9 host-header dev fallback)
-- INFO: 2 (L1 X-Real-IP conditional, L5 shell-chain documented)
+- HIGH: 0
+- MEDIUM: 1 (C4-N1 settings PUT partial-wipe, which also defeats the cycle-3 reconfirm gate)
+- LOW: 3 (C4-N2 equal-level cap-stripping residual; C4-N3 accepted-solutions pagination under-fill; C4-N4 SSE stale caps on terminal event)
+- INFO: 2 (executor source-file 0o666 vs runner 0o600 divergence; A9 deploy-docker per-target sourcing still real)
 
 ---
 
 ## Stage 1 — Spec Compliance (REGRESSION CHECK)
 
-All 13 cycle-1+2 fixes re-read in full context. **All achieve their stated purpose with no production regression.**
+All 13 cycle-1/2/3 changed-surface files re-read in full context. **No production regression found in any of them.** Every fix achieves its stated purpose.
 
-| Fix | File | Verdict |
+| Fix | File:line | Verdict |
 |---|---|---|
-| A1 skip-truncate absent tables | `src/lib/db/import.ts:143-161` | VERIFIED — `data.tables[tableName]` check before `tx.delete`; `skippedTables` recorded |
-| A2 DELETE role gate | `src/app/api/v1/admin/api-keys/[id]/route.ts:114-123` | VERIFIED — fetches `existing.role`; applies `canManageRoleAsync` mirroring PATCH |
-| A3 snapshot-null abort | `restore/route.ts:149-161`, `migrate/import/route.ts:98-107,214-220` | VERIFIED — both paths abort with `preRestoreSnapshotFailed` when null; `ALLOW_UNSNAPSHOTTED_RESTORE=1` opt-in |
-| A4 dockerImage allowlist | `languages/route.ts:70-72`, `[language]/route.ts:48-50` | VERIFIED — `isAllowedJudgeDockerImage` on both POST and PATCH |
-| A5 accessCode projection | `assignments/route.ts:80-84`, `[assignmentId]/route.ts:54-56` | VERIFIED for `accessCode`; **MINOR GAP** — `freezeLeaderboardAt` NOT stripped (see C3-N6) |
-| A6+A12 scope centralization | `discussions/permissions.ts:17-37`, `threads/route.ts:18-31`, `votes/route.ts:64-76`, `posts/route.ts:41` | VERIFIED — `isProblemLinkedScope`/`canAccessProblemScopedThread` from one source (write-path drift — see architect REG-2) |
-| A8 compiler import-no-throw | `compiler/execute.ts:64-87` | VERIFIED — logged error, no import throw |
-| A9 compiler 0o700 workspace | `compiler/execute.ts:728,746-747` | VERIFIED — `0o700`/`0o600` on chown success; `0o777`/`0o666` ONLY on chown-failure fallback (matches Rust) |
-| A10 worker cleanup timeouts | `judge-worker-rs/src/docker.rs:172-276` | VERIFIED — `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS), …)` wraps inspect/kill/rm |
-| A11 500-submission cap | `code-similarity-rs/src/main.rs:29,33-35,96-100` | VERIFIED — `exceeds_submission_cap` boundary check + 413 |
-| A13 edit page strict gate | `(public)/problems/[id]/edit/page.tsx:41` | VERIFIED — `canManageProblem` server-side; hidden data blocked |
-| A14d tools.ts comment | `plugins/chat-widget/tools.ts:68-74` | VERIFIED — comment matches `context.userId` scoping |
-| C2-H7 X-Real-IP revert | `src/lib/security/ip.ts:113-117` | **REVERT WAS CORRECT** — see note below |
+| Worker `catch_unwind` (AGG-15/C3-AGG-9) | `judge-worker-rs/src/main.rs:559-591`; helper `executor.rs:918-937`, `main.rs:22-29` | VERIFIED — `AssertUnwindSafe(exec_fut).catch_unwind()` traps the panic, `report_panic` emits `runtime_error`, and `active_tasks.fetch_sub(1)` runs *after* the catch (L589) so the capacity counter decrements on the panic path too. Stale-sweep is no longer the only net. |
+| Worker `MAX_TIME_LIMIT_MS` clamp warn (AGG-17) | `judge-worker-rs/src/executor.rs:529-540` | VERIFIED — single `tracing::warn!` when `time_limit_ms > max_time_limit_ms()`; cheap, fires only for API/imported problems (UI caps at 10s). |
+| Runner sidecar chown + 0o700 (C3-AGG-5) | `judge-worker-rs/src/runner.rs:831-881` | VERIFIED — `chown(65534:65534)` → `0o700` on success / `0o777` fallback; source file `0o600`/`0o666` (L874-881). Source-text contract test at L198-213 pins it. |
+| Executor workspace chown + 0o700 (cycle-1) | `judge-worker-rs/src/executor.rs:320-360` | VERIFIED — unchanged and correct. |
+| `cannotEditHigherRole` gate (C3-AGG-2) | `src/app/api/v1/admin/roles/[id]/route.ts:94-96` | VERIFIED — `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403)` before any mutation. Blocks strictly-higher demotions. **Residual:** equal-level case still open (C4-N2). |
+| `admin/settings` PUT password reconfirm (C3-AGG-7) | `src/app/api/v1/admin/settings/route.ts:91-110` | VERIFIED for explicit sensitive keys — **but** the gate is defeated for the hcaptcha/secret path by the partial-wipe bug (C4-N1). The fix is correct in isolation; the sibling wipe undermines it. |
+| Community threads/votes via scoped helper (C3-AGG-4) | `community/threads/route.ts:29`; `community/votes/route.ts:83` | VERIFIED — both now call `canAccessProblemScopedThread`. Helper `discussions/permissions.ts:29-37` is the single source of truth. |
+| Contest export JSON audit unconditional + durable (C3-AGG-1) | `contests/[assignmentId]/export/route.ts:117-127` | VERIFIED — `recordAuditEventDurable` moved out of the `isDownload` block; every JSON PII read audited. |
+| `freezeLeaderboardAt` strip (C3-N6) | `groups/[id]/assignments/route.ts:85` | VERIFIED — stripped alongside `accessCode` for non-managers. |
+| accepted-solutions `total` WHERE filter (C3-N7) | `problems/[id]/accepted-solutions/route.ts:51-56` | VERIFIED for the **count** — **but** the list SELECT was not updated (C4-N3). |
+| SSE re-auth re-runs `canAccessSubmission` (C3-AGG-6) | `submissions/[id]/events/route.ts:475-482` | VERIFIED — re-fetches the row and re-runs `canAccessSubmission`; `canAccessSubmission` signature (`permissions.ts:292`) takes `{userId, assignmentId}` which the refreshed row satisfies. **Residual:** stale `caps` on the terminal event (C4-N4). |
+| Recruiting metadata tx + `FOR UPDATE` (C3-AGG-3) | `src/lib/assignments/recruiting-invitations.ts:396-434` | VERIFIED — SELECT … `.for("update")` inside `db.transaction`; `_sys.*` keys preserved from the locked row; serializes against `jsonb_set` increments. |
 
-**C2-H7 re-examination (per prompt):** The cycle-2 revert (commit `23851d69`) was the right call. Every nginx config generated by `deploy-docker.sh` and `deploy.sh` overwrites `X-Real-IP` from `$remote_addr`:
-- `deploy-docker.sh:1281, 1296, 1308, 1320, 1353, 1368, 1380, 1392` → `proxy_set_header X-Real-IP $remote_addr;`
-- `deploy.sh:256` → same
-
-Standard nginx `proxy_set_header X-Real-IP $remote_addr` **unconditionally overwrites** any client-supplied value, so the spoofing concern is moot for every deployed target (algo.xylolabs.com / oj-internal.maum.ai / auraedu). The unconditional `X-Real-IP` trust at `ip.ts:114-117` is safe behind these configs. **No action needed.** Re-open condition: only if a future deployment forwards X-Real-IP client-controlled (e.g., bare-metal without nginx fronting). Optional hardening: CI grep test asserting every `proxy_pass` carries the overwrite directive.
-
-**Phase B side-effect cleanup:** AGG-44 still confirmed non-issue (`MAX_CONSECUTIVE_BLOCKS_EXP = 4`, max `2^4 = 16`).
+**Phase-B side-effect re-confirm:** `redeemRecruitingToken` atomic claim (L768-800) and the brute-force counter paths (L96-144) remain textbook-correct.
 
 ---
 
-## Stage 2 — Phase B Validation
+## Stage 2 — Deferred Items Re-validation
 
 | Item | Status | Evidence |
 |---|---|---|
-| **AGG-10** plaintext-decryption fallback | STILL REAL (deferred ok) | `encryption.ts:98-116` — default `false`, must pass `{allowPlaintextFallback:true}` explicitly; warn-log in prod. `plugins/secrets.ts:61` still defaults `true`. |
-| **AGG-14** deploy-docker topology defaults | STILL REAL | `deploy-docker.sh:184-185` — `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"`, `BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"`. Bare `./deploy-docker.sh` violates CLAUDE.md. |
-| **AGG-15** worker catch_unwind | STILL REAL (defense-in-depth) | No `catch_unwind` in runtime; only `unwrap()` in test module. Staleness sweep is the net. |
-| **AGG-17** MAX_TIME_LIMIT_MS clamp | **MITIGATED** (UI path) | `validators/problem-management.ts:119` — `timeLimitMs: z.number().int().min(100).max(10000)` caps authoring at 10s; the worker 30s default never clamps in practice via the UI. Worker-side warn still worthwhile for API/imported problems. |
-| **NEW-M2** SSE re-auth must re-run canAccessSubmission | STILL REAL (see C3-N5) | `submissions/[id]/events/route.ts:466-475` — re-auth only checks `getApiUser` + `reAuthUser.id !== viewerId`; does NOT re-run `canAccessSubmission`. |
-| **NEW-M3** contest export JSON no audit | STILL REAL (see C3-N2) | `contests/[assignmentId]/export/route.ts:113-125` — JSON branch audits only when `isDownload`. Pure JSON with `download=0` returns full PII with NO audit. |
-| **NEW-M5** admin/settings PUT no re-confirm | STILL REAL (see C3-N3) | `admin/settings/route.ts:37-148` — mutates security-posture fields with no password re-confirmation. |
-| **NEW-M6** roles PATCH actor-vs-target-current-level | STILL REAL (see C3-N4) | `admin/roles/[id]/route.ts:92-99` — only "added" caps gated; can strip caps from higher-level custom roles. |
-| **NEW-M7** recruiting-token brute-force race | **RESOLVED** | `redeemRecruitingToken` (`recruiting-invitations.ts:742-758`) — atomic WHERE-guarded UPDATE + rowCount check. **However**, see C3-N1 — a different metadata race can clobber the counter. |
-| **NEW-M8** zip-bomb streaming | STILL REAL (partial) | `files/validation.ts:96-107` — slow-path materializes full decompressed entry before checking size cap. |
-| **NEW-M9** anti-cheat Origin fail-closed | STILL REAL (bounded) | `contests/[assignmentId]/anti-cheat/route.ts:70` — `if (expectedHost)` skips when AUTH_URL unset. `validateAuthUrl()` throws in prod, so bounded to dev/misconfigured-prod. |
-| **AGG-41** fire-and-forget audit sites | STILL REAL | 103 fire-and-forget vs 9 durable. Security-critical: user role/password/delete, api-keys, group DELETE, recruiting, contest/migrate/backup exports, docker build/prune. |
+| **A9** deploy-docker per-target env sourcing | STILL REAL (LOW, deferred ok) | `deploy-docker.sh:119-123` sources only `.env.deploy`. No `--target=` block sources `.env.deploy.algo/.worv/.auraedu`. Bare invocation still defaults `INCLUDE_WORKER=true`, `BUILD_WORKER_IMAGE=auto`, `SKIP_LANGUAGES=false`, contradicting CLAUDE.md for the algo app server. Operator workaround (env vars / `--no-worker --skip-worker-build --skip-languages`) exists, so bounded. |
+| **A11a** migrate-import 0 snapshot/audit tests | STILL REAL (test gap — **test-engineer lane**) | `admin/migrate/import/route.ts` code is correct: reconfirm (L68/L180), snapshot gate (L102/L215), durable post-commit audit (L123/L233). The gap is coverage, not logic. Cross-agent overlap: test-engineer. |
+| **C4-N1** (this cycle) | The settings PUT reconfirm gate (C3-AGG-7) is undermined — see net-new. | `admin/settings/route.ts:136-169` |
+| AGG-1 / AGG-10 / NEW-M8 / AGG-41 / AGG-43/45 / AGG-54/55 | Not re-opened this cycle | Design-heavy; remain tracked in the cycle-3 aggregate. No line-level change since cycle 3 that would close them. |
 
 ---
 
-## Stage 2 — Issues (NET-NEW)
-
-### HIGH
-
-**[HIGH] C3-N1 — `updateRecruitingInvitation` metadata merge races with atomic brute-force counter**
-- File: `src/lib/assignments/recruiting-invitations.ts:393-429`
-- Confidence: MEDIUM
-- Issue: `updateRecruitingInvitation` reads `metadata` via plain `db.select` (L393-397) with NO transaction and NO `FOR UPDATE`, builds a merged object that preserves `_sys.*` keys (L402-408), then writes the whole metadata object back via `db.update(...).set({metadata: mergedMetadata})` (L426-429). Concurrent `incrementFailedRedeemAttempt` (L96-115, correctly atomic `jsonb_set`) that runs between the SELECT and UPDATE gets clobbered by the stale snapshot.
-- Failure scenario: An admin edits an invitation's expiry while a brute-force attempt is in flight. The admin's read snapshots `metadata._sys.failedRedeemAttempts = 2`; concurrent `incrementFailedRedeemAttempt` raises it to 3 atomically; admin's UPDATE writes back `{..., _sys.failedRedeemAttempts: 2}`, dropping the counter by 1. Repeated overlaps reset the counter indefinitely, defeating the `MAX_FAILED_REDEEM_ATTEMPTS = 5` lockout (L50, enforced at L560-563). Same clobber applies to `_sys.accountPasswordResetRequired`.
-- Fix: wrap the SELECT + merge + UPDATE in `db.transaction(async (tx) => { const [row] = await tx.select(...).where(eq(id, id)).for("update"); ...await tx.update(...); })` so the row-level lock serializes against the atomic `jsonb_set` increments.
+## Stage 3 — Net-New Findings
 
 ### MEDIUM
 
-**[MEDIUM] C3-N2 — Contest export JSON path serves PII with no audit when `download=0` (NEW-M3 restated)**
-- File: `src/app/api/v1/contests/[assignmentId]/export/route.ts:58, 113-125`
-- Confidence: HIGH
-- Issue: `isDownload = download === "1" || format === "csv"` (L58). JSON branch's `recordAuditEvent` is inside `if (isDownload)` (L113). A request like `GET .../export?format=json` (no `download=1`) returns the full leaderboard PII (name, username, className, ipAddresses) without an audit row. CSV path always audits (L180).
-- Failure scenario: Instructor/insider exfiltrates candidate PII via `format=json` GETs; no audit trail for forensic review.
-- Fix: move the `recordAuditEvent` call out of the `if (isDownload)` block in the JSON branch — audit whenever PII is serialized, regardless of `Content-Disposition`. Prefer `recordAuditEventDurable`.
+**[MEDIUM] C4-N1 — `PUT /api/v1/admin/settings` partial update wipes every unspecified field, silently disabling hCaptcha / public signup and bypassing the cycle-3 reconfirm gate**
+- Files: `src/app/api/v1/admin/settings/route.ts:136-169` (the wipe); contrast correct twin `src/lib/actions/system-settings.ts:139-222`.
+- Confidence: HIGH (confirmed by reading both code paths)
+- Status: confirmed
 
-**[MEDIUM] C3-N3 — `admin/settings` PUT mutates privilege-affecting fields with no password re-confirmation (NEW-M5 restated)**
-- File: `src/app/api/v1/admin/settings/route.ts:37-148`
-- Confidence: HIGH
-- Issue: Settings PUT mutates `platformMode`, `allowedHosts`, rate-limit values, `publicSignupEnabled`, and `hcaptchaSecret` with no password re-confirmation. Sibling destructive routes (restore L50-62, migrate/import L58-71, backup L54-66) all require `verifyAndRehashPassword` first.
-- Failure scenario: Stolen session cookie silently disables hCaptcha, raises rate limits, flips `publicSignupEnabled`, or weakens `allowedHosts`.
-- Fix: extend the password-reconfirm wrapper from restore/backup to settings PUT (at minimum for `allowedHosts`, `signupHcaptchaEnabled`, `publicSignupEnabled`, and rate-limit fields).
+**Why it's a problem.** The route handler builds `baseValues` **unconditionally**, defaulting every core field, then upserts with `onConflictDoUpdate({ set: baseValues })`:
+```ts
+const baseValues = {
+  siteTitle: siteTitle ?? null,
+  platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
+  publicSignupEnabled: publicSignupEnabled ?? false,
+  signupHcaptchaEnabled: signupHcaptchaEnabled ?? false,
+  hcaptchaSiteKey: hcaptchaSiteKey ?? null,
+  hcaptchaSecret: hcaptchaSecret ? encrypt(hcaptchaSecret) : null,   // ← wipes the stored secret
+  ...
+};
+```
+Numeric config keys and `allowedHosts` *are* guarded (only written if provided) — but the boolean/string/secret fields above are written on every call. A PUT that supplies only `{ siteTitle: "x" }` overwrites `hcaptchaSecret → null`, `signupHcaptchaEnabled → false`, `publicSignupEnabled → false`, `platformMode → default`, etc.
 
-**[MEDIUM] C3-N4 — `roles` PATCH allows lateral cap-stripping of higher-privilege custom roles (NEW-M6 confirmed exploitable)**
-- File: `src/app/api/v1/admin/roles/[id]/route.ts:69-114`
-- Confidence: HIGH
-- Issue: Existing guards: (1) super_admin caps cannot be reduced (L72-74), (2) builtin level immutable (L78-80), (3) `updates.level ≤ creatorLevel` (L83-86), (4) actor cannot ADD capabilities they lack (L92-99). MISSING: the actor may REMOVE any capability from any role whose CURRENT level exceeds their own. The `added` filter at L94 only checks newly-added caps; it does not gate removals.
-- Failure scenario: A level-5 admin targets a level-7 custom role created by a super_admin. PATCH `{level: 5, capabilities: []}` — passes all 4 checks (level 5 ≤ 5; empty array adds nothing). Result: the higher-priv role is silently demoted and stripped of every capability.
-- Fix: add `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403);` before any mutation (analogue of api-keys' `canManageRoleAsync` gate). Gate removals symmetrically with adds.
+The server action `updateSystemSettings` does this correctly — it guards **every** field with `hasOwnInput(key)` (`system-settings.ts:144-218`) so omitted fields are preserved. The dashboard form calls the server action, so the UI path is safe. The **public REST endpoint** is the one that is broken, and it is reachable by any `system.settings`-capable session.
 
-**[MEDIUM] C3-N5 — SSE re-auth does not re-run `canAccessSubmission` (NEW-M2 restated)**
-- File: `src/app/api/v1/submissions/[id]/events/route.ts:452-503`
-- Confidence: HIGH
-- Issue: The periodic re-auth at L466-475 only re-checks identity (`getApiUser` + `reAuthUser.id !== viewerId`). It does NOT re-run `canAccessSubmission`, which was the gate at stream open (L334). If group access is revoked mid-stream, the SSE keeps emitting status/result events until the natural timeout.
-- Failure scenario: Instructor removes a student from a group mid-judging; the student continues to receive status heartbeats and the final `result` event for the remaining ~290s.
-- Fix: in the re-auth IIFE, after the identity check, re-run `canAccessSubmission(submission, reAuthUser.id, reAuthUser.role)`; `close()` on failure.
+**Failure scenario (two flavors):**
+1. *Data loss:* an admin (or script/external integration) hits `PUT /api/v1/admin/settings` to tweak one numeric limit and silently destroys the stored hCaptcha secret, site title, platform mode, and signup flags.
+2. *Reconfirm-gate bypass (security-posture):* the cycle-3 reconfirm gate (C3-AGG-7) only triggers when an **explicit** sensitive key is in the payload (`touchesSensitiveKey`, L91-93). A stolen admin session cookie sending `{ siteTitle: "x" }` passes no sensitive key → no `currentPassword` required → yet the wipe clears `hcaptchaSecret` and flips `signupHcaptchaEnabled`/`publicSignupEnabled` as a side effect. The password-reconfirm protection that was supposed to gate security-posture changes is bypassed without the password.
+
+**Fix.** Mirror the server action: only write a field when it was actually supplied. Either (a) replace the unconditional `baseValues` with `hasOwnInput(key)`-guarded assignments exactly like `system-settings.ts:144-222`, or (b) for the API path, build `updateData` from defined fields and use a dynamic update set. The route should also destructure/handle `smtpPass`, `emailVerificationRequired`, `communityUpvoteEnabled`, `communityDownvoteEnabled`, `homePageContent`, `footerContent`, `defaultLocale` — currently they are dropped by the `allowedConfigKeys` whitelist and can never be set via the API (the route is a partial implementation of the settings schema).
+
+**Negative test:** `PUT { siteTitle: "x" }` (no sensitive key, no currentPassword) → stored `hcaptchaSecret`/`publicSignupEnabled` unchanged.
+
+---
 
 ### LOW
 
-**[LOW] C3-N6 — `freezeLeaderboardAt` not stripped from assignment GET for non-managers**
-- File: `src/app/api/v1/groups/[id]/assignments/route.ts:80-84`; `[assignmentId]/route.ts:54-56`
-- Confidence: HIGH
-- Issue: Cycle-2 plan A5 said "omit `accessCode` (and `freezeLeaderboardAt`)". Implementation only strips `accessCode`. `freezeLeaderboardAt` is just a freeze timestamp (not a secret), so impact is low.
-- Fix: either strip for consistency, or update the cycle-2 plan to record it as intentional.
+**[LOW] C4-N2 — roles PATCH still permits equal-level peer cap-stripping**
+- File: `src/app/api/v1/admin/roles/[id]/route.ts:94-109`
+- Confidence: HIGH (code does this) · Status: confirmed
 
-**[LOW] C3-N7 — accepted-solutions `total` overcounts when authors opt out of sharing**
-- File: `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:48-52, 86-103`
-- Confidence: HIGH
-- Issue: `total` (L52) counts all accepted solutions; the returned `solutions` array (L88) filters out non-shared ones. UI pagination shows "X results" but only Y < X rendered.
-- Fix: add `eq(users.shareAcceptedSolutions, true)` to the count query's WHERE.
+The new `cannotEditHigherRole` gate (L94) compares `role.level > creatorLevel`, so it blocks only *strictly-higher* targets. A peer admin at the same level can still strip capabilities they do not hold from an equal-level custom role: existing caps `{a,b,c,d}`, PATCH `{capabilities:[a,b]}` — `added` filter (L104) is empty (nothing new), so the `ungrantable` check passes; `c,d` are silently removed by an actor who never had them. The capability-add guard's stated rationale ("capabilities already on the role may remain") does not cover *removal* of caps the actor lacks.
 
-**[LOW] C3-N8 — ZIP slow-path materializes full entry before per-entry cap check (NEW-M8 partial)**
-- File: `src/lib/files/validation.ts:96-107`
-- Confidence: MEDIUM
-- Issue: Slow-path `entry.async("uint8array")` loads the entire decompressed payload, THEN checks `content.length > MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES`. A crafted single-entry ZIP with a 1 GB payload spikes heap before rejection.
-- Fix: use JSZip's streaming `internalStream` API to incrementally consume and abort once the cap is exceeded.
+**Failure scenario:** an admin weakens another admin's custom role at the same level (removal-only; cannot elevate). Blast radius is bounded — no level raise, no cap add — so LOW.
 
-**[LOW] C3-N9 — `getPublicBaseUrl` host-header fallback link poisoning (dev-only)**
-- File: `src/lib/security/env.ts:97-109`
-- Confidence: HIGH (code does this) / LOW (exploitable in prod)
-- Issue: When `AUTH_URL` is unset, password-reset email links are built from `Host` + `X-Forwarded-Proto`. `validateAuthUrl()` throws in production if `AUTH_URL` is missing, so this only fires in dev/staging.
-- Fix: defense-in-depth — warn at startup when host-derived mode is active in non-test environments.
+**Fix:** also gate removals — e.g. `const removed = existingCaps.filter(c => !newSet.has(c)); if (removed.some(c => !caps.has(c))) return apiError("cannotRemoveCapabilityYouLack", 403);` — or tighten the policy to "target capabilities must be a subset of the actor's resolved caps" if the deployment intends peer roles to be fully mutually-isolated.
+
+---
+
+**[LOW] C4-N3 — accepted-solutions list query does not filter `shareAcceptedSolutions` in SQL, so pages under-fill (C3-N7 fix was half-applied)**
+- File: `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:51-56` (count, fixed) vs `83-88` + `91-106` (list, not fixed)
+- Confidence: HIGH · Status: confirmed
+
+Cycle-3 added `eq(users.shareAcceptedSolutions, true)` to the **count** query's WHERE (L55) so `total` matches the rendered set. The **list** SELECT (L83-88) still uses the unfiltered `whereClause`, then JS-filters at L92. Result: non-sharing authors' rows consume `pageSize`/`offset` slots and are then discarded, so a page can render fewer than `pageSize` solutions even when more sharing solutions exist beyond the offset (and `total` overstates what is reachable).
+
+**Failure scenario:** a "newest" page of 10 returns 4 solutions because 6 slots were taken by opt-out authors; "X results" never reconciles with what is paged through.
+
+**Fix:** add `eq(users.shareAcceptedSolutions, true)` to `whereClause` (or a separate list WHERE) and drop the now-redundant `.filter` at L92 so pagination is computed entirely in SQL.
+
+---
+
+**[LOW] C4-N4 — SSE terminal-result event is sanitized with stale capabilities**
+- File: `src/app/api/v1/submissions/[id]/events/route.ts:344` (caps resolved once) + `405-429` (`sendTerminalResult` uses captured `caps`)
+- Confidence: MEDIUM (defense-in-depth) · Status: likely
+
+`caps` is resolved once at stream open (L344) and captured into the `sendTerminalResult` closure (L410). The re-auth IIFE correctly re-runs `canAccessSubmission` (C3-AGG-6, L475-482), but if the viewer is *downgraded* mid-stream (loses `submissions.view_all` or a detail-revealing capability) yet still passes `canAccessSubmission` (e.g. remains the owner), the final `result` event is sanitized with the pre-downgrade capability set, potentially exposing more detail than the post-downgrade role permits.
+
+**Failure scenario:** instructor downgraded to student mid-judging still owns the submission → `canAccessSubmission` stays true → terminal result sanitized with instructor caps (e.g. `showDetailedResults`/`showRuntimeErrors` framing) for one final event.
+
+**Fix:** in `sendTerminalResult`, re-resolve caps (`await resolveCapabilities(reAuthUser.role)`) when invoked from the re-auth path, or pass a `caps` override into the helper from the IIFE. Bounded by the access re-check, so LOW.
+
+---
+
+### INFO (no action required, recorded for completeness)
+
+- **I-1** `judge-worker-rs/src/executor.rs:392-410` sets the source file to `0o666` unconditionally while `runner.rs:874-881` uses conditional `0o600`/`0o666`. Not a vulnerability — the executor workspace dir is chowned to `65534` then `0o700`, so only uid `65534` can traverse into it regardless of the file mode. Worth a one-line comment cross-reference if you want the two paths to read identically.
+- **I-2** A9 deploy-docker per-target sourcing (see Stage 2) — still real, operator-workaround exists, LOW.
 
 ---
 
 ## Open Questions (surfaced, not blocking)
 
-- **C3-N1 metadata clobber**: only `contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:207` (admin PATCH) calls it. Race window requires admin metadata edit overlapping active brute-force. Severity MEDIUM is right.
-- **isJudgeAuthorized shared-token fallback (NEW-H5)** with no IP allowlist: default-open allowlist + leaked shared token = arbitrary source claims. Needs operator confirmation of `JUDGE_ALLOWED_IPS` on each production target.
+- **Is `PUT /api/v1/admin/settings` intentionally a public REST surface, or is it superseded by the server action?** If only the dashboard is supposed to mutate settings, consider deprecating/gating the route (or aligning it with `hasOwnInput`). If it must stay, C4-N1 is a ship-blocker for any non-dashboard caller. Needs product intent confirmation.
 
----
+## Cross-Agent Overlap
+
+- **C4-N1** — logic/data-integrity finding unique to code-reviewer; the *security* angle (reconfirm-gate bypass) likely overlaps with **security-reviewer**. Flag for aggregation.
+- **A11a** — owned by **test-engineer** (coverage gap, not a code defect).
+- **A9** — operational/topology; overlaps **architect** and **document-specialist** (docs batch).
+- C4-N2/N3/N4 — residual edges of cycle-3 fixes; no other agent expected to surface these.
 
 ## Positive Observations
 
-- **A1 import skip-truncate** surfaces `skippedTables` in both `ImportResult` and the API response.
-- **`redeemRecruitingToken` atomic claim** is textbook correct.
-- **Cycle-2 A7 durable-audit relocation** correctly moves audit to AFTER `restoreParsedBackupFiles`, with a separate durable failure-audit.
-- **`isProblemLinkedScope` centralization** is clean DRY at the helper — but see architect REG-2 (write-path callers bypass it).
-- **C2-H7 revert was correctly decided** — every nginx config overwrites X-Real-IP from `$remote_addr`.
-- **Injection/SSRF/path-traversal sweep found zero critical/high issues.**
-
----
+- The **server action** `updateSystemSettings` is a clean reference implementation of partial-update semantics — the API route just needs to match it.
+- `redeemRecruitingToken` and the brute-force counter are textbook atomic SQL; the new `updateRecruitingInvitation` lock-merge composes correctly with them.
+- The SSE re-auth re-fetch + `canAccessSubmission` re-run is the right shape; C4-N4 is a caps-freshness nit, not a structural flaw.
+- All 13 cycle-1/2/3 changed-surface fixes verified with no regression — the loop is converging on the intended invariants.
 
 ## Recommendation
 
-**COMMENT** (no CRITICAL, no HIGH-at-HIGH-confidence that blocks ship).
-
-Suggested next-cycle priorities (highest impact first):
-1. **C3-N4** (roles lateral cap-stripping) — smallest fix, clearest exploit path; one-line `cannotEditHigherRole` gate.
-2. **C3-N3** (settings PUT no reconfirm) — extend the existing `verifyAndRehashPassword` wrapper.
-3. **C3-N2** (export JSON audit) — move one `recordAuditEvent` call out of the `isDownload` branch.
-4. **C3-N5** (SSE re-auth) — extend the IIFE to re-run `canAccessSubmission`.
-5. **C3-N1** (metadata clobber) — wrap `updateRecruitingInvitation` in tx + `FOR UPDATE`.
-
-Phase B items that can be **closed**: AGG-17 (authoring clamp mitigates common path), NEW-M7 (atomic claim verified), C2-H7 (revert was correct, nginx overwrites X-Real-IP — verified).
+**COMMENT.** No CRITICAL, no HIGH. Schedule C4-N1 (the only MEDIUM) — it is a small, mechanical fix (copy the `hasOwnInput` pattern from the server action twin) with a concrete data-loss + security-posture failure scenario, and it closes a gap in the cycle-3 reconfirm gate. C4-N2/N3/N4 are cheap ride-alongs.

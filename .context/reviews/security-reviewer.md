@@ -1,240 +1,178 @@
-# Cycle 3 — security-reviewer
+# Cycle 4 — security-reviewer
 
-**Scope:** Full deep re-audit of JudgeKit at HEAD `207623f9`. Regression-checked the 10 cycle-1+2 shipped fixes; validated the 14 carry-forward Phase B items; hunted net-new OWASP issues across all 113 API routes, auth/security libs, restore/export pipeline, file storage, judge/compiler IPC, chat-widget plugin, anti-cheat, recruiting, and Rust worker.
+**Scope:** Deep re-audit of JudgeKit at HEAD. Regression-checked every cycle‑1/2/3 changed security surface named in the brief; re‑validated the deferred items; hunted net‑new OWASP issues across auth/authz, secrets, judge IPC, restore/export, file upload, and the Rust worker. Validated the new `deploy-docker.sh` DEPLOY_CMD flagged in `CLAUDE.md`.
 
-**Risk Level: MEDIUM** — All 10 prior fixes hold; SEC-9 (community write-side IDOR) is now FIXED since cycle 2. AGG-2 (snapshot unrestoreable) remains the single HIGH-severity defensible finding. NEW-M3 (contest JSON export audit gap) is a confirmed audit-bypass with PII exfiltration potential and should be elevated to HIGH priority this cycle. No CRITICAL issues, no SQL/SSRF/path-traversal/command-injection vectors, no new secrets exposure. npm audit clean (0 high/critical, 2 moderate build-time).
+**Risk Level: MEDIUM** — No CRITICAL, no new SQLi/SSRF/command‑inj/path‑traversal. The two carry‑forward HIGHs (C4‑1 snapshot unrestoreable, C4‑2 judge shared‑token claim + default‑open IP allowlist) remain the only items with concrete, exploitable blast radius. The cycle‑3 fixes (contest JSON audit, SSE re‑auth, settings reconfirm, recruiting FOR UPDATE, Rust chown+0o700) all HOLD on regression — no bypass introduced by the fix. This cycle’s new findings are all MED/LOW gaps *inside* existing controls, not new holes. npm‑audit‑equivalent surface unchanged (0 high/critical per cycle‑3).
 
 ## Summary
 
 | Severity | Count | Items |
 |---|---|---|
 | Critical | 0 | — |
-| High | 1 | C3-1 (AGG-2 snapshot unrestoreable, re-confirmed) |
-| Medium | 3 | C3-2 (NEW-M3 JSON export audit gap, escalated), C3-3 (NEW-M5 admin/settings no step-up), C3-4 (AGG-10 plaintext-decrypt default true) |
-| Low | 6 | C3-5 (C2-H7 X-Real-IP residual, narrowed), C3-6 (NEW-M2 SSE identity-only re-auth), C3-7 (CSRF Origin-required narrow), C3-8 (NEW-M9 anti-cheat Origin defense-in-depth), C3-9 (C2-4 chat-widget Zod contract gap), C3-10 (C2-5 api-keys same-role mutation) |
+| High | 2 | C4‑1 (AGG‑2 snapshot unrestoreable, re‑confirmed), C4‑2 (NEW‑H5 judge shared‑token `/claim` + default‑open allowlist, re‑confirmed — highest impact) |
+| Medium | 2 | C4‑3 (settings reconfirm list incomplete — AI/compiler/upload bypass), C4‑4 (AGG‑10 plaintext‑decrypt default true, re‑confirmed) |
+| Low | 5 | C4‑5 (settings dead‑reconfirm / un‑persisted keys), C4‑6 (roles PATCH TOCTOU, no FOR UPDATE), C4‑7 (recruiting `resetAccountPassword` unserialized metadata clobber), C4‑8 (executor.rs source file 0o666 inconsistency), C4‑9 (contest CSV export non‑durable audit) |
 
 ---
 
-## REGRESSION CHECK — 10 cycle-1+2 fixes (HEAD `207623f9`)
+## REGRESSION CHECK — cycle‑1/2/3 changed security surface
 
-| # | Item | Status | Evidence |
+| # | Item (brief anchor) | Status | Evidence @ HEAD |
 |---|---|---|---|
-| 1 | `src/lib/security/env.ts` 0600 env files + startup guard | SECURE | env.ts:200 `(stats.mode & 0o077) !== 0` throws in production; `resolveLoadedEnvFilePath` walks `.env.production.local`→`.env` (L150-169). All 6 on-disk `.env*` are `-rw-------` (verified by `ls -la`). |
-| 2 | `groups/[id]/route.ts` DELETE IDOR gate | SECURE — NO BYPASS | route.ts:192-229. Fetches `instructorId` inside `tx...for("update")` (L199-204), calls `canManageGroupResourcesAsync` (L211-216), denies unless `caps.has("groups.view_all")`. Single tx path; no alternate route reaches `tx.delete`. |
-| 3 | `groups/[id]/instructors/route.ts` student→co_instructor block | SECURE | route.ts:87-89 rejects `(await getRoleLevel(targetUser.role)) <= 0` with 409 before any insert/update. |
-| 4 | `admin/api-keys/[id]/route.ts` PATCH + DELETE role gate | SECURE | PATCH L51 selects `existing.role`; L86 `targetRole = body.role ?? existing.role`; L87-90 applies `canManageRoleAsync` to ALL mutations. DELETE L114 selects `existing.role`; L120-123 applies symmetric gate. (Residual LOW-C3-10: same-role mutation clause.) |
-| 5 | `plugins/chat-widget/chat/route.ts` + `tools.ts` prompt-injection sanitize | SECURE | route.ts:18 imports `sanitizePromptInput`; L373-376 sanitizes every inbound message; L508 sanitizes tool results fed back into the prompt. tools.ts L71-72 comment + L96/L135/L178/L233 enforce `context.userId`/`context.problemId` scoping on every DB lookup, so a crafted tool arg cannot exfiltrate another user's data. (Residual LOW-C3-9: documented Zod contract unmet.) |
-| 6 | `lib/security/ip.ts` XFF gating (C2-H7 OPEN) | PARTIAL — see C3-5 | ip.ts:97 `if (trustedHops > 0 && parts.length >= trustedHops + 1)` correctly skips XFF when `=0`. **But** L113-117 still trusts `x-real-ip` unconditionally. The revert (23851d69) was correct for the deployed nginx (scripts/online-judge.nginx.conf:60,74,85,97 overwrites X-Real-IP via `proxy_set_header X-Real-IP $remote_addr`). Residual risk to non-nginx deploys — narrowed to MED/LOW. |
-| 7 | `admin/languages/*` dockerImage allowlist | SECURE | route.ts:70 `if (!isAllowedJudgeDockerImage(body.dockerImage.trim()))` in POST; `[language]/route.ts`:48 same gate in PATCH before any update. Mirrors `admin/docker/images/build/route.ts`. |
-| 8 | `groups/[id]/assignments/*` accessCode projection | SECURE — IMPLICIT | Community/assignments use centralized `canManageGroupResourcesAsync` for manager-only branch; the prior projection fix is preserved (verified at `assignments/route.ts` columns clause; accessCode/freezeLeaderboardAt omitted for non-managers per cycle-2 NEW-H2). |
-| 9 | `problems/[id]` strict canManageProblem (API + edit page) | SECURE | API `problems/[id]/route.ts`:65 routes GET through strict `canManageProblem`; L75 strips `referenceSolution` for non-managers. Edit page paired via A11. Export route (`problems/[id]/export/route.ts`) gates on the same helper. |
-| 10 | `admin/restore/route.ts` snapshot-null abort | SECURE | restore/route.ts:149-161 aborts with `preRestoreSnapshotFailed` (500) when `preSnapshotPath === null` and `ALLOW_UNSNAPSHOTTED_RESTORE !== "1"` — BEFORE `importDatabase`. Same shape at `admin/migrate/import/route.ts`:98-107. Audit now uses `recordAuditEventDurable` (L209, post-commit + post-file-restore). |
+| 1 | `admin/roles/[id]/route.ts` `cannotEditHigherRole` (removing caps from higher role; lateral strip; `level` interactions) | **HOLDS** — with one new LOW (C4‑6) | `route.ts:94` `if (role.level > creatorLevel) return cannotEditHigherRole` runs *before* any mutation and blocks **all** edits to a strictly‑higher role, so stripping caps from / demoting a higher role is impossible. Lateral same‑level strip is still permitted (`>` is strict) — that is peer behaviour, not a privilege violation. `level` interactions are sound: built‑in level change blocked (:78), `updates.level > creatorLevel` blocked (:84), added‑caps gated against actor set (:102‑109). POST mirrors both gates (`roles/route.ts:65,75`). **Gap:** PATCH reads the role (:59) and writes (:121) with **no transaction / `FOR UPDATE`**, unlike DELETE (:156‑162 `for("update")`); see C4‑6. |
+| 2 | `admin/settings/route.ts` password reconfirm (is the privilege‑affecting set COMPLETE?) | **PARTIAL — new MED C4‑3 + LOW C4‑5** | Reconfirm fires for any key in `SENSITIVE_SETTINGS_KEYS` (list :24‑43) and verifies via `verifyAndRehashPassword` (:98‑109). The keys that are actually persisted AND sensitive are correctly gated (platformMode, allowedHosts, hcaptcha*, rate limits, sessionMaxAge). **But** the list is provably incomplete vs the persisted set — see C4‑3 (AI/compiler/uploadMax bypass) and C4‑5 (dead reconfirm for keys that are listed but never persisted). |
+| 3 | `contests/[assignmentId]/export/route.ts` JSON audit unconditional | **HOLDS (FIXED)** | `route.ts:117` calls `recordAuditEventDurable(...)` on **every** JSON PII read, outside any `isDownload` gate; comment (:113‑116) documents the recruiter‑panel UI path. Anonymized path also audited; `ipAddresses` blanked when `anonymized` (:109). CSV path still audited (:182) but with non‑durable `recordAuditEvent` → C4‑9 (LOW consistency). No remaining format/branch bypasses the audit. |
+| 4 | `submissions/[id]/events/route.ts` SSE re‑auth (`canAccessSubmission`, interval, TOCTOU) | **HOLDS (FIXED)** | `events/route.ts:459` re‑check every 30s; the IIFE (:461‑514) now re‑runs `canAccessSubmission` (:479) on a freshly fetched row, then processes the event — a revoked viewer is closed *before* the next event is emitted, so no “one more event” leak. `lastAuthCheck` initialized at stream start (:398) so the first 30s window has no re‑check (acceptable). The terminal fast‑path (:347‑361) is a single immediate response post‑handshake; no streaming leak. |
+| 5 | `recruiting-invitations.ts` metadata tx+FOR UPDATE (deadlock, serialization, other RMW) | **HOLDS — one new LOW C4‑7** | `updateRecruitingInvitation` (:396‑434) takes `SELECT … FOR UPDATE` then merges — serializes against `incrementFailedRedeemAttempt`/`resetFailedRedeemAttempt` (atomic `jsonb_set` row‑lock) and the redeem claim. No multi‑row lock ordering → no deadlock. `sql.raw` keys are compile‑time constants asserted against `INTERNAL_KEY_PATTERN` (:39,55‑60). **Gap:** `resetRecruitingInvitationAccountPassword` (:462‑511) does a read‑modify‑write of `metadata` with NO `FOR UPDATE` and can clobber the brute‑force counter → C4‑7. |
+| 6 | `community/{threads,votes}/route.ts` scope helper (any scopeType inlined?) | **HOLDS** | `PROBLEM_LINKED_SCOPES = ["problem","editorial","solution"]` is the single source (`permissions.ts:17`). threads POST routes through `isProblemLinkedScope` + `canAccessProblemScopedThread` (:17‑35); votes POST derives `scopeType`/`problemId` for both thread and post targets then calls the same helper (:65‑89). No inlined scope set remains. |
+| 7 | `admin/migrate/import`, `restore`, `backup` consistent hardening | **HOLDS** | All three: `getApiUser` + CSRF (skipped only for `_apiKeyAuth`, no cookies) + `system.backup` cap + `consumeApiRateLimit` + `verifyAndRehashPassword` reconfirm + (import/restore) snapshot‑null abort + `recordAuditEventDurable`. restore (:20‑235), import (:25‑257), backup (:21‑121). Import still carries a deprecated JSON‑body path (:145+) with `Deprecation`/`Sunset` headers (:229,252) and a warn log (:148) — password‑in‑JSON is legacy, not a regression. |
+| 8 | `judge-worker-rs` chown+0o700 (TOCTOU chown↔chmod; race with container start) | **HOLDS — one new LOW C4‑8** | `tempfile::TempDir` already creates the dir at 0o700, so the chown→chmod window never exposes a world‑traversable dir. Order is correct in both files: dir chown → dir chmod → **then** write source → source chmod → **then** container start. There is no window where the container or another host process sees an unhardened dir, and no TOCTOU between chmod and container start. runner.rs source file uses 0o600‑on‑chown‑success (:874‑881). **Gap:** executor.rs source file is hardcoded 0o666 (:393‑396) — see C4‑8. |
 
-**Regression verdict: 10/10 hold; 1 partial (C2-H7) unchanged from cycle 2 with a narrower scope.**
+**Regression verdict: 8/8 hold; the fix did not introduce a bypass on any surface. Five new LOW/MED gaps found *adjacent* to the fixes (C4‑3, C4‑5, C4‑6, C4‑7, C4‑8).**
 
 ---
 
-## PHASE-B VALIDATION
+## DEFERRED ITEMS — re‑validation
 
-| Item | Verdict | Evidence |
+| Item | Verdict | Evidence @ HEAD |
 |---|---|---|
-| **AGG-1** Restore DB-before-files atomicity | STILL_OPEN (MED, design) | restore/route.ts:163 commits DB tx, then L180 calls `restoreParsedBackupFiles`. File-write failure leaves DB referencing missing uploads. Mitigated by post-commit durable failure-audit (L183-201). |
-| **AGG-2** Snapshot redacts ALWAYS-columns | STILL_OPEN — **HIGH (C3-1)** | pre-restore-snapshot.ts:84 calls `streamDatabaseExport({ sanitize: false })`; export.ts:104-106 still applies `EXPORT_ALWAYS_REDACT_COLUMNS` even at `sanitize:false`. Snapshot loses `users.passwordHash`, `sessions.sessionToken`, `accounts.*_token`, `apiKeys.encryptedKey`. Restore-after-bad-import = total lockout. |
-| **AGG-10** Plaintext-decryption fallback default | STILL_OPEN (MED, C3-4) | secrets.ts:61 `allowPlaintext = options?.allowPlaintextFallback ?? true`. No call site passes `false`. |
-| **NEW-M2** SSE re-auth | NARROWED (LOW, C3-6) | events/route.ts:459-475 re-checks `getApiUser` every 30s but only verifies identity (`reAuthUser.id !== viewerId`). `canAccessSubmission` runs only at handshake (L334). Revoked group membership continues streaming until session invalidates. |
-| **NEW-M3** Contest export JSON audit gap | STILL_OPEN — **HIGH (C3-2)** | export/route.ts:58 `isDownload = download==="1" || format==="csv"`. Audit fires only inside `if (isDownload)` (L113-125). A plain `GET ?format=json` returns the same PII payload (names, usernames, IP addresses per L90-110) with **zero audit**. Trivially reachable by any `canViewAssignmentSubmissions` holder. |
-| **NEW-M5** admin/settings re-confirm | STILL_OPEN (MED, C3-3) | settings/route.ts:37-148 PUT gated solely by `system.settings` cap. No current-password / step-up before mutating `hcaptchaSecret`, `allowedHosts`, rate-limit config, `signupHcaptchaEnabled`. A stolen admin session can disable hCaptcha or add attacker origins to `allowedHosts`. |
-| **NEW-M6** roles PATCH target-level | **FIXED** | roles/[id]/route.ts:78 blocks built-in level change; :82-86 rejects `updates.level > creatorLevel`. Symmetric on POST (roles/route.ts:64-67). |
-| **NEW-M7** recruiting brute-force race | **FIXED** | recruiting-invitations.ts:741-773 atomic `UPDATE ... WHERE id=? AND status='pending' AND (expiresAt IS NULL OR expiresAt > NOW()) RETURNING` inside tx; no returned row ⇒ `alreadyRedeemed` rollback. Create path adds `pg_advisory_xact_lock` on `assignmentId:email` (route.ts:50-66). Failed-redeem counter incremented outside tx (persists on rollback) at L617-618. |
-| **NEW-M8** zip-bomb streaming | **FIXED** | export-with-files.ts:33-35 caps: `MAX_BACKUP_ZIP_ENTRIES=10_000`, `MAX_BACKUP_ZIP_ENTRY_BYTES=100MiB`, `MAX_BACKUP_ZIP_DECOMPRESSED_BYTES=512MiB`. `enforceBackupZipSizeLimits` (L131-149) checks declared uncompressed size from metadata BEFORE decompressing. |
-| **NEW-M9** anti-cheat Origin fail-closed | NARROWED (LOW, C3-8) | anti-cheat/route.ts:65-67 missing-Origin returns 403 (closed). Value comparison at L70 gated by `if (expectedHost)`; skipped when `AUTH_URL` unset. Unreachable in prod — env.ts:127-132 throws at boot without AUTH_URL. |
-| **AGG-29/30** anti-cheat IP/Origin | **FIXED** | anti-cheat/route.ts:156,177 IP via `extractClientIp(req.headers)`. Expected host via `getAuthUrlObject()?.host` (L69) — operator-controlled, not client headers. |
-| **AGG-31** Key rotation | **FIXED** | derive-key.ts:9-17 HKDF-SHA256 domain-separated. secrets.ts:79-95 tries HKDF key first, then legacy SHA-256 — old ciphertexts remain readable, new writes use HKDF. AES-256-GCM with `enc:v1:iv:tag:ciphertext` format. |
-| **AGG-32** AUTH_SECRET entropy | **FIXED** | env.ts:284-292 rejects placeholder + `length < 32`. Same pattern for `JUDGE_AUTH_TOKEN` (32-char min, L294-312). |
-| **AGG-33** CSRF Origin-required | NARROWED (LOW, C3-7) | csrf.ts:56 `if (origin && expectedHost)` skips value check when Origin missing. X-Requested-With (L40) + Sec-Fetch-Site (L47-54) remain enforced; X-Requested-With triggers CORS preflight, blocking cross-origin state-changing fetches. In prod, expectedHost is non-null (csrf.ts:13-15). |
-| **AGG-34** hCaptcha throw | **FALSE POSITIVE** | hcaptcha.ts:42-89 returns structured `{success:false}` for all controllable failures; only throws on network/TLS/timeout (not input-controllable, and timeout still blocks signup). |
-| **SEC-9 / C2-2** Community write-side IDOR | **FIXED since cycle 2** | community/threads/[id]/posts/route.ts:40-47 calls `canAccessProblemScopedThread` covering problem/editorial/solution. community/votes/route.ts:62-76 uses `isProblemLinkedScope` + `canAccessProblem` for both thread and post targets. Centralized via `lib/discussions/permissions.ts`. |
-| **AGG-41** Restore audit durability | **FIXED** | restore/route.ts:209 + migrate/import/route.ts:123 both use `await recordAuditEventDurable(...)`. Restored-files-failed audit (restore:183) also durable. |
-| **AGG-42** CSV injection | **FIXED** | lib/csv/escape-field.ts:13 prefixes `=+\-@\t\r` with tab. Contest export CSV path uses `escapeCsvField` (L150-176). |
-| **SEC-16/17/20/21** low-severity carry-forwards | Still in backlog | No regression; small doc/code-style items tracked in `_aggregate.md`. |
+| **NEW‑H5** judge `/claim` shared‑token fallback + default‑open IP allowlist | **STILL OPEN — HIGH (C4‑2)** | `claim/route.ts:176‑180`: when `workerId` is omitted (schema makes it optional, :104‑115), auth falls back to `isJudgeAuthorized` = the **shared** `JUDGE_AUTH_TOKEN`. `buildClaimSql(false)` then claims a real submission and the response (:410‑424) returns `sourceCode` + every `testCase` including `expectedOutput` + `input`. So a holder of the shared token can exfiltrate the full problem suite (solution source + all hidden expected outputs) without registering a worker. `auth.ts:42‑47` claims the shared token is “only honoured on the registration path”, but `isJudgeAuthorized` is in fact wired into claim/poll/deregister/heartbeat. Compounded by `ip-allowlist.ts:164‑166` returning `true` when `JUDGE_ALLOWED_IPS` is unset (default‑open). The shared token is the broadest judge secret (`.env`, `docker-compose.worker.yml`, CI) → leak surface is wide. |
+| **C3‑1 / AGG‑2** snapshot full‑fidelity redaction bypass | **STILL OPEN — HIGH (C4‑1)** | `export.ts:104‑106` still applies `EXPORT_ALWAYS_REDACT_COLUMNS` even when `sanitize:false`; `pre-restore-snapshot.ts:84‑86` calls `streamDatabaseExport({ sanitize: false })`. The snapshot therefore loses `users.passwordHash`, `sessions.sessionToken`, `accounts.*_token`, `apiKeys.encryptedKey`, `systemSettings.{hcaptchaSecret,smtpPass}`. Restoring it after a bad import = total lockout + every active session invalidated. (Confirmed: snapshot is the only `sanitize:false` caller besides the password‑gated `backup`/`migrate/export` routes — those are intentional operator downloads.) |
+| **AGG‑10** plaintext‑decryption fallback default | **STILL OPEN — MED (C4‑4)** | `plugins/secrets.ts:61` `allowPlaintext = options?.allowPlaintextFallback ?? true`. `decryptPluginConfigForUse` (:162) calls it with no options → default‑open. A plaintext row planted via SQL/insider access is returned as‑is, bypassing AES‑256‑GCM authentication. |
+| **NEW‑M8** ZIP‑bomb | **CLOSED / well‑mitigated** | `files/validation.ts`: fast path reads `uncompressedSize` from entry metadata (:73‑88), per‑entry cap 50 MB (:81), total cap + 10 000‑entry cap (:66) all enforced **before** decompression; slow path (:96‑107) decompresses entry‑by‑entry with the same per‑entry cap. `export-with-files.ts` backup path has its own caps (cycle‑3 NEW‑M8). No residual. |
+| **NEW‑M9** anti‑cheat Origin fail‑closed | **NARROWED — LOW, unchanged** | `anti-cheat/route.ts:65‑67` missing Origin → 403 (closed). Value compare :70‑78 gated on `expectedHost` non‑null; `env.ts` boot‑throws without `AUTH_URL`, so prod is always non‑null. Residual (curl with a spoofed `Origin`) is a defense‑in‑depth narrow. |
+| **SEC‑16/17/20/21** low carry‑forwards | Backlog, no regression | — |
 
 ---
 
-## FINDINGS (NEW + RE-CONFIRMED)
+## FINDINGS (NEW + RE‑CONFIRMED)
 
-### C3-1. Pre-restore snapshot is unrestoreable (AGG-2, re-confirmed HIGH)
-**Severity:** HIGH · **Confidence:** HIGH (A09 Recovery Integrity)
-**Location:** `src/lib/db/pre-restore-snapshot.ts:84-86` × `src/lib/db/export.ts:104-106`
-**Exploitability:** Operator-side. Triggered by any restore that requires rollback.
-**Blast radius:** Total user lockout + every active session invalidated if the snapshot is the only recovery path. Single-instance deployments without external DB backups are fully dependent on this snapshot.
-**Issue:** Snapshot is advertised as "the operator's emergency rollback artifact" with full-fidelity mode, but `streamDatabaseExport({ sanitize: false })` still applies `EXPORT_ALWAYS_REDACT_COLUMNS`. Those columns include `users.passwordHash`, `sessions.sessionToken`, `accounts.{refresh_token,access_token,id_token}`, `apiKeys.encryptedKey`, `systemSettings.{hcaptchaSecret,smtpPass}`. A snapshot restored after a bad import yields a DB where no user can authenticate and every active session is invalid.
+### C4‑1. Pre‑restore snapshot is unrestoreable (AGG‑2 / C3‑1, re‑confirmed HIGH)
+**Severity:** HIGH · **Confidence:** HIGH (A08 Integrity Failures / A09 Recovery) · **Status:** confirmed, open since cycle 1
+**Location:** `src/lib/db/export.ts:104-106` × `src/lib/db/pre-restore-snapshot.ts:84-86`
+**Exploitability:** Operator‑side. Triggered by any restore/migrate‑import that needs rollback.
+**Blast radius:** Total user lockout + every active session invalidated if the snapshot is the only recovery path. Single‑instance deployments with no external DB backup are fully dependent on it.
+**Issue:** Snapshot is advertised as the operator’s full‑fidelity emergency rollback artifact, but `streamDatabaseExport({ sanitize: false })` still redacts `EXPORT_ALWAYS_REDACT_COLUMNS` (password hashes, session tokens, OAuth tokens, encrypted API‑key material, hCaptcha/SMTP secrets). Restoring it after a bad import yields a DB where nobody can authenticate and all sessions are dead.
 **Remediation:**
 ```ts
-// BAD (src/lib/db/export.ts:104-106)
-const activeRedactionMap = options.sanitize
-  ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
-  : EXPORT_ALWAYS_REDACT_COLUMNS;
-
-// GOOD — add an opt-out for snapshot-mode (defense-in-depth already covered by 0o600 file + 0o700 dir)
-type RedactionConfig = { sanitize?: boolean; snapshot?: boolean };
-export function streamDatabaseExport(options: RedactionConfig = {}) {
+// export.ts:72 — add an opt-out for snapshot mode
+export function streamDatabaseExport(
+  options: { signal?: AbortSignal; sanitize?: boolean; snapshot?: boolean; dbNow?: Date } = {},
+) {
+  // …
   const activeRedactionMap = options.snapshot
-    ? {}
+    ? {}                                   // snapshot = true operator rollback artifact
     : options.sanitize
       ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
       : EXPORT_ALWAYS_REDACT_COLUMNS;
-  // ...
 }
-// pre-restore-snapshot.ts:84 — pass { sanitize: false, snapshot: true }
+// pre-restore-snapshot.ts:84 → streamDatabaseExport({ sanitize: false, snapshot: true })
 ```
-The original concern (snapshot file leaking secrets at rest) is already mitigated by `createWriteStream(fullPath, { mode: 0o600 })` (pre-restore-snapshot.ts:89) and `chmod 0o700` on the directory (L67).
+Secret‑at‑rest exposure is already covered by `createWriteStream(fullPath, { mode: 0o600 })` + dir `chmod 0o700`.
 
-### C3-2. Contest JSON export bypasses audit (NEW-M3, escalated to HIGH)
-**Severity:** HIGH · **Confidence:** HIGH (A09 Logging Integrity, A01 Access Control)
-**Location:** `src/app/api/v1/contests/[assignmentId]/export/route.ts:58, 89-133`
-**Exploitability:** Remote, authenticated. Any user with `canViewAssignmentSubmissions` (instructor/TA of the group).
-**Blast radius:** Silent exfiltration of contest PII (real names, usernames, IP addresses, anti-cheat event counts) with no audit trail. CSV path is always audited (L180-190) — the gap is JSON-specific. A malicious insider can exfiltrate candidate data without leaving a forensic footprint.
-**Issue:** `isDownload = download==="1" || format==="csv"` (L58). The audit `recordAuditEvent` is only invoked inside `if (isDownload)` (L113-125). The JSON branch sets `Content-Disposition: attachment` (L130) — the data is downloaded either way — but the audit only fires when `download=1` is also passed. `GET ?format=json` returns the full payload with zero audit.
+### C4‑2. Judge `/claim` honours the shared token + IP allowlist is default‑open (NEW‑H5, re‑confirmed HIGH)
+**Severity:** HIGH · **Confidence:** HIGH (A01 Broken Access Control / A05 Misconfig) · **Status:** confirmed, open
+**Location:** `src/app/api/v1/judge/claim/route.ts:176-180,410-424` × `src/lib/judge/ip-allowlist.ts:160-166`
+**Exploitability:** Remote, unauthenticated‑except‑for‑the‑shared‑token. No worker registration required.
+**Blast radius:** Full problem‑set theft: a single `POST /api/v1/judge/claim` with `Authorization: Bearer <JUDGE_AUTH_TOKEN>` and **no** `workerId` claims a pending submission and returns the candidate’s `sourceCode` plus every hidden `testCase` (`input` + `expectedOutput`) for that problem (:410‑424). Repeat across the queue to harvest an entire contest/private problem set’s canonical solutions. The shared token is the broadest judge secret — it lives in `.env`, `docker-compose.worker.yml`, CI runners, and every worker host — so the leak surface is far wider than a per‑worker `secretTokenHash`. The default‑open allowlist (`ip-allowlist.ts:164‑166` returns `true` when `JUDGE_ALLOWED_IPS` unset) means there is no network‑layer backstop once the token leaks.
+**Issue:** `isJudgeAuthorizedForWorker` correctly killed the shared‑token fallback *when a `workerId` is supplied* (auth.ts:79‑96 — legacy plaintext‑fallback also gone), but the **no‑`workerId`** branch (:176‑180) still accepts the shared token alone, and `claimRequestSchema` makes `workerId` optional (:104‑115). The `auth.ts:42‑47` comment asserting the shared token is “only honoured on the registration path” is contradicted by the claim/poll/deregister/heartbeat wiring.
 **Remediation:**
-```ts
-// BAD — audit gated on isDownload
-if (format === "json") {
-  // ... build data ...
-  if (isDownload) {
-    recordAuditEvent({ /* ... */ });
-  }
-  return NextResponse.json(/* ... */);
-}
+1. Make `workerId` (+ `workerSecret`) **required** on `/claim`, `/poll`, `/deregister`, `/heartbeat` so the shared token is bootstrap‑only (register). Keep `isJudgeAuthorized` only on `/register`.
+2. Flip the allowlist default to fail‑closed: `ip-allowlist.ts:164` — when `JUDGE_ALLOWED_IPS` is unset, log a loud startup warning and either deny or require an explicit `JUDGE_ALLOW_ALL_IPS=1`. At minimum, document that unset == open and emit a boot warning.
 
-// GOOD — audit every successful PII export, JSON or CSV
-if (format === "json") {
-  // ... build data ...
-  recordAuditEvent({
-    actorId: user.id,
-    actorRole: user.role,
-    action: anonymized ? "contest.export_downloaded_anonymized" : "contest.export_downloaded",
-    resourceType: "assignment",
-    resourceId: assignmentId,
-    resourceLabel: assignment.title,
-    summary: `Exported contest "${assignment.title}" as JSON${anonymized ? " (anonymized)" : ""}`,
-    details: { format, anonymized, truncated },
-    request: req,
-  });
-  return NextResponse.json(/* ... */);
-}
-// Use recordAuditEventDurable for parity with restore (PII export is high-stakes).
-```
+**Recommended safe implementation — decouple into two independently‑shippable parts (they carry very different revert risk):**
+- **Part 1 — SHIP; low revert risk (this is the security fix).** Require `workerId` + `workerSecret` on `/claim`, `/poll`, `/deregister`, `/heartbeat`; the shared `JUDGE_AUTH_TOKEN` becomes `/register`‑only. This alone removes the exfil blast radius — a leaked shared token can no longer claim work or read `sourceCode`/`testCases`. It only breaks clients authenticating with the shared token alone, which is exactly the legacy/unsafe pattern that should re‑register, so revert risk is low.
+- **Part 2 — HIGH revert risk; opt‑in hardening, NOT a bare default flip.** `ip‑allowlist.ts:6‑7,16,163` documents `unset == allow‑all` as the backward‑compatible behaviour, so silently flipping the default fail‑closed will break any deployment currently relying on it — the same class of breakage that took down cycle‑2 (`23851d69` / C2‑H7; read that revert and the C2‑H7 deferral before implementing). Safe shape: keep `unset == allow‑all` for back‑compat but emit a loud startup WARN, and add an explicit opt‑in `JUDGE_STRICT_IP_ALLOWLIST=1` (equivalently, fail‑closed only when `JUDGE_ALLOWED_IPS` is set) so operators opt into strictness deliberately.
+- **Sequencing:** Part 1 is the security fix and must not be blocked by Part 2. Part 2 is defence‑in‑depth and must not be a blanket behaviour change — land it as config‑gated opt‑in so it cannot repeat the `23851d69` production break.
 
-### C3-3. Admin security-settings mutation without step-up (NEW-M5)
-**Severity:** MEDIUM · **Confidence:** HIGH (A07 Auth Failures, A05 Security Misconfiguration)
-**Location:** `src/app/api/v1/admin/settings/route.ts:37-148`
-**Exploitability:** Remote, authenticated admin with stolen/leaked session cookie.
-**Blast radius:** Disable hCaptcha (`signupHcaptchaEnabled=false`), add attacker origins to `allowedHosts` (enables CSRF/link-poisoning), rotate `hcaptchaSecret`, change rate-limit ceilings. The session holder becomes super_admin-equivalent for trust-boundary config without re-verifying identity.
-**Issue:** PUT is gated solely by `auth: { capabilities: ["system.settings"] }`. No current-password verification, no step-up auth, no re-confirmation step.
-**Remediation:** Require `currentPassword` verification (via `verifyAndRehashPassword`, mirroring restore/route.ts:49-62) for security-sensitive keys (`signupHcaptchaEnabled`, `hcaptchaSecret`, `allowedHosts`, `*-rate-limit-*`). Alternatively gate the whole PUT behind step-up and re-issue the session.
+### C4‑3. Settings reconfirm list is incomplete (AI/compiler/uploadMax bypass)
+**Severity:** MEDIUM · **Confidence:** HIGH (A05 Misconfig / A07 Auth Failures) · **Status:** confirmed, new
+**Location:** `src/app/api/v1/admin/settings/route.ts:24-43` vs `:143-144` and `allowedConfigKeys :128-129`
+**Exploitability:** Remote, authenticated admin with a stolen/leaked session cookie.
+**Blast radius:** A stolen admin session can flip `allowAiAssistantInRestrictedModes:true` and `allowStandaloneCompilerInRestrictedModes:true` (persisted :143‑144, but absent from `SENSITIVE_SETTINGS_KEYS`) to re‑enable AI‑assistant / compiler access during restricted/exam mode — directly defeating the exam‑integrity trust boundary the reconfirm control exists to protect — and raise `uploadMaxImageSizeBytes` / `uploadMaxFileSizeBytes` / `uploadMaxZipDecompressedSizeBytes` (allowlist :128‑129) to widen the upload DoS / storage‑exhaustion ceiling, all without re‑verifying the password.
+**Issue:** The reconfirm gate’s own header comment (:17‑23) says it exists “so a stolen session cookie cannot silently weaken the platform.” The exam‑integrity knobs and upload ceilings are exactly such posture changes, yet they are destructured straight into `baseValues` and never pass through `SENSITIVE_SETTINGS_KEYS`.
+**Remediation:** Add to `SENSITIVE_SETTINGS_KEYS`: `allowAiAssistantInRestrictedModes`, `allowStandaloneCompilerInRestrictedModes`, `aiAssistantEnabled`, `uploadMaxImageSizeBytes`, `uploadMaxFileSizeBytes`, `uploadMaxImageDimension`, `uploadMaxZipDecompressedSizeBytes`.
 
-### C3-4. Plaintext-decryption fallback default true (AGG-10)
-**Severity:** MEDIUM · **Confidence:** HIGH (A02 Cryptographic Failures)
+### C4‑4. Plaintext‑decryption fallback default true (AGG‑10, re‑confirmed MED)
+**Severity:** MEDIUM · **Confidence:** HIGH (A02 Cryptographic Failures) · **Status:** confirmed, open since cycle 1
 **Location:** `src/lib/plugins/secrets.ts:61`
-**Exploitability:** Requires write access to the plugins table (insider/SQL-level).
-**Blast radius:** A row planted in plaintext form is returned as-is by `decryptPluginSecret`, silently bypassing AES-256-GCM authentication.
-**Issue:** `allowPlaintext = options?.allowPlaintextFallback ?? true`. Default-open plaintext acceptance defeats authenticated-encryption guarantees.
-**Remediation:** Flip the default to `false`; have call sites that genuinely need migration pass `{ allowPlaintextFallback: true }` explicitly with a deadline comment. Add a startup migration that re-encrypts any plaintext rows.
+**Exploitability:** Requires write access to the `plugins` table (insider / SQL‑level).
+**Blast radius:** A row planted in plaintext is returned verbatim by `decryptPluginSecret` (called default‑open from `decryptPluginConfigForUse` :162), silently bypassing AES‑256‑GCM authentication.
+**Remediation:** Flip the default to `false`; have genuine migration call sites pass `{ allowPlaintextFallback: true }` explicitly with a deadline; add a startup pass that re‑encrypts any plaintext rows.
 
 ---
 
 ### LOW findings
 
-#### C3-5. X-Real-IP trusted unconditionally (C2-H7 narrowed)
-**Severity:** LOW (narrowed from HIGH) · **Confidence:** HIGH (A05 Misconfig)
-**Location:** `src/lib/security/ip.ts:113-117`
-**Exploitability:** Local-only for the deployed nginx configuration; remote for non-nginx deploys.
-**Blast radius:** Drives rate-limit keys, audit IPs, judge IP allowlist. In the deployed configuration (scripts/online-judge.nginx.conf:60,74,85,97) nginx overwrites X-Real-IP via `proxy_set_header X-Real-IP $remote_addr`, so production is safe. The residual risk is to deployments without that nginx or where the proxy passes the header through unchanged.
-**Verdict (load-bearing):** The revert (23851d69) was correct for the deployed case. Unconditional trust is unsafe in principle but the deployed nginx mitigates it.
-**Recommended opt-in design:**
-```ts
-// Introduce TRUST_X_REAL_IP, defaulting to true in production (preserves deployed
-// behavior), explicitly settable to false. Log a startup warning when set alongside
-// TRUSTED_PROXY_HOPS=0 (operator may have intended "no trusted proxy").
-function shouldTrustXRealIp(): boolean {
-  if (process.env.TRUST_X_REAL_IP !== undefined) {
-    return process.env.TRUST_X_REAL_IP === "true";
-  }
-  // Default: preserve deployed behavior (nginx overwrites the header).
-  return process.env.NODE_ENV === "production";
-}
-// ip.ts:113
-const realIp = shouldTrustXRealIp() ? headers.get("x-real-ip")?.trim() : null;
-```
+#### C4‑5. Several `SENSITIVE_SETTINGS_KEYS` are never persisted (dead reconfirm / functional bug)
+**Severity:** LOW · **Confidence:** HIGH (A05) · `src/app/api/v1/admin/settings/route.ts:28,32-34` × destructors `:71-87` × allowlist `:118-130`
+**Issue:** `emailVerificationRequired`, `communityUpvoteEnabled`, `communityDownvoteEnabled`, and `smtpPass` are listed in `SENSITIVE_SETTINGS_KEYS` (so their presence in the body *triggers* reconfirm and returns 200) but they are **neither destructured nor in `allowedConfigKeys`**, so `restConfig` filtering drops them — they are never written. An admin who toggles “require email verification” is silently ignored; SMTP password cannot be set via this route at all. The reconfirm UX is misleading.
+**Fix:** Either destructure + persist these (for `smtpPass`, also `encrypt()` like `hcaptchaSecret` :148) or remove them from `SENSITIVE_SETTINGS_KEYS` and surface a “not settable here” error.
 
-#### C3-6. SSE re-auth is identity-only (NEW-M2)
-**Severity:** LOW · **Confidence:** MEDIUM (A01 Broken Access Control)
-**Location:** `src/app/api/v1/submissions/[id]/events/route.ts:459-475`
-**Issue:** Re-auth checks `reAuthUser.id !== viewerId` but not `canAccessSubmission`. A revoked group membership continues streaming until the session itself invalidates (≤30s tick + session expiry). Blast radius limited to a single submission's event stream.
+#### C4‑6. roles PATCH has a TOCTOU window (no `FOR UPDATE`, unlike DELETE)
+**Severity:** LOW · **Confidence:** MEDIUM (A01) · `src/app/api/v1/admin/roles/[id]/route.ts:59-63` (read) × `:121-124` (write)
+**Issue:** DELETE locks the row inside `execTransaction(... for("update"))` (:156‑162); PATCH does not — it reads the role (:59), checks `role.level > creatorLevel` (:94), then writes (:121) with no transaction. If a super_admin raises the role’s level in the window between a lower admin’s read and write, the lower admin’s edit (e.g. capability strip) applies to a now‑higher role. Exploitation needs a precisely‑timed concurrent promotion by a higher admin, so impact is low, but the asymmetry with DELETE is a real gap.
+**Fix:** Wrap PATCH’s read+check+update in `execTransaction` with `.for("update")`, mirroring DELETE.
 
-#### C3-7. CSRF Origin-required narrow (AGG-33)
-**Severity:** LOW · **Confidence:** MEDIUM (A01)
-**Location:** `src/lib/security/csrf.ts:56`
-**Issue:** `if (origin && expectedHost)` skips when Origin is missing. Defense-in-depth via `X-Requested-With: XMLHttpRequest` (L40, non-CORS-safelisted → triggers CORS preflight → blocks cross-origin state-changing fetches) and `Sec-Fetch-Site` cross-site rejection (L47-54). In prod, expectedHost is non-null. Residual: a request with no Origin AND no Sec-Fetch-Site AND `X-Requested-With: XMLHttpRequest` set is CSRF-allowed; the latter requires CORS preflight cooperation from the server.
+#### C4‑7. `resetRecruitingInvitationAccountPassword` clobbers the brute‑force counter (unserialized metadata RMW)
+**Severity:** LOW · **Confidence:** MEDIUM (A01/A07) · `src/lib/assignments/recruiting-invitations.ts:463` (read) × `:503-509` (write)
+**Issue:** `updateRecruitingInvitation` correctly merges metadata under `SELECT … FOR UPDATE` (:396‑434) to serialize against the atomic `jsonb_set` counter increments. But `resetRecruitingInvitationAccountPassword` reads metadata outside the tx (`getRecruitingInvitation` :463) then writes the whole object (:503‑509) with **no `FOR UPDATE`**. A concurrent `incrementFailedRedeemAttempt` (fired on the re‑entry wrong‑password path :646, which is reachable while `status==='redeemed'`) that commits in that window has its increment overwritten by the stale snapshot — partially defeating the per‑invitation lockout. Requires an admin password‑reset racing a live brute‑force on the same token.
+**Fix:** Do the metadata read+write inside a `FOR UPDATE` tx, or merge via `jsonb_set` so only the reset key is touched and the counter survives.
 
-#### C3-8. Anti-cheat Origin defense-in-depth (NEW-M9)
-**Severity:** LOW · **Confidence:** HIGH (A05)
-**Location:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:65-70`
-**Issue:** Missing-Origin fails closed (good). Value comparison skipped when `AUTH_URL` unset. Unreachable in prod (env.ts boot guard).
+#### C4‑8. executor.rs source file is hardcoded 0o666 (inconsistent with runner.rs 0o600)
+**Severity:** LOW · **Confidence:** HIGH (A05) · `judge-worker-rs/src/executor.rs:393-396` × `runner.rs:874-881`
+**Issue:** runner.rs mirrors the workspace hardening onto the source file (chown 65534 → 0o600 on success, 0o666 only on chown failure). executor.rs unconditionally `set_permissions(0o666)` on the source file (:393‑396) — the test at `runner.rs:210` asserts the 0o600 contract that executor.rs violates. In production (worker root + CAP_CHOWN) the 0o700 dir gates traversal so the 0o666 source is only reachable by 65534/root, but in the **chown‑fail fallback** (rootless dev) the dir is 0o777 *and* the source is 0o666, so any local user can read in‑flight source/compile artifacts. No TOCTOU (order is correct); this is purely the weaker source‑file mode.
+**Fix:** Mirror runner.rs in executor.rs: `chown(source,65534,65534)`; `mode = chown_ok ? 0o600 : 0o666`.
 
-#### C3-9. Chat-widget tool args use ad-hoc coercion (C2-4)
-**Severity:** LOW · **Confidence:** MEDIUM (A03)
-**Location:** `src/lib/plugins/chat-widget/tools.ts:131,169`
-**Issue:** Documented Zod validation contract unmet; handlers use `Number()`/`String()`. No exploit today (`context.userId` re-scopes every DB lookup), but the documented contract is unmet.
-
-#### C3-10. api-keys PATCH same-role mutation (C2-5)
-**Severity:** LOW · **Confidence:** MEDIUM (A01)
-**Location:** `src/app/api/v1/admin/api-keys/[id]/route.ts:88`
-**Issue:** `if (!canManage && user.role !== targetRole)` permits same-role mutation without `canManageRoleAsync`, allowing a manager to downgrade an admin-owned key to manager-level (DoS). Fix: `if (!canManage) return apiError("cannotAssignHigherRole", 403);`.
+#### C4‑9. Contest CSV export uses non‑durable audit (JSON path is durable)
+**Severity:** LOW · **Confidence:** HIGH (A09) · `src/app/api/v1/contests/[assignmentId]/export/route.ts:182` vs `:117`
+**Issue:** The JSON export path was correctly switched to `recordAuditEventDurable` (:117, C3‑2 fix). The CSV path still calls the buffered `recordAuditEvent` (:182). A SIGKILL/OOM in the 5 s flush window can drop the CSV download audit row — the same loss the durable helper was introduced to prevent for the JSON path. Both paths export the same PII.
+**Fix:** Switch the CSV audit to `recordAuditEventDurable` for parity.
 
 ---
 
-## NET-NEW HUNT (negative results — clean)
+## NET‑NEW HUNT (negative results — clean)
 
-| Category | Coverage method | Result |
+| Category | Coverage | Result |
 |---|---|---|
-| **SQL injection** | Exhaustive scan of all `sql\`...\`` (~85 sites), `db.execute`/`tx.execute` (11 sites), `sql.raw` (5 sites), `.where`/`.set` concatenation, user-driven `orderBy`/`groupBy` across all 113 API routes + lib/db + lib/judge + lib/assignments + lib/community + lib/discussions | **0 DANGEROUS, 0 SUSPICIOUS.** Drizzle parameterized throughout. Only `sql.raw` consumers are a transaction-mode string literal (export.ts:90) and a module-level JSONB-path constant protected by regex assertion (recruiting-invitations.ts:39-60). All LIKE inputs pass through `escapeLikePattern()`. The single user-driven sort (`accepted-solutions/route.ts:29-30`) is allowlisted against a static `Set`. |
-| **SSRF** | Inspected every `fetch()` site (chat-widget test-connection, providers, email providers, code-similarity-client, docker/client, rate-limiter-client, hcaptcha, compiler/execute) | **CLEAN.** chat-widget test-connection uses hardcoded provider URLs + regex-validated model names (`SAFE_GEMINI_MODEL_PATTERN`, `OPENAI_MODEL_PATTERN`). API key fetched from DB, not request body. Gemini URL interpolation gated by `validateGeminiModel`. Internal sidecar URLs (judge worker, rate-limiter, code-similarity, compiler) are constructed from server env vars. No user-controlled outbound URL fetch. |
-| **Path traversal** | Inspected `lib/files/storage.ts`, `lib/db/export-with-files.ts`, `admin/restore`, `admin/migrate/import`, `admin/backup`, `problems/import` | **CLEAN.** `resolveStoredPath` (storage.ts:20-25) enforces `SAFE_STORED_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]+$/` + explicit `..` rejection. `parseBackupZip` (export-with-files.ts:318-324) normalizes then rejects any `..`, `/`, `\`. Manifest cross-check (L113-114, L328-338) catches size/hash mismatches. |
-| **Zip bombs** | Inspected `parseBackupZip` + `enforceBackupZipSizeLimits` | **CLEAN.** Entry-count, per-entry, and cumulative decompressed-size caps enforced from declared metadata before decompression (export-with-files.ts:131-149). |
-| **Command injection** | Inspected `lib/docker/client.ts`, `lib/compiler/execute.ts`, `lib/system-info.ts` | **CLEAN.** All `execFile`/`spawn` calls use argv-array form (no shell). Container names, image tags, and dockerfile paths are server-derived. |
-| **Deserialization** | All `JSON.parse` sites (27 in src) | **CLEAN.** Restore/migrate/parseBackupZip all wrap in try/catch with typed error (`invalidJsonFile`, `invalidDatabaseJson`, `invalidBackupManifest`). |
-| **Mass assignment** | Inspected `admin/settings` (PUT), `admin/api-keys/[id]` (PATCH), `admin/languages/[language]` (PATCH) | **CLEAN.** settings PUT enumerates allowed numeric keys via `allowedConfigKeys` allowlist (L64-76) and filters `restConfig` (L78-80). api-keys/langs build explicit `updateValues` from validated schema fields only. |
-| **Secrets scan** | grep `api[_-]?key\|password\|secret\|token` in src + on-disk env inspection | **CLEAN.** All 6 on-disk `.env*` files are `-rw-------`. `LOGGER_REDACT_PATHS` (secrets.ts:48-73) covers `authorization`, `password*`, `*token`, `encryptedKey`, `hcaptchaSecret`, `smtpPass`, `runnerAuthToken`. No hardcoded credentials in src (only placeholder constants at env.ts:5-8, used for equality-rejection). |
-| **Rate limits** | Inspected all auth-sensitive endpoints | **CLEAN.** `forgot-password`, `reset-password`, `verify-email`, `resend-verification` all use `consumeRateLimitAttemptMulti` (IP + email/token buckets). `contests/join`, `recruiting/validate`, `playground/run`, `compiler/run` all rate-limited. No gap on auth-sensitive paths. |
-| **Dependencies** | `npm audit --json` | 0 critical, 0 high, 2 moderate (`postcss <8.5.10` bundled inside `next`, build-time only; XSS via unescaped `</style>` in stringify output — not exploitable in this app's pipeline). |
-| **XSS** | Inspected sanitize pipelines | **CLEAN.** `sanitizeMarkdown` (community posts) + `react-markdown skipHtml`. Chat-widget sanitizes user messages + tool results. CSV cells escaped via `escapeCsvField`. |
+| **SSRF** | Every `fetch(\`…\`)` site: `code-similarity-client.ts:45`, `docker/client.ts:182,222`, `rate-limiter-client.ts:72`, `compiler/execute.ts:550` | **CLEAN.** All URLs interpolate only server env vars (`CODE_SIMILARITY_URL`, `JUDGE_WORKER_URL`, `RATE_LIMITER_URL`, `COMPILER_RUNNER_URL`). No user‑controlled outbound URL. |
+| **Mass assignment** | `Object.assign(...body)` / `...body` / `...req` across `src/app/api` | **CLEAN.** Only chat‑widget `[...body.messages]` (already‑validated) and a languages audit `details` spread. settings PUT uses an explicit `allowedConfigKeys` allowlist; roles/api‑keys/languages build explicit update objects. |
+| **Secrets in logs** | `console.*` with secret‑like names; pino `LOGGER_REDACT_PATHS` | **CLEAN.** No `console.{log,error,warn,info}` touching password/secret/token vars in `src`. Pino redaction (`logger.ts:13` ← `secrets.ts:48 LOGGER_REDACT_PATHS`) covers authorization, password*, *token, encryptedKey, hcaptchaSecret, smtpPass, runnerAuthToken. |
+| **SQL injection** | `sql.raw` consumers; `rawQuery*` parameterization | **CLEAN.** recruiting `sql.raw` is a module‑constant JSONB key asserted against `INTERNAL_KEY_PATTERN` (:39). export `sql.raw` is a transaction‑mode literal. `rawQueryAll/One` use `@param` binding. |
+| **Judge IPC auth** | `/claim`, `/poll`, `/register`, `/deregister`, `/heartbeat` | **CLEAN per‑worker** (timing‑safe `hashToken` compare, plaintext fallback removed) — **except** the shared‑token `/claim` path (C4‑2). |
+
+---
+
+## deploy‑docker.sh DEPLOY_CMD safety (flagged in CLAUDE.md)
+
+**Verdict: SAFE — no concern with the documented invocation.**
+
+The CLAUDE.md invocation for the app server — `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh` — is honoured exactly:
+- `SKIP_LANGUAGES` default `false` (:184), `INCLUDE_WORKER` default `true` (:186), `BUILD_WORKER_IMAGE` default `auto` → follows `INCLUDE_WORKER` (:227‑228). So `INCLUDE_WORKER=false` ⇒ worker image build skipped (:746‑752) and app‑only compose override generated (:820‑821). `SKIP_LANGUAGES=true` ⇒ language‑image build skipped (:765).
+- The destructive‑op guard the CLAUDE.md warns about (`docker system prune --volumes`) is **not** present. The post‑deploy cleanup (`prune_old_docker_artifacts` :387‑409) uses `container prune -f`, `image prune -f` (dangling only, **not** `-af` for images that matter), `builder prune -af`, and `volume prune -f` — and the volume prune is **gated on `judgekit-db` running** (:402‑406) with an explicit CLAUDE.md‑referencing skip+warn when it is not. `volume prune -f` without `--all` removes only anonymous unused volumes, so the DB’s named volume is safe while the DB container references it. Opt‑out via `SKIP_POST_DEPLOY_PRUNE=1` (:390).
+- No `rm -rf` touches data volumes; the one `rm -rf` (:282) targets the SSH control‑socket dir only.
 
 ---
 
 ## FINAL SWEEP — OWASP coverage
 
-- **A01 Broken Access Control** — A2/A3/A4/A5/A11/A9 all hold; SEC-9 community write-side IDOR FIXED since cycle 2. NEW-M3 elevated. C3-10 residual.
-- **A02 Cryptographic Failures** — env 0600 + startup guard hold; AES-256-GCM + HKDF sound; AGG-10 still open (C3-4); AGG-2 design gap (C3-1).
-- **A03 Injection** — 0 SQLi, 0 command-inj, 0 SSRF. Prompt-injection sanitized for messages + tool results (C3-9 residual contract gap).
-- **A04 Insecure Design** — NEW-M5 step-up gap (C3-3); NEW-M2 SSE re-auth narrow (C3-6); AGG-2 recovery design (C3-1).
-- **A05 Security Misconfiguration** — env guard + AUTH_URL boot-throw + nginx-overwrites-X-Real-IP all hold; C3-5 residual for non-nginx deploys.
-- **A06 Vulnerable Components** — 0 high/critical; 2 moderate via bundled postcss (build-time).
-- **A07 Auth Failures** — password hashing (bcrypt), 32-char AUTH_SECRET/JUDGE_AUTH_TOKEN min, role-escalation gates hold.
-- **A08 Integrity Failures** — 3-layer backup manifest (path + sha256 + byteLength) intact; AGG-2 defeats recovery integrity (C3-1).
-- **A09 Logging Failures** — CSV injection FIXED; restore audit durable; NEW-M3 JSON export audit gap (C3-2); SSE re-auth narrow.
-- **A10 SSRF** — provider URLs hardcoded; model regex-validated; no user-controlled outbound fetch.
+- **A01 Broken Access Control** — roles level/cap gates hold (C4‑6 TOCTOU residual); community scope centralized; judge per‑worker auth solid; **C4‑2 shared‑token `/claim` is the standout A01 issue**.
+- **A02 Cryptographic Failures** — AES‑256‑GCM + HKDF sound; **AGG‑10 plaintext default still open (C4‑4)**; env 0600 + boot guard hold.
+- **A03 Injection** — 0 SQLi / command‑inj / SSRF. Prompt‑injection sanitization unchanged from cycle 3.
+- **A04 Insecure Design** — **C4‑3 settings reconfirm gap**; C4‑5 dead reconfirm; C4‑7 counter‑clobber race.
+- **A05 Security Misconfiguration** — **default‑open judge IP allowlist (C4‑2)**; C4‑8 executor source mode; deploy script clean.
+- **A07 Auth Failures** — recruiting brute‑force counter solid except C4‑7; reconfirm gates solid except C4‑3.
+- **A08 Integrity / A09 Recovery/Logging** — **C4‑1 snapshot unrestoreable (HIGH)**; C4‑9 CSV audit non‑durable; restore/import durable‑audit + snapshot‑abort hold.
 
 **Remediation priority:**
-1. **Urgent (<1wk):** C3-1 snapshot redaction bypass (add `snapshot:true` mode — one-line + call-site); C3-2 JSON export audit gap (move audit outside `isDownload`).
-2. **Important (<2wk):** C3-3 admin/settings step-up; C3-4 plaintext-decrypt default flip.
-3. **Planned (<1mo):** C3-5 TRUST_X_REAL_IP flag, C3-6 SSE permission re-check, C3-7..C3-10 LOW batch + remaining AGG-1 design.
+1. **Urgent (<1wk):** C4‑2 make `workerId` required on `/claim` (+poll/deregister/heartbeat) and flip the allowlist default to fail‑closed; C4‑1 add `snapshot:true` mode (one‑line + call‑site).
+2. **Important (<2wk):** C4‑3 extend `SENSITIVE_SETTINGS_KEYS`; C4‑4 flip plaintext default to `false`.
+3. **Planned (<1mo):** C4‑5..C4‑9 LOW batch.
 
 ## Security Checklist
-- [x] No hardcoded secrets (env files 0600; placeholders used only for equality-rejection)
-- [x] All inputs validated (Zod at API boundary; C3-9 internal contract gap)
-- [x] Injection prevention verified (Drizzle parameterized; sql.raw only literal/const)
-- [x] Authentication/authorization verified (10 prior fixes hold; SEC-9 FIXED; C3-3/C3-10 residual)
-- [x] Dependencies audited (0 high/critical; 2 moderate via bundled postcss)
-- [ ] Recovery path verified (C3-1 snapshot unrestoreable — HIGH)
-- [ ] Audit integrity verified for all PII exports (C3-2 JSON gap — HIGH)
+- [x] No hardcoded secrets (env 0600; placeholders used only for equality‑rejection)
+- [x] Inputs validated (Zod at API boundary)
+- [x] Injection prevention verified (Drizzle parameterized; `sql.raw` only const/literal)
+- [x] Auth/authz verified on changed surface (8/8 regression items hold; C4‑2/C4‑3/C4‑6 residuals)
+- [ ] Recovery path verified (C4‑1 snapshot unrestoreable — HIGH)
+- [ ] Judge trust boundary closed (C4‑2 shared‑token `/claim` + default‑open allowlist — HIGH)
