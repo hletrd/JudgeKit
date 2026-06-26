@@ -56,14 +56,19 @@ export const GET = createApiHandler({
     const hasAccess = await canAccessProblem(id, user.id, user.role);
     if (!hasAccess) return forbidden();
 
-    const caps = await resolveCapabilities(user.role);
-    const canManageProblem = caps.has("problems.edit") || problemStub.authorId === user.id;
+    // Strict group-scoped management gate (mirrors PATCH/DELETE). The local
+    // capability/author check alone is insufficient: a problems.edit holder
+    // outside the problem's teaching group must not read referenceSolution or
+    // hidden test cases. The imported canManageProblem also enforces that
+    // teaching-group scope (and groups.view_all), so route the hidden-data
+    // decision through it rather than the looser local boolean.
+    const canManage = await canManageProblem(id, user.id, user.role);
 
     // Full fetch only after access is confirmed
     const problem = await db.query.problems.findFirst({ where: eq(problems.id, id) });
     if (!problem) return notFound("Problem");
 
-    if (!canManageProblem) {
+    if (!canManage) {
       // SECURITY: referenceSolution is author-only and must never reach a
       // student-facing read. functionSpec stays — it drives the student's
       // stub + language list.
