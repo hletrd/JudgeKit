@@ -82,7 +82,7 @@ describe("takePreRestoreSnapshot", () => {
     const path = await takePreRestoreSnapshot("0123456789abcdef");
 
     expect(path).not.toBeNull();
-    expect(mocks.streamDatabaseExport).toHaveBeenCalledWith({ sanitize: false });
+    expect(mocks.streamDatabaseExport).toHaveBeenCalledWith({ sanitize: false, snapshot: true });
     expect(path).toBeDefined();
     expect(existsSync(path!)).toBe(true);
     // File mode (lower 9 bits) must be 0o600. The umask MAY mask high bits,

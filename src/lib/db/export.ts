@@ -69,7 +69,7 @@ async function waitForReadableStreamDemand(
   }
 }
 
-export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?: boolean; dbNow?: Date } = {}): ReadableStream<Uint8Array> {
+export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?: boolean; snapshot?: boolean; dbNow?: Date } = {}): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   const redactionMode = getExportRedactionMode(options.sanitize);
   let cancelled = false;
@@ -101,9 +101,18 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
             )
           );
 
-          const activeRedactionMap = options.sanitize
-            ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
-            : EXPORT_ALWAYS_REDACT_COLUMNS;
+          // Snapshot mode (C4-1): the pre-restore snapshot is the operator's
+          // emergency rollback artifact. It must retain the auth columns a
+          // rollback needs (passwordHash, sessionToken, account tokens, API-key
+          // ciphertext, hCaptcha/SMTP secrets) so restoring it does not lock
+          // out every user and invalidate every session. At-rest exposure is
+          // covered by the caller's 0o600 file mode + 0o700 dir. Regular
+          // exports/backup/migrate keep the always-redact set.
+          const activeRedactionMap = options.snapshot
+            ? {}
+            : options.sanitize
+              ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
+              : EXPORT_ALWAYS_REDACT_COLUMNS;
 
           for (const [tableIndex, { name, table, orderColumns }] of TABLE_ORDER.entries()) {
             if (cancelled) return;

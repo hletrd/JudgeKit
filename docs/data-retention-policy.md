@@ -45,7 +45,7 @@ The export endpoint (`POST /api/v1/admin/migrate/export`) supports two modes:
 
 **Sanitized** (default) — passwords, tokens, and keys are redacted. Use for data sharing, migration testing, or handing off a snapshot to a third party. This is the default when `?full` is omitted. Sanitized exports are intentionally **not** accepted by the disaster-recovery restore route.
 
-**Full-fidelity** (`?full=true`) — all fields included. Use only for disaster-recovery backups. Treat the output as a secret; store with encryption and access controls equivalent to the live database.
+**Full-fidelity** (`?full=true`) — includes all data EXCEPT a small always-redacted secret set (password hashes, session/OAuth tokens, API-key ciphertext, SMTP/hCaptcha secrets). Suitable for DR restores of user/problem data; it is NOT a bit-for-bit DB image — restoring it requires a password reset for all users because the always-redacted auth columns are stripped. Use only for disaster-recovery backups. Treat the output as a secret; store with encryption and access controls equivalent to the live database.
 
 The backup route (`POST /api/v1/admin/backup`) always produces a full-fidelity copy. ZIP backups embed a checksum manifest so the restore route can reject tampered archives before import. Every export is recorded in the audit log with an entry noting whether the export was sanitized or full-fidelity.
 

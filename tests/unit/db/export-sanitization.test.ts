@@ -135,6 +135,23 @@ describe("export.ts sanitization", () => {
     expect(source).toMatch(/streamDatabaseExport\s*\([^)]*sanitize\??\s*:/);
   });
 
+  it("streamDatabaseExport accepts a snapshot option that bypasses ALWAYS_REDACT (C4-1)", () => {
+    const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
+    // The snapshot branch must short-circuit BEFORE the sanitize/always-redact
+    // branches so a pre-restore snapshot retains passwordHash/sessionToken and
+    // is faithfully restoreable.
+    expect(source).toMatch(/snapshot\??\s*:/);
+    expect(source).toContain("options.snapshot");
+    expect(source).toMatch(/options\.snapshot\s*\?[^?]*\{\}/);
+  });
+
+  it("pre-restore snapshot passes snapshot:true so it is faithfully restoreable (C4-1)", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/db/pre-restore-snapshot.ts"), "utf8");
+    expect(source).toContain("snapshot: true");
+    // The docstring must no longer claim the snapshot redacts the auth columns.
+    expect(source).not.toContain("contains password hashes, encrypted column ciphertexts, and JWT");
+  });
+
   it("records whether an export is sanitized or full-fidelity", () => {
     const source = readFileSync(join(process.cwd(), EXPORT_PATH), "utf8");
     expect(source).toContain('export type JudgeKitExportRedactionMode = "full-fidelity" | "sanitized"');

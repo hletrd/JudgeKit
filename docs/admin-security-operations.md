@@ -62,7 +62,7 @@ JudgeKit currently relies on environment variables rather than a built-in vault 
 - `RATE_LIMITER_AUTH_TOKEN` — required by the rate-limiter sidecar (same compose contract).
 - `PLUGIN_CONFIG_ENCRYPTION_KEY`
 - database credentials
-- backup artifacts that include full-fidelity secrets
+- backup artifacts (full-fidelity exports redact the always-redacted secret set — password hashes, session/OAuth tokens, API-key ciphertext, SMTP/hCaptcha secrets — but still warrant encryption-at-rest and tight access control)
 
 ## Reverse proxy and perimeter controls
 

@@ -31,10 +31,13 @@ function snapshotDir(): string {
  * Stream the live DB to a timestamped JSON file before a destructive
  * importDatabase() call. Returns the path on success, null on failure.
  *
- * The snapshot is full-fidelity (sanitize=false) — it is the operator's
- * own emergency rollback artifact, not a portable export. Because it
- * contains password hashes, encrypted column ciphertexts, and JWT
- * secrets in their stored form, the file is created with mode 0o600
+ * The snapshot is full-fidelity: `streamDatabaseExport` is called with
+ * `snapshot: true` (C4-1), which bypasses `EXPORT_ALWAYS_REDACT_COLUMNS` so the
+ * artifact retains the auth columns an emergency rollback needs (password
+ * hashes, session tokens, OAuth tokens, API-key ciphertext, hCaptcha/SMTP
+ * secrets). Restoring it therefore leaves every user able to authenticate and
+ * preserves active sessions. Because the snapshot contains these live secrets
+ * in their stored form, the file is created with mode 0o600
  * and the parent directory is locked down to 0o700 (best-effort: chmod
  * failures are logged but do not abort the snapshot).
  *
@@ -83,6 +86,7 @@ export async function takePreRestoreSnapshot(actorId: string): Promise<string | 
     // pre-cycle-2 pattern that imported the same NodeReadableStream type).
     const exportStream = streamDatabaseExport({
       sanitize: false,
+      snapshot: true,
     }) as unknown as NodeReadableStream<Uint8Array>;
     await pipeline(
       Readable.fromWeb(exportStream),
