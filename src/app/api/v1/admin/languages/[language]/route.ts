@@ -1,12 +1,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createApiHandler, notFound } from "@/lib/api/handler";
-import { apiSuccess } from "@/lib/api/responses";
+import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { languageConfigs } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 
 const updateLanguageSchema = z.object({
   dockerImage: z.string().min(1).max(200).optional(),
@@ -42,6 +43,11 @@ export const PATCH = createApiHandler({
       .limit(1);
 
     if (existing.length === 0) return notFound("language");
+
+    // Validate a new dockerImage against the same allowlist as POST / build path.
+    if (body.dockerImage !== undefined && !isAllowedJudgeDockerImage(body.dockerImage.trim())) {
+      return apiError("invalidDockerImage", 422);
+    }
 
     const updateValues: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
     if (body.dockerImage !== undefined) updateValues.dockerImage = body.dockerImage;

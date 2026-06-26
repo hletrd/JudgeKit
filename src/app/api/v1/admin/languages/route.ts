@@ -7,6 +7,7 @@ import { languageConfigs } from "@/lib/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { getDbNowUncached } from "@/lib/db-time";
+import { isAllowedJudgeDockerImage } from "@/lib/judge/docker-image-validation";
 
 const addLanguageSchema = z.object({
   language: z.string().min(1).max(50).regex(/^[a-z0-9_]+$/, "invalidLanguageKey"),
@@ -59,6 +60,15 @@ export const POST = createApiHandler({
 
     if (existing.length > 0) {
       return apiError("languageAlreadyExists", 409);
+    }
+
+    // Only allow local `judge-*` tags or trusted-registry `judge-*` images.
+    // The stored value is what the Rust worker pulls and runs student code
+    // inside, so an arbitrary registry image is an RCE surface. The same
+    // validator is enforced on the image-build path
+    // (admin/docker/images/build/route.ts).
+    if (!isAllowedJudgeDockerImage(body.dockerImage.trim())) {
+      return apiError("invalidDockerImage", 422);
     }
 
     const [created] = await db
