@@ -105,6 +105,7 @@ const FUNCTION_PROBLEM_ROW = {
   floatAbsoluteError: null,
   floatRelativeError: null,
   difficulty: 5,
+  defaultLanguage: "python",
 };
 
 const TEST_CASES = [
@@ -163,6 +164,7 @@ describe("GET /api/v1/problems/[id]/export", () => {
       problemType: "function",
       functionSpec: FUNCTION_PROBLEM_ROW.functionSpec,
       referenceSolution: FUNCTION_PROBLEM_ROW.referenceSolution,
+      defaultLanguage: "python",
     });
   });
 

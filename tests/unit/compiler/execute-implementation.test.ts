@@ -79,7 +79,9 @@ describe("compiler execute import-time misconfiguration (ARCH-1)", () => {
 
   beforeEach(() => {
     vi.resetModules();
-    process.env.NODE_ENV = "production";
+    // NODE_ENV is declared readonly on Node's ProcessEnv type; assign via a
+    // record-typed view of process.env (same pattern as tests/unit/security/ip.test.ts).
+    (process.env as Record<string, string | undefined>).NODE_ENV = "production";
     process.env.COMPILER_RUNNER_URL = "http://runner:3001";
     delete process.env.RUNNER_AUTH_TOKEN;
     delete process.env.RUNNER_AUTH_DISABLED;

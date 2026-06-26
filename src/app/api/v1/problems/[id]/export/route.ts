@@ -30,6 +30,7 @@ export const GET = createApiHandler({
         floatAbsoluteError: true,
         floatRelativeError: true,
         difficulty: true,
+        defaultLanguage: true,
       },
     });
 

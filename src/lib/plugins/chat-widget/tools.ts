@@ -67,11 +67,11 @@ export async function executeTool(
 ): Promise<string> {
   // SECURITY: `toolArgs` originates from the LLM, which is ultimately driven
   // by user input — treat every field as user-controlled (prompt-injection
-  // threat surface). Each case below must Zod-validate `toolArgs` against a
-  // per-tool schema before use and re-scope every DB lookup to
-  // `context.userId` so a crafted argument cannot exfiltrate another user's
-  // data. The existing `context.userId`/`context.assignmentId` scoping is the
-  // primary control; do not widen it.
+  // threat surface). Each case below coerces the fields it uses and re-scopes
+  // every DB lookup to `context.userId` so a crafted argument cannot
+  // exfiltrate another user's data. The `context.userId`/`context.assignmentId`
+  // scoping is the PRIMARY control; do not widen it. (Adding per-tool Zod
+  // schemas on top of this scoping is tracked as defense-in-depth.)
   switch (toolName) {
     case "get_problem_description":
       return handleGetProblemDescription(context);

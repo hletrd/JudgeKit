@@ -33,7 +33,9 @@ const {
   parseBackupZipMock: vi.fn(),
   restoreParsedBackupFilesMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
-  recordAuditEventDurableMock: vi.fn(() => Promise.resolve()),
+  recordAuditEventDurableMock: vi.fn<
+    (input: { action: string; summary?: string; details?: unknown; [key: string]: unknown }) => Promise<void>
+  >(() => Promise.resolve()),
   takePreRestoreSnapshotMock: vi.fn(),
 }));
 

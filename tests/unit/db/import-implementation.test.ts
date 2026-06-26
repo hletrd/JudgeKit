@@ -58,12 +58,15 @@ describe("importDatabase implementation guards", () => {
 describe("importDatabase partial-export data-loss guard", () => {
   it("does NOT truncate tables absent from the export and records them in skippedTables", async () => {
     // Mock transaction: invoke the callback with a recording mock tx so we can
-    // observe which tables are truncated.
+    // observe which tables are truncated. Cast the transaction binding to a
+    // loose mock shape so the callback signature is not pinned to the real
+    // Drizzle PgTransaction type (TS-only; the runtime binding is the vi.fn).
     const deleteMock = vi.fn();
     const mockTx = { delete: deleteMock };
-    vi.mocked(db.transaction).mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb(mockTx),
-    );
+    const transactionMock = db.transaction as unknown as {
+      mockImplementation: (impl: (cb: (tx: unknown) => Promise<unknown>) => Promise<unknown>) => unknown;
+    };
+    transactionMock.mockImplementation(async (cb) => cb(mockTx));
 
     // An export that carries ONLY the `users` table (rowCount 0 → insert loop
     // skips it too). Every other known table (e.g. examSessions) is absent.
