@@ -739,13 +739,19 @@ export async function executeCompilerRun(
     try {
       await chown(workspaceDir, SANDBOX_UID, SANDBOX_GID);
       await chown(sourcePath, SANDBOX_UID, SANDBOX_GID);
-      await chmod(workspaceDir, 0o777);
-      await chmod(sourcePath, 0o666);
+      // chown succeeded: the workspace is now owned by the sandbox uid:gid, so
+      // 0o700/0o600 is sufficient for the sandbox container to access it without
+      // making every artifact world-readable. Mirrors judge-worker-rs executor
+      // (the prior 0o777 made student source world-readable to any host user).
+      await chmod(workspaceDir, 0o700);
+      await chmod(sourcePath, 0o600);
     } catch (error) {
       logger.warn(
         { error },
         "[compiler] Failed to chown workspace for sandbox user; falling back to broad workspace permissions"
       );
+      // chown failed (process without CAP_CHOWN) — keep the broad mode so the
+      // existing sibling-container flow still works. Matches the Rust fallback.
       await chmod(workspaceDir, 0o777);
       await chmod(sourcePath, 0o666);
     }

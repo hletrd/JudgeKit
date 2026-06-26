@@ -2,6 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+describe("compiler workspace hardening (AGG-20 / DBG-4)", () => {
+  it("uses 0o700/0o600 on chown success and keeps 0o777/0o666 only as the chown-failure fallback", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+
+    // The chown-success branch must tighten to 0o700/0o600 (mirrors Rust executor).
+    expect(source).toContain("await chmod(workspaceDir, 0o700)");
+    expect(source).toContain("await chmod(sourcePath, 0o600)");
+    // The fallback (CAP_CHOWN unavailable) keeps the broad mode so the flow works.
+    expect(source).toContain("falling back to broad workspace permissions");
+    expect(source).toContain("await chmod(workspaceDir, 0o777)");
+    expect(source).toContain("await chmod(sourcePath, 0o666)");
+  });
+});
+
 // Logger is mocked so the import-time logger.error emitted on misconfigured
 // RUNNER_AUTH_TOKEN does not spam test output. Hoisted above the dynamic
 // import below. Existing source-grep tests do not touch the logger.
