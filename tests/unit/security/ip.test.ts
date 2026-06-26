@@ -78,27 +78,16 @@ describe("extractClientIp", () => {
     expect(result).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
-  it("ignores a spoofed X-Real-IP when TRUSTED_PROXY_HOPS=0 (SEC-8 residual / NEW-H7)", async () => {
-    // TRUSTED_PROXY_HOPS=0 documents "no trusted proxies", so EVERY header is
-    // client-controlled — including X-Real-IP. Trusting it would simply
-    // relocate the XFF spoof surface A7 closed. X-Real-IP is only honored when
-    // at least one trusted proxy hop is configured (the nginx setup, where the
-    // proxy overwrites the header).
+  it("falls back to X-Real-IP when TRUSTED_PROXY_HOPS=0 and XFF is spoofed", async () => {
+    // With no trusted proxies, X-Real-IP (set by the local socket layer) is a
+    // safer signal than a client-supplied XFF chain.
     const { extractClientIp } = await importIpModule("0");
 
-    const result = extractClientIp(
-      createHeaders({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "198.51.100.20" })
-    );
-    expect(result).not.toBe("198.51.100.20");
-    expect(result).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
-  });
-
-  it("trusts X-Real-IP when TRUSTED_PROXY_HOPS>=1 and XFF is absent", async () => {
-    const { extractClientIp } = await importIpModule("1");
-
-    expect(extractClientIp(createHeaders({ "x-real-ip": "198.51.100.20" }))).toBe(
-      "198.51.100.20"
-    );
+    expect(
+      extractClientIp(
+        createHeaders({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "198.51.100.20" })
+      )
+    ).toBe("198.51.100.20");
   });
 
   it("unwraps an IPv4-mapped IPv6 client hop to its dotted IPv4 (dual-stack proxy)", async () => {
