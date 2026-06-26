@@ -14,13 +14,33 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the DB module before importing the functions under test
-vi.mock("@/lib/db", () => ({
-  db: {
-    insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: "test-id" }]) }) }),
-    update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue({ rowCount: 1 }) }) }),
-    select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) }),
-  },
-}));
+vi.mock("@/lib/db", () => {
+  // buildTx mirrors the executor pattern: select().from().where().for().limit()
+  // plus update().set().where(). The metadata-merge path (C3-AGG-3) runs inside
+  // db.transaction with SELECT ... FOR UPDATE.
+  const buildTx = () => ({
+    select: vi.fn().mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          for: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([{ metadata: {} }]),
+          }),
+        }),
+      }),
+    }),
+    update: vi.fn().mockReturnValue({
+      set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue({ rowCount: 1 }) }),
+    }),
+  });
+  return {
+    db: {
+      insert: vi.fn().mockReturnValue({ values: vi.fn().mockReturnValue({ returning: vi.fn().mockResolvedValue([{ id: "test-id" }]) }) }),
+      update: vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue({ rowCount: 1 }) }) }),
+      select: vi.fn().mockReturnValue({ from: vi.fn().mockReturnValue({ where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }) }) }),
+      transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => cb(buildTx())),
+    },
+  };
+});
 
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date()),
