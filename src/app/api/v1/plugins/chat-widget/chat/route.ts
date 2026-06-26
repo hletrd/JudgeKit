@@ -15,6 +15,7 @@ import {
   isAiAssistantEnabledForContext,
   resolvePlatformModeAssignmentContextDetails,
 } from "@/lib/platform-mode-context";
+import { sanitizePromptInput } from "@/lib/judge/prompt-sanitization";
 
 const MAX_TOOL_ITERATIONS = 5;
 const TOOL_EXECUTION_TIMEOUT_MS = 10_000;
@@ -366,13 +367,21 @@ export const POST = createApiHandler({
       editorLanguage: context?.editorLanguage ?? undefined,
     };
 
+    // Sanitize user-supplied message content before it enters the LLM prompt
+    // to defang prompt-injection payloads (AGG-8 / SEC-6). The raw message is
+    // still persisted to the chat log above for auditability.
+    const sanitizedMessages: ChatMessage[] = body.messages.map((m) => ({
+      role: m.role,
+      content: sanitizePromptInput(m.content),
+    }));
+
     // If no problem context, use simple streaming (no tools)
     if (!context?.problemId) {
       const messages: ChatMessage[] = [];
       if (systemContent) {
         messages.push({ role: "system", content: systemContent });
       }
-      messages.push(...body.messages);
+      messages.push(...sanitizedMessages);
 
       const stream = await provider.stream({
         apiKey,
@@ -432,7 +441,7 @@ export const POST = createApiHandler({
     // Tool-calling agent loop
     const fullMessages: Array<ChatMessage | Record<string, unknown>> = [
       { role: "system", content: systemContent },
-      ...body.messages,
+      ...sanitizedMessages,
     ];
 
     for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
@@ -490,7 +499,14 @@ export const POST = createApiHandler({
           logger.warn({ err, toolName: call.name }, `[chat] Tool execution ${reason}, returning error to agent`);
           toolResult = `Error executing tool "${call.name}" (${reason}) — please try again`;
         }
-        const resultMessage = provider.formatToolResult(call.id, call.name, toolResult);
+        // Tool results (DB-sourced problem text, submission code, etc.) re-enter
+        // the prompt, so sanitize them like user input to defang indirect prompt
+        // injection carried through stored content (AGG-8 / SEC-6).
+        const resultMessage = provider.formatToolResult(
+          call.id,
+          call.name,
+          sanitizePromptInput(toolResult),
+        );
         fullMessages.push(resultMessage);
       }
     }

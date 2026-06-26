@@ -65,6 +65,13 @@ export async function executeTool(
   toolArgs: Record<string, unknown>,
   context: AgentContext
 ): Promise<string> {
+  // SECURITY: `toolArgs` originates from the LLM, which is ultimately driven
+  // by user input — treat every field as user-controlled (prompt-injection
+  // threat surface). Each case below must Zod-validate `toolArgs` against a
+  // per-tool schema before use and re-scope every DB lookup to
+  // `context.userId` so a crafted argument cannot exfiltrate another user's
+  // data. The existing `context.userId`/`context.assignmentId` scoping is the
+  // primary control; do not widen it.
   switch (toolName) {
     case "get_problem_description":
       return handleGetProblemDescription(context);
