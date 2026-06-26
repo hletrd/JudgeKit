@@ -65,6 +65,31 @@ describe("extractClientIp", () => {
     ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
+  it("ignores a spoofed X-Forwarded-For entirely when TRUSTED_PROXY_HOPS=0 (SEC-8)", async () => {
+    // TRUSTED_PROXY_HOPS=0 documents "no trusted proxies", so every XFF entry
+    // is client-controlled. Previously `parts.length >= 0 + 1` was true for any
+    // XFF and `clientIndex = parts.length - 1` returned the last (spoofable)
+    // entry. The fix skips the XFF path and falls through to the dev sentinel
+    // (or null in production) instead of the attacker-supplied IP.
+    const { extractClientIp } = await importIpModule("0");
+
+    const result = extractClientIp(createHeaders({ "x-forwarded-for": "1.2.3.4" }));
+    expect(result).not.toBe("1.2.3.4");
+    expect(result).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
+  });
+
+  it("falls back to X-Real-IP when TRUSTED_PROXY_HOPS=0 and XFF is spoofed", async () => {
+    // With no trusted proxies, X-Real-IP (set by the local socket layer) is a
+    // safer signal than a client-supplied XFF chain.
+    const { extractClientIp } = await importIpModule("0");
+
+    expect(
+      extractClientIp(
+        createHeaders({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "198.51.100.20" })
+      )
+    ).toBe("198.51.100.20");
+  });
+
   it("unwraps an IPv4-mapped IPv6 client hop to its dotted IPv4 (dual-stack proxy)", async () => {
     const { extractClientIp } = await importIpModule();
 

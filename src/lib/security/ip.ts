@@ -89,7 +89,12 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     // gets null and downstream code can degrade to per-IP rate-limit by
     // request socket or treat the request as unknown.
     const trustedHops = getTrustedProxyHops();
-    if (parts.length >= trustedHops + 1) {
+    // SEC-8: TRUSTED_PROXY_HOPS=0 means "no trusted proxies" — every XFF
+    // entry is client-controlled, so we must not trust any of them. Without
+    // this guard, `parts.length >= 0 + 1` is true for any XFF and
+    // `clientIndex = parts.length - 1` selects the last (spoofable) entry.
+    // Skip the XFF path entirely and fall through to the socket/X-Real-IP.
+    if (trustedHops > 0 && parts.length >= trustedHops + 1) {
       const clientIndex = parts.length - (trustedHops + 1);
       const candidate = parts[clientIndex];
       if (isValidIp(candidate)) {
