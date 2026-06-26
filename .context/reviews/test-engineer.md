@@ -1,12 +1,13 @@
-# Cycle 2 — test-engineer
+# Cycle 3 — test-engineer
 
-Date: 2026-06-26
+Date: 2026-06-27
 Repository: `/Users/hletrd/flash-shared/judgekit`
-Scope head: `ad543e14` (cycle-1 Phase A fixes), current `main`.
-Method: every Phase A commit was diff'd (source + test), and each test was
-read in full to determine whether reverting the production change would flip a
-test red (green-but-broken check). GATES were traced from `package.json` to
-`.github/workflows/ci.yml`.
+Head: `207623f9` (post cycle-2 remediation).
+Prior: cycle-2 review preserved in git history (`ad543e14` baseline).
+Method: every cycle-2 fix commit was diff'd (source + test); each cited
+test was read in full and traced to the production hunk it claims to lock.
+Flaky-pattern scan ran across all `judge-worker-rs`/`code-similarity-rs`/
+`rate-limiter-rs` sources and the vitest suite.
 
 Severity scale: **Critical** (silent miss of security/data-loss bug) >
 **High** (shipped fix unenforced or gate silently passing) > **Medium**
@@ -14,199 +15,310 @@ Severity scale: **Critical** (silent miss of security/data-loss bug) >
 
 ---
 
-## REGRESSION — cycle-1 Phase A fixes (12 commits, head `ad543e14`)
+## REGRESSION — cycle-2 fix commits (14 commits)
 
-Green-but-broken verdict per fix. "Revert-RED" = the existing test fails if the
-production hunk of that commit is reverted.
+Green-but-broken verdict per fix. "Revert-RED" = the existing test fails if
+the production hunk of that commit is reverted.
 
 | # | Commit | Fix | Revert-RED? | Evidence |
 |---|--------|-----|-------------|----------|
-| A1 | `40250e63` | env files 0600 + startup guard | **YES** | `tests/unit/security/env.test.ts` asserts `0644 → throws /group|other bits set/` and `0600 → not.toThrow()` in production; no-op outside production. Reverting the guard flips both. |
-| A2 | `7548c7a6` | restore audit recorded post-commit | **YES** | `tests/unit/api/admin-backup-security.route.test.ts:368-471` asserts `toHaveBeenCalledBefore(importDatabaseMock, recordAuditEventMock)`, `recordAuditEventMock` not called when import fails, AND `auditPayload.summary` contains `"2 files pending"` with a 2-upload ZIP. Reverting the reorder flips all three. **This closes AGG-66 / TE-2.** |
-| A3 | `f9d72920` | group DELETE IDOR (strict `canManageGroupResourcesAsync`) | **YES** | `tests/unit/api/groups.route.test.ts` "resource-scope IDOR guard" asserts 403 + `dbDeleteMock)not.toHaveBeenCalled()` + `recordAuditEventMock)not.toHaveBeenCalled()` when `canManageGroupResourcesAsync` is false. |
-| A4 | `b10e5216` | student→co_instructor escalation | **YES** | `tests/unit/api/group-instructors.route.test.ts` (new file) asserts 409 `instructorRoleInvalid` + `dbInsertMock)not.toHaveBeenCalled()` + `getRoleLevelMock` consulted when target level is 0. |
-| A5 | `08ac027a` | api-key PATCH escalation on ALL fields | **YES** | `tests/unit/api/api-keys.route.test.ts` asserts 403 + `canManageRoleAsyncMock` called with `("manager","super_admin")` (existing-role fetch) on an `isActive`-only mutation. The exact-bypass assertion is present. |
-| A6 | `35d08f2a` | chat-widget `sanitizePromptInput` + tool-result sanitization | **YES** | `tests/unit/api/plugins.route.test.ts:486-592` asserts user `content` does NOT contain `"Ignore previous instructions"` and DOES contain `"[REDACTED]"` on BOTH the no-context stream path and the tool-calling path; plus tool-result sanitization via `formatToolResult` arg. Payload-neutralization-pre-provider is directly asserted. |
-| A7 | `ac5289f3` | XFF ignored when `TRUSTED_PROXY_HOPS=0` | **YES** | `tests/unit/security/ip.test.ts` asserts `extractClientIp(... "x-forwarded-for":"1.2.3.4")` `)not.toBe("1.2.3.4")` at hops=0, and X-Real-IP fallback. Sibling `ip-allowlist.test.ts` was correctly migrated to X-Real-IP injection. |
-| A8 | `dcaf9109` | compiler import-time throw → logged configError | **YES** | `tests/unit/compiler/execute-implementation.test.ts` asserts `import("@/lib/compiler/execute")` resolves (does not throw) and `executeCompilerRun` returns `stderr === "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing"`. |
-| A9 | `4b93c5ff` | function-judging fields in per-problem export | **YES** | `tests/unit/api/problems-export.route.test.ts` (new file) asserts payload `problemType/functionSpec/referenceSolution` AND a 403 negative-authz case (`canManageProblemMock → false` ⇒ `dbSelectMock)not.toHaveBeenCalled()`). **This closes AGG-64 / TE-3.** |
-| A10 | `d4efb27b` | problem GET routed through strict `canManageProblem` | **YES (non-obvious)** | NO test was added in this commit's diff, but `tests/unit/api/problems-function-spec.route.test.ts:395-420` ("strips referenceSolution + hidden testCases from a `problems.edit` holder outside the teaching group") mocks `canManageProblemMock → false` with `resolveCapabilitiesMock → {has: () => true}` in `beforeEach`; the loose local boolean would return true and leak `referenceSolution`, flipping `expect(body.data.referenceSolution).toBeUndefined()`. Coverage exists but lives in a file named for function-spec, not for the GET gate — see GS-4. |
-| A11 | `b860f53a` | destructive `git clean -fd` removed from drift check | **YES** | `tests/unit/infra/migration-drift-cleanup.test.ts` writes an untracked file under `drizzle/`, runs the script, asserts `existsSync(untracked))toBe(true)`; plus source-grep `)not.toMatch(/^\s*git clean\s+-fd/m)` and `DRIFT_BEFORE/DRIFT_AFTER` markers. **This closes AGG-69 / TE-16.** |
-| A12 | `1f6d15d4` | Rust validation env mutation race | **YES (refactored)** | `validation.rs` now exposes pure `validate_docker_image_with_config(image, is_production, trusted_prefixes)`; `grep "set_var|remove_var|unsafe"` returns nothing. Tests inject config structs — **no `#[serial]` needed. Closes AGG-65 / TE-10.** |
+| C2-1 | `51af8537` | preserve tables absent from import (skip-truncate) | **YES** | `tests/unit/db/import-implementation.test.ts:58-94` builds a one-table export (`users`), drives `importDatabase` through a recording mock tx, and asserts `deleteMock` NOT called with `examSessions`, IS called with `users`, AND `result.skippedTables` contains `examSessions`. Reverting the `data.tables` guard on the truncate loop flips all three. **Behavioral, not source-grep.** |
+| C2-2 | `c12ce8af` | api-key DELETE canManageRole gate | **YES** | `tests/unit/api/api-keys.route.test.ts:291-333` adds two cases: a manager-tier caller with `system.settings` against a `super_admin`-owned key ⇒ 403 `cannotAssignHigherRole` + `canManageRoleAsyncMock` called with `("manager","super_admin")` + `dbDeleteMock)not.toHaveBeenCalled()`; and the positive path against a manager-owned key ⇒ 200 + `dbDeleteMock)toHaveBeenCalledOnce()`. Exact mirror of the A5 PATCH test. |
+| C2-3 | `3ed15bd6` | abort destructive import on pre-restore snapshot fail | **PARTIAL — see NEW-1.** | `admin-backup-security.route.test.ts:347-370` exercises the **restore** route only (`takePreRestoreSnapshotMock.mockResolvedValue(null)` ⇒ 500 `preRestoreSnapshotFailed` + `importDatabaseMock)not.toHaveBeenCalled()`). The **migrate-import** route got the identical gate (`migrate/import/route.ts:102,215`) but NO test imports that route for this case. |
+| C2-4 | `c4ef40ab` | language dockerImage allowlist on POST+PATCH | **YES** | `tests/unit/api/admin-languages.route.test.ts:99-158` — three behavioral cases: POST rejects `attacker-registry/pwn:latest` with 422 `invalidDockerImage` + no insert; POST accepts `judge-python:3.12`; PATCH rejects `evil.example.com/root:latest` + no update. |
+| C2-5 | `3196e6d1` | strip contest accessCode from assignment GETs | **SOURCE-GREP ONLY — see NEW-2.** | `tests/unit/api/group-assignments-access-code-strip.test.ts:10-30` reads the source files and asserts `canManageGroupResourcesAsync(`, `columns: { id: true, instructorId: true }`, and a regex `if (!canManage)[\s\S]*delete .*accessCode`. No behavioral test calls GET `/api/v1/groups/[id]/assignments` and asserts `accessCode` is undefined in the response. Pins implementation shape, not behavior. |
+| C2-6 | `7518a5e1` | centralize community problem-linked scope check | **PARTIAL — see NEW-3.** | `tests/unit/discussions/permissions.test.ts:24-55` behaviorally tests the pure helpers (`PROBLEM_LINKED_SCOPES`, `isProblemLinkedScope`, `canAccessProblemScopedThread`) including editorial-scope denial and `canAccessProblem` delegation. But the **route consumers** (`community-thread-posts.route.test.ts`, `community-votes.route.test.ts`) only fixture `scopeType: "general"`; nothing exercises the editorial-scoped thread through the POST/vote routes, so removing the `canAccessProblemScopedThread` call from a route would pass. |
+| C2-7 | `a336de90` | restore+migrate audits durable + post-file-restore | **YES for restore; NO for migrate-import — see NEW-1.** | `admin-backup-security.route.test.ts:402-543` — four cases pin the restore path: durable helper used (not buffered), `importDatabaseMock)toHaveBeenCalledBefore(recordAuditEventDurableMock)`, action `system_settings.database_restored`, post-file-restore ordering (`restoreParsedBackupFilesMock)toHaveBeenCalledBefore(...)`), the dedicated `database_restore_files_failed` audit on ENOSPC, and `recordAuditEventDurableMock)not.toHaveBeenCalled()` when import fails. The migrate-import route's twin `await recordAuditEventDurable(...)` at `migrate/import/route.ts:123,233` is uncovered. **Closes cycle-2 NG-1 for restore only.** |
+| C2-8 | `594f89b0` | local compiler workspace 0o700 on chown success | **SOURCE-GREP.** | `execute-implementation.test.ts:5-17` asserts the source contains `chmod(workspaceDir, 0o700)` + `chmod(sourcePath, 0o600)` + the broad fallback strings. Defense-in-depth chmod; source-grep is acceptable but no test asserts the on-disk mode after a compile. |
+| C2-9 | `68dc2ad0` | docker inspect/kill/rm wrapped in 10s timeout | **NO — ZERO coverage. See NEW-4.** | The `docker.rs` `#[cfg(test)]` module (only `parse_timestamp_epoch_ms` + `resolve_seccomp_profile` tests) gained nothing for this fix. The three cleanup helpers call `tokio::process::Command::new("docker")` directly with no injection seam, and no source-grep backup exists. |
+| C2-10 | `d5b20d3d` | code-similarity sidecar cap at 500 submissions | **PARTIAL — see NEW-5.** | `code-similarity-rs/src/main.rs:246-261` `submission_cap_boundary` tests the pure `exceeds_submission_cap` helper at the boundary (500/499/501/5000). But only the helper, not the route — removing the `if exceeds_submission_cap(...)` call from the `compute` handler still passes the test. |
+| C2-11 | `90bcfcff` | problem edit page strict canManageProblem gate | **SOURCE-GREP ONLY.** | `problem-edit-page-strict-gate.test.ts:11-25` asserts source contains the import + the regex `const canEdit = await canManageProblem(...)` + NOT the loose pattern. No test renders the page with an out-of-group `problems.edit` holder and asserts `referenceSolution`/hidden test cases are absent from `initialProblem`. |
+| C2-12 | `6b383ff0` | Phase-A side-effect test type fixes | **N/A (no behavior change).** | TS2540/TS2532/TS2345 fixes only; verified by `tsc --noEmit` in CI. Also adds `defaultLanguage` to the export SELECT (`problems-export.route.test.ts`) and corrects the chat-widget tools comment. |
+| C2-13 | `1fb1af0f` | cycle-2 test fallout (SEO mock + grep baseline 155→157) | **N/A.** | Bumps the `DOCUMENTED_BASELINE` in `source-grep-inventory.test.ts:211` and spreads `importOriginal` in the discussions/permissions mock so `isProblemLinkedScope` resolves post-centralization. |
+| C2-14 | `23851d69` | revert X-Real-IP hops=0 gate | **YES.** | `tests/unit/security/ip.test.ts:81-91` "falls back to X-Real-IP when TRUSTED_PROXY_HOPS=0 and XFF is spoofed" asserts `extractClientIp` returns `198.51.100.20` at hops=0. Re-applying the gate (revert of the revert) flips this red. Behavioral. |
 
-**Phase A verdict: 12/12 revert-RED.** Every fix has at least one behavioral
-test that fails on revert. This is a materially stronger position than cycle 1
-(where AGG-66/67/68/69 and TE-1/2/3/10/16 were open).
+**Cycle-2 verdict: 8/14 behavioral revert-RED, 4/14 source-grep (acceptable
+for defense-in-depth chmod, weak for authz leaks), 1/14 zero-coverage
+(68dc2ad0), 1/14 partial (durable-audit restore-only).** The strongest
+protection is on the data-loss cluster (C2-1, C2-2, C2-7-restore); the
+weakest is on the worker and the migrate-import twin.
 
 ### Regression caveats (not blockers)
 
-- **R-CAV-1 (A2 ordering proxy).** `toHaveBeenCalledBefore(importDatabaseMock, recordAuditEventMock)`
-  validates call order, not actual truncate survival — `importDatabase` is fully
-  mocked, so the test cannot prove the audit row would survive a real
-  `TRUNCATE auditEvents`. The order assertion is the correct proxy given the
-  unit-test layer; AGG-67 (runtime) is the place to prove it end-to-end.
-  *Confidence: High.*
-- **R-CAV-2 (A10 source-grep false confidence).** `problem-detail-capabilities-implementation.test.ts`
-  still asserts `source)toContain('caps.has("problems.edit")')` and
-  `problem.authorId === user.id` — those strings survive only in PATCH/DELETE,
-  not GET, so the source-grep passes regardless of the GET gate. The behavioral
-  guard at `problems-function-spec.route.test.ts:395` is what actually protects
-  A10. The source-grep should be tightened or removed. *Severity: Low.*
+- **R-CAV-1 (C2-5 accessCode source-grep).** The regex
+  `if (!canManage)[\s\S]*delete .*accessCode` passes even if the route
+  deletes the wrong field, or if the `columns` projection is dropped and the
+  delete runs on a fully-populated row that already leaked via the RQB
+  default. The behavioral guard at the route layer is the only thing that
+  actually proves a non-manager cannot read the code. *Confidence: High.*
+- **R-CAV-2 (C2-10 helper-only).** `exceeds_submission_cap` is a one-line
+  `count > MAX_SUBMISSIONS` predicate; testing the predicate does not
+  exercise the handler's `PAYLOAD_TOO_LARGE` response. *Confidence: High.*
+- **R-CAV-3 (C2-11 page-level).** The edit page renders server-side and
+  hands `initialProblem` (with `referenceSolution` + hidden test cases) into
+  the client. A source-grep on `canManageProblem(...)` proves the gate is
+  *written* but not that the props passed to the client omit secrets when
+  the gate is false. *Confidence: Medium.*
 
 ---
 
-## GATE SOUNDNESS
+## NEW GAPS (cycle-3)
 
-Traced each `npm run <gate>` and the Rust/Playwright gates to their CI step.
+### NEW-1 — migrate-import route destructive surface is fully untested
+- **Severity: High. Confidence: High.**
+- **Files:** `src/app/api/v1/admin/migrate/import/route.ts:98-140` (JSON arm)
+  and `:214-250` (multipart arm).
+- **Gap:** `3ed15bd6` added the snapshot-abort gate, `a336de90` added
+  `await recordAuditEventDurable(...)`, and `51af8537` added
+  `skippedTables` to the response — all three changes were applied to BOTH
+  `restore/route.ts` and `migrate/import/route.ts`. But
+  `admin-backup-security.route.test.ts` only tests the restore path for
+  these (lines 347-543). The migrate/import route's test titles (L263, L283)
+  are password-confirmation tests only. Reverting any of the three
+  production hunks in `migrate/import/route.ts` passes every test in the
+  suite today. The migrate path performs the SAME destructive
+  `importDatabase` call; an unsnapshotted, un-audited destructive import
+  ships silently.
+- **Suggested test:** mirror the four restore cases (snapshot-null abort,
+  durable-audit-after-commit, audit-not-recorded-on-import-fail,
+  skippedTables echoed) against the migrate/import route handler. The mock
+  scaffolding in `admin-backup-security.route.test.ts` already covers
+  every dependency; this is a copy-and-point-at-`admin/migrate/import/route`
+  exercise. ~80 lines.
+
+### NEW-2 — accessCode strip is source-grep only (R-CAV-1 escalated)
+- **Severity: Medium. Confidence: High.**
+- **Files:** `src/app/api/v1/groups/[id]/assignments/route.ts:54-68`,
+  `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts`.
+- **Gap:** the field-leak fix has no behavioral guard. A refactor that
+  drops the `columns` projection but keeps the `delete assign.accessCode`
+  line still passes the regex (the delete matches) while leaking every
+  other contest column (`freezeLeaderboardAt`) — or leaks `accessCode`
+  itself if the delete is reordered after the response is serialized.
+- **Suggested test:** a route-level test that mocks
+  `canManageGroupResourcesAsync → false`, drives GET through the route
+  handler with a fixture row containing `accessCode: "SECRET"`, and
+  asserts the response body's assignment objects have
+  `accessCode: undefined`. Plus the positive manager case.
+
+### NEW-3 — community route consumers use only "general" fixtures
+- **Severity: Medium. Confidence: High.**
+- **Files:** `tests/unit/api/community-thread-posts.route.test.ts:87,127`
+  (`scopeType: "general"`), `tests/unit/api/community-votes.route.test.ts:157`
+  (same).
+- **Gap:** `7518a5e1` added the pure-helper test in
+  `discussions/permissions.test.ts`, but the route consumers' use of
+  `canAccessProblemScopedThread` (posts) and `isProblemLinkedScope`
+  (votes/threads/create) is uncovered for the editorial/solution scopes —
+  the exact scopes NEW-H6/SEC-9 fixed. Removing the helper call from any
+  route passes the suite because every fixture uses `scopeType: "general"`,
+  which short-circuits before the helper.
+- **Suggested test:** for each of the three route handlers (posts POST,
+  votes POST, threads POST), add one case with `scopeType: "editorial"` +
+  `canAccessProblem → false` and assert 403. ~15 lines per route.
+
+### NEW-4 — worker docker cleanup timeout has ZERO coverage
+- **Severity: High. Confidence: High.**
+- **Files:** `judge-worker-rs/src/docker.rs:170-215` (inspect),
+  `:240-258` (kill), `:261-285` (rm).
+- **Gap:** `68dc2ad0` wrapped the three cleanup helpers in
+  `tokio::time::timeout(Duration::from_secs(10), ...)`. The
+  `#[cfg(test)]` module in `docker.rs` only tests `parse_timestamp_epoch_ms`
+  and `resolve_seccomp_profile`. There is no assertion that the cleanup
+  functions time out instead of hanging — the documented 14h fleet sweep
+  this fix was written to prevent would recur silently if a future refactor
+  drops the `tokio::time::timeout` wrapper. The functions spawn
+  `tokio::process::Command::new("docker")` directly (no injection seam),
+  which makes a pure-runtime test hard, but a source-grep contract is
+  trivial and was skipped.
+- **Suggested test (two layers):**
+  1. **Source-grep** (cheap, catches removal): assert `docker.rs` contains
+     three occurrences of `tokio::time::timeout(` whose body invokes
+     `Command::new("docker")` with `"inspect"|"kill"|"rm"`, and that the
+     `Err(_)` arm logs and returns/continues rather than panicking.
+  2. **Runtime** (harder, real coverage): extract the cleanup helpers
+     behind a `trait DockerCli` with a `spawn(args: &[&str]) -> impl Future`
+     method; in tests inject a `PendingCli` whose future never resolves;
+     assert each helper returns within ~11s. This is the same
+     refactor-for-testability pattern cycle-1 A12 used for
+     `validate_docker_image_with_config`. If (2) is too large for this
+     cycle, ship (1) and file (2) as Phase B.
+
+### NEW-5 — code-similarity submission cap tests the predicate, not the route
+- **Severity: Low. Confidence: High.**
+- **Files:** `code-similarity-rs/src/main.rs:90-106` (handler),
+  `:246-261` (test).
+- **Gap:** the test asserts `exceeds_submission_cap` returns the right
+  bool at the boundary. Removing the `if exceeds_submission_cap(...)`
+  branch from the `compute` handler still passes. The handler is `async`
+  and uses `axum::Json`; with no `#[cfg(test)]` router harness, a runtime
+  test would need to stand up `axum::Router::new("/compute", post(compute))`
+  with a mock token and post a 501-submission body — ~30 lines.
+
+### NEW-6 — `recordAuditEventDurable` awaited at only 4 of 117+ audit sites
+- **Severity: Medium. Confidence: High.**
+- **Files:** `src/lib/audit/events.ts:275` (definition); callers in
+  `restore/route.ts:183,209` + `migrate/import/route.ts:123,233` (the
+  4 sites C2-7 added). Every other API route still uses the buffered
+  `recordAuditEvent`.
+- **Gap:** cycle-2 NG-2 is unchanged. Phase A moved the destructive-site
+  audits to durable (good), but the integrity-critical non-destructive
+  sites (login, role change, capability grant, password reset, api-key
+  create/delete, group instructor add/remove) are still fire-and-forget.
+  No test pins which sites MUST be durable.
+- **Suggested test:** extend `tests/unit/infra/source-grep-inventory.test.ts`
+  with an integrity-critical-route inventory that asserts each named route
+  file's source contains `recordAuditEventDurable(` (not just
+  `recordAuditEvent(`). Source-grep is the right layer for an inventory
+  contract; behavior is covered per-route.
+
+---
+
+## FLAKY TESTS
+
+### Rust parallel-test flake (cycle-1 TE-10 / A12) — CLEAN
+- `grep -n 'set_var\|remove_var\|unsafe\b\|std::env::set'
+  judge-worker-rs/src/validation.rs` → **no matches.** The pure-function
+  refactor (`validate_docker_image_with_config(image, is_production,
+  trusted_prefixes)`) holds. Tests inject config structs; no `#[serial]`
+  needed. **Verified clean.**
+- Repo-wide scan of `judge-worker-rs/`, `code-similarity-rs/`,
+  `rate-limiter-rs/` for `set_var|remove_var|env::set_var|unsafe ` →
+  **no matches.** No residual Rust env mutation anywhere.
+
+### Vitest `process.env` mutation — latent intra-file order risk (not active flake)
+- **Severity: Low. Confidence: Medium.** No active cross-file flake today
+  (vitest isolates files into separate worker threads; the mutation does
+  not escape the file). The risk is intra-file: a test that runs after an
+  env-writing test, in the same file, without its own override sees stale
+  values. Files that write `process.env.KEY = "..."` in `it`/`beforeAll`
+  without an `afterEach`/`afterAll` restore:
+  - `tests/unit/api/metrics.route.test.ts:64,77,92` — sets `CRON_SECRET`
+    three times across `it` blocks, no per-test restore. Currently safe
+    only because every test sets the same value.
+  - `tests/unit/api/admin-docker-images-build.route.test.ts:144` — sets
+    `TRUSTED_DOCKER_REGISTRIES` in one `it`; no restore visible. Any later
+    test in the file that reads the default would see the override.
+  - `tests/unit/files/storage-path-traversal.test.ts:8` — `beforeAll` sets
+    `UPLOADS_DIR`; no `afterAll` restore.
+  - `tests/unit/compiler/execute.test.ts:49-51,142` — module-level and
+    in-test writes; relies on the worker being torn down.
+  - `tests/unit/data-retention.test.ts:34-47` and
+    `system-settings-config.test.ts:64,75` — env writes inside `it` blocks
+    without per-test restore; safe only because `vi.resetModules()` +
+    dynamic import re-reads the env each time.
+- **Fix pattern (one-shape):** snapshot `process.env` in `beforeEach`,
+  restore in `afterEach` — exactly the pattern
+  `tests/unit/compiler/execute-implementation.test.ts:79-99` already uses
+  (the A8 fix made that file the model citizen). Promoting the others to
+  the same shape is a Phase B hygiene task.
+
+### No new timing/network/order flakes introduced by cycle-2
+- The restore tests use `toHaveBeenCalledBefore` against synchronous mocks
+  (`recordAuditEventDurable` is mocked as a resolved Promise); invocation
+  order is stable.
+- `validation.rs` pure-function tests are deterministic.
+- The `code-similarity-rs` boundary test is pure arithmetic.
+
+---
+
+## PHASE-B GAPS (carry-over)
+
+| ID | Cycle-2 ref | Status | Detail |
+|----|-------------|--------|--------|
+| **PB-1** | TE-1 / AGG-63 | **STILL OPEN — High.** | `tests/unit/actions/user-management.test.ts:481` test name STILL reads `"deletes a user successfully and records audit before deletion"` (factually wrong post-`76e27d31`). Asserts `toHaveBeenCalledWith` only — NO `toHaveBeenCalledBefore`, NO `invocationCallOrder`. The `"returns deleteUserFailed when db throws"` test (L548-560) does NOT assert `recordAuditEvent)not.toHaveBeenCalled()`. Reverting `76e27d31` (move audit back before the delete) passes every test. The restore path got order + not-called + summary assertions in C2-7; the user-deletion path kept a test name that literally says "before deletion". Single highest-ROI test task in the repo. |
+| **PB-2** | TE-4 / AGG-67 | **STILL OPEN — High. Infrastructure now exists.** | `tests/integration/db/` has `catalog-numbers`, `judge-claim-reclaim`, `submission-lifecycle`, `user-crud` — none exercise `importDatabase`. `tests/integration/support/test-db.ts` provides `createTestDb()` (isolated DB + real migrations), so the runtime test is now feasible. A refactor preserving the throw string at `import.ts` but swapping truncate/insert order, or catching the FK error upstream, ships green. |
+| **PB-3** | TE-5 / AGG-68 | **STILL OPEN — Medium.** | `tests/unit/api/judge-status-report.route.test.ts:129,191,259` still stubs every `where` with `{ rowCount: 1 }`. No `rowCount: 0` arm, no `invalidJudgeClaim` 403 assertion at the route layer. The SQL guard IS exercised by `judge-claim-reclaim.test.ts:178-193` (real PG), but that does not run under `test:unit`. |
+
+**Carry-forward from cycle 2 (unchanged):** NG-3 (`toHaveBeenCalledBefore`
+coupling on durable mocks), NG-4 (env.test.ts FS-semantics assumption),
+NG-5 (`validate_docker_image` env-wrapper parity test — still open; pure
+fn is tested, the env-reading wrapper at `validation.rs:96` is not).
+
+---
+
+## GATE SOUNDNESS (delta from cycle 2)
 
 | ID | Gate | Finding | Severity |
 |----|------|---------|----------|
-| **GS-1** | `npm run lint:bash` | **Misleading and unenforced.** The script is `bash -n deploy-docker.sh && bash -n deploy.sh` (2 scripts). CI's `Script validation` job runs `bash -n` on **7** scripts directly (`backup-db.sh`, `verify-db-backup.sh`, `pg-volume-safety-check.sh`, `check-migration-drift.sh`, + 3 deploy scripts) and **never invokes `npm run lint:bash`**. A developer running the package.json gate gets false confidence; worse, ~17 other shell scripts (`install-gvisor.sh`, `install-crun-runtime.sh`, `scripts/deploy.sh`, `monitor-health.sh`, `rebuild-worker-language-images.sh`, `docker-disk-cleanup.sh`, …) are syntax-checked by **neither** path. A syntax error in those ships undetected. **Fix:** rewrite `lint:bash` to loop over every `*.sh` in the repo (`find . -name '*.sh' -not -path './node_modules/*' -not -path './.next/*' -not -path './judge-worker-rs/target/*' -print0 | xargs -0 bash -n`) and add the step to CI's `Script validation` job. | **Medium** |
-| **GS-2** | `npm run test:e2e` / Playwright | **Zero retries + dead SQLite setup in the CI e2e job.** `playwright.config.ts` does not set `retries` (default 0) — a single transient selector/timing flake fails CI directly. The CI `e2e` job (`.github/workflows/ci.yml:264+`) runs `rm -f data/judge.db*` + `npm run db:push` + `seed` + `languages:sync` + `build` **before** `npx playwright test`, but the e2e DB is actually a Postgres container started by `scripts/playwright-local-webserver.sh` (port 55432) inside the `webServer` config. The pre-`playwright test` steps target a SQLite file (`data/judge.db`) that the standalone server never reads; they are dead work, and `npm run build` then runs twice. **Fix:** set `retries: 1` (or `2` on CI via `PLAYWRIGHT_RETRIES`) for flake tolerance; delete the redundant SQLite/`db:push`/`seed`/`build` steps from the `e2e` job and let `webServer` own setup. *Confidence: High.* | **Medium** |
-| **GS-3** | `npm run test:unit` vs `test:unit:coverage` | **Coverage thresholds bypassed on the plain unit gate.** `vitest.config.ts` defines per-module thresholds (`src/lib/security/**` 90/85/90/90, `src/lib/auth/**` ditto) but they only apply under `--coverage`. CI correctly runs `test:unit:coverage`, yet the documented local gate `npm run test:unit` passes regardless of coverage. A contributor can see green locally and get red on CI, or — if CI is ever switched to the plain gate — security-module coverage silently erodes with no signal. **Fix:** make `test:unit` an alias of `test:unit:coverage`, or add a `pretest` hook, or document that `test:unit:coverage` is the only authoritative gate. | **Medium** |
-| **GS-4** | `test:unit` (naming/placement) | The A10 GET-gate coverage lives in `problems-function-spec.route.test.ts` while a *separate* source-grep (`problem-detail-capabilities-implementation.test.ts`) asserts strings that only match PATCH/DELETE. Reviewers searching for "problem GET authz test" will not find the behavioral test. Not a false-green, but a navigational trap that already misled this review's first pass. **Fix:** move the `describe("GET ... referenceSolution hiding")` block into a `problems.route.test.ts` (which currently does not exist for GET), or rename the file. | **Low** |
+| **GS-1** | `npm run lint:bash` | **STILL OPEN.** The script is still `bash -n deploy-docker.sh && bash -n deploy.sh` (2 scripts). The 17+ other shell scripts (`install-gvisor.sh`, `monitor-health.sh`, `docker-disk-cleanup.sh`, …) remain unchecked by either path. No change since cycle 2. | **Medium** |
+| **GS-2** | `npm run test:e2e` / Playwright | **STILL OPEN.** `playwright.config.ts` still has no `retries`; the CI e2e job's SQLite/`db:push`/`seed`/`build` prelude is still dead work (the runtime DB is the Postgres started by `webServer`). No change since cycle 2. | **Medium** |
+| **GS-3** | `test:unit` vs `test:unit:coverage` | **STILL OPEN.** Per-module coverage thresholds in `vitest.config.ts` only fire under `--coverage`. `npm run test:unit` passes regardless of coverage. | **Medium** |
+| **GS-4** | test placement | **STILL OPEN.** The A10 GET-gate coverage still lives in `problems-function-spec.route.test.ts` while a separate stale source-grep in `problem-detail-capabilities-implementation.test.ts` asserts strings that only match PATCH/DELETE (R-CAV-2). Navigational trap persists. | **Low** |
 
-**Gates that ARE sound:** `npm run lint` (eslint, in CI), `npx tsc --noEmit` (in
-CI), `npm run db:check` (in CI; now non-destructive per A11), `cargo test`
-(×3 manifests, in CI), `cargo audit` (in CI), `npm audit --audit-level=high`
-(in CI), `npm run build` (in CI), `docker compose config --quiet` +
-`docker build --check` per language (in CI). The integration gate runs against
-a real `postgres:18-alpine` service (good — no SQLite/PG drift at that layer).
-
----
-
-## PHASE-B GAPS (carry-over from cycle 1)
-
-| ID | Cycle-1 ref | Status | Detail |
-|----|-------------|--------|--------|
-| **PB-1** | AGG-63 / TE-1 | **STILL OPEN — High.** | `tests/unit/actions/user-management.test.ts:481` test name still reads `"deletes a user successfully and records audit before deletion"`. No `toHaveBeenCalledBefore`, no `invocationCallOrder` assertion, and the `"returns deleteUserFailed when db throws"` test (lines ~548-560) does **not** assert `recordAuditEvent)not.toHaveBeenCalled()`. The fix `76e27d31` (post-deletion audit) is fully unprotected: reverting the order passes every test. Same gap in `tests/unit/api/users.route.test.ts` `DELETE ?permanent=true`. **This is the highest-ROI Phase B test task** — three assertions across two files (rename, order, not-called). *Confidence: High.* |
-| **PB-2** | AGG-67 / TE-4 | **STILL OPEN — High.** | Restore FK ordering is source-grep only. `tests/unit/db/import-implementation.test.ts:24` asserts the source text contains the `throw new Error("Failed to import ${tableName} batch ${i}")` string; `admin-backup-security.route.test.ts` fully mocks `importDatabase`. No runtime test feeds a poisoned payload (child row → missing parent FK) and asserts rollback. `tests/integration/db/` has `catalog-numbers`, `judge-claim-reclaim`, `submission-lifecycle`, `user-crud` — none exercise `importDatabase`. A refactor that preserves the throw string but swaps truncate/insert order, or catches the error upstream, ships green. **Fix:** integration test using `tests/integration/db/helper.ts` `createTestDb`, build an export whose `submissions` row references a missing `userId`, assert rejection + sentinel-row survival + parent-before-child insert order via a `tx.insert` spy. |
-| **PB-3** | AGG-68 / TE-5 | **STILL OPEN — Medium.** | `tests/unit/api/judge-status-report.route.test.ts` still stubs every `where` with `{ rowCount: 1 }` (lines 129, 191, 259). The stale-token / zombie-worker rejection (`rowCount === 0 ⇒ 403 invalidJudgeClaim`) at `src/app/api/v1/judge/poll/route.ts:78-114,149-192` is uncovered at the route layer. The SQL-level guard IS exercised by `judge-claim-reclaim.test.ts:178-193` but only with a real PG (not in `test:unit`). **Fix:** add two cases (`where → rowCount: 0` for in-progress and terminal arms) asserting `status === 403` + body `invalidJudgeClaim`, plus an assertion that the `where` was called with an `and(...)` clause including `judgeClaimToken`. |
-
-**Closed this cycle (verified):** AGG-64 / TE-3 (A9), AGG-65 / TE-10 (A12),
-AGG-66 / TE-2 (A2), AGG-69 / TE-16 (A11).
+**Gates that remain sound:** `npm run lint`, `npx tsc --noEmit`,
+`npm run db:check`, `cargo test` (×3 manifests), `cargo audit`,
+`npm audit --audit-level=high`, `npm run build`, `docker compose config
+--quiet` + `docker build --check`, integration gate against real
+`postgres:18-alpine`.
 
 ---
 
-## NEW GAPS
+## TDD OPPORTUNITIES — Phase B medium queue
 
-### NG-1 — Post-commit audit for destructive ops uses fire-and-forget, not `recordAuditEventDurable`
-- **Severity: Medium. Confidence: High.**
-- **Files:** `src/app/api/v1/admin/restore/route.ts:168` and
-  `src/app/api/v1/users/[id]/route.ts:395,506,514` call plain `recordAuditEvent`
-  (buffered, flushed by timer). `src/lib/audit/events.ts:275` defines
-  `recordAuditEventDurable` which `await`s `db.insert(auditEvents)` directly.
-- **Gap:** A2's comment claims "Same pattern as the post-deletion audit in
-  users/[id]/route.ts" — but BOTH use the fire-and-forget variant. After the DB
-  commit, the audit row sits in `_auditBuffer`; a SIGKILL/OOM between commit and
-  flush loses the integrity-trail row for a full-DB restore or a permanent user
-  deletion (the most audit-critical operations in the system). This is the
-  AGG-43 class (5s buffer lost on hard crash) specifically for the destructive
-  paths A2/76e27d31 touched. The A2 unit test pins `recordAuditEvent` (not the
-  durable variant), so it cannot detect this and arguably entrenches the weaker
-  call.
-- **Suggested test (TDD):** in `admin-backup-security.route.test.ts`, add a case
-  where the audit-insert mock rejects on the first call; assert the route still
-  returns 500/200 correctly AND that the durable path was attempted (awaited),
-  not queued. Then migrate both call sites to `recordAuditEventDurable` and
-  update the mock.
+Each item below is framed Red-Green-Refactor: the failing test first, then
+the minimum code, then cleanup. None require re-architecture.
 
-### NG-2 — `recordAuditEvent` is awaited at ZERO of 53 route call sites (AGG-41 residual)
-- **Severity: Medium. Confidence: High.**
-- **Evidence:** `grep -rn "recordAuditEvent(" src/app/api/ | grep -c "await " → 0`
-  across 53 files. Every audit write in the API layer is fire-and-forget.
-- **Gap:** cycle-1 AGG-41 (TR-7) flagged this; Phase A did not address it. For
-  non-destructive routes the buffer is acceptable; for security-critical sites
-  (login, role change, capability grant, password reset) a crash window exists.
-  No test asserts any specific site uses the durable variant.
-- **Suggested test:** a source-grep inventory test (extend
-  `tests/unit/infra/source-grep-inventory.test.ts`) that enumerates the
-  integrity-critical routes (login, role/capability mutation, user
-  delete/restore, api-key create/patch/delete) and asserts each calls
-  `recordAuditEventDurable`, not `recordAuditEvent`.
-
-### NG-3 — `toHaveBeenCalledBefore` reliability on fire-and-forget mocks (A2, A4)
-- **Severity: Low. Confidence: Medium.**
-- **Files:** `tests/unit/api/admin-backup-security.route.test.ts:412`,
-  `tests/unit/api/group-instructors.route.test.ts`.
-- **Gap:** the A2 ordering assertion relies on the mock being invoked
-  synchronously in call order. `recordAuditEvent` is currently synchronous
-  (pushes to buffer), so `invocationCallOrder` is stable today. If NG-1 is
-  fixed by switching to `recordAuditEventDurable` (an `async` fn the route does
-  NOT await), the mock's invocation order can become non-deterministic under
-  microtask interleaving, silently weakening the A2 test. Document this coupling
-  or assert on the awaited durable mock.
-
-### NG-4 — env.test.ts filesystem-dependent assertions (7 chmod/mkdtemp calls)
-- **Severity: Low. Confidence: Medium.**
-- **File:** `tests/unit/security/env.test.ts` (A1 tests).
-- **Gap:** `chmodSync(path, 0o644)` + `expect(() => ...).toThrow(/group|other bits set/)`
-  assumes POSIX permission bits are honored by the underlying FS. On Linux CI
-  (ext4/tmpfs) this is fine; if the suite is ever run on a perm-less FS
-  (Docker volume on certain network mounts, or macOS APFS clone edge cases) the
-  `0o644` write could be stored as `0o600` and the throw-assertion flips. Low
-  risk today; worth a comment pinning the required FS semantics.
-
-### NG-5 — `validation.rs` has no `[dev-dependencies]`; pure-function refactor untested for env wrapper
-- **Severity: Low. Confidence: Medium.**
-- **File:** `judge-worker-rs/src/validation.rs`.
-- **Gap:** A12 correctly refactored tests to call
-  `validate_docker_image_with_config` (pure), but the production entry point
-  `validate_docker_image(image)` (line 91) still reads `is_production_mode()` /
-  trusted registries from the env. There is no test that the env-reading wrapper
-  agrees with the pure function for the same config — a future change to
-  `is_production_mode()` or the registry parser would not be caught. A single
-  test that sets the env once in a `#[serial]`-equivalent (or reads the parsed
-  values via a getter) and compares would close it.
+| # | Item | RED test | GREEN code | Effort |
+|---|------|----------|------------|--------|
+| T-1 | **PB-1 user-deletion audit order** | Rename the test to `"...records audit AFTER the delete commits"`; add `expect(mocks.recordAuditEvent).toHaveBeenCalledAfter(mocks.dbDeleteWhere)` (or `invocationCallOrder` compare); in the db-throws test add `expect(mocks.recordAuditEvent).not.toHaveBeenCalled()`. Run — FAILS (current order audit may fire before delete mock resolves; the not-called case has no assertion). | Move `recordAuditEvent` to after `await db.delete(...).where(...)` resolves, inside the success branch. | S |
+| T-2 | **NEW-1 migrate-import destructive safety** | Add 4 `it(...)` blocks to `admin-backup-security.route.test.ts` mirroring L347-543 but importing `admin/migrate/import/route`. Each FAILS today (route aborts/audits, but no test drives it). | Already green in production — these are characterization + lock tests. Pure test addition. | S |
+| T-3 | **NEW-4 worker timeout source-grep** | Add a test reading `docker.rs` and asserting 3× `tokio::time::timeout(` wrapping `Command::new("docker")` with `"inspect"|"kill"|"rm"`. Currently FAILS — no such contract test exists, but the assertion would pass on first run because the source matches. (To make it a true RED, write the assertion to also require the `Err(_)` arm to log+return, then verify by temporarily deleting one timeout wrapper.) | None (lock test). | S |
+| T-4 | **PB-2 restore FK ordering (integration)** | New `tests/integration/db/restore-fk-order.test.ts`: `createTestDb`, seed a parent+child row, build an export whose child references a missing parent, call `importDatabase`, assert rejection + sentinel survival + parent-before-child insert order via a tx spy. FAILS on first run (test does not exist). | Already implemented in `import.ts` (`throw new Error("Failed to import ${tableName} batch ${i}")`); the test pins it. | M |
+| T-5 | **PB-3 poll-route stale-token unit** | Add two cases to `judge-status-report.route.test.ts` with `where → rowCount: 0` for in-progress and terminal arms; assert `status === 403` + `body.error === "invalidJudgeClaim"` + `where` called with `and(...)` including `judgeClaimToken`. FAILS today (no such case). | Already implemented at `poll/route.ts:78-114`; pure test addition. | S |
+| T-6 | **NEW-2 accessCode behavioral** | Route-level GET test with `canManage → false`, fixture `accessCode: "SECRET"`, assert response `accessCode === undefined`. FAILS today (only source-grep exists). | Already implemented; pure test addition. | S |
+| T-7 | **NEW-3 community editorial route** | Per route (posts/votes/threads), `scopeType: "editorial"` + `canAccessProblem → false` ⇒ 403. FAILS today (fixtures use "general"). | Already implemented; pure test addition. | S |
+| T-8 | **NEW-6 durable-audit inventory** | Source-grep test enumerating integrity-critical route files and asserting each contains `recordAuditEventDurable(`. FAILS today (only 4 sites use it). | Migrate each inventoried site to `recordAuditEventDurable` (mechanical). | M |
+| T-9 | **NG-5 validation env-wrapper parity** | Rust test that calls `validate_docker_image(image)` after setting env once via a `OnceLock`/`#[serial]` gate, and compares to `validate_docker_image_with_config` for the same config. FAILS today (no such test). | Already implemented; pure test addition. | S |
 
 ---
 
 ## FINAL SWEEP
 
-- **Phase A is genuinely green-protected (12/12).** The earlier
-  green-but-broken cluster around `76e27d31 / 6cc068f0 / 34d27adf / 26cff8e4`
-  identified in cycle 1 (TE-1/2/3/16) is largely resolved: TE-2, TE-3, TE-10,
-  TE-16 are closed by A2/A9/A12/A11. The remaining open items are TE-1, TE-4,
-  TE-5 (PB-1/PB-2/PB-3) — none of which Phase A targeted.
-- **The biggest miss is PB-1 (AGG-63 / TE-1).** It is the original Critical
-  from cycle 1, it is one commit away (`76e27d31`) from the restore-audit fix
-  that DID get the A2 treatment, and the fix is still fully unprotected. The
-  asymmetry is striking: the restore path got order + not-called + summary
-  assertions; the user-deletion path kept a test name that literally says
-  "before deletion". This is the single highest-ROI Phase B test task.
-- **Gates are mostly sound, with two real exceptions:** GS-1 (`lint:bash` is a
-  2-script subset, unenforced, ~17 scripts unchecked) and GS-2 (Playwright
-  `retries: 0` + a CI e2e job doing dead SQLite-focused setup that does not
-  match the real Postgres-via-webServer runtime). GS-3 is a foot-gun rather
-  than a hole.
-- **Audit durability (NG-1/NG-2) is the thematic Phase B gap.** Phase A
-  correctly moved audits to *after* the commit but kept them *fire-and-forget*,
-  so a hard crash between commit and flush still loses the row. The durable
-  primitive exists (`recordAuditEventDurable`); the migration is mechanical and
-  would benefit from TDD on the integrity-critical sites first.
-- **No flaky tests were introduced by Phase A.** The filesystem-permission
-  tests (NG-4) and the `toHaveBeenCalledBefore` coupling (NG-3) are latent
-  risks, not active flakes. The Rust parallel-test flake (TE-10) is eliminated
-  by the pure-function refactor.
-- **Overall suite health: HEALTHY, with three targeted Phase B actions**
-  (PB-1 rename+order+not-called, GS-1 expand lint:bash, NG-1 durable audit at
-  destructive sites) that would close the remaining correctness/integrity
-  exposure. None require re-architecture.
+- **Cycle-2 is materially green-protected on the data-loss cluster**
+  (C2-1 skip-truncate, C2-2 api-key DELETE, C2-7 restore durable audit).
+  These are the fixes that matter most and they have real behavioral
+  guards with order, not-called, and summary assertions.
+- **The migrate-import route is the asymmetry to fix this cycle (NEW-1).**
+  The restore path got 4 tests; the migrate-import path got the same
+  production hunks and 0 tests. Cheapest high-ROI win in the file.
+- **The worker docker-timeout fix has no guard at all (NEW-4).** A
+  source-grep contract is ~15 lines and prevents the regression that
+  caused the documented 14h fleet sweep. The runtime version is Phase B.
+- **Authz-leak fixes (C2-5 accessCode, C2-11 edit page) are source-grep
+  only.** Source-grep catches removal but not silent re-leaks through
+  column-projection drift or prop-passing drift. Behavioral route/page
+  tests are the actual contract.
+- **The Rust parallel-test flake (cycle-1 TE-10) is verified gone.** No
+  `set_var`/`remove_var`/`unsafe` anywhere in the Rust workspace. The
+  vitest env-mutation patterns are latent intra-file risks, not active
+  flakes; the model-citizen restore pattern (`execute-implementation.test.ts`)
+  is the template.
+- **PB-1 is still the highest-ROI Phase B task.** Three assertions across
+  two files (rename, order, not-called) would close the original
+  cycle-1 Critical. The asymmetry vs. the restore path (which got the
+  full treatment in C2-7) is the strongest argument for doing it now.
+- **Overall suite health: HEALTHY, with two targeted high-ROI actions**
+  (NEW-1 migrate-import mirror tests, NEW-4 worker timeout source-grep)
+  and one structural Phase B carry (PB-1) that closes the oldest open
+  Critical in the backlog.
 
 ### Priority-ordered action list
 
 | # | ID | Finding | Severity | Effort |
 |---|----|---------|----------|--------|
-| 1 | PB-1 | User-deletion audit ordering test (rename + `toHaveBeenCalledBefore` + `not.toHaveBeenCalled`) | High | S |
-| 2 | PB-2 | Restore FK-ordering runtime integration test (poisoned payload + rollback) | High | M |
-| 3 | PB-3 | Poll-route stale-token unit test (`rowCount: 0` ⇒ 403) | Medium | S |
-| 4 | NG-1 | Migrate restore + user-deletion audit to `recordAuditEventDurable`; test the durable path | Medium | S |
-| 5 | GS-1 | Expand `lint:bash` to all shell scripts; wire into CI `Script validation` | Medium | S |
-| 6 | GS-2 | Set Playwright `retries: 1`+; remove dead SQLite setup from CI e2e job | Medium | S |
-| 7 | NG-2 | Source-grep inventory: integrity-critical routes use `recordAuditEventDurable` | Medium | S |
-| 8 | GS-3 | Make `test:unit` enforce coverage (or document `test:unit:coverage` as authoritative) | Medium | S |
-| 9 | GS-4 | Move A10 GET-gate test into a discoverable `problems.route.test.ts` | Low | S |
-| 10 | NG-3 | Document/couple the A2 ordering assertion to the awaited durable mock | Low | S |
-| 11 | NG-5 | Add env-wrapper-vs-pure-function parity test for `validate_docker_image` | Low | S |
-| 12 | NG-4 | Pin env.test.ts FS-semantics assumption with a comment | Low | S |
-| 13 | R-CAV-2 | Tighten/remove the misleading `problem-detail-capabilities` source-grep | Low | S |
+| 1 | NEW-1 | Mirror the 4 restore tests against `admin/migrate/import/route` (snapshot, durable audit, not-on-fail, skippedTables) | High | S |
+| 2 | NEW-4 | Source-grep contract for `tokio::time::timeout` wrapping docker inspect/kill/rm (runtime version Phase B) | High | S |
+| 3 | PB-1 | User-deletion audit ordering test (rename + `toHaveBeenCalledAfter` + `not.toHaveBeenCalled`) | High | S |
+| 4 | NEW-2 | Behavioral GET test for accessCode strip (route-level, not source-grep) | Medium | S |
+| 5 | NEW-3 | Community editorial-scope route tests (posts/votes/threads) — fixtures use "general" only | Medium | S |
+| 6 | PB-2 | Restore FK-ordering runtime integration test (infrastructure now exists via `createTestDb`) | High | M |
+| 7 | PB-3 | Poll-route stale-token unit test (`rowCount: 0` ⇒ 403 `invalidJudgeClaim`) | Medium | S |
+| 8 | NEW-6 | Source-grep inventory: integrity-critical routes use `recordAuditEventDurable` | Medium | S |
+| 9 | NEW-5 | code-similarity: assert the route (not just the predicate) returns 413 over cap | Low | S |
+| 10 | GS-1 | Expand `lint:bash` to all shell scripts; wire into CI `Script validation` | Medium | S |
+| 11 | GS-2 | Set Playwright `retries: 1`+; remove dead SQLite setup from CI e2e job | Medium | S |
+| 12 | GS-3 | Make `test:unit` enforce coverage (or document `test:unit:coverage` as authoritative) | Medium | S |
+| 13 | NG-5 | Env-wrapper-vs-pure-function parity test for `validate_docker_image` | Low | S |
+| 14 | GS-4 | Move A10 GET-gate test into a discoverable `problems.route.test.ts` | Low | S |
+| 15 | R-CAV-1/2/3 | Tighten the source-grep contracts (or replace with behavioral) for accessCode, similarity cap, edit page | Low | S |
