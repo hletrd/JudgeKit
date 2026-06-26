@@ -290,6 +290,45 @@ describe("PATCH /api/v1/admin/roles/[id]", () => {
     const body = await res.json();
     expect(body.error).toBe("cannotGrantCapabilityYouLack");
   });
+
+  it("rejects editing a role whose current level exceeds the actor's (lateral cap-stripping)", async () => {
+    // Actor is `admin` (level 3). Target is a custom role at level 4 (a
+    // super_admin-tier role that could exist via DB manipulation or a future
+    // schema relaxation; the create API caps customs at level 2 today).
+    // Stripping capabilities via `{capabilities: []}` passed every prior
+    // check because the `added` filter only governs newly-added caps, not
+    // removals. The cannotEditHigherRole gate must block the edit. C3-AGG-2.
+    dbSelectMock.mockReturnValueOnce({
+      from: vi.fn(() => ({
+        where: vi.fn().mockResolvedValue([
+          {
+            id: "role-9",
+            name: "compliance_officer",
+            displayName: "Compliance Officer",
+            description: "Auditor",
+            isBuiltin: false,
+            level: 4,
+            capabilities: ["system.backup"],
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+        ]),
+      })),
+    });
+
+    const { PATCH } = await import("@/app/api/v1/admin/roles/[id]/route");
+    const res = await PATCH(
+      makeRequest(
+        { capabilities: [] },
+        { method: "PATCH", url: "http://localhost:3000/api/v1/admin/roles/role-9" }
+      ),
+      { params: Promise.resolve({ id: "role-9" }) }
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("cannotEditHigherRole");
+  });
 });
 
 describe("DELETE /api/v1/admin/roles/[id]", () => {

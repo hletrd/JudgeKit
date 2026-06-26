@@ -85,6 +85,16 @@ export const PATCH = createApiHandler({
       return apiError("cannotSetRoleLevelAboveOwnLevel", 403);
     }
 
+    // Cannot edit a role whose CURRENT level exceeds your own. Without this
+    // gate a lower-level admin could strip capabilities from or demote a
+    // higher-level custom role (lateral cap-stripping): PATCH
+    // `{level: <own>, capabilities: []}` passed every prior check because the
+    // `added` filter only governs newly-added caps, not removals. Mirrors the
+    // api-keys `canManageRoleAsync` gate. See C3-AGG-2.
+    if (role.level > creatorLevel) {
+      return apiError("cannotEditHigherRole", 403);
+    }
+
     // Privilege-escalation guard: the actor may only ADD capabilities they
     // themselves hold. Capabilities already on the role are allowed to remain
     // (e.g. a lower admin renaming a role a super_admin configured), so only the
