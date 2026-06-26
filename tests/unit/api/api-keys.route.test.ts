@@ -9,6 +9,7 @@ const {
   dbSelectMock,
   dbInsertMock,
   dbUpdateMock,
+  dbDeleteMock,
   canManageRoleAsyncMock,
   isUserRoleMock,
   generateApiKeyMock,
@@ -22,6 +23,7 @@ const {
   dbSelectMock: vi.fn(),
   dbInsertMock: vi.fn(),
   dbUpdateMock: vi.fn(),
+  dbDeleteMock: vi.fn(() => ({ where: vi.fn(() => Promise.resolve(undefined)) })),
   canManageRoleAsyncMock: vi.fn(),
   isUserRoleMock: vi.fn(),
   generateApiKeyMock: vi.fn(),
@@ -85,7 +87,7 @@ vi.mock("@/lib/db", () => ({
     select: dbSelectMock,
     insert: dbInsertMock,
     update: dbUpdateMock,
-    delete: vi.fn(),
+    delete: dbDeleteMock,
   },
 }));
 
@@ -278,5 +280,55 @@ describe("admin api keys routes", () => {
     expect(res.status).toBe(200);
     expect(canManageRoleAsyncMock).toHaveBeenCalledWith("manager", "manager");
     expect(dbUpdateMock).toHaveBeenCalledOnce();
+  });
+
+  // -------------------------------------------------------------------------
+  // DELETE — privilege-escalation guard (NEW-H1): the gate A5 added to PATCH
+  // must also apply to DELETE, or any system.settings holder can delete a
+  // higher-privilege key.
+  // -------------------------------------------------------------------------
+
+  it("denies deleting a higher-privilege key when unauthorized", async () => {
+    getApiUserMock.mockResolvedValue({ ...adminUser, id: "manager-1", role: "manager" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ id: "key-1", name: "Root Key", role: "super_admin" }])
+    );
+    canManageRoleAsyncMock.mockResolvedValue(false);
+
+    const { DELETE } = await import("@/app/api/v1/admin/api-keys/[id]/route");
+    const res = await DELETE(
+      makeRequest("http://localhost:3000/api/v1/admin/api-keys/key-1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "key-1" }) } as never,
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("cannotAssignHigherRole");
+    expect(canManageRoleAsyncMock).toHaveBeenCalledWith("manager", "super_admin");
+    expect(dbDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it("allows deleting a key when the caller can manage the key's existing role", async () => {
+    getApiUserMock.mockResolvedValue({ ...adminUser, id: "manager-1", role: "manager" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["system.settings"]));
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ id: "key-1", name: "Deploy Key", role: "manager" }])
+    );
+    canManageRoleAsyncMock.mockResolvedValue(true);
+
+    const { DELETE } = await import("@/app/api/v1/admin/api-keys/[id]/route");
+    const res = await DELETE(
+      makeRequest("http://localhost:3000/api/v1/admin/api-keys/key-1", {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "key-1" }) } as never,
+    );
+
+    expect(res.status).toBe(200);
+    expect(canManageRoleAsyncMock).toHaveBeenCalledWith("manager", "manager");
+    expect(dbDeleteMock).toHaveBeenCalledOnce();
   });
 });

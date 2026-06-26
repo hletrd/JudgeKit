@@ -111,8 +111,16 @@ export const DELETE = createApiHandler({
   auth: { capabilities: ["system.settings"] },
   handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
-    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
+    const [existing] = await db.select({ id: apiKeys.id, name: apiKeys.name, role: apiKeys.role }).from(apiKeys).where(eq(apiKeys.id, id)).limit(1);
     if (!existing) return apiError("notFound", 404, "ApiKey");
+
+    // Privilege-escalation gate mirroring PATCH: the actor must be authorized
+    // to manage the key's role before deleting it. Otherwise any system.settings
+    // holder could delete a super_admin-owned key (DoS on upstream automations).
+    const canManage = await canManageRoleAsync(user.role, existing.role);
+    if (!canManage && user.role !== existing.role) {
+      return apiError("cannotAssignHigherRole", 403);
+    }
 
     await db.delete(apiKeys).where(eq(apiKeys.id, id));
 
