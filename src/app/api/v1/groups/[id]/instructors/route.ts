@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { groupInstructors, users } from "@/lib/db/schema";
 import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
+import { getRoleLevel } from "@/lib/capabilities/cache";
 
 const addInstructorSchema = z.object({
   userId: z.string().min(1),
@@ -77,6 +78,14 @@ export const POST = createApiHandler({
     });
     if (!targetUser || !targetUser.isActive) {
       return apiError("userNotFound", 404);
+    }
+
+    // A student-level target (getRoleLevel <= 0) must never be elevated to an
+    // instructional role — mirrors the ownership-transfer gate on PATCH
+    // /api/v1/groups/[id]. Without this, a manager could add a student as a
+    // co_instructor/ta, granting them group-resource access.
+    if ((await getRoleLevel(targetUser.role)) <= 0) {
+      return apiError("instructorRoleInvalid", 409);
     }
 
     const existing = await db
