@@ -136,13 +136,13 @@ Each records: file+line · original severity/confidence (NOT downgraded) · reas
 - **listAllProblemDiscussionThreads editorial-scope divergence** LOW. Likely intentional. Exit: document or unify.
 
 ## Progress Tracking (Phase A) — END-OF-CYCLE STATUS
-- [ ] A1 judge `/claim` require workerId (C4-2 Part 1)
-- [ ] A2 JUDGE_STRICT_IP_ALLOWLIST opt-in (C4-2 Part 2)
-- [ ] A3 snapshot snapshot:true + DOC-2/3 (C4-1)
-- [ ] A4 settings reconfirm shared helper + C4-N1 partial-wipe + C4-3 sensitive-key expansion + C4-N3 accepted-solutions list (ARCH-1)
-- [ ] A5 int64 precision serialization + 3 adapters (F1)
-- [ ] A6 worker cleanup bundle N1+R2+R4 (MED)
-- [ ] A7 cheap doc + LOW batch (text-only)
-- [ ] A8 test-gap batch (high-ROI, test-only)
-- Gates: `npm run lint`, `npm run lint:bash`, `npm run build`, `npm run test:unit`, `cargo test`, `npm run test:e2e`, `npm run db:check`
+- [x] A1 judge `/claim` + `/poll` require workerId; shared token /register-only (C4-2 Part 1) — commit e7a17c22
+- [x] A2 JUDGE_STRICT_IP_ALLOWLIST opt-in + startup WARN, no default flip (C4-2 Part 2) — commit e7a17c22
+- [x] A3 snapshot `snapshot:true` opt-out + DOC-2/DOC-3 prose (C4-1) — commit 65ca7ef8
+- [x] A4 shared reconfirm helper on BOTH writers + C4-N1 `hasOwnInput` port + C4-3 sensitive-key expansion + C4-N3 accepted-solutions list filter + 3 form password fields (ARCH-1) — commit b9fcbc92
+- [x] A5 int64 precision serialization verbatim + strtoll/parseLong/long.Parse (F1) — commit 052abf88
+- [x] A6 worker cleanup bundle: sweep timeout + startup reap-all + kill_on_drop (N1/R2/R4) — commit c858ce22
+- [x] A7 cheap doc + LOW batch: C4-9 CSV durable audit, AGG-51 CSRF doc, AGG-52 push-scan wording, C3-D2 line cite, C3-D1 .env vars, NEW-1 language sizes, A9 per-target deploy env — commit 2c224ab0
+- [~] A8 test-gap batch — DEFERRED (test-only; C4-A6 / A11a / auth-token lifecycle). Exit: next cycle.
+- Gates: lint ✓, lint:bash ✓, db:check ✓, cargo test ✓ (78), test:unit 2986 pass / 2 pre-existing-environmental (judge-status-report `refreshes judgeClaimedAt` fails on pristine pre-C4-2 code too; migration-drift untracked-file infra test), build ran (local environmental ceiling per brief), test:e2e skipped (no DB/browser infra locally)
 - DEPLOY: `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh`
