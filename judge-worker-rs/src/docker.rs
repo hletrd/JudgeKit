@@ -2,6 +2,14 @@ use std::path::Path;
 use std::time::Instant;
 use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
+
+/// Wall-clock cap on best-effort Docker cleanup calls (inspect/kill/rm) that
+/// run after a submission's run+drain envelope. The container `wait` is already
+/// wrapped in a timeout; without one here, a wedged Docker daemon can hold the
+/// executor's concurrency slot indefinitely (the documented 2026-05-17 14h
+/// `compile_error` fleet sweep). A timed-out call only leaves a leaked
+/// container name, which the orphan sweep reaps on the next pass.
+const DOCKER_CLEANUP_TIMEOUT_SECS: u64 = 10;
 use uuid::Uuid;
 
 const EXECUTION_CPU_LIMIT: &str = "1";
@@ -162,15 +170,33 @@ async fn read_cgroup_memory_peak(container_id: &str) -> Option<u64> {
 /// Runtime is derived from Docker's `State.StartedAt` / `State.FinishedAt`
 /// timestamps, excluding container creation and cgroup setup overhead.
 async fn inspect_container_state(container_name: &str) -> ContainerInspect {
-    let result = tokio::process::Command::new("docker")
-        .args([
-            "inspect",
-            "--format",
-            "{{json .State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}} {{.Id}}",
-            container_name,
-        ])
-        .output()
-        .await;
+    let result = match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "inspect",
+                "--format",
+                "{{json .State.OOMKilled}} {{.State.StartedAt}} {{.State.FinishedAt}} {{.Id}}",
+                container_name,
+            ])
+            .output(),
+    )
+    .await
+    {
+        Ok(output_result) => output_result,
+        Err(_elapsed) => {
+            tracing::warn!(
+                container = container_name,
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "docker inspect timed out; returning default state"
+            );
+            return ContainerInspect {
+                oom_killed: false,
+                duration_ms: None,
+                memory_peak_kb: None,
+            };
+        }
+    };
 
     match result {
         Ok(output) => {
@@ -214,17 +240,39 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
 }
 
 async fn kill_container(container_name: &str) {
-    let _ = tokio::process::Command::new("docker")
-        .args(["kill", container_name])
-        .output()
-        .await;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(["kill", container_name])
+            .output(),
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(_) => tracing::warn!(
+            container = container_name,
+            secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+            "docker kill timed out; orphan sweep will reap"
+        ),
+    }
 }
 
 async fn remove_container(container_name: &str) {
-    let _ = tokio::process::Command::new("docker")
-        .args(["rm", "-f", container_name])
-        .output()
-        .await;
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(["rm", "-f", container_name])
+            .output(),
+    )
+    .await
+    {
+        Ok(_) => {}
+        Err(_) => tracing::warn!(
+            container = container_name,
+            secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+            "docker rm timed out; orphan sweep will reap"
+        ),
+    }
 }
 
 fn should_retry_without_seccomp(stderr: &str) -> bool {
