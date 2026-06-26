@@ -468,6 +468,18 @@ export async function GET(
                   close();
                   return;
                 }
+                // Re-run the authorization gate (not just identity) so that a
+                // viewer whose group access was revoked or who was downgraded
+                // mid-stream stops receiving events. Identity survives but
+                // canAccessSubmission may flip to false. C3-AGG-6 / NEW-M2.
+                const refreshedReader = await db.query.submissions.findFirst({
+                  where: eq(submissions.id, id),
+                  columns: { userId: true, assignmentId: true },
+                });
+                if (!refreshedReader || !(await canAccessSubmission(refreshedReader, reAuthUser.id, reAuthUser.role))) {
+                  close();
+                  return;
+                }
               } catch {
                 // If re-auth check fails (e.g., malformed token), close the connection
                 close();

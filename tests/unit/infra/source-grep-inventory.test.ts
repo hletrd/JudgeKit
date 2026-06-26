@@ -65,6 +65,7 @@ const INTENTIONAL_INFRA_DEPLOY = [
   "tests/unit/scripts/runtime-truth-implementation.test.ts",
   "tests/unit/scripts/setup-script-implementation.test.ts",
   "tests/unit/admin/backup-docs-consistency.test.ts",
+  "tests/unit/api/submission-events-reauth-authorization-implementation.test.ts",
 ];
 
 const INTENTIONAL_SCHEMA = [
@@ -208,7 +209,13 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/api/problem-edit-page-strict-gate.test.ts pins that the
     //     edit page gates on strict canManageProblem (designer REG-2); the gate
     //     is a server-component wiring contract.
-    const DOCUMENTED_BASELINE = 157;
+    // Bumped 157 -> 158 (2026-06-27, cycle-3 remediation):
+    //   - tests/unit/api/submission-events-reauth-authorization-implementation.test.ts
+    //     pins that the SSE re-auth IIFE re-runs canAccessSubmission (not just
+    //     identity) so revoked group access closes the stream (C3-AGG-6 /
+    //     NEW-M2). The invariant is poll-loop wiring that a behavioural test
+    //     cannot drive without exceeding AUTH_RECHECK_INTERVAL_MS.
+    const DOCUMENTED_BASELINE = 158;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
