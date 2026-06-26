@@ -123,6 +123,7 @@ export async function POST(request: NextRequest) {
         tablesImported: result.tablesImported,
         totalRowsImported: result.totalRowsImported,
         tableResults: result.tableResults,
+        skippedTables: result.skippedTables,
         preRestoreSnapshotPath: preSnapshotPath,
       });
     }
@@ -224,6 +225,7 @@ export async function POST(request: NextRequest) {
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       tableResults: result.tableResults,
+      skippedTables: result.skippedTables,
       preRestoreSnapshotPath: preSnapshotPath,
     }, { headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
   } catch (error) {

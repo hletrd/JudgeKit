@@ -60,6 +60,13 @@ export interface ImportResult {
   totalRowsImported: number;
   tableResults: Record<string, { imported: number; skipped: number }>;
   errors: string[];
+  /**
+   * Known schema tables that were absent from the incoming export and therefore
+   * neither truncated nor re-inserted. Surfaced so operators can see that a
+   * partial (e.g. older) backup did not wipe tables it did not carry. These are
+   * NOT errors: the import succeeds and leaves those tables untouched.
+   */
+  skippedTables: string[];
   message?: string;
 }
 
@@ -107,6 +114,7 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
       totalRowsImported: 0,
       tableResults: {},
       errors: validationErrors,
+      skippedTables: [],
     };
   }
 
@@ -116,6 +124,7 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
     totalRowsImported: 0,
     tableResults: {},
     errors: [],
+    skippedTables: [],
   };
 
   try {
@@ -124,11 +133,24 @@ export async function importDatabase(data: JudgeKitExport): Promise<ImportResult
     // inserting parents before children. Do not reorder TABLE_ORDER entries.
     await db.transaction(async (tx) => {
 
-      // Truncate all tables in reverse FK order (children first)
+      // Truncate all tables in reverse FK order (children first).
+      // CRITICAL: only truncate tables that are PRESENT in the incoming export.
+      // A table absent from the export (e.g. a backup produced before the table
+      // existed) has nothing to restore, so truncating it would silently destroy
+      // live data with no compensating insert. Skip it and record the skip so the
+      // operator can see the import was partial.
       const reverseOrder = getReversedTableOrder();
       for (const tableName of reverseOrder) {
         const table = TABLE_MAP[tableName];
         if (!table) continue;
+        if (!data.tables[tableName]) {
+          result.skippedTables.push(tableName);
+          logger.warn(
+            { tableName },
+            "[import] Table absent from export — preserving live data (not truncated)",
+          );
+          continue;
+        }
         try {
           await tx.delete(table);
         } catch (err: unknown) {

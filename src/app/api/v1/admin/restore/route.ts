@@ -188,6 +188,7 @@ export async function POST(request: NextRequest) {
       tablesImported: result.tablesImported,
       totalRowsImported: result.totalRowsImported,
       filesRestored: isZipFile ? filesRestored : undefined,
+      skippedTables: result.skippedTables,
       preRestoreSnapshotPath: preSnapshotPath,
     });
   } catch (error) {
