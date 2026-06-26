@@ -67,6 +67,7 @@ function isValidIp(value: string) {
 
 export function extractClientIp(headers: HeaderCarrier): string | null {
   const forwardedFor = headers.get("x-forwarded-for");
+  const trustedHops = getTrustedProxyHops();
 
   // Process X-Forwarded-For first with hop validation to prevent spoofing.
   // X-Real-IP is only used as fallback when XFF is absent (single-proxy setups).
@@ -88,7 +89,6 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     // is at parts[0] and we'd trust it. Refuse to fall back; the caller
     // gets null and downstream code can degrade to per-IP rate-limit by
     // request socket or treat the request as unknown.
-    const trustedHops = getTrustedProxyHops();
     // SEC-8: TRUSTED_PROXY_HOPS=0 means "no trusted proxies" — every XFF
     // entry is client-controlled, so we must not trust any of them. Without
     // this guard, `parts.length >= 0 + 1` is true for any XFF and
@@ -110,10 +110,16 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     }
   }
 
-  // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation)
-  const realIp = headers.get("x-real-ip")?.trim();
-  if (realIp && isValidIp(realIp)) {
-    return unwrapMappedIpv4(realIp) ?? realIp;
+  // Trust X-Real-IP ONLY when at least one trusted proxy hop is configured.
+  // When TRUSTED_PROXY_HOPS=0 ("no trusted proxies") every header is
+  // client-controlled, including X-Real-IP — trusting it would simply relocate
+  // the XFF spoof surface A7 closed. Behind nginx (the documented setup) the
+  // hop count is >= 1 and nginx overwrites X-Real-IP, so it is trustworthy.
+  if (trustedHops > 0) {
+    const realIp = headers.get("x-real-ip")?.trim();
+    if (realIp && isValidIp(realIp)) {
+      return unwrapMappedIpv4(realIp) ?? realIp;
+    }
   }
 
   if (process.env.NODE_ENV === "production" && !forwardedFor) {
