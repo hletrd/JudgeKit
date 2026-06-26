@@ -1,6 +1,13 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+
+// Logger is mocked so the import-time logger.error emitted on misconfigured
+// RUNNER_AUTH_TOKEN does not spam test output. Hoisted above the dynamic
+// import below. Existing source-grep tests do not touch the logger.
+vi.mock("@/lib/logger", () => ({
+  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+}));
 
 describe("compiler execute implementation", () => {
   it("keeps local fallback workspaces writable for the non-root sandbox user", () => {
@@ -49,5 +56,57 @@ describe("compiler execute implementation", () => {
 
     expect(source).toContain("const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);");
     expect(source).not.toContain("if (existsSync(SECCOMP_PROFILE_PATH))");
+  });
+});
+
+describe("compiler execute import-time misconfiguration (ARCH-1)", () => {
+  // Capture the env once so each spec can mutate it freely.
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    vi.resetModules();
+    process.env.NODE_ENV = "production";
+    process.env.COMPILER_RUNNER_URL = "http://runner:3001";
+    delete process.env.RUNNER_AUTH_TOKEN;
+    delete process.env.RUNNER_AUTH_DISABLED;
+    delete process.env.ENABLE_COMPILER_LOCAL_FALLBACK;
+    delete process.env.DISABLE_COMPILER_LOCAL_FALLBACK;
+  });
+
+  afterEach(() => {
+    // Restore env: remove keys added since snapshot, reset the rest.
+    for (const key of Object.keys(process.env)) {
+      if (!(key in originalEnv)) delete process.env[key];
+    }
+    Object.assign(process.env, originalEnv);
+    vi.restoreAllMocks();
+  });
+
+  it("loads the module without throwing when RUNNER_AUTH_TOKEN is unset in production (ARCH-1)", async () => {
+    // Previously this env combination threw at module top level, breaking the
+    // whole process on misconfig. Now it logs and sets a config-error flag.
+    await expect(import("@/lib/compiler/execute")).resolves.toBeDefined();
+  });
+
+  it("returns a configError result instead of throwing when RUNNER_AUTH_TOKEN is missing", async () => {
+    const { executeCompilerRun } = await import("@/lib/compiler/execute");
+
+    const result = await executeCompilerRun({
+      sourceCode: "print('hi')",
+      stdin: "",
+      language: {
+        extension: "py",
+        dockerImage: "judge-python:3",
+        compileCommand: null,
+        runCommand: "python3 main.py",
+      },
+    });
+
+    // COMPILER_RUNNER_CONFIG_ERROR constant value; downstream maps this to a
+    // user-facing configError. No network/Docker calls occur (tryRustRunner
+    // short-circuits when the token is missing).
+    expect(result.stderr).toBe("COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing");
+    expect(result.exitCode).toBeNull();
+    expect(result.stdout).toBe("");
   });
 });

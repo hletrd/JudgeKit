@@ -62,7 +62,11 @@ const RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || "";
 const RUNNER_AUTH_DISABLED = process.env.RUNNER_AUTH_DISABLED === "1";
 
 if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
-  throw new Error(
+  // ARCH-1: mirror src/lib/docker/client.ts (commit 26cff8e4) — log the
+  // misconfiguration instead of throwing at import time so the module loads.
+  // The downstream COMPILER_RUNNER_CONFIG_ERROR constant captures this state
+  // and executeCompilerRun returns a configError result (see ~L637).
+  logger.error(
     "RUNNER_AUTH_TOKEN must be set in production when COMPILER_RUNNER_URL is configured. " +
     "Generate one with: openssl rand -hex 32",
   );

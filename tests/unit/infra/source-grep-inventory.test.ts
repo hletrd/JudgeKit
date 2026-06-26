@@ -58,6 +58,7 @@ const INTENTIONAL_INFRA_DEPLOY = [
   "tests/unit/infra/pgdata-pinning.test.ts",
   "tests/unit/infra/playwright-remote-safety.test.ts",
   "tests/unit/infra/playwright-profiles.test.ts",
+  "tests/unit/infra/migration-drift-cleanup.test.ts",
   "tests/unit/infra/ci-suite-completeness.test.ts",
   "tests/unit/infra/worker-runtime.test.ts",
   "tests/unit/infra/language-inventory.test.ts",
@@ -191,7 +192,14 @@ describe("source-grep test inventory", () => {
     //   - tests/unit/submissions/function-compile-error-mapping.test.ts pins two
     //     scoped review pages to remap function diagnostics before badge display,
     //     a page-wiring contract complementing behavioural sanitizer coverage.
-    const DOCUMENTED_BASELINE = 154;
+    // Bumped 154 -> 155 (2026-06-26, AGG-69 / TE-16):
+    //   - tests/unit/infra/migration-drift-cleanup.test.ts pins that the
+    //     migration-drift script never re-introduces the destructive
+    //     `git clean -fd` that deleted developers' untracked migration files.
+    //     The destructive-pattern regression lives in the script text (the
+    //     behavioural run only exercises the no-drift path, so the drift-branch
+    //     cleanup contract must be pinned as source text).
+    const DOCUMENTED_BASELINE = 155;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
