@@ -15,6 +15,8 @@ const {
   importDatabaseMock,
   parseBackupZipMock,
   restoreParsedBackupFilesMock,
+  recordAuditEventMock,
+  takePreRestoreSnapshotMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
@@ -29,6 +31,8 @@ const {
   importDatabaseMock: vi.fn(),
   parseBackupZipMock: vi.fn(),
   restoreParsedBackupFilesMock: vi.fn(),
+  recordAuditEventMock: vi.fn(),
+  takePreRestoreSnapshotMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -82,12 +86,16 @@ vi.mock("@/lib/db/import-transfer", () => ({
 }));
 
 vi.mock("@/lib/audit/events", () => ({
-  recordAuditEvent: vi.fn(),
+  recordAuditEvent: recordAuditEventMock,
 }));
 
 vi.mock("@/lib/db/export-with-files", () => ({
   parseBackupZip: parseBackupZipMock,
   restoreParsedBackupFiles: restoreParsedBackupFilesMock,
+}));
+
+vi.mock("@/lib/db/pre-restore-snapshot", () => ({
+  takePreRestoreSnapshot: takePreRestoreSnapshotMock,
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -305,6 +313,8 @@ describe("backup restore semantic safety", () => {
       tableResults: {},
       errors: [],
     });
+    takePreRestoreSnapshotMock.mockResolvedValue("/tmp/snapshots/test-snapshot.sql");
+    restoreParsedBackupFilesMock.mockResolvedValue(0);
   });
 
   it("rejects sanitized JSON exports on POST /api/v1/admin/restore", async () => {
@@ -357,5 +367,106 @@ describe("backup restore semantic safety", () => {
     expect(res.status).toBe(400);
     expect(body.error).toBe("fileTooLarge");
     expect(importDatabaseMock).not.toHaveBeenCalled();
+  });
+
+  it("records the restore audit AFTER importDatabase commits so it survives the truncate", async () => {
+    // importDatabase truncates `auditEvents` inside its transaction. The audit
+    // must be recorded post-commit or the row is wiped. A pre-commit audit
+    // would be invoked BEFORE importDatabase resolved.
+    readUploadedJsonFileWithLimitMock.mockResolvedValue({
+      version: 1,
+      exportedAt: "2026-04-12T00:00:00.000Z",
+      sourceDialect: "postgresql",
+      appVersion: "test",
+      redactionMode: "full-fidelity",
+      tables: {},
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set(
+      "file",
+      new File([JSON.stringify({})], "backup.json", { type: "application/json" }),
+    );
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    // Audit recorded exactly once, and only after importDatabase resolved.
+    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
+    expect(importDatabaseMock).toHaveBeenCalledBefore(recordAuditEventMock);
+    expect(recordAuditEventMock.mock.calls[0][0].action).toBe(
+      "system_settings.database_restored",
+    );
+  });
+
+  it("preserves pendingUploadedFiles count in the post-commit audit for ZIP restores", async () => {
+    parseBackupZipMock.mockResolvedValue({
+      dbExport: {
+        version: 1,
+        exportedAt: "2026-04-12T00:00:00.000Z",
+        sourceDialect: "postgresql",
+        appVersion: "test",
+        redactionMode: "full-fidelity",
+        tables: {},
+      },
+      uploads: [
+        { storedName: "a.bin", buffer: Buffer.from("a") },
+        { storedName: "b.bin", buffer: Buffer.from("b") },
+      ],
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set(
+      "file",
+      new File([new Uint8Array([1, 2, 3])], "backup.zip", { type: "application/zip" }),
+    );
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+
+    expect(res.status).toBe(200);
+    expect(recordAuditEventMock).toHaveBeenCalledTimes(1);
+    expect(importDatabaseMock).toHaveBeenCalledBefore(recordAuditEventMock);
+    const auditPayload = recordAuditEventMock.mock.calls[0][0];
+    expect(auditPayload.summary).toContain("2 files pending");
+    expect(auditPayload.details).toEqual({
+      preRestoreSnapshotPath: "/tmp/snapshots/test-snapshot.sql",
+    });
+  });
+
+  it("does not record the restore audit when importDatabase fails", async () => {
+    importDatabaseMock.mockResolvedValue({
+      success: false,
+      tablesImported: 0,
+      totalRowsImported: 0,
+      tableResults: {},
+      errors: ["boom"],
+    });
+    readUploadedJsonFileWithLimitMock.mockResolvedValue({
+      version: 1,
+      exportedAt: "2026-04-12T00:00:00.000Z",
+      sourceDialect: "postgresql",
+      appVersion: "test",
+      redactionMode: "full-fidelity",
+      tables: {},
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set(
+      "file",
+      new File([JSON.stringify({})], "backup.json", { type: "application/json" }),
+    );
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("restoreFailed");
+    expect(body.preRestoreSnapshotPath).toBe("/tmp/snapshots/test-snapshot.sql");
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
 });

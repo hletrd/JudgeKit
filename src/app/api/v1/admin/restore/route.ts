@@ -148,6 +148,23 @@ export async function POST(request: NextRequest) {
     // older ones are pruned best-effort.
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
 
+    const result = await importDatabase(data);
+
+    if (!result.success || result.errors.length > 0) {
+      return NextResponse.json({
+        error: "restoreFailed",
+        details: result.errors,
+        partial: result.tableResults,
+        preRestoreSnapshotPath: preSnapshotPath,
+      }, { status: 500 });
+    }
+
+    // Record the restore audit AFTER `importDatabase` commits. The import runs
+    // inside a single transaction that TRUNCATEs every table — including
+    // `auditEvents` — so an audit row written before the commit would be wiped
+    // the moment the transaction applies. Recording post-commit guarantees the
+    // integrity-trail entry survives the restore. Same pattern as the
+    // post-deletion audit in src/app/api/v1/users/[id]/route.ts.
     recordAuditEvent({
       actorId: user.id,
       actorRole: user.role,
@@ -161,17 +178,6 @@ export async function POST(request: NextRequest) {
       details: { preRestoreSnapshotPath: preSnapshotPath },
       request,
     });
-
-    const result = await importDatabase(data);
-
-    if (!result.success || result.errors.length > 0) {
-      return NextResponse.json({
-        error: "restoreFailed",
-        details: result.errors,
-        partial: result.tableResults,
-        preRestoreSnapshotPath: preSnapshotPath,
-      }, { status: 500 });
-    }
 
     if (isZipFile) {
       filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);
