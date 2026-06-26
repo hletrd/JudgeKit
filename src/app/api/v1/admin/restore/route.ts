@@ -148,6 +148,18 @@ export async function POST(request: NextRequest) {
     // older ones are pruned best-effort.
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
 
+    // The snapshot is the operator's only emergency rollback artifact. If it
+    // failed (disk full / I/O error / read-only mount → null), do NOT proceed
+    // to the destructive import — production data would be replaced with no
+    // recovery path. ALLOW_UNSNAPSHOTTED_RESTORE=1 is the documented break-glass
+    // for the disk-full recovery case.
+    if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") {
+      logger.error(
+        "[restore] Pre-restore snapshot failed; aborting before destructive import (set ALLOW_UNSNAPSHOTTED_RESTORE=1 to override)",
+      );
+      return NextResponse.json({ error: "preRestoreSnapshotFailed" }, { status: 500 });
+    }
+
     const result = await importDatabase(data);
 
     if (!result.success || result.errors.length > 0) {

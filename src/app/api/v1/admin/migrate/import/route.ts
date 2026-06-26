@@ -107,6 +107,15 @@ export async function POST(request: NextRequest) {
       });
 
       const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+      // Abort if the emergency-rollback snapshot failed, unless the operator
+      // explicitly opted into the break-glass (disk-full recovery). See restore
+      // route for full rationale.
+      if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") {
+        logger.error(
+          "[import] Pre-restore snapshot failed; aborting before destructive import (set ALLOW_UNSNAPSHOTTED_RESTORE=1 to override)",
+        );
+        return NextResponse.json({ error: "preRestoreSnapshotFailed" }, { status: 500 });
+      }
       const result = await importDatabase(data);
 
       if (!result.success || result.errors.length > 0) {
@@ -209,6 +218,12 @@ export async function POST(request: NextRequest) {
     });
 
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+    if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") {
+      logger.error(
+        "[import] Pre-restore snapshot failed; aborting before destructive import (set ALLOW_UNSNAPSHOTTED_RESTORE=1 to override)",
+      );
+      return NextResponse.json({ error: "preRestoreSnapshotFailed" }, { status: 500 });
+    }
     const result = await importDatabase(data);
 
     if (!result.success || result.errors.length > 0) {

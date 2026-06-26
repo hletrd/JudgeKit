@@ -339,6 +339,31 @@ describe("backup restore semantic safety", () => {
     expect(importDatabaseMock).not.toHaveBeenCalled();
   });
 
+  it("aborts the destructive import when the pre-restore snapshot fails (NEW-H3)", async () => {
+    readUploadedJsonFileWithLimitMock.mockResolvedValue({
+      version: 1,
+      exportedAt: "2026-04-12T00:00:00.000Z",
+      sourceDialect: "postgresql",
+      appVersion: "test",
+      redactionMode: "full-fidelity",
+      tables: {},
+    });
+    // Snapshot failure (disk full / I/O error) returns null. The route must NOT
+    // proceed to the destructive import — there would be no rollback artifact.
+    takePreRestoreSnapshotMock.mockResolvedValue(null);
+
+    const { POST } = await import("@/app/api/v1/admin/restore/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set("file", new File(["{}"], "portable-export.json", { type: "application/json" }));
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("preRestoreSnapshotFailed");
+    expect(importDatabaseMock).not.toHaveBeenCalled();
+  });
+
   it("rejects ZIP backups whose integrity manifest fails validation", async () => {
     parseBackupZipMock.mockRejectedValue(new Error("backupIntegrityMismatch"));
 
