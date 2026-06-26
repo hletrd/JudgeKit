@@ -199,7 +199,16 @@ describe("source-grep test inventory", () => {
     //     The destructive-pattern regression lives in the script text (the
     //     behavioural run only exercises the no-drift path, so the drift-branch
     //     cleanup contract must be pinned as source text).
-    const DOCUMENTED_BASELINE = 155;
+    // Bumped 155 -> 157 (2026-06-26, cycle-2 remediation):
+    //   - tests/unit/api/group-assignments-access-code-strip.test.ts pins that
+    //     the assignments list/detail GETs strip contest accessCode for
+    //     non-managers (NEW-H2); the strip is a response-shape contract over
+    //     two routes whose behavioural harness (RQB findMany + canManage) is
+    //     disproportionately heavy vs. the security invariant.
+    //   - tests/unit/api/problem-edit-page-strict-gate.test.ts pins that the
+    //     edit page gates on strict canManageProblem (designer REG-2); the gate
+    //     is a server-component wiring contract.
+    const DOCUMENTED_BASELINE = 157;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

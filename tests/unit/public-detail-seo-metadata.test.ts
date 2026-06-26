@@ -102,9 +102,13 @@ vi.mock("@/lib/discussions/data", () => ({
   listProblemEditorials: vi.fn(async () => []),
 }));
 
-vi.mock("@/lib/discussions/permissions", () => ({
-  canModerateDiscussions: vi.fn(async () => false),
-}));
+vi.mock("@/lib/discussions/permissions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/discussions/permissions")>();
+  return {
+    ...actual,
+    canModerateDiscussions: vi.fn(async () => false),
+  };
+});
 
 // generateMetadata needs none of the page-body UI components, but importing the
 // problem page module transforms their entire dependency graph (react-markdown,
