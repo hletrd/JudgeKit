@@ -63,9 +63,11 @@ describe("GET /api/v1/problems/[id]/accepted-solutions", () => {
     problemsFindFirstMock.mockResolvedValue({ id: "problem-1", visibility: "public" });
     const countChain = {
       from: vi.fn(),
+      innerJoin: vi.fn(),
       where: vi.fn(),
     };
     countChain.from.mockReturnValue(countChain);
+    countChain.innerJoin.mockReturnValue(countChain);
     countChain.where.mockResolvedValue([{ total: 1 }]);
 
     selectMock
@@ -115,10 +117,14 @@ describe("GET /api/v1/problems/[id]/accepted-solutions", () => {
     selectMock.mockReset();
     const countChain = {
       from: vi.fn(),
+      innerJoin: vi.fn(),
       where: vi.fn(),
     };
     countChain.from.mockReturnValue(countChain);
-    countChain.where.mockResolvedValue([{ total: 2 }]);
+    countChain.innerJoin.mockReturnValue(countChain);
+    // Count now applies the shareAcceptedSolutions filter (C3-N7), so the
+    // opted-out submission-2 is excluded: total reflects shared solutions only.
+    countChain.where.mockResolvedValue([{ total: 1 }]);
 
     selectMock
       .mockReturnValueOnce(countChain)

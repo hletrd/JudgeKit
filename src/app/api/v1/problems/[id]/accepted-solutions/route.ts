@@ -45,10 +45,14 @@ export const GET = createApiHandler({
       language ? eq(submissions.language, language) : undefined,
     );
 
+    // Count must apply the same shareAcceptedSolutions filter as the rendered
+    // list below, otherwise `total` overcounts authors who opted out of
+    // sharing and the UI shows "X results" with fewer rendered (C3-N7).
     const [countRow] = await db
       .select({ total: count() })
       .from(submissions)
-      .where(whereClause);
+      .innerJoin(users, eq(submissions.userId, users.id))
+      .where(and(whereClause, eq(users.shareAcceptedSolutions, true)));
     const total = Number(countRow?.total ?? 0);
 
     // Every branch ends in the unique `id` so this offset-paged public listing

@@ -478,7 +478,7 @@ describe("deleteUserPermanently", () => {
     expect(result).toEqual({ success: false, error: "cannotDeleteSuperAdmin" });
   });
 
-  it("deletes a user successfully and records audit before deletion", async () => {
+  it("deletes a user successfully and records audit after the deletion transaction commits", async () => {
     const { deleteUserPermanently } = await import("@/lib/actions/user-management");
     setupAuthorizedAdmin();
     mocks.dbQueryUsersFindFirst.mockResolvedValue({
@@ -497,6 +497,35 @@ describe("deleteUserPermanently", () => {
       })
     );
     expect(mocks.dbDeleteWhere).toHaveBeenCalled();
+  });
+
+  it("does not record the deletion audit when the delete fails (post-commit ordering)", async () => {
+    // PB-1: the audit fires only AFTER db.delete succeeds (commit 76e27d31 /
+    // C9-6). The delete mock chain's `where` resolves unconditionally, so to
+    // simulate a failure we override db.delete to surface a rejection through
+    // the chain. A pre-commit audit would have already recorded; the post-
+    // commit path must not.
+    const { deleteUserPermanently } = await import("@/lib/actions/user-management");
+    setupAuthorizedAdmin();
+    mocks.dbQueryUsersFindFirst.mockResolvedValue({
+      id: "user-2",
+      username: "targetuser",
+      role: "student",
+    });
+    const dbModule = await import("@/lib/db");
+    // One-shot override: the next (only) db.delete rejects through its where
+    // chain. mockImplementationOnce auto-reverts so subsequent tests are unaffected.
+    (dbModule.db.delete as ReturnType<typeof vi.fn>).mockImplementationOnce(() => ({
+      where: vi.fn(() => Promise.reject(new Error("db error"))),
+    }));
+
+    const result = await deleteUserPermanently("user-2", "targetuser");
+    expect(result).toEqual({ success: false, error: "deleteUserFailed" });
+    const deletedAudits = mocks.recordAuditEvent.mock.calls.filter(
+      (call: unknown[]) =>
+        (call[0] as { action?: string })?.action === "user.permanently_deleted"
+    );
+    expect(deletedAudits).toHaveLength(0);
   });
 
   it("allows a custom role with users.delete to delete a user", async () => {

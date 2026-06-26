@@ -52,7 +52,10 @@ export const GET = createApiHandler({
       id,
     );
     if (!canManage) {
+      // accessCode is a contest secret; freezeLeaderboardAt is a contest
+      // control field. Strip both from non-managers (cycle-3 C3-N6).
       delete (assignment as { accessCode?: unknown }).accessCode;
+      delete (assignment as { freezeLeaderboardAt?: unknown }).freezeLeaderboardAt;
     }
 
     return apiSuccess(assignment);

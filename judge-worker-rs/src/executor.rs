@@ -526,6 +526,19 @@ async fn execute_inner(
         return;
     }
 
+    // Warn once if the submission's authored time limit exceeds the worker
+    // ceiling so the silent clamp is observable (AGG-17 / C3-AGG-10c). The UI
+    // validator caps authoring at 10s, so this only fires for API/imported
+    // problems that bypass it; without the log the resulting TLE is opaque.
+    if submission.time_limit_ms > max_time_limit_ms() {
+        tracing::warn!(
+            submission_id = %submission.id,
+            authored_ms = submission.time_limit_ms,
+            ceiling_ms = max_time_limit_ms(),
+            "submission time_limit_ms exceeds MAX_TIME_LIMIT_MS; clamping to ceiling"
+        );
+    }
+
     // Run phase: execute each test case sequentially
     let mut results: Vec<TestResult> = Vec::new();
 

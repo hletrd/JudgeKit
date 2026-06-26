@@ -79,7 +79,10 @@ export async function GET(
 
     if (!canManage) {
       for (const a of groupAssignments) {
+        // accessCode is a contest secret; freezeLeaderboardAt is a contest
+        // control field. Strip both from non-managers (cycle-3 C3-N6).
         delete (a as { accessCode?: unknown }).accessCode;
+        delete (a as { freezeLeaderboardAt?: unknown }).freezeLeaderboardAt;
       }
     }
 
