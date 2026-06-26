@@ -194,13 +194,27 @@ export const DELETE = createApiHandler({
   rateLimit: "groups:delete",
   handler: async (req: NextRequest, { user, params }) => {
     const { id } = params;
+    const caps = await resolveCapabilities(user.role);
     const result = await execTransaction(async (tx) => {
       const [group] = await tx.select({
         id: groups.id,
         name: groups.name,
         isArchived: groups.isArchived,
+        instructorId: groups.instructorId,
       }).from(groups).where(eq(groups.id, id)).for("update").limit(1);
       if (!group) return { error: "notFound" as const };
+
+      // Resource-scope the delete (mirrors PATCH/GET): a groups.delete holder
+      // may only remove a group they own/co-instruct, unless they hold the
+      // org-wide groups.view_all capability. Without this, any groups.delete
+      // holder could delete another instructor's group (IDOR).
+      const canManage = await canManageGroupResourcesAsync(
+        group.instructorId,
+        user.id,
+        user.role,
+        id
+      );
+      if (!canManage && !caps.has("groups.view_all")) return { error: "forbidden" as const };
 
       const [countRow] = await tx
         .select({ total: sql<number>`count(${submissions.id})` })
@@ -217,6 +231,7 @@ export const DELETE = createApiHandler({
     });
 
     if (result.error === "notFound") return notFound("Group");
+    if (result.error === "forbidden") return forbidden();
     if (result.error === "groupDeleteBlocked") return apiError("groupDeleteBlocked", 409);
 
     const group = result.group!;

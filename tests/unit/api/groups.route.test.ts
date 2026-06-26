@@ -187,7 +187,7 @@ beforeEach(() => {
   csrfForbiddenMock.mockReturnValue(null);
   consumeApiRateLimitMock.mockReturnValue(null);
   resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.delete"]));
-  canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+  canManageGroupResourcesAsyncMock.mockResolvedValue(true);
   canManageGroupMembersAsyncMock.mockResolvedValue(false);
   canAccessGroupMock.mockResolvedValue(true);
   groupsFindFirstMock.mockResolvedValue(EXISTING_GROUP);
@@ -536,7 +536,6 @@ describe("DELETE /api/v1/groups/[id] — successful deletion", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
 describe("DELETE /api/v1/groups/[id] — error handling", () => {
   it("returns 500 and logs an error when an unexpected exception is thrown", async () => {
     getApiUserMock.mockRejectedValue(new Error("DB connection lost"));
@@ -546,5 +545,51 @@ describe("DELETE /api/v1/groups/[id] — error handling", () => {
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
     expect(loggerErrorMock).toHaveBeenCalledOnce();
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe("DELETE /api/v1/groups/[id] — resource-scope IDOR guard", () => {
+  it("denies a groups.delete holder who is not the owner/co-instructor and lacks groups.view_all", async () => {
+    // Another instructor who holds groups.delete but has no relationship to
+    // this group and no org-wide groups.view_all capability. The capability
+    // gate passes, but canManageGroupResourcesAsync must reject (IDOR).
+    getApiUserMock.mockResolvedValue({ ...INSTRUCTOR_USER, id: "other-instructor" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.delete"]));
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+
+    const res = await DELETE(makeRequest(), { params: PARAMS });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe("forbidden");
+    // The group row must not be deleted when authorization fails.
+    expect(dbDeleteMock).not.toHaveBeenCalled();
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
+  });
+
+  it("allows the group owner to delete their own group", async () => {
+    // INSTRUCTOR_USER.id === EXISTING_GROUP.instructorId ("instructor-1").
+    getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.delete"]));
+    canManageGroupResourcesAsyncMock.mockResolvedValue(true);
+
+    const res = await DELETE(makeRequest(), { params: PARAMS });
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.data).toEqual({ id: "test-group-id" });
+  });
+
+  it("allows a groups.view_all holder even when canManageGroupResourcesAsync is false", async () => {
+    // Org-wide admin bypass: groups.view_all capability short-circuits the
+    // resource-scope check (mirrors the GET/PATCH pattern).
+    getApiUserMock.mockResolvedValue({ ...INSTRUCTOR_USER, id: "other-instructor" });
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["groups.delete", "groups.view_all"]));
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+
+    const res = await DELETE(makeRequest(), { params: PARAMS });
+
+    expect(res.status).toBe(200);
   });
 });
