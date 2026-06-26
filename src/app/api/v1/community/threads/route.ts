@@ -4,8 +4,7 @@ import { db } from "@/lib/db";
 import { discussionThreads } from "@/lib/db/schema";
 import { discussionThreadCreateSchema } from "@/lib/validators/discussions";
 import { createApiHandler, forbidden } from "@/lib/api/handler";
-import { canAccessProblem } from "@/lib/auth/permissions";
-import { isProblemLinkedScope } from "@/lib/discussions/permissions";
+import { canAccessProblemScopedThread, isProblemLinkedScope } from "@/lib/discussions/permissions";
 import { resolveCapabilities, hasCapability } from "@/lib/capabilities";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -24,8 +23,14 @@ export const POST = createApiHandler({
         return apiError("problemNotFound", 404);
       }
 
-      const hasAccess = await canAccessProblem(problem.id, user.id, user.role);
-      if (!hasAccess) {
+      // Route the access decision through the centralized helper so future
+      // changes to canAccessProblemScopedThread apply here too (C3-AGG-4).
+      if (
+        !(await canAccessProblemScopedThread(body.scopeType, problem.id, {
+          userId: user.id,
+          role: user.role,
+        }))
+      ) {
         return forbidden();
       }
     }

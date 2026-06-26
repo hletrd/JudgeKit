@@ -2,8 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import { apiError, apiSuccess } from "@/lib/api/responses";
-import { canAccessProblem } from "@/lib/auth/permissions";
-import { isProblemLinkedScope } from "@/lib/discussions/permissions";
+import { canAccessProblemScopedThread } from "@/lib/discussions/permissions";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads } from "@/lib/db/schema";
 import { communityVoteSchema } from "@/lib/validators/discussions";
@@ -59,20 +58,34 @@ export const POST = createApiHandler({
       return notFound(body.targetType === "thread" ? "Discussion thread" : "Discussion post");
     }
 
+    // Route the problem-linked scope check through the single helper so the
+    // scope set stays centralized (PROBLEM_LINKED_SCOPES). Inline duplication
+    // previously let editorial/solution scopes drift past some call sites
+    // (C2-H5 / SEC-9). See C3-AGG-4.
+    const scopeType =
+      body.targetType === "thread"
+        ? target && "scopeType" in target
+          ? target.scopeType
+          : null
+        : target && "thread" in target
+          ? target.thread?.scopeType
+          : null;
     const problemId =
       body.targetType === "thread"
-        ? target && "scopeType" in target && isProblemLinkedScope(target.scopeType)
+        ? target && "scopeType" in target
           ? target.problemId
           : null
-        : target && "thread" in target && isProblemLinkedScope(target.thread?.scopeType)
-          ? target.thread?.problemId ?? null
+        : target && "thread" in target
+          ? (target.thread?.problemId ?? null)
           : null;
 
-    if (problemId) {
-      const hasAccess = await canAccessProblem(problemId, user.id, user.role);
-      if (!hasAccess) {
-        return forbidden();
-      }
+    if (
+      !(await canAccessProblemScopedThread(scopeType, problemId, {
+        userId: user.id,
+        role: user.role,
+      }))
+    ) {
+      return forbidden();
     }
 
     if (target.authorId && target.authorId === user.id) {
