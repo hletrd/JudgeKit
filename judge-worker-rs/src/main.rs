@@ -10,9 +10,23 @@ mod validation;
 
 use api::ApiClient;
 use config::Config;
+use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Semaphore;
+use futures_util::FutureExt;
+
+/// Best-effort string rendering of a panic payload caught by `catch_unwind`.
+/// Used by the executor spawn body's panic recovery (AGG-15 / C3-AGG-9) and
+/// unit-tested independently of the network report path.
+fn panic_payload_message(payload: Box<dyn Any + Send>) -> String {
+    payload
+        .downcast_ref::<String>()
+        .map(|s| s.as_str())
+        .or_else(|| payload.downcast_ref::<&'static str>().copied())
+        .unwrap_or("<non-string panic>")
+        .to_owned()
+}
 
 /// Map ARM CPU implementer + part to a human-readable name.
 #[cfg(target_os = "linux")]
@@ -546,7 +560,32 @@ async fn main() {
                     // The permit is moved into this task and dropped when done,
                     // releasing the semaphore slot for a new job.
                     let _permit = permit;
-                    executor::execute(&client, &config, submission, worker_secret.as_deref()).await;
+                    // Capture id + claim_token before moving `submission` into
+                    // the executor future: if that future panics we need them
+                    // to report a runtime_error verdict (AGG-15 / C3-AGG-9).
+                    let submission_id = submission.id.clone();
+                    let claim_token = submission.claim_token.clone();
+                    let worker_secret_opt = worker_secret.as_deref();
+                    let exec_fut = executor::execute(&client, &config, submission, worker_secret_opt);
+                    if let Err(panic_payload) =
+                        std::panic::AssertUnwindSafe(exec_fut).catch_unwind().await
+                    {
+                        let panic_msg = panic_payload_message(panic_payload);
+                        tracing::error!(
+                            submission_id = %submission_id,
+                            panic = %panic_msg,
+                            "executor panicked; reporting runtime_error"
+                        );
+                        executor::report_panic(
+                            &client,
+                            &config,
+                            &submission_id,
+                            &claim_token,
+                            &panic_msg,
+                            worker_secret_opt,
+                        )
+                        .await;
+                    }
                     active_tasks.fetch_sub(1, Ordering::Relaxed);
                 });
                 task_handles.push(handle);
@@ -614,4 +653,44 @@ async fn main() {
     }
 
     tracing::info!("Judge worker shut down gracefully");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::panic::AssertUnwindSafe;
+
+    /// A panicking executor future must be caught by `catch_unwind` and its
+    /// payload rendered by `panic_payload_message`. This is the exact
+    /// recovery mechanism the spawn body in `main` relies on so a panic
+    /// reports a `runtime_error` verdict instead of wedging the slot
+    /// (AGG-15 / C3-AGG-9).
+    #[tokio::test]
+    async fn catch_unwind_traps_executor_panic_and_renders_message() {
+        let panicking = async {
+            panic!("boom from executor");
+        };
+        let result = AssertUnwindSafe(panicking).catch_unwind().await;
+        assert!(result.is_err(), "catch_unwind must trap the panic");
+        let msg = panic_payload_message(result.unwrap_err());
+        assert_eq!(msg, "boom from executor");
+    }
+
+    #[tokio::test]
+    async fn catch_unwind_renders_string_panic_payload() {
+        let panicking = async {
+            panic!("{}", String::from("owned string panic"));
+        };
+        let result = AssertUnwindSafe(panicking).catch_unwind().await;
+        let msg = panic_payload_message(result.unwrap_err());
+        assert!(msg.contains("owned string panic"));
+    }
+
+    #[test]
+    fn panic_payload_message_handles_non_string_payload() {
+        // A non-string panic payload falls back to the placeholder rather than
+        // panicking again inside the recovery path.
+        let payload: Box<dyn Any + Send> = Box::new(42i32);
+        assert_eq!(panic_payload_message(payload), "<non-string panic>");
+    }
 }

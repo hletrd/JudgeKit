@@ -896,6 +896,33 @@ async fn report_error(
     .await;
 }
 
+/// Report a `runtime_error` verdict for a submission whose executor task
+/// panicked (caught via `catch_unwind`). Takes the id/claim_token explicitly
+/// because the `Submission` value has already been moved into the panicking
+/// future by the time the panic is observed. Used by the main loop's panic
+/// recovery (AGG-15 / C3-AGG-9). Best-effort: if reporting fails, the
+/// existing dead-letter fallback in `report_with_retry` writes a JSON file.
+pub async fn report_panic(
+    client: &ApiClient,
+    config: &Config,
+    submission_id: &str,
+    claim_token: &str,
+    panic_message: &str,
+    worker_secret: Option<&str>,
+) {
+    report_with_retry(
+        client,
+        config,
+        submission_id,
+        claim_token,
+        "runtime_error",
+        &format!("executor panicked: {panic_message}"),
+        &[],
+        worker_secret,
+    )
+    .await;
+}
+
 async fn report_result(
     client: &ApiClient,
     config: &Config,
