@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { assignments, submissions } from "@/lib/db/schema";
+import { assignments, submissions, groups } from "@/lib/db/schema";
 import { recordAuditEvent } from "@/lib/audit/events";
 import {
   canManageGroupResourcesAsync,
@@ -38,6 +38,21 @@ export const GET = createApiHandler({
 
     if (!assignment || assignment.groupId !== id) {
       return notFound("Assignment");
+    }
+
+    // Strip the contest accessCode secret for non-managers (see list route).
+    const group = await db.query.groups.findFirst({
+      where: eq(groups.id, id),
+      columns: { instructorId: true },
+    });
+    const canManage = await canManageGroupResourcesAsync(
+      group?.instructorId ?? null,
+      user.id,
+      user.role,
+      id,
+    );
+    if (!canManage) {
+      delete (assignment as { accessCode?: unknown }).accessCode;
     }
 
     return apiSuccess(assignment);

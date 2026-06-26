@@ -30,13 +30,23 @@ export async function GET(
     const { id } = await params;
     const group = await db.query.groups.findFirst({
       where: (groups, { eq: equals }) => equals(groups.id, id),
-      columns: { id: true },
+      columns: { id: true, instructorId: true },
     });
 
     if (!group) return notFound("Group");
 
     const hasAccess = await canAccessGroup(id, user.id, user.role);
     if (!hasAccess) return forbidden();
+
+    // accessCode is a contest secret (redeemable via /contests/join). Only
+    // surface it to managers; strip it from the response for everyone else
+    // (enrolled students can otherwise leak it to un-enrolled confederates).
+    const canManage = await canManageGroupResourcesAsync(
+      group.instructorId,
+      user.id,
+      user.role,
+      id,
+    );
 
     const { page, limit, offset } = parsePagination(request.nextUrl.searchParams, {
       defaultLimit: 50,
@@ -66,6 +76,12 @@ export async function GET(
         },
       },
     });
+
+    if (!canManage) {
+      for (const a of groupAssignments) {
+        delete (a as { accessCode?: unknown }).accessCode;
+      }
+    }
 
     return apiPaginated(groupAssignments, page, limit, total);
   } catch (error) {
