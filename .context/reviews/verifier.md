@@ -1,168 +1,61 @@
-# Verifier Review - Prompt 1, Cycle 2
+# Verification Report — judgekit @ 0b0ac198
 
-Findings count: 6
+**Mode:** READ-ONLY (delivered inline by verifier agent; persisted by orchestrator for provenance).
 
-## Inventory
+### Verdict
+**Status**: PASS (code claims) — with one PARTIAL and two follow-up findings
+**Confidence**: high
+**Blockers**: 0 (no claim refuted; V-8 wording is imprecise but the shipped hardening is real)
 
-Scope built from `git status --short`, `git diff --name-only -- . ':(exclude).context/reviews/*'`, repo instructions, and targeted contract searches. I treated the dirty worktree as intentional prior-cycle work and did not revert or fix anything.
+All eight asserted fixes are delivered in the code. Fresh test evidence collected: 70/70 TS password-policy tests pass; 8/8 Rust validation tests pass serially (2 fail under default parallel execution — see V-8b). No acceptance criterion is MISSING.
 
-Review-relevant instruction/docs sources:
+### Evidence
+| Check | Result | Command/Source | Output |
+|-------|--------|----------------|--------|
+| TS password tests | pass | `npx vitest run tests/unit/security/password.test.ts tests/unit/actions/change-password.test.ts tests/unit/actions/public-signup.test.ts tests/unit/api/users.route.test.ts` | 4 files, 70 tests, 0 failed |
+| Rust validation tests (parallel) | fail | `cargo test validation` | 6 passed, **2 failed** (`admin_image_tag_must_stay_in_judge_namespace`, `production_mode_rejects_images_without_trusted_registry`) |
+| Rust validation tests (serial) | pass | `cargo test validation -- --test-threads=1` | 8 passed, 0 failed |
+| Static read | pass | Read of 8 target files + call-site grep | see per-claim evidence |
 
-- `AGENTS.md` password policy, deployment recovery, language/admin behavior, Docker image API, problem-description requirements.
-- `CLAUDE.md` deploy topology rules for `algo.xylolabs.com`.
-- `.context/development/problem-descriptions.md` mandatory Markdown problem-description contract.
-- `docs/authentication.md`, `docs/deployment.md`, `docs/api.md`, `docs/function-judging.md`.
-- `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md` prior-cycle intent and remaining gate notes.
+### Acceptance Criteria
 
-Dirty implementation/test files examined:
+| # | Criterion | Status | Evidence |
+|---|-----------|--------|----------|
+| V-1 | Per-problem export gated behind `canManageProblem`; students cannot obtain hidden tests/expected outputs | VERIFIED | `src/app/api/v1/problems/[id]/export/route.ts:35-36` calls imported `canManageProblem` BEFORE the testCase select at lines 38-47 (which returns `expectedOutput` + `isVisible` for all cases). `src/lib/auth/permissions.ts:186-217` returns false for non-admins/non-authors/non-teaching-instructors → 403. |
+| V-2 | Pre-restore ZIP audit uses actual pending file count | VERIFIED | `src/app/api/v1/admin/restore/route.ts:158-160` interpolates `pendingUploadedFiles.length` (populated at line 90 from `parseBackupZip(...).uploads`). Audit fires pre-`importDatabase` (line 151 vs 165). |
+| V-3 | User-deletion audit recorded after transaction commits | VERIFIED | `src/app/api/v1/users/[id]/route.ts:491-503` runs `execTransaction` (scrub + delete); `recordAuditEvent(auditContext)` is at line 506, AFTER the awaited transaction. Comment at line 505 documents intent. |
+| V-4 | No import-time throw for missing runner token | VERIFIED | `src/lib/docker/client.ts:26-33` computes `_productionMissingToken` and calls `logger.error(...)` — no `throw`. Misconfiguration is surfaced to API callers as generic `configError` via `getWorkerDockerApiConfigError` (lines 206-210). |
+| V-5 | Client-side password length validation matches server | VERIFIED | `src/app/(auth)/reset-password/reset-password-form.tsx:10` imports `FIXED_MIN_PASSWORD_LENGTH`; explicit guard at lines 46-50; `minLength` attrs at lines 126 & 154. Server (`src/app/api/v1/auth/reset-password/route.ts:34-38`) uses the same constant and returns `minLength: FIXED_MIN_PASSWORD_LENGTH`, which the form reads at line 79. |
+| V-6 | `minPasswordLength` removed from configurable settings | VERIFIED (with residual) | `src/lib/security/password.ts:1` hardcodes `FIXED_MIN_PASSWORD_LENGTH = 8`; `src/lib/security/constants.ts:7-9` `getMinPasswordLength()` now just returns the constant (no `getConfiguredSettings()` read). Grep found **no** references in UI components, `messages/`, `system-settings-config.ts`, or `admin/settings/route.ts`. Commit 475b931d removed UI/validator/i18n. **Residual:** DB column `min_password_length` still declared at `src/lib/db/schema.pg.ts:591` — orphaned and unread. |
+| V-7 | Dead-letter timestamp uses chrono | VERIFIED | `judge-worker-rs/src/executor.rs:972` — `let failed_at = chrono::Utc::now().format("%Y%m%dT%H%M%SZ").to_string();`; only timestamp field of `DeadLetterEntry` (line 928). `chrono = { version = "0.4", features = ["alloc"] }` declared at `judge-worker-rs/Cargo.toml:17`. |
+| V-8 | Production requires trusted registries; rejects unqualified images | PARTIALLY VERIFIED | `judge-worker-rs/src/validation.rs:62-68` — production + **empty** trusted list → reject all (VERIFIED, and test asserts it). **But** `validate_docker_image_with_trusted` at line 29-31 returns `segments.len() == 1` for unqualified images, so once any trusted registry is configured, `judge-python:latest` is still ACCEPTED in production. The literal claim "rejects unqualified images" is not delivered; only "requires trusted registries to be configured" is. |
+| V-9 | Server password policy applied at all password-setting paths | VERIFIED | All 9 src call sites route through the central policy: signup `actions/public-signup.ts:126`; reset `api/v1/auth/reset-password/route.ts:34`; change-password `actions/change-password.ts:68`; admin create `actions/user-management.ts:300,418` + `api/v1/users/route.ts:83` + `api/v1/users/bulk/route.ts:73`; admin reset `api/v1/users/[id]/route.ts:266`; recruit-link `assignments/recruiting-invitations.ts:588,699`. `users/core.ts:59-63` `validateAndHashPassword` delegates to `getPasswordValidationError`. 70 tests pass. |
 
-- Deployment/test harness: `deploy-docker.sh`, `playwright.config.ts`, `scripts/playwright-local-webserver.sh`, `tests/unit/infra/deploy-security.test.ts`, `tests/unit/infra/playwright-profiles.test.ts`.
-- Password/auth/settings: `src/lib/security/password.ts`, `src/lib/security/constants.ts`, `src/lib/system-settings-config.ts`, `src/lib/validators/system-settings.ts`, `src/app/api/v1/admin/settings/route.ts`, `src/lib/actions/system-settings.ts`, `src/app/api/v1/auth/reset-password/route.ts`, `src/app/(auth)/reset-password/reset-password-form.tsx`, `src/app/change-password/change-password-form.tsx`, `src/app/(auth)/signup/signup-form.tsx`, `src/app/(auth)/recruit/[token]/recruit-start-form.tsx`, `src/lib/actions/public-signup.ts`, `src/lib/actions/user-management.ts`, `messages/en.json`, `messages/ko.json`, relevant password tests.
-- Docker/language/judge: `src/lib/docker/client.ts`, `src/app/api/v1/admin/docker/images/build/route.ts`, `src/lib/judge/docker-image-validation.ts`, `judge-worker-rs/src/validation.rs`, `src/lib/judge/sync-language-configs.ts`, `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`, `src/app/(public)/languages/page.tsx`, `tests/unit/docker/client.test.ts`, `tests/unit/sync-language-configs-skip-instrumentation.test.ts`, `tests/unit/dashboard-judge-system-implementation.test.ts`.
-- Judge report/API validation: `judge-worker-rs/src/executor.rs`, `src/lib/validators/api.ts`, `src/app/api/v1/judge/poll/route.ts`, `src/app/api/v1/judge/claim/route.ts`, `tests/unit/validators/api.test.ts`, judge status/report tests.
-- Import/export/restore/problem/realtime/plugins: `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/export.ts`, `src/app/api/v1/problems/import/route.ts`, `src/lib/problem-management.ts`, `src/lib/validators/problem-management.ts`, `src/lib/plugins/secrets.ts`, `src/lib/realtime/realtime-coordination.ts`, and their listed unit/E2E tests.
+### Gaps / Findings
 
-No issue found in the reviewed language count/sync source of truth, problem import validator reuse, judge-report app-side schema limits, Rust trusted-registry boundary check, SSE LIKE escaping, plugin secret export encryption for newly handled values, or function-problem API contract paths beyond the findings below.
+- **V-8a — Production does not reject unqualified `judge-*` images.** Risk: medium. Confidence: high. `validation.rs:29-31` accepts single-segment images regardless of production flag once `TRUSTED_DOCKER_REGISTRIES` is non-empty. If the intent of "trusted registries in production" was to force every pull through a vetted registry, this is incomplete; if unqualified names are meant to resolve to locally-built judge images only (per the deployment model in CLAUDE.md — images built on worker-0), it is acceptable by design. Suggestion: clarify the claim wording; if enforcement is intended, require a registry prefix in production by returning `false` at line 30 when `is_production`.
 
-## Findings
+- **V-8b — Rust validation tests are flaky under parallel execution (regression-safety gap).** Risk: medium. Confidence: high. Fresh `cargo test validation` (default parallel) FAILED 2 of 8: `admin_image_tag_must_stay_in_judge_namespace` (validation.rs:167) and `production_mode_rejects_images_without_trusted_registry` (validation.rs:188). Serial run (`--test-threads=1`) passes 8/8. Root cause: `valid_docker_images`, `production_mode_rejects...`, and `admin_image_tag...` all mutate the shared process env (`JUDGE_PRODUCTION_MODE`, `TRUSTED_DOCKER_REGISTRIES`) via `unsafe { std::env::set_var / remove_var }` and race when run concurrently — a genuine data race (the reason these calls became `unsafe` in Rust 1.85+). Suggestion: inject production/trusted config as a function parameter (read env once at the boundary) so tests don't mutate global state; or gate the env-dependent tests with a serial mutex.
 
-### V2-1 - Password minimum remains configurable even though policy is fixed at 8
+- **V-6 residual — Orphaned DB column `min_password_length`.** Risk: low. Confidence: high. `schema.pg.ts:591` still declares the column; no code reads it. It is harmless but misleading (operators may believe it is effective). Suggestion: drop the column in a future migration, or leave a code comment stating it is a deprecated no-op kept for migration safety.
 
-Status: confirmed  
-Confidence: High
+- **Observation (not a finding against any listed commit) — `problems/[id]/route.ts` GET uses a weaker local `canManageProblem` boolean.** `src/app/api/v1/problems/[id]/route.ts:60` defines `const canManageProblem = caps.has("problems.edit") || problemStub.authorId === user.id` — a different, group-scope-less check than the imported function used by PATCH (line 101) and DELETE (line 222). Student safety is preserved: non-managers get `referenceSolution` stripped and **no** testCases (lines 66-73). The asymmetry only affects whether a `problems.edit` holder teaching group A can *read* test cases of a problem linked only to group B (narrow, pre-existing — escalated by code-reviewer as CR-2).
 
-Evidence:
+### Coverage
 
-- `AGENTS.md:628-634` mandates only a fixed 8-character minimum and says not to change the minimum without explicit approval.
-- `src/lib/security/password.ts:1-27` implements that fixed policy with `FIXED_MIN_PASSWORD_LENGTH = 8` and only checks `password.length < 8`.
-- The admin settings UI still exposes `minPasswordLength` in `src/app/(dashboard)/dashboard/admin/settings/page.tsx:49-52` and renders it as an editable numeric field via `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:86-114`.
-- The API/action paths still accept and store the key: `src/app/api/v1/admin/settings/route.ts:63-80` and `src/lib/actions/system-settings.ts:21-46`.
-- The validator allows values from 8 to 128 in `src/lib/validators/system-settings.ts:126-130`, and settings resolution still reads the DB value in `src/lib/system-settings-config.ts:120-124`.
-- UI copy still tells operators this is a configurable requirement: `messages/en.json:1549-1550`, `messages/ko.json:1549-1550`.
-- `src/lib/security/constants.ts:6-8` still returns the configured value, creating a second password-minimum source that disagrees with the real validator.
+| Claim | Code verified | Fresh test evidence | Verdict |
+|-------|:---:|:---:|:---:|
+| V-1 export gate | yes | n/a (read) | VERIFIED |
+| V-2 restore audit count | yes | n/a (read) | VERIFIED |
+| V-3 post-commit audit | yes | n/a (read) | VERIFIED |
+| V-4 no import throw | yes | n/a (read) | VERIFIED |
+| V-5 client password validation | yes | yes (70 tests) | VERIFIED |
+| V-6 setting removed | yes | n/a (read) | VERIFIED (residual) |
+| V-7 chrono dead-letter | yes | yes (build OK) | VERIFIED |
+| V-8 prod trusted registries | yes | yes (8/8 serial; 6/8 parallel) | PARTIALLY VERIFIED |
+| V-9 password policy consistency | yes | yes (70 tests) | VERIFIED |
 
-Failure scenario:
+### Recommendation
+**APPROVE** the eight code fixes as delivered. Two follow-ups are worth filing as separate tasks: (1) tighten/clarify V-8 — either enforce registry prefixes in production or correct the claim's wording, and (2) fix the env-race flakiness in the Rust validation tests so the production-rejection guarantee is protected by a reliable CI signal.
 
-An admin sets "Minimum Password Length" to `12` from the settings page. The setting persists and appears effective, but signup/change/reset/recruit password validation still accepts 8-character passwords through `getPasswordValidationError()`. That creates a documented/admin-visible policy that the server does not enforce.
-
-Suggested fix:
-
-Remove `minPasswordLength` from configurable settings, API allowlists, admin UI, i18n, and the `getMinPasswordLength()` helper, or make it a read-only display of `FIXED_MIN_PASSWORD_LENGTH`. Add a regression test that setting payloads cannot change the password minimum.
-
-### V2-2 - Reset-password form does not validate the mandatory 8-character minimum before submission
-
-Status: confirmed  
-Confidence: High
-
-Evidence:
-
-- `AGENTS.md:632-633` requires client-side password forms to validate `length >= 8` before submission and show a clear error.
-- The reset-password form submits after only checking token and password equality in `src/app/(auth)/reset-password/reset-password-form.tsx:34-51`; there is no length check before `fetch()`.
-- The password input at `src/app/(auth)/reset-password/reset-password-form.tsx:113-122` and confirmation input at `src/app/(auth)/reset-password/reset-password-form.tsx:140-149` have `required` but no `minLength`.
-- The server does reject short passwords and returns the fixed minimum in `src/app/api/v1/auth/reset-password/route.ts:34-38`, and the client maps that response at `src/app/(auth)/reset-password/reset-password-form.tsx:68-75`. That is post-submission, not the required client-side pre-submit validation.
-
-Failure scenario:
-
-A user enters a matching 7-character password and submits the reset form. The browser sends the request, consumes rate-limit attempts, and only then receives `passwordTooShort`. This violates the repository's explicit client-side validation contract and can make reset-password UX/rate-limiting behavior differ from signup and change-password.
-
-Suggested fix:
-
-Import `FIXED_MIN_PASSWORD_LENGTH`, add `minLength={FIXED_MIN_PASSWORD_LENGTH}` to both reset-password inputs, and add an explicit pre-fetch length check that sets the same localized `passwordTooShort` message. Add a component or route-level test for the short-password pre-submit path.
-
-### V2-3 - Docker admin API contract says generic `configError`, but production URL-without-token throws at module import
-
-Status: confirmed  
-Confidence: High
-
-Evidence:
-
-- `src/lib/docker/client.ts:28-41` documents that worker Docker API misconfiguration details are logged server-side and only generic `configError` is returned to API callers.
-- `src/lib/docker/client.ts:145-149` implements the generic return helper.
-- `tests/unit/docker/client.test.ts:77-97` asserts a runner URL without `RUNNER_AUTH_TOKEN` yields generic `configError`, and `tests/unit/docker/client.test.ts:99-126` asserts production without a runner API also yields generic `configError`.
-- But `src/lib/docker/client.ts:21-27` throws at import time when `NODE_ENV === "production"`, a worker URL is configured, and `RUNNER_AUTH_TOKEN` is missing.
-
-Failure scenario:
-
-In production, an operator configures `COMPILER_RUNNER_URL` or `JUDGE_WORKER_URL` but forgets `RUNNER_AUTH_TOKEN`. Any admin Docker image API route importing `@/lib/docker/client` can fail before handler code runs, bypassing the intended `{ error: "configError" }` API response and the admin UI's generic i18n path. The tests miss this exact production combination.
-
-Suggested fix:
-
-Remove the top-level throw and let `WORKER_DOCKER_API_CONFIG_DETAIL` plus `getWorkerDockerApiConfigError()` handle this case, or add a route-level production test for URL-without-token and intentionally document/handle the startup failure path.
-
-### V2-4 - ZIP restore audit summary always records `0 files`
-
-Status: confirmed  
-Confidence: High
-
-Evidence:
-
-- `src/app/api/v1/admin/restore/route.ts:78-80` initializes `filesRestored = 0` and `pendingUploadedFiles = []`.
-- ZIP parsing fills `pendingUploadedFiles` at `src/app/api/v1/admin/restore/route.ts:82-91`.
-- The audit event is recorded before file restoration, and its ZIP summary interpolates `${filesRestored}` at `src/app/api/v1/admin/restore/route.ts:151-163`.
-- Files are actually restored later, after successful DB import, at `src/app/api/v1/admin/restore/route.ts:176-178`.
-- The HTTP response returns the real restored count after that at `src/app/api/v1/admin/restore/route.ts:180-184`, so the audit trail and API response can disagree.
-
-Failure scenario:
-
-An admin restores a ZIP backup containing uploaded files. The restore succeeds and the API returns a positive `filesRestored`, but the audit log permanently says "0 files". During incident response, operators reading audit logs will think no uploaded files were restored.
-
-Suggested fix:
-
-Use `pendingUploadedFiles.length` in the pre-import audit summary, move the audit event after `restoreParsedBackupFiles()`, or emit a second completion audit event with the actual `filesRestored` count.
-
-### V2-5 - `AGENTS.md` migration-recovery docs still describe a warn path, but the script/tests now abort
-
-Status: confirmed  
-Confidence: High
-
-Evidence:
-
-- `AGENTS.md:379-384` says destructive `drizzle-kit push` detection "downgrades the success log to a warn" and shows the operator a `[WARN]` message.
-- The same file later says the policy is to "halt and escalate" at `AGENTS.md:430`, so the doc is internally inconsistent.
-- `deploy-docker.sh:1011-1020` documents the updated behavior: capture output and abort before new app code starts.
-- `deploy-docker.sh:1058-1064` calls `die` when destructive prompt markers are detected.
-- `tests/unit/infra/deploy-security.test.ts:31-43` now explicitly expects `die` and rejects the old `warn` behavior.
-
-Failure scenario:
-
-An operator hits a destructive migration prompt during deploy and consults `AGENTS.md`. The recovery section tells them to look for a warning and implies deploy continued, while the actual script exits. This can waste incident time and confuse whether new app code was started.
-
-Suggested fix:
-
-Update `AGENTS.md:377-388` to state that detection aborts the deploy with `die`, not warning-only behavior, and adjust the recovery prose from "When you see the warn" to "When the deploy aborts with this error".
-
-### V2-6 - Playwright local web server can run stale standalone code by default
-
-Status: risk  
-Confidence: Medium
-
-Evidence:
-
-- The Playwright local webServer uses `bash scripts/playwright-local-webserver.sh` in `playwright.config.ts:98-119`, with `reuseExistingServer: false`, so this script owns the served app.
-- `scripts/playwright-local-webserver.sh:105-107` only runs `npm run build` when `PLAYWRIGHT_REBUILD_APP=1` or `.next/standalone/server.js` is missing.
-- It then refreshes static assets and starts the existing standalone server at `scripts/playwright-local-webserver.sh:109-118`.
-- `tests/unit/infra/playwright-profiles.test.ts:46-53` locks in this reuse behavior.
-- The remediation plan notes the full local Playwright gate is still not green in `plans/open/2026-06-22-rpf-cycle-1-review-remediation.md:181-191`, so false stale-code signals matter for the current cycle.
-
-Failure scenario:
-
-A developer changes app code, has an old `.next/standalone/server.js` from a previous run, and runs `npx playwright test` without `PLAYWRIGHT_REBUILD_APP=1`. The tests can exercise the old server bundle while copying current static assets, producing false passes or misleading failures unrelated to the current source tree.
-
-Suggested fix:
-
-Default to rebuilding for local Playwright runs, or add a freshness check based on source/package timestamps or a build fingerprint. If reuse is required for incident speed, expose it as an opt-in such as `PLAYWRIGHT_REUSE_BUILD=1` and update tests/docs accordingly.
-
-## Final Missed-Issue Sweep
-
-I ran targeted sweeps for the required coverage areas after the initial inventory:
-
-- Password-policy and reset/change/signup/recruit flows: found V2-1 and V2-2.
-- Judge report size/result-count validation across Rust worker, app validator, and tests: worker-side truncation and app-side caps align; no additional finding.
-- Problem-description/import validation: import now reuses the normal bounded test-case/description/function schema; no finding.
-- Deployment docs vs script/tests: found V2-5; worker/nginx fatal paths align with tests.
-- Language/judge docs vs config: counted 125 language config entries with no duplicate language ids; startup sync preserves command overrides while explicit `npm run languages:sync` remains source-of-truth sync; no finding.
-- Docker image API/admin contract: build route validates local `judge-*` Dockerfiles and Rust/TS trusted registry boundary checks align; found only V2-3.
-- Backup/export/restore contracts: ZIP extraction caps and plugin secret export encryption paths are present; found V2-4 audit-count drift.
-- Realtime SSE connection counting: SQL LIKE wildcard escaping is present and covered; no finding.
-
-No tests were run as part of this verifier pass; this was an evidence review only.
+Key file paths: `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/problems/[id]/export/route.ts`, `/Users/hletrd/flash-shared/judgekit/src/lib/auth/permissions.ts`, `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/restore/route.ts`, `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/users/[id]/route.ts`, `/Users/hletrd/flash-shared/judgekit/src/lib/docker/client.ts`, `/Users/hletrd/flash-shared/judgekit/src/app/(auth)/reset-password/reset-password-form.tsx`, `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/auth/reset-password/route.ts`, `/Users/hletrd/flash-shared/judgekit/src/lib/security/password.ts`, `/Users/hletrd/flash-shared/judgekit/src/lib/security/constants.ts`, `/Users/hletrd/flash-shared/judgekit/src/lib/db/schema.pg.ts` (line 591 residual), `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs` (line 972), `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/validation.rs` (lines 29-31, 62-68, and flaky tests at 167 & 188).

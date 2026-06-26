@@ -1,465 +1,162 @@
-# Architect Review - 2026-06-22
-
-Scope: architecture/design review for Prompt 1 of the review-plan-fix cycle in
-`/Users/hletrd/flash-shared/judgekit`. I reviewed layering and boundary risks
-between the Next.js app, PostgreSQL/Drizzle schema and migrations, Rust judge
-workers, Docker socket proxy, deployment scripts, and docs. I did not edit source
-code or run fix-up commands.
-
-## Inventory
-
-Read governing and context material:
-
-- `AGENTS.md`
-- `CLAUDE.md`
-- `.context/README.md`
-- `.context/development/conventions.md`
-- `.context/development/documentation-rules.md`
-- `.context/development/problem-descriptions.md`
-- `.context/development/open-workstreams.md`
-- `.context/project/current-state.md`
-- `.context/plans/README.md`
-- `.context/plans/2026-06-20-cycle-1-review-remediation.md`
-- Relevant prior/current review artifacts under `.context/reviews/`
-
-Read architecture/ops docs:
-
-- `README.md`
-- `docs/deployment.md`
-- `docs/deployment-automation.md`
-- `docs/judge-workers.md`
-- `docs/function-judging.md`
-- `docs/judge-worker-incident-runbook.md`
-- `docs/operator-incident-runbook.md`
-- `docs/judge-worker-gvisor.md`
-- `docs/admin-security-operations.md`
-- `docs/monitoring.md`
-- `docs/threat-model.md`
-- `docs/api.md`
-- `docs/languages.md`
-
-Systematically inspected review-relevant implementation files:
-
-- Next/API/runtime: `src/app/api/v1/judge/claim/route.ts`,
-  `src/app/api/v1/admin/docker/images*/route.ts`, `src/lib/api/handler.ts`,
-  `src/lib/security/production-config.ts`, `src/lib/docker/client.ts`,
-  `src/lib/compiler/execute.ts`, `src/lib/judge/sync-language-configs.ts`,
-  `src/lib/actions/language-configs.ts`, `src/lib/capabilities/*`,
-  `src/instrumentation.ts`.
-- DB/migration surface: `src/lib/db/schema.pg.ts`, `drizzle/pg/**`,
-  `drizzle/pg/meta/_journal.json`, `scripts/check-migration-drift.sh`.
-- Rust worker/proxy boundary: `judge-worker-rs/src/{config,runner,validation}.rs`,
-  with targeted reads of Docker admin handlers and runner auth validation.
-- Deploy/ops: `deploy-docker.sh`, `deploy.sh`, `scripts/deploy-worker.sh`,
-  `docker-compose.production.yml`, `docker-compose.worker.yml`,
-  `scripts/docker-disk-cleanup.sh`.
-- Tests used as contract evidence: targeted `tests/unit/**` files around
-  language config actions, API handler capabilities, Docker client, worker
-  runtime, and deployment infra.
-
-Current worktree note: before this artifact, unrelated review files were already
-dirty (`.context/reviews/code-reviewer.md`, `critic.md`, `perf-reviewer.md`,
-`test-engineer.md`, `verifier.md`). I did not modify them.
-
-## Confirmed Issues
-
-### ARCH-1 - Startup language sync overwrites admin-managed command overrides
-
-Severity: High
-Confidence: High
-Status: Confirmed
-
-Locations:
-
-- `src/lib/judge/sync-language-configs.ts:10-17`
-- `src/lib/judge/sync-language-configs.ts:23-57`
-- `src/lib/actions/language-configs.ts:88-119`
-- `src/instrumentation.ts:32-36`
-- `src/lib/db/schema.pg.ts:516-539`
-- `AGENTS.md:161`
-- `AGENTS.md:194-204`
-
-Evidence:
-
-`syncLanguageConfigsOnStartup()` runs during every app boot from
-`src/instrumentation.ts:32-36`. The sync code loads existing
-`language_configs.language`, `run_command`, and `compile_command`, then for every
-default language updates existing rows when either command differs from
-`src/lib/judge/languages.ts` defaults (`sync-language-configs.ts:46-54`). The
-admin action explicitly lets operators update `dockerImage`, `compileCommand`,
-`runCommand`, and `dockerfile` in the DB (`language-configs.ts:88-119`). The
-schema has no "source-managed vs operator override" marker
-(`schema.pg.ts:516-539`). The project guide states the worker reads
-`dockerImage`, `compileCommand`, and `runCommand` from the DB at runtime and that
-admin language settings can be overridden without redeploying the worker
-(`AGENTS.md:161`, `AGENTS.md:194-204`).
-
-Concrete failure scenario:
-
-An admin hotfixes `zig` or `groovy` commands in `/dashboard/admin/languages`
-after a toolchain/image issue. New submissions use the fixed DB command until
-the Next app restarts or redeploys. On boot, the startup sync sees the command
-diff and silently writes the static default back. The worker keeps reading from
-the DB, so the same language starts failing again after an unrelated app restart.
-
-Suggested fix:
-
-Make the sync insert-only for existing language rows unless a row is explicitly
-marked source-managed. Add one of:
-
-- a `language_configs.command_source` / `is_customized` / `last_synced_hash`
-  field and only overwrite rows whose prior value matches the last synced
-  default;
-- an explicit admin "reset to defaults" action;
-- a migration that records current rows as customized before changing sync
-  behavior.
-
-Add a unit/integration test that updates a command through
-`updateLanguageConfig`, runs `syncLanguageConfigsOnStartup`, and proves the admin
-override survives.
-
-### ARCH-2 - Destructive migration detection warns but still proceeds to start new code
-
-Severity: High
-Confidence: High
-Status: Confirmed
-
-Locations:
-
-- `deploy-docker.sh:82-90`
-- `deploy-docker.sh:1011-1030`
-- `deploy-docker.sh:1040-1064`
-- `deploy-docker.sh:1066-1096`
-- `AGENTS.md:377-390`
-
-Evidence:
-
-The deploy header says destructive `drizzle-kit push` diffs halt the deploy and
-escalate (`deploy-docker.sh:82-90`). The migration block explains that
-non-interactive `drizzle-kit push` prints destructive/data-loss prompts but does
-not apply the destructive change (`deploy-docker.sh:1011-1019`). The actual code
-captures output and, on matching destructive markers, only logs `warn` at
-`deploy-docker.sh:1060-1061`; it does not `die`. The script then applies additive
-repairs and starts containers at `deploy-docker.sh:1066-1096`.
-
-Concrete failure scenario:
-
-A deploy removes or renames a column from `schema.pg.ts`. `drizzle-kit push`
-prints a destructive prompt, exits successfully without applying it, the script
-logs a warning, and then starts the new app image against the old schema. The
-app can now 500 on queries or writes that assume the new schema, while the deploy
-appears to have reached the normal container start path.
-
-Suggested fix:
-
-Fail closed when destructive prompt markers are detected unless
-`DRIZZLE_PUSH_FORCE=1` is set after explicit operator approval. Replace the warn
-branch with `die`, or require a deliberately named escape hatch such as
-`ALLOW_UNAPPLIED_DESTRUCTIVE_DIFF=1` that also skips app restart. Add a
-`npm run lint:bash` or shell-test fixture that stubs push output with
-"data loss" and asserts the script exits before the container start step.
-
-### ARCH-3 - Docker image admin falls back to local Docker from the Next app
-
-Severity: High
-Confidence: High
-Status: Confirmed
-
-Locations:
-
-- `AGENTS.md:303-309`
-- `README.md:237-239`
-- `src/lib/docker/client.ts:13-22`
-- `src/lib/docker/client.ts:40`
-- `src/lib/docker/client.ts:342-350`
-- `src/lib/docker/client.ts:369-377`
-- `src/lib/docker/client.ts:419-430`
-- `src/lib/docker/client.ts:455-463`
-- `src/lib/docker/client.ts:483-490`
-- `src/lib/security/production-config.ts:11-35`
-
-Evidence:
-
-The documented architecture says the Docker socket proxy is the only direct
-daemon holder, the judge worker talks to it via `DOCKER_HOST`, and the Next app
-uses the worker's authenticated internal API instead of direct daemon access
-(`AGENTS.md:303-309`, `README.md:237-239`). `src/lib/docker/client.ts` selects
-the worker path only when both `JUDGE_WORKER_URL`/`COMPILER_RUNNER_URL` and
-`RUNNER_AUTH_TOKEN` are set (`client.ts:13-22`, `client.ts:40`). If not, the
-Docker admin functions run local `docker` CLI operations from the Next process:
-list, pull, build, disk usage, and remove (`client.ts:342-350`,
-`client.ts:369-377`, `client.ts:419-430`, `client.ts:455-463`,
-`client.ts:483-490`). Production startup validation does not require either
-runner URL or `RUNNER_AUTH_TOKEN` (`production-config.ts:11-35`).
-
-Concrete failure scenario:
-
-An operator runs the Next app under systemd or an ad-hoc production container
-with Docker CLI/socket access but forgets `COMPILER_RUNNER_URL` or
-`RUNNER_AUTH_TOKEN`. The admin language/Docker page still works by controlling
-the local daemon from the app process. That bypasses the intended worker-only
-Docker boundary and increases the blast radius of an app/admin compromise.
-
-Suggested fix:
-
-Make Docker image management fail closed in production unless a worker Docker
-API is configured and authenticated. Keep local Docker fallback behind an
-explicit development-only flag such as `ENABLE_DOCKER_ADMIN_LOCAL_FALLBACK=1`,
-and have `assertProductionConfig()` reject production deployments where Docker
-admin is enabled but the worker URL/token pair is absent. Align docs/tests with
-that policy.
-
-### ARCH-4 - App-only deploy topology is still opt-in shell discipline, not encoded in the deploy system
-
-Severity: High
-Confidence: High
-Status: Confirmed
-
-Locations:
-
-- `CLAUDE.md:7-12`
-- `deploy-docker.sh:22-28`
-- `deploy-docker.sh:181-186`
-- `deploy-docker.sh:225-227`
-- `deploy-docker.sh:739-750`
-- `deploy-docker.sh:763-802`
-- `deploy-docker.sh:1096-1111`
-- `docker-compose.production.yml:120-145`
-
-Evidence:
-
-The repo rule says `algo.xylolabs.com` is app/DB/nginx only, worker and language
-images must be built on `worker-0`, and deploys to algo must set
-`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`
-(`CLAUDE.md:7-12`). The deploy header says `BUILD_WORKER_IMAGE` and
-`INCLUDE_WORKER` default false on the app server (`deploy-docker.sh:22-28`), but
-the script actually defaults `INCLUDE_WORKER=true`, `SKIP_LANGUAGES=false`, and
-`BUILD_WORKER_IMAGE=auto`, which becomes `true` when `INCLUDE_WORKER` is true
-(`deploy-docker.sh:181-186`, `deploy-docker.sh:225-227`). The build phase then
-builds the worker image and all language images on `REMOTE_HOST`
-(`deploy-docker.sh:739-750`, `deploy-docker.sh:763-802`). Even with
-`INCLUDE_WORKER=false`, compose still starts the worker service and stops it
-afterward (`deploy-docker.sh:1096-1111`, `docker-compose.production.yml:120-145`).
-
-Concrete failure scenario:
-
-An app-host deploy omits one of the three required env flags. The script builds
-dozens of language images or a worker image on the app server, consuming disk and
-violating the production topology. If `INCLUDE_WORKER=false` is set but the
-worker service is missing/broken, `docker compose up -d` can still fail because
-of a service that should not be part of the app-host deployment.
-
-Suggested fix:
-
-Encode target topology in the deploy system instead of relying on remembered env
-triples. Options:
-
-- add a required `DEPLOY_TOPOLOGY=integrated|app-only|worker-only` and derive
-  `SKIP_LANGUAGES`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER`, service lists, and
-  compose overrides from it;
-- for app-only deploys, call `docker compose up -d db app code-similarity rate-limiter`
-  or use an app-only compose override that removes `judge-worker`;
-- make `INCLUDE_WORKER=false` imply `SKIP_LANGUAGES=true` and
-  `BUILD_WORKER_IMAGE=false` unless an explicit unsafe override is set.
-
-Add a shell regression test that runs the script in dry-run/stub mode for the
-algo topology and asserts no worker/language build or worker service start is
-attempted.
-
-## Likely Issues
-
-### ARCH-5 - Dedicated-worker Docker admin API and proxy ACLs are not one contract
-
-Severity: Medium
-Confidence: Medium
-Status: Likely issue
-
-Locations:
-
-- `judge-worker-rs/src/runner.rs:241-333`
-- `judge-worker-rs/src/runner.rs:442-475`
-- `judge-worker-rs/src/runner.rs:590-623`
-- `judge-worker-rs/src/runner.rs:919-928`
-- `docker-compose.worker.yml:25-41`
-- `docs/judge-workers.md:93-102`
-- `scripts/deploy-worker.sh:139-148`
-
-Evidence:
-
-The Rust runner always exposes Docker image/admin routes (`runner.rs:919-928`)
-and implements them with local `docker images`, `inspect`, `pull`, `rmi`, and
-`build` commands (`runner.rs:241-333`). The dedicated worker compose proxy
-defaults `IMAGES=0` and hardcodes `BUILD=0` (`docker-compose.worker.yml:25-41`).
-The docs say operators can opt into image/build management with
-`WORKER_DOCKER_PROXY_IMAGES=1` and `WORKER_DOCKER_PROXY_BUILD=1`
-(`docs/judge-workers.md:93-102`), but `docker-compose.worker.yml` does not read
-`WORKER_DOCKER_PROXY_BUILD`, and `scripts/deploy-worker.sh` never sets the image
-ACLs when creating `.env` (`scripts/deploy-worker.sh:139-148`).
-
-Concrete failure scenario:
-
-In the split app/worker topology, the admin Docker image UI points at the remote
-runner. Listing images or building a missing language image fails at runtime
-because the runner route exists, but the proxy denies the underlying Docker
-image/build API. Operators see a generic admin UI failure during an incident
-instead of a clear "image management disabled on this worker" state.
-
-Suggested fix:
-
-Make image-management capability explicit and consistent across layers. Either
-hide/disable admin Docker image operations when the worker reports
-image-management disabled, or wire documented proxy envs through compose and
-deploy helpers. If build must stay off by default, expose a `/capabilities`
-runner endpoint and have the Next admin API return a clear configuration error
-before invoking Docker.
-
-### ARCH-6 - Function harness assembly failure is converted into a student compile failure
-
-Severity: Medium
-Confidence: High
-Status: Likely issue
-
-Locations:
-
-- `AGENTS.md:176-192`
-- `src/app/api/v1/judge/claim/route.ts:374-401`
-- `src/app/api/v1/judge/claim/route.ts:404-418`
-
-Evidence:
-
-Function problems are app-assembled into `prelude + studentCode + generatedMain`
-before being sent to the unchanged worker (`AGENTS.md:176-192`). In the claim
-route, if parsing or assembly throws, the code logs the error and falls back to
-the student's verbatim source (`claim/route.ts:374-401`), then returns a normal
-claim payload to the worker (`claim/route.ts:404-418`).
-
-Concrete failure scenario:
-
-A problem's stored `functionSpec` is malformed after an author edit or migration
-bug. Every student submission is sent to the worker without the generated
-harness and fails as a compile error against the student's original function
-body. The platform configuration fault is surfaced as student failure, making it
-hard for instructors/operators to distinguish bad problem setup from bad code.
-
-Suggested fix:
-
-Treat function assembly failure as a platform/problem configuration error, not a
-student compile result. Release or mark the claimed submission with a
-non-student-fault status, emit an audit/alert entry with the `problemId`, and
-show instructors that the problem needs repair. Keep queue health by releasing
-the claim or moving affected submissions to a retryable/internal-error state
-rather than sending verbatim source to the worker.
-
-## Manual-Validation Risks
-
-### ARCH-MV-1 - Synthesized app-only runner URL depends on undocumented host bridge/tunnel state
-
-Severity: Medium
-Confidence: Medium
-Status: Manual validation risk
-
-Locations:
-
-- `deploy-docker.sh:710-722`
-- `docs/deployment.md:180-187`
-- `docs/judge-workers.md:104-112`
-- `.context/plans/2026-06-20-cycle-1-review-remediation.md:73-86`
-
-Risk:
-
-When `INCLUDE_WORKER=false`, the deploy script backfills
-`COMPILER_RUNNER_URL=http://host.docker.internal:3001` if the key is missing
-(`deploy-docker.sh:710-722`). The docs describe an SSH tunnel / host bridge path
-for split app/worker topologies (`docs/deployment.md:180-187`,
-`docs/judge-workers.md:104-112`), but compose does not show a host-gateway
-mapping and the open plan already tracks replacing the synthesized URL with an
-explicit external runner requirement (`.context/plans/2026-06-20...:73-86`).
-
-Manual validation:
-
-For every app-only target, verify from inside the app container that
-`COMPILER_RUNNER_URL` resolves and reaches `/health` and authenticated runner
-routes. If it relies on `host.docker.internal`, document the host-gateway or SSH
-tunnel unit that makes it true. Prefer requiring an explicit per-target runner
-URL and smoke-checking it during deploy.
-
-### ARCH-MV-2 - Docker image API authorization docs do not match the route capability model
-
-Severity: Low
-Confidence: High
-Status: Manual validation risk
-
-Locations:
-
-- `docs/api.md:1566-1618`
-- `src/app/api/v1/admin/docker/images/route.ts:48-76`
-- `src/app/api/v1/admin/docker/images/route.ts:129-130`
-- `src/app/api/v1/admin/docker/images/build/route.ts:19-20`
-- `src/app/api/v1/admin/docker/images/prune/route.ts:11-12`
-- `src/lib/capabilities/defaults.ts:82-101`
-- `src/lib/capabilities/types.ts:65-71`
-
-Risk:
-
-`docs/api.md` says Docker image pull, remove, and prune are "Super Admin only"
-(`docs/api.md:1580-1618`). The routes actually require the broad
-`system.settings` capability (`images/route.ts:48-76`,
-`images/route.ts:129-130`, `build/route.ts:19-20`, `prune/route.ts:11-12`).
-Default admins have `system.settings` (`defaults.ts:82-101`), and custom roles
-can be granted it as a general system capability (`types.ts:65-71`).
-
-Manual validation:
-
-Decide whether Docker daemon/image control is intentionally part of
-`system.settings` or should be a narrower capability such as `docker.manage`.
-Then align docs, tests, navigation, and route guards. If custom roles with
-`system.settings` are expected to control Docker, document that operational
-blast radius explicitly.
-
-### ARCH-MV-3 - Migration journal drift remains an operational gate, not enforced here
-
-Severity: Low
-Confidence: Medium
-Status: Manual validation risk
-
-Locations:
-
-- `deploy-docker.sh:1011-1026`
-- `scripts/check-migration-drift.sh:1-80`
-- `drizzle/pg/meta/_journal.json`
-
-Risk:
-
-Production deploys use `drizzle-kit push`, while the repository still carries
-numbered journal SQL under `drizzle/pg/`. The script comments acknowledge the
-push-vs-journal split (`deploy-docker.sh:1011-1026`). I inspected the migration
-surface but did not execute drift checks in this review.
-
-Manual validation:
-
-Run the existing migration drift check before any schema-affecting deploy, and
-keep destructive journal SQL safety steps mirrored in `deploy-docker.sh` until
-the deploy strategy switches to journal-driven migrations.
-
-## Missed-Issues Sweep
-
-Final searches covered:
-
-- direct Docker socket and `DOCKER_HOST` references;
-- Docker build/remove/prune paths and `docker system prune --volumes` risks;
-- `COMPILER_RUNNER_URL`, `RUNNER_AUTH_TOKEN`, `INCLUDE_WORKER`,
-  `SKIP_LANGUAGES`, and worker proxy envs;
-- `drizzle-kit push`, `DRIZZLE_PUSH_FORCE`, migration journal references, and
-  drift-check scripts;
-- admin Docker/image routes, capability gates, and API docs;
-- function judging claim-time assembly and worker handoff;
-- language-config DB writes, startup sync, and admin action tests.
-
-Coverage limits:
-
-- I did not run the test suite, Docker builds, deploy scripts, or live remote
-  probes; this was a static architecture review.
-- I did not perform a full line-by-line audit of every route under `src/app`;
-  focus stayed on architecture boundaries named in the prompt.
-- Several risks overlap with existing open plans; I still recorded them where
-  the current source remains vulnerable or requires manual validation.
+# Architecture & Design Review — judgekit @ HEAD `0b0ac198`
+
+**Scope:** coupling/cohesion, layering, app↔worker↔DB boundary correctness, deploy topology vs CLAUDE.md, queue/transaction design, error contract, startup races, schema/index design, config sources of truth.
+**Mode:** READ-ONLY (delivered inline by architect agent; persisted by orchestrator for provenance).
+
+## Summary
+
+The core architecture is sound: the judge-claim atomic SQL (`FOR UPDATE SKIP LOCKED` + per-worker capacity CTE + optimistic claim-token fence), per-worker secret hashing, the dockerfile/image validators mirrored across TS and Rust, and the destructive-migration guard are all well-engineered with documented invariants. The previously-fixed items I verified (startup sync, docker client fallback, destructive-push detection) are correctly in place. However, I found a **HIGH-severity inconsistency** in the runner-token contract between the two TS modules that import it, a **HIGH-severity deploy-defaults footgun** that contradicts CLAUDE.md, and several medium-severity items around migration-journal integrity, transaction semantics during build, and the trust boundary at the worker host's Docker socket.
+
+## Previously-Flagged Items — Verification Status
+
+| Item | Status | Evidence |
+|---|---|---|
+| Startup language-sync overwriting admin hotfixes | **FIXED** | `src/lib/judge/sync-language-configs.ts:46-63` only backfills when `!record.runCommand` or `record.compileCommand == null`. No overwrite path. `SKIP_INSTRUMENTATION_SYNC=1` opt-out at L83. |
+| Docker client local fallback gated in prod | **FIXED** | `src/lib/docker/client.ts:49-50` — `ALLOW_LOCAL_DOCKER_ADMIN = NODE_ENV !== "production" || JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN === "1"`. |
+| Destructive migration detection | **FIXED** | `deploy-docker.sh:1078-1082` captures push output, greps for `data loss\|are you sure\|warning:.*destructive\|please confirm`, calls `die()`. |
+| App-only deploy topology defaults | **PARTIALLY FIXED — see ARCH-2** | Per-target overrides exist in `.env.deploy.algo` but the script's own defaults invert CLAUDE.md and the per-target files are not auto-sourced. |
+
+## Findings
+
+### ARCH-1 — Import-time throw in compiler/execute.ts contradicts the explicit fix applied to its sibling module
+**Severity: HIGH | Confidence: high**
+**File:** `src/lib/compiler/execute.ts:64-69`
+
+Commit `26cff8e4` ("fix(docker): replace import-time throw with logged error for missing runner token") replaced the import-time throw in `src/lib/docker/client.ts` with a logged error + generic `configError` API response, with an explicit rationale: production misconfiguration should not crash the process at import, and deployment details should not leak via the HTTP error. The fix was applied **only to `docker/client.ts`**. The structurally identical guard in `src/lib/compiler/execute.ts:64-69` was left as a hard `throw`:
+
+```ts
+if (!RUNNER_AUTH_TOKEN && COMPILER_RUNNER_URL && process.env.NODE_ENV === "production") {
+  throw new Error("RUNNER_AUTH_TOKEN must be set in production when COMPILER_RUNNER_URL is configured. ...");
+}
+```
+
+This is worse than the docker/client.ts case because `execute.ts` sits on the **hot judging path** — it is imported by the API route that runs on every compiler-run request, not only by an admin-only image-management route. A misconfigured `RUNNER_AUTH_TOKEN` in production would crash the Next.js server process at first import (or at module pre-evaluation) rather than degrade to a logged `configError`. The sibling module already proves the correct pattern (`emitConfigErrorLog` + `WORKER_DOCKER_API_CONFIG_ERROR_CODE`).
+
+**Recommendation (low effort, high impact):** Mirror the `docker/client.ts:26-47` pattern here — log the error once at import, set a module-level `COMPILER_RUNNER_CONFIG_ERROR` constant (the variable already exists at L80-83 but is computed *after* the throw), and surface it via `tryRustRunner` / `executeCompilerRun`'s existing error-return contract (the `stderr: COMPILER_RUNNER_CONFIG_ERROR` path at L637-647 already handles this case — it just cannot be reached when the import-time throw fires first).
+
+---
+
+### ARCH-2 — Deploy topology defaults contradict CLAUDE.md; per-target env files not auto-sourced
+**Severity: HIGH | Confidence: high**
+**Files:** `deploy-docker.sh:184-187, 119-123`; `.env.deploy.algo`; `.env.deploy.worv`
+
+CLAUDE.md mandates: *"When deploying to algo.xylolabs.com, always use `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, `INCLUDE_WORKER=false`."* The script-level defaults are the exact inverse:
+
+```bash
+SKIP_LANGUAGES="${SKIP_LANGUAGES:-false}"      # L184
+INCLUDE_WORKER="${INCLUDE_WORKER:-true}"       # L186
+BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}" # L187 → resolves to INCLUDE_WORKER (= true)
+```
+
+The safety overrides live in **per-target files** (`.env.deploy.algo:17-19` correctly sets all three to the CLAUDE.md values). However `deploy-docker.sh:119-123` sources only the generic `.env.deploy` — it does NOT read `.env.deploy.algo`/`.env.deploy.worv`, and no wrapper script does either (`grep -l` for those filenames across `*.sh` and `scripts/*.sh` returns empty). Operators must manually copy the target file to `.env.deploy` before each run, or remember to export the vars inline.
+
+This is a single-typo production footgun: a bare `./deploy-docker.sh` against `algo.xylolabs.com` will attempt to build language images and start a judge worker on the app-only host.
+
+**Recommendation (medium effort, high impact):** Either (a) invert the script defaults to match CLAUDE.md (`INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, `SKIP_LANGUAGES=true`) so the safe case is the default and integrated targets must opt in, or (b) accept a `--target=algo` flag that sources `.env.deploy.${target}` explicitly, failing if the file is missing. Option (a) is safer because it makes the CLAUDE.md rule the default and removes the silent-failure mode.
+
+---
+
+### ARCH-3 — Migration journal has duplicate-prefix files and a tag gap; `drizzle-kit migrate` escape hatch is broken
+**Severity: MEDIUM | Confidence: high**
+**Files:** `drizzle/pg/*.sql`; `drizzle/pg/meta/_journal.json`
+
+The `drizzle/pg/` directory contains **four pairs of files sharing the same numeric prefix**: `0012_*`, `0016_*`, `0027_*`, `0028_*`. There is also a gap: prefixes `0029`–`0032` are absent from the filesystem while the journal jumps from `0028` to `0033`. The `_journal.json` (idx 0–36) lists a subset of these tags.
+
+Production sidesteps this because `deploy-docker.sh:1050-1082` uses `drizzle-kit push` (live schema-vs-DB diff) rather than journal replay. However, the deploy comment block at L1042–1044 explicitly documents `drizzle-kit migrate` as a supported escape hatch ("For journal-driven migrations instead, change `drizzle-kit push` to `drizzle-kit migrate` here…"). An operator following that instruction today would either hit duplicate-prefix resolution errors or silently skip every unjournalled file — neither outcome is what the comment promises.
+
+**Recommendation (medium effort, medium impact):** Either delete the duplicated files (after confirming neither variant carries schema state not already in `schema.pg.ts`), or regenerate the journal via `drizzle-kit generate` on a clean checkout. At minimum, add a CI check that fails when `drizzle/pg/*.sql` prefixes collide or when the file count diverges from `_journal.json` entries.
+
+---
+
+### ARCH-4 — `execTransaction` silently drops transaction semantics during the Next.js build phase
+**Severity: MEDIUM | Confidence: high**
+**File:** `src/lib/db/index.ts:90-98`
+
+```ts
+export function execTransaction<T>(fn: (tx: TransactionClient) => Promise<T> | T): Promise<T> {
+  if (isBuildPhase) {
+    return Promise.resolve(fn(db as unknown as TransactionClient));  // NO transaction
+  }
+  return db.transaction(async (tx) => transactionContext.run(true, () => fn(tx as TransactionClient)));
+}
+```
+
+The comment warns that atomicity is unavailable during `phase-production-build`, but the function still **runs the callback** against the dummy build-phase drizzle instance instead of short-circuiting or throwing. The `rawQueryOne` guard at `src/lib/db/queries.ts:56` logs a warning if called inside a transaction (good), but `execTransaction` itself has no such tripwire — code that calls it during build silently executes non-atomically against what is effectively a stub connection. The risk is latent today because build phase doesn't serve HTTP, but any future code path that imports a rate-limit or advisory-lock helper at build time will fail invisibly.
+
+**Recommendation (low effort, low impact today, high if violated):** In the build phase, either (a) make `execTransaction` a typed no-op that throws on invocation (`throw new Error("execTransaction unavailable during build phase")`) to fail loud, or (b) return a resolved dummy without calling `fn` (matches the pattern already used by other build-phase stubs). Document the chosen contract in the JSDoc.
+
+---
+
+### ARCH-5 — Startup awaits have no top-level deadline; instrumentation can hang ~5 minutes
+**Severity: MEDIUM | Confidence: medium**
+**File:** `src/instrumentation.ts:33-36`; `src/lib/judge/sync-language-configs.ts:90-107`
+
+`register()` awaits `syncLanguageConfigsOnStartup()` (which itself has a 10-retry × 30s-backoff cap ≈ 5 min worst case) and `initializeSettings()` with no enclosing deadline. If the DB is slow or unreachable, the Next.js server stays in instrumentation and never begins serving health checks — the Docker healthcheck (`docker-compose.production.yml` app service) starts failing only after its own grace period, masking the real cause.
+
+**Recommendation (low effort, medium impact):** Wrap the two awaits in a `Promise.race` against an overall deadline (e.g. 60s), and on timeout log a structured error and continue starting the server in a degraded mode (or exit nonzero so the orchestrator restarts). The individual retry caps are necessary but not sufficient — the instrumentation layer needs its own SLO.
+
+---
+
+### ARCH-6 — Worker-side Docker socket ACL lives in code, not in the proxy
+**Severity: MEDIUM | Confidence: medium**
+**Files:** `docker-compose.worker.yml:14-29`; `docker-compose.production.yml:50-66`; `judge-worker-rs/src/validation.rs:54-75`
+
+Both compose files enable `POST=1`, `DELETE=1`, `ALLOW_START=1`, `ALLOW_STOP=1` on the `tecnativa/docker-socket-proxy`. The "only `judge-*` images" rule is enforced in worker Rust code (`validation.rs:25`) and again in the TS compiler path (`execute.ts:338`), but the docker-socket-proxy itself has no image-name ACL — it can't, the API surface doesn't support it. A worker binary compromise (RCE in the runner, memory corruption, supply-chain compromise of the image) bypasses the validator and gains near-arbitrary container-spawn capability on the host.
+
+The historical impact is already documented in `docker-compose.worker.yml:18-25` (the 14h silent `compile_error` fleet sweep from 2026-05-17, caused merely by `POST=0` — a far more benign misconfiguration than a worker compromise). Mitigations today are: `--network=none`, `--cap-drop=ALL`, `--read-only`, `--user 65534:65534`, seccomp profile, and the documented-but-disabled `JUDGE_OCI_RUNTIME=runsc` gVisor hardening.
+
+**Recommendation (high effort, defense-in-depth impact):** Promote gVisor (`runsc`) from optional to recommended in production after the validation pass described in `docs/judge-worker-gvisor.md`. gVisor is the only control that contains a worker-compromise scenario at the OCI-runtime layer rather than relying on the worker's own input validation. Trade-off: gVisor adds ~10-20% syscall overhead and requires host install — not appropriate for the smallest targets, but appropriate for the multi-tenant `algo.xylolabs.com` fleet.
+
+---
+
+### ARCH-7 — `releaseClaimedSubmission` uses SELECT-then-UPDATE; pattern inconsistent with poll route
+**Severity: LOW | Confidence: medium**
+**File:** `src/app/api/v1/judge/claim/route.ts:71-102`
+
+```ts
+const [current] = await tx.select({ judgeClaimToken: submissions.judgeClaimToken })
+  .from(submissions).where(eq(submissions.id, submissionId)).limit(1);
+if (current?.judgeClaimToken !== claimToken) return;
+await tx.update(submissions).set({ status: "pending", ... })
+  .where(eq(submissions.id, submissionId));
+```
+
+Under Postgres' default READ COMMITTED, this SELECT-then-UPDATE inside one transaction is not a true compare-and-swap: a concurrent writer can modify `judgeClaimToken` between the SELECT and the UPDATE, and this UPDATE would clobber it. In practice the upstream `FOR UPDATE SKIP LOCKED` in `buildClaimSql` and the optimistic-lock fence in `poll/route.ts:164` (`WHERE id = ? AND judge_claim_token = ?`) make this safe — but the inconsistency is itself the smell. The poll route uses CAS; the claim-cleanup path does not.
+
+**Recommendation (low effort, low impact):** Make the cleanup UPDATE conditional: `.where(and(eq(submissions.id, submissionId), eq(submissions.judgeClaimToken, claimToken)))` and drop the SELECT. Behavior is preserved, the read round-trip is removed, and the contract matches the poll route.
+
+---
+
+### ARCH-8 — System settings cache is process-local with a 60s TTL; multi-instance drift
+**Severity: LOW | Confidence: medium**
+**File:** `src/lib/system-settings-config.ts:84-194`
+
+The settings cache (`cached`, `cachedAt`) is module-level and process-local. `getConfiguredSettings()` returns the cached value for up to 60s, then triggers an async background reload. In a deployment with `APP_INSTANCE_COUNT > 1` (an architecture the codebase explicitly supports — see `realtime-coordination.ts:23-25`), an admin's settings update is visible to different instances on different schedules for up to 60s. The realtime module has multi-instance guards; the settings cache does not.
+
+**Recommendation (medium effort, low-medium impact):** Either publish a settings invalidation event through the existing Postgres-backed coordination channel (`realtimeCoordination` table) so all instances invalidate on write, or shorten the TTL to a few seconds and accept the read amplification cost.
+
+---
+
+### ARCH-9 — `submissions.judgeClaimToken` lacks a uniqueness guarantee
+**Severity: LOW | Confidence: high**
+**File:** `src/lib/db/schema.pg.ts:485`
+
+`judgeClaimToken` is `text` with no unique index and no NOT NULL constraint; `judgeWorkerId` carries no FK to `judge_workers`. Both are intentional given the transient claim lifecycle (NULL after finalize; worker rows may be reaped). However, the correctness of the optimistic-lock fence relies entirely on `nanoid()` collision resistance. A unique partial index (`create unique index on submissions (judge_claim_token) where judge_claim_token is not null`) would convert a hyperventilated-collision into a deterministic DB error rather than a silent double-finalize attempt.
+
+The supporting indexes are well-designed: `submissions_queue_claim_idx` (status, submittedAt, id) at L511 directly serves the `buildClaimSql` `ORDER BY s.submitted_at ASC, s.id ASC` path, and `submissions_stale_claim_idx` (status, judgeClaimedAt, submittedAt, id) at L512 serves the stale-claim reaper. No query-pattern gaps there.
+
+**Recommendation (low effort, low impact):** Add the partial unique index as a defense-in-depth measure; on collision, the claiming transaction fails and the worker retries on its next poll — already the documented self-healing behavior.
+
+---
+
+### ARCH-10 — Redundant `secret_token` drop logic across migration file and deploy script
+**Severity: LOW | Confidence: high**
+**Files:** `drizzle/pg/0020_drop_judge_workers_secret_token.sql`; `deploy-docker.sh:1003-1024`
+
+The deprecated `judge_workers.secret_token` column is dropped by both the journal migration `0020_*` and the runtime backfill-then-drop block in the deploy script. On `drizzle-kit push`-deployed targets (production today) the SQL migration file is dead code — `push` doesn't replay it. On `drizzle-kit migrate`-deployed targets (the documented escape hatch), the runtime block runs as an idempotent no-op. Both code paths exist indefinitely; future maintainers must reason about which one is canonical.
+
+**Recommendation (low effort, low impact):** Add a one-line comment in both files cross-referencing the other and noting which is authoritative under each deploy strategy; or consolidate into the deploy script only and delete the migration file (the runtime block is required regardless because `push` won't apply the migration).
+
+## Final Verdict
+
+The architecture's load-bearing invariants (claim atomicity, optimistic-lock fence, per-worker auth, deploy destructive-change guard) are correctly implemented and well-documented. **ARCH-1 and ARCH-2 should be treated as production-blocking** — both are silent-failure modes that contradict explicitly-stated design intent (commit `26cff8e4` for ARCH-1; CLAUDE.md for ARCH-2). ARCH-3 through ARCH-6 are correctness/debt issues with real but bounded blast radius. ARCH-7 through ARCH-10 are hardening items worth scheduling but not blocking.

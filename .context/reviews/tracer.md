@@ -1,179 +1,165 @@
-# Tracer Review - review-plan-fix Cycle 2 Prompt 1
+# Trace Report — judgekit suspicious-flow causal tracing (HEAD `0b0ac198`)
 
-Findings count: 4
+**Mode:** READ-ONLY (delivered inline by tracer agent; persisted by orchestrator for provenance).
 
-## Review Note
+## Coverage
+All six mandated flows traced to source with file:line citations, plus two cross-cutting findings discovered during the sweep (TR-7, TR-8). For each: competing hypotheses, evidence for/against, rebuttal, conclusion, confidence. Evidence tier is primary artifact (code/logic at specific lines).
 
-The repository was dirty before this review. I treated all uncommitted changes as intentional prior-cycle work and did not revert or implement fixes.
+---
 
-I built the inventory from `git status --short`, `rg --files`, targeted `rg -n` searches, and line-numbered source reads captured before the shared workspace began blocking further content reads. The final missed-issue sweep was performed against the captured code paths and file inventory. Findings below cite only captured code regions.
+### TR-1 — ZIP restore: DB commits before files are restored
 
-## Inventory
+**Traced path** — `src/app/api/v1/admin/restore/route.ts`
+- L82–90: ZIP path → `parseBackupZip` → `pendingUploadedFiles = result.uploads` (staged in memory only; comment at `export-with-files.ts:304-306` explicitly says files are "staged in memory" and "written only after DB validation/import succeeds").
+- L149: `takePreRestoreSnapshot` (safety net taken before destructive work).
+- L151–163: `recordAuditEvent` (audit; L159 now uses `pendingUploadedFiles.length` — the "pending file count" fix).
+- **L165: `const result = await importDatabase(data);`** — DB import.
+- L167–174: on failure, return 500 (snapshot path included).
+- **L176–178: `if (isZipFile) filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);`** — disk restore runs only here.
+- L180–186: success response.
 
-Auth/password reset/change password/public signup/user management:
+DB import internals — `src/lib/db/import.ts:125-212`: the entire truncate+insert is wrapped in `await db.transaction(async (tx) => {...})` with the comment `// constraints checked at COMMIT` (L212). On thrown error the txn rolls back (L214–225 sets `result.success=false`). On resolve it **commits**.
 
-- `src/app/api/v1/auth/forgot-password/route.ts` - request validation, per-IP/email rate limiting, reset email dispatch.
-- `src/app/api/v1/auth/reset-password/route.ts` - token/password validation and reset call (`lines 20-41`).
-- `src/lib/email/index.ts` - reset-token creation/validation/password update (`lines 36-97`, `105-191`).
-- `src/lib/security/password.ts` and `src/lib/users/core.ts` - shared password policy and hashing (`password.ts:1-27`, `users/core.ts:59-68`).
-- `src/lib/actions/change-password.ts` and `src/app/change-password/change-password-form.tsx` - forced/self password change (`change-password.ts:21-107`, form `lines 38-75`).
-- `src/lib/actions/public-signup.ts` and `src/lib/validators/public-signup.ts` - public signup gates, hCaptcha, uniqueness, verification email (`public-signup.ts:83-214`).
-- `src/lib/actions/user-management.ts`, `src/app/api/v1/users/route.ts`, `src/app/api/v1/users/[id]/route.ts`, `src/app/api/v1/users/bulk/route.ts` - admin/user CRUD and password reset paths.
+Disk restore internals — `src/lib/db/export-with-files.ts:351-360` (`restoreParsedBackupFiles`): loops `writeUploadedFile(upload.storedName, upload.buffer)`. `writeUploadedFile` (`src/lib/files/storage.ts:27-30`) is a plain `writeFile` with no transactional tie to the DB.
 
-Problem import/export/restore:
+**Hypotheses**
+| Rank | Hypothesis | Confidence |
+|---|---|---|
+| 1 | A: DB commits before files restored → committed DB references files not yet on disk | High |
+| 2 | B: files restored before DB commit (safe) | Contradicted |
 
-- `src/app/api/v1/problems/import/route.ts` - import schema and create call (`lines 15-60`, `63-101`).
-- `src/app/api/v1/problems/[id]/export/route.ts` - per-problem export (`lines 9-63`).
-- `src/app/api/v1/problems/route.ts`, `src/app/api/v1/problems/[id]/route.ts`, `src/lib/problem-management.ts`, `src/lib/validators/problem-management.ts` - create/update persistence and validation.
-- `src/app/api/v1/admin/backup/route.ts`, `src/app/api/v1/admin/restore/route.ts`, `src/lib/db/export.ts`, `src/lib/db/export-with-files.ts`, `src/lib/db/import.ts` - full backup/restore.
+**Evidence For A:** route L165 precedes L177; `importDatabase` commits at txn resolve (`import.ts:212`); files held in memory until after import (`export-with-files.ts:304-306`).
+**Rebuttal round** — Best challenge to A: "The import is atomic and the snapshot exists, so failure rolls back cleanly." Rebuttal: the atomic rollback covers the **DB** only. The window of risk opens on the **success** path: between DB commit (L165 resolve) and the completion of `restoreParsedBackupFiles` (L177). If L177 throws (disk full, permission, partial write mid-loop), the catch at L187 returns 500 but the DB is **already committed** with `files` rows whose blobs are absent or partial. There is no compensating rollback of the DB, and `writeUploadedFile` silently overwrites/creates with no atomicity across the set. Hypothesis A stands.
 
-Judge claim/compiler execute/language sync:
+**Conclusion — CONFIRMED BUG (Hypothesis A).** The prior cycle's "DB-first" reading is correct and **still true after the recent fix**. Commit `34d27adf` ("use pending file count in pre-restore ZIP audit summary") was **cosmetic only** — it corrected the audit summary text (L159). It did **not** touch the L165↔L177 ordering.
 
-- `src/app/api/v1/judge/claim/route.ts`, `src/lib/judge/claim-query.ts`, `src/app/api/v1/judge/poll/route.ts` - claim, stale-claim fencing, final result write.
-- `src/lib/compiler/execute.ts`, `src/app/api/v1/compiler/run/route.ts`, `src/app/api/v1/playground/run/route.ts` - standalone compiler execution and runner fallback.
-- `src/lib/judge/sync-language-configs.ts`, `scripts/sync-language-configs.ts`, `src/lib/actions/language-configs.ts`, `src/lib/judge/languages.ts` - language config source/sync/admin override surface.
-- `judge-worker-rs/src/{api,executor,runner,validation,docker,languages,types}.rs` - Rust worker execution boundary. Working-tree reads for these files blocked during the final pass, so I did not claim Rust-side-only findings.
+**Severity: Medium-High.** Data-integrity window on every ZIP restore; blast radius is all uploaded-file references if restore fails post-commit. Mitigated by: (a) pre-restore snapshot for manual recovery, (b) files staged in memory so parse-time integrity is already verified — only the disk write can fail.
 
-Docker admin image APIs:
+**Fix (design)** — make the disk write precede/augment DB commit transactionally: stage files to a temp dir, run DB import in its transaction, and on commit move staged files into place (rename is atomic on same FS); on rollback delete staged files. Shorter-term: wrap `restoreParsedBackupFiles` to fail-fast and, on any write error, automatically replay the pre-restore snapshot before returning 500.
 
-- `src/app/api/v1/admin/docker/images/route.ts`, `src/app/api/v1/admin/docker/images/build/route.ts`, `src/app/api/v1/admin/docker/images/prune/route.ts`, `src/lib/docker/client.ts`, `src/lib/judge/docker-image-validation.ts`, `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`.
+---
 
-Realtime coordination:
+### TR-2 — Per-problem export: does `canManageProblem` hide hidden tests / expected outputs from students?
 
-- `src/lib/realtime/realtime-coordination.ts`, `src/lib/db/schema.pg.ts` (`realtimeCoordination` table), and `tests/unit/realtime/realtime-coordination.test.ts`.
+**Traced path** — `src/app/api/v1/problems/[id]/export/route.ts`
+- L13–31: fetch problem (explicit column list — note: `problemType`, `functionSpec`, `referenceSolution` are **not** selected; see TR-3).
+- L33: `if (!problem) return notFound`.
+- **L35–36: `const hasAccess = await canManageProblem(...); if (!hasAccess) return forbidden();`** — gate.
+- L38–47: test-case query (`input`, `expectedOutput`, `isVisible`, `sortOrder`) runs **only after** the gate passes.
+- L55–62: serializes **all** cases (visible + hidden) including `expectedOutput`.
 
-Plugin secret encryption:
+`canManageProblem` — `src/lib/auth/permissions.ts:186-217`: true only if (a) `groups.view_all` (org admin), (b) `authorId === userId`, or (c) problem linked to a group the user **teaches**. It deliberately does **not** check `enrollments` — a student enrolled in a group does **not** pass.
 
-- `src/lib/plugins/secrets.ts`, `src/lib/db/export.ts` (`plugins.config` export transform at `lines 271-280`), `src/lib/db/import.ts` (row insert path at `lines 187-197`), plugin admin/chat-widget config paths.
+**Conclusion — NOT A BUG.** Gate is effective: students receive 403 before any test case (hidden or visible) or expected output is loaded or serialized. Instructors legitimately see hidden cases for problems in groups they teach — intended. Fix `6cc068f0` is intact and correct.
 
-Deploy script:
+**Minor finding (low severity):** existence side-channel — the route fetches-then-403s, so an unauthorized caller can distinguish "no such problem" (404) from "exists but forbidden" (403). Low impact (problem IDs are not secret enumerators). Fix: return `forbidden()` for both missing and unauthorized when the caller lacks management rights.
 
-- `deploy-docker.sh`, `deploy.sh`, `scripts/docker-disk-cleanup.sh`, `scripts/playwright-local-webserver.sh`, `playwright.config.ts`, `CLAUDE.md`, `AGENTS.md`.
+---
 
-## Findings
+### TR-3 — Per-problem export/import round-trip: function problems silently downgrade to "auto"
 
-### TR-1. Per-problem export leaks hidden tests to any user who can access the problem
+**Traced path**
+- Export `src/app/api/v1/problems/[id]/export/route.ts:15-30` — explicit column list; **no** `problemType`, `functionSpec`, `referenceSolution`. The serialized `problem` object (L57-59) therefore has no `problemType` key.
+- Import `src/app/api/v1/problems/import/route.ts:23` — `problemType: z.enum(["auto","manual","function"]).default("auto")`. Missing key → `"auto"`.
+- Import L89–90 — `functionSpec: problem.problemType === "function" ? problem.functionSpec ?? null : null` and identical for `referenceSolution`. With `problemType==="auto"`, both forced to `null` even if a caller supplied them.
+- Sink `src/lib/problem-management.ts:309-310` and `357-358` — same conditional; confirms the create/update path nulls these for non-`function` types.
+- Schema `src/lib/db/schema.pg.ts:261,271,273` — `problem_type` default `"auto"`; `function_spec`/`reference_solution` are nullable jsonb.
 
-Status: confirmed  
-Confidence: High  
-Severity: High
+**Scope check:** the full-DB export (`src/lib/db/export.ts`) serializes columns generically (L108–117 uses `TABLE_ORDER` + `Object.keys(columnsChunk[0])`), so a full backup/restore **does** preserve `problemType` and function judging. The downgrade is **isolated to per-problem export→import** (the "share a single problem" path).
 
-Evidence:
+**Conclusion — CONFIRMED BUG.** Silent downgrade of function-judging problems to standard judging on per-problem export/import round-trip. Loss of `functionSpec` and `referenceSolution` is unrecoverable from the export file.
 
-- `src/app/api/v1/problems/[id]/export/route.ts:35-36` authorizes export with `canAccessProblem(id, user.id, user.role)`.
-- The same handler then fetches every test case for the problem, including `input`, `expectedOutput`, `isVisible`, and `sortOrder`, at `src/app/api/v1/problems/[id]/export/route.ts:38-47`.
-- It returns those cases directly in the export payload at `src/app/api/v1/problems/[id]/export/route.ts:55-61`.
-- By contrast, the normal problem detail route only returns full test cases to managers; non-managers get the problem row with `referenceSolution` stripped and no test cases (`src/app/api/v1/problems/[id]/route.ts:56-80`).
+**Severity: Medium.** Silent data loss scoped to the per-problem portability path; function problems re-imported as ordinary problems will be judged by stdout comparison instead of the function harness, likely producing wrong verdicts. Not a full-DB restore risk.
 
-Causal failure scenario:
+**Fix** — add `problemType`, `functionSpec`, `referenceSolution` to the export SELECT (`export/route.ts:15-30`) and include them in the serialized `problem` object. No import change needed (schema already accepts them).
 
-A student enrolled in an assignment can satisfy `canAccessProblem` for an assigned/private problem. Even if the UI never exposes an export button, the authenticated student can request `GET /api/v1/problems/:id/export` directly. The response includes hidden test inputs and expected outputs, so the student can solve against the private judge data instead of the problem statement.
+---
 
-Competing hypotheses considered:
+### TR-4 — User deletion: is audit recorded after the transaction commits?
 
-- If export were meant to be a student-visible sharing feature, it should not include hidden tests or expected outputs. The payload is import-ready and includes all test-case fields, so it is an author/admin management operation.
-- `canAccessProblem` is correct for reading a problem statement, but too broad for exporting judge data.
+**Traced path** — `src/app/api/v1/users/[id]/route.ts` (DELETE handler, L420-530)
+- L472–484: `auditContext` captured **before** deletion (actorId FK cascades to null on delete) — comment L469-471 explains rationale.
+- **L491–503: `await execTransaction(async (tx) => {... scrub ... await tx.delete(users)...})`** — destructive work.
+- **L506: `recordAuditEvent(auditContext);`** — called **after** the `await` resolves, i.e. post-commit.
 
-Suggested fix:
+`execTransaction` — `src/lib/db/index.ts:90-98`: `return db.transaction(async (tx) => ...)`. Drizzle's `db.transaction` commits when the callback resolves successfully and rolls back on throw. Therefore L506 runs only after a successful commit.
 
-Gate this route with `canManageProblem` or an explicit problem export capability, not `canAccessProblem`. Keep exporting hidden tests only for authors/instructors/admins who can manage that problem. Add a regression test where a student with assignment access receives 403 from the export route.
+**Conclusion — CONFIRMED CORRECT (ordering).** Commit `76e27d31`'s claim holds: audit is recorded after the transaction commits. Residual weakness: unawaited audit call (TR-7).
 
-### TR-2. Per-problem export/import round trips silently downgrade function problems
+---
 
-Status: confirmed  
-Confidence: High  
-Severity: Medium
+### TR-5 — Startup language sync: does boot overwrite admin-managed command overrides?
 
-Evidence:
+**Traced path** — `src/instrumentation.ts:33`; `src/lib/judge/sync-language-configs.ts:10` (`doSync`):
+- L11-19: load existing rows.
+- L28-43: **missing** record → INSERT defaults.
+- **L46-52: existing record → update ONLY if field is empty/null**: `if (!record.runCommand && runCmd)` and `if (record.compileCommand == null && compileCmd)`.
+- L54-63: apply backfill update; never overwrites a non-empty value.
 
-- `src/app/api/v1/problems/[id]/export/route.ts:13-30` selects title/description/limits/visibility/comparison/difficulty fields, but omits `problemType`, `defaultLanguage`, `functionSpec`, and `referenceSolution`.
-- `src/app/api/v1/problems/import/route.ts:23-34` supports importing `problemType`, `functionSpec`, and `referenceSolution`, defaulting `problemType` to `"auto"` when absent.
-- `src/app/api/v1/problems/import/route.ts:89-90` only passes `functionSpec` and `referenceSolution` to persistence when the imported `problemType` is `"function"`.
-- `src/lib/problem-management.ts:296-310` persists `problemType`, `defaultLanguage`, `functionSpec`, and `referenceSolution` for new problems.
-- `src/lib/problem-management.ts:344-358` persists the same fields on update.
+**Conclusion — NOT A BUG.** Boot sync is additive/least-authoritative: it seeds missing languages and backfills missing commands, never overwriting admin-configured overrides.
 
-Causal failure scenario:
+---
 
-An instructor exports a function-signature problem for reuse, then imports the JSON into another instance. Because the export omitted `problemType`, the import schema defaults it to `"auto"`. Because the imported problem is now `"auto"`, the import route nulls the function spec and reference solution. The restored problem expects a full stdin/stdout program instead of a function implementation, and all function-judging harness behavior is lost without an explicit error.
+### TR-6 — Docker client: silent local-Docker fallback when worker URL/token missing?
 
-Competing hypotheses considered:
+**Traced path** — `src/lib/docker/client.ts`
+- L13 `JUDGE_WORKER_URL = JUDGE_WORKER_URL || COMPILER_RUNNER_URL || ""`.
+- L21 `RUNNER_AUTH_TOKEN = process.env.RUNNER_AUTH_TOKEN || ""`.
+- L26-33: missing token in prod → **logged** (not thrown) — commit `26cff8e4`.
+- L48 `USE_WORKER_DOCKER_API = Boolean(URL && token)`.
+- L49-50 `ALLOW_LOCAL_DOCKER_ADMIN = NODE_ENV !== "production" || JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN === "1"`.
+- `getDockerManagementCapabilities` L108-148: (1) if `WORKER_DOCKER_API_CONFIG_DETAIL` → **unavailable**; (2) else if `USE_WORKER_DOCKER_API` → worker; (3) else if `ALLOW_LOCAL_DOCKER_ADMIN` → local; (4) else → unavailable.
 
-- The omission could be intentional to avoid exporting author-only reference code, but omitting `problemType` and `functionSpec` still corrupts the problem type. If `referenceSolution` must stay private, export should either omit it explicitly with metadata or require privileged export.
-- Full database backup is table-driven and includes current columns; this bug is specific to per-problem export.
+Production matrix: in every production misconfiguration, `WORKER_DOCKER_API_CONFIG_DETAIL` is non-null, forcing `unavailable` before the `ALLOW_LOCAL_DOCKER_ADMIN` branch is reached. Local mode requires non-production OR explicit `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN=1`.
 
-Suggested fix:
+**Conclusion — NOT A BUG.** No silent local-Docker fallback in production on missing worker URL/token. Mode resolves to `unavailable`/`configError`. Token-domain separation from `JUDGE_AUTH_TOKEN` is also correct (L14-21).
 
-Update per-problem export to include `problemType`, `defaultLanguage`, and `functionSpec`. Decide deliberately whether `referenceSolution` belongs in this export; if not, include a clear marker and make import reject function problems that lack a function spec/reference when the workflow requires it. Add function-problem export/import round-trip tests.
+---
 
-### TR-3. Restore audit is recorded before the destructive import, then either disappears or lies
+### TR-7 (bonus, cross-cutting) — Fire-and-forget `recordAuditEvent` across the codebase
 
-Status: confirmed  
-Confidence: High  
-Severity: Medium
+Sweep found `recordAuditEvent` invoked without `await` in multiple security-relevant files (e.g. `src/app/api/v1/users/[id]/route.ts:506`, `src/lib/actions/user-management.ts`, `src/lib/actions/change-password.ts`, `src/lib/actions/system-settings.ts`, `src/lib/actions/language-configs.ts`, `src/proxy.ts`).
 
-Evidence:
+**Traced implication:** `recordAuditEvent` returns a promise that, if unawaited, can be lost on event-loop turn-over or process shutdown. Combined with TR-4's post-commit ordering this means: a committed deletion whose audit insert throws (DB blip, constraint) leaves **no audit trail** with no error surfaced. `registerAuditFlushOnShutdown` (started in `instrumentation.ts:45`) mitigates shutdown loss but not mid-flight rejection.
 
-- `src/app/api/v1/admin/restore/route.ts:151-163` records `system_settings.database_restored` before calling `importDatabase`.
-- `src/app/api/v1/admin/restore/route.ts:165-173` runs `importDatabase(data)` and only afterward checks whether restore failed.
-- `src/lib/db/import.ts:127-139` deletes every table in reverse dependency order during restore.
-- `src/lib/db/export.ts:203-205` includes `auditEvents` in the table order, so restore deletes the audit event that was just recorded and replaces audit rows with whatever the backup contains.
-- `src/app/api/v1/admin/restore/route.ts:176-178` restores ZIP files after the database import, but the earlier audit summary at `lines 158-160` interpolates `filesRestored` while it is still `0`.
+**Conclusion — Low-Medium severity.** Not a correctness bug in the audited flows' ordering, but a reliability gap in audit completeness precisely where audit matters most (deletions, role changes, password resets). Recommend: `await recordAuditEvent(...)` at security-critical call sites, or have the helper schedule a retry/queue on failure.
 
-Causal failure scenario:
+---
 
-On a successful restore, the route inserts a "database_restored" audit event, then `importDatabase` deletes `auditEvents` and imports the backup's audit table. The audit event for the actual restore is gone. On a failed import that passes validation but fails during insertion, the pre-written audit event remains even though the response is `restoreFailed`. For ZIP restores, the event also says `0 files` because files are restored only after import.
+### TR-8 (bonus, supports TR-1) — `writeUploadedFile` silently overwrites
 
-Competing hypotheses considered:
+`src/lib/files/storage.ts:27-30` — `writeUploadedFile` calls `writeFile(resolveStoredPath(...), data, {mode:0o644})` with no existence check, no versioning, no error on collision.
 
-- Recording before import might have been intended to preserve actor context before data replacement. However, because `auditEvents` itself is replaced by import, the event is not preserved on success.
-- The pre-restore snapshot path is useful, but it does not make the audit timeline accurate.
+**Implication:** On restore, a partial/failed run leaves a mix of old + new files on disk with the same `storedName`; subsequent reads return whichever bytes landed last. This compounds TR-1: there is no atomic boundary between DB commit and file replacement, and a re-run after a partial failure does not detect leftover inconsistency.
 
-Suggested fix:
+**Conclusion — Low severity on its own; raises the cost of TR-1's recovery.** Recommend staging-then-rename (see TR-1 fix).
 
-Record an attempted restore event before import using an out-of-band log or pre-restore snapshot metadata, not the table about to be replaced. After successful import and file restore, write a new audit event into the restored database using a stable actor snapshot (or `actorId: null` with actor username/role in details if the original actor row no longer exists). On failure, record `database_restore_failed`, not `database_restored`.
+---
 
-### TR-4. Permanent user deletion API records success audit before the delete transaction commits
+### Hypothesis summary
 
-Status: confirmed  
-Confidence: High  
-Severity: Low
+| ID | Flow | Verdict | Confidence | Severity |
+|---|---|---|---|---|
+| TR-1 | Restore DB-before-files ordering | **BUG** (DB-first; "pending count" fix was cosmetic) | High | Medium-High |
+| TR-2 | Per-problem export gate hides tests from students | **OK** (gate effective; minor existence side-channel) | High | Low (side-channel) |
+| TR-3 | Function problems downgrade on per-problem round-trip | **BUG** (silent loss of problemType/functionSpec/referenceSolution) | High | Medium |
+| TR-4 | User-deletion audit after commit | **OK** (post-commit; unawaited — see TR-7) | High | — |
+| TR-5 | Boot language sync overwrites admin overrides | **OK** (backfill-only) | High | — |
+| TR-6 | Silent local-Docker fallback in prod | **OK** (unavailable/configError; explicit opt-in only) | High | — |
+| TR-7 | Unawaited `recordAuditEvent` (cross-cutting) | **Reliability gap** | Medium | Low-Medium |
+| TR-8 | `writeUploadedFile` silent overwrite | **Compounds TR-1** | High | Low |
 
-Evidence:
-
-- `src/app/api/v1/users/[id]/route.ts:469-482` records `user.permanently_deleted` before the destructive transaction starts.
-- `src/app/api/v1/users/[id]/route.ts:489-501` then scrubs recruiting invitation PII and deletes the user inside `execTransaction`.
-- The server-action deletion path already documents the safer ordering: it builds context before deletion but records the event only after deletion succeeds (`src/lib/actions/user-management.ts:205-226`).
-
-Causal failure scenario:
-
-An admin permanently deletes a user whose deletion later fails because of a database error, FK edge case, lock timeout, or transaction abort while scrubbing recruiting invitations. The API has already written a `user.permanently_deleted` audit event. Operators later see an audit trail saying the user was deleted even though the account still exists.
-
-Competing hypotheses considered:
-
-- Recording before deletion preserves actor FK before cascade. The server-action path shows a better compromise: capture request context before deletion, then emit the audit after success.
-- If the delete succeeds, the pre-delete event may survive because audit actor FK can set-null, but the ordering is still wrong on failure.
-
-Suggested fix:
-
-Mirror the server-action flow: capture audit context and target metadata before the transaction, run the scrub/delete transaction, then record `user.permanently_deleted` only after commit. Add a test that forces the transaction to throw and asserts no success audit event is emitted.
-
-## No New Finding From Captured Trace
-
-- Auth reset/change-password/public-signup: captured routes consistently validate origin or request body, apply rate limits, use shared password validation, hash server-side, and invalidate sessions on password reset/change (`reset-password/route.ts:20-41`, `email/index.ts:141-191`, `change-password.ts:41-83`, `public-signup.ts:83-214`). No additional causal bug was confirmed beyond the user-management audit ordering above.
-- Judge claim/compiler execute: captured app-side claim code uses atomic claim SQL, claim-token fencing, cleanup on post-claim errors, function-problem assembly before worker dispatch, and local compiler sandbox validation (`judge/claim/route.ts:211-229`, `303-418`; `compiler/execute.ts:619-838`). Rust worker file reads blocked during final pass, so I did not report Rust-only issues.
-- Docker admin image APIs, realtime coordination, plugin secret encryption, and deploy script: included in the inventory and searched, but no additional finding was confirmed from the captured code before the shared mount blocked further content reads.
-
-## Final Missed-Issue Sweep
-
-Sweep focus:
-
-- Looked for routes where broad read access crosses into hidden data export.
-- Compared per-problem export fields against import schema and persistence fields.
-- Checked destructive restore ordering against full-table import semantics.
-- Compared API user deletion audit ordering against the server-action deletion implementation.
-- Reviewed app-side judge claim cleanup, function assembly, and compiler-runner fallback for claim-stranding failure modes.
-- Checked auth/password reset/change-password/public-signup for token reuse, rate-limit, session invalidation, and cross-surface policy drift.
-
-Residual risk:
-
-- Working-tree content reads under `/Users/hletrd/flash-shared/judgekit` began blocking during the final pass. I cleaned the stuck read processes and avoided claiming findings in files whose contents I could not line-cite. The highest-risk confirmed issues above are all backed by captured line regions.
+## Relevant file paths (all absolute)
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/restore/route.ts` (TR-1: L165, L177)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/db/import.ts` (TR-1: L125, L212)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/db/export-with-files.ts` (TR-1: L304-306, L351-360)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/files/storage.ts` (TR-8: L27-30)
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/problems/[id]/export/route.ts` (TR-2, TR-3: L15-30, L35-36, L55)
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/problems/import/route.ts` (TR-3: L23, L89-90)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/problem-management.ts` (TR-3: L309-310, L357-358)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/auth/permissions.ts` (TR-2: L186-217)
+- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/users/[id]/route.ts` (TR-4: L491-506)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/db/index.ts` (TR-4: L90-98)
+- `/Users/hletrd/flash-shared/judgekit/src/instrumentation.ts` (TR-5: L33)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/judge/sync-language-configs.ts` (TR-5: L46-52)
+- `/Users/hletrd/flash-shared/judgekit/src/lib/docker/client.ts` (TR-6: L38-50, L108-148)

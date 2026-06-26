@@ -1,321 +1,232 @@
-# Document Specialist Review - Prompt 1
+# Doc/Code Mismatch Review — judgekit @ 0b0ac198
 
-Date: 2026-06-22
+_Generated 2026-06-26. Scope: documentation claims verified against source code at HEAD._
 
-Role: document-specialist for a review-plan-fix cycle. This pass checked documentation/code mismatches across the current repo docs and authoritative operational sources. I did not edit implementation code.
+## Coverage
 
-## Inventory
+**Docs inspected (read end-to-end or by section):** `README.md`, `AGENTS.md`, `CLAUDE.md`, `SECURITY.md`, `docs/api.md`, `docs/authentication.md`, `docs/privacy-retention.md`, `docs/data-retention-policy.md`, `docs/judge-worker-gvisor.md`, `docs/judge-workers.md`, `docs/deployment.md`, `docs/admin-security-operations.md`, `docs/operator-incident-runbook.md`, `docs/release-readiness-checklist.md`, `docs/high-stakes-validation-matrix.md`, `messages/en.json`, `messages/ko.json`, `deploy-docker.sh` (header + Step 5b + drizzle section), `judge-worker-rs/src/validation.rs`.
 
-Review-relevant documentation examined:
+**Code verified:** `src/lib/security/csrf.ts`, `src/lib/security/password.ts`, `src/lib/security/secrets.ts`, `src/lib/api/auth.ts`, `src/lib/api/api-key-auth.ts`, `src/lib/api/handler.ts`, `src/lib/db/export.ts`, `src/lib/db/pre-restore-snapshot.ts`, `src/lib/data-retention.ts`, `src/lib/db/schema.pg.ts`, `drizzle/pg/meta/_journal.json`.
 
-- `AGENTS.md`, `CLAUDE.md`, `README.md`
-- `.context/development/**`, `.context/project/current-state.md`, active `.context/plans/**`, existing `.context/reviews/**`
-- `docs/api.md`, `docs/authentication.md`, `docs/deployment.md`, `docs/judge-workers.md`, `docs/function-judging.md`, `docs/languages.md`, `docs/data-retention-policy.md`, `docs/privacy-retention.md`, `docs/operator-incident-runbook.md`, `docs/high-stakes-*.md`
+**Prior-cycle items re-verified:** 5 (CSRF doc, auth bearer doc, privacy 30d/5y, deploy topology, destructive migration docs).
+**New angles verified:** 5 (minPasswordLength, trusted-registries wording, drizzle migrate escape-hatch, pre-restore snapshot redaction, full-fidelity backup redaction).
+**Message parity:** en.json vs ko.json full recursive key diff.
 
-Implementation surfaces cross-checked:
+---
 
-- API handlers under `src/app/api/**`, especially auth, CSRF, Docker image management, restore/backup, submissions, language APIs, community/auth/admin routes
-- `src/lib/security/csrf.ts`, `src/lib/api/handler.ts`, `src/lib/api/auth.ts`, `src/lib/data-retention*.ts`
-- `src/lib/judge/languages.ts`, `src/types/index.ts`, `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/languages.rs`, `docker/Dockerfile.judge-*`
-- `deploy-docker.sh`, `deploy.sh`, `deploy-test-backends.sh`, `scripts/setup.sh`, `scripts/sync-language-configs.ts`, `scripts/docker-disk-cleanup.sh`, `scripts/deploy-worker.sh`
-- PostgreSQL runtime compose/migration context under `docker-compose*.yml` and `drizzle/pg/**`
+## Summary
 
-Static inventory checks performed:
+| ID | Severity | Confidence | One-line |
+|---|---|---|---|
+| DOC-1 | Medium | High | CSRF doc lists only `X-Requested-With`; code also enforces `Sec-Fetch-Site` + `Origin`/`Host`. |
+| DOC-2 | High | High | "Full-fidelity … all fields included" is false: `users.passwordHash` + 4 other tables ALWAYS redacted. |
+| DOC-3 | High | High | Pre-restore snapshot comment says "contains password hashes"; `sanitize=false` still redacts `passwordHash`. |
+| DOC-4 | Medium | High | AGENTS.md says push-scan "downgrades to a warn" + shows `[WARN]`; code `die`s (aborts deploy). |
+| DOC-5 | Medium | High | `validation.rs` docstring says prod mode "rejects images without a trusted registry prefix"; it does not. |
+| DOC-6 | Medium | Medium | drizzle-kit migrate escape hatch is documented as viable; journal has duplicate prefixes (0012/0016/0027/0028) + gap 0029-0032. |
 
-- Parsed `src/lib/judge/languages.ts`: 125 language configs, 98 unique Docker image names.
-- Parsed `docs/languages.md`: 125 language rows, 97 unique Docker image names.
-- The config image absent from `docs/languages.md` is `judge-flix`.
-- Listed current `src/app/api/v1/**/route.ts` route families and spot-checked omissions against `docs/api.md`.
-- Final sweep searched for drift markers: `CSRF token`, `X-Requested-With`, `standalone bearer token`, `CHAT_MESSAGE_RETENTION_DAYS`, `30 days`, `5 years`, `judge-flix`, `judge-jvm`, `TypeScript 5.9`, `TypeScript 6.0`, `PostgreSQL 17`, `postgres:18`, `SCMP_ACT_ALLOW`, `deny-list`, `102`, `full 99 set`, `python3`, `all (~14`, `all (~30`, and `privileged:true`.
+**Resolved (verified clean at HEAD):** auth bearer doc, privacy 30d→5y, deploy topology, minPasswordLength removal, en/ko parity. Details at end.
 
-## Confirmed Issues
+---
 
-### DOC-P1-1 - API CSRF docs tell session-cookie clients to use the wrong mechanism
+## Findings
 
-Severity: High
+### DOC-1 — CSRF doc under-documents the guard (medium)
 
-Confidence: High
+**Doc:** `docs/api.md:78-83`
+```
+Mutation methods (POST, PUT, PATCH, DELETE) require the custom header
+`X-Requested-With: XMLHttpRequest` when using session-cookie authentication.
+This is the API-route CSRF guard; it is separate from Auth.js sign-in CSRF.
+API-key requests skip CSRF validation automatically.
+```
 
-Status: Confirmed
+**Code:** `src/lib/security/csrf.ts:30-74`
 
-Evidence: `docs/api.md:78-80` says mutation methods require a valid CSRF token header obtained from `/api/auth/csrf`. The implementation requires `X-Requested-With: XMLHttpRequest`: `src/lib/security/csrf.ts:19-45` documents and enforces that exact header, and `src/lib/api/handler.ts:138-148` applies it to mutation methods unless the request uses API-key auth. `AGENTS.md:265` is already correct and explicitly says not to use `x-csrf-token`.
+The header check is only the first of three gates. After the `X-Requested-With` check (L40-45), `validateCsrf` ALSO enforces:
+- `Sec-Fetch-Site` (L47-54): rejects any value that is not `same-origin`/`same-site`/`none`.
+- `Origin` vs expected host (L56-71): parses `Origin`, requires `http(s)://` prefix, and rejects when `new URL(origin).host !== expectedHost` (where `expectedHost` comes from `AUTH_URL`, or `x-forwarded-host`/`host` in non-production).
 
-Mismatch: The API reference describes Auth.js login CSRF behavior as if it were the API mutation-route CSRF contract.
+**Contradiction:** A client that sends the correct `X-Requested-With: XMLHttpRequest` but a cross-site `Sec-Fetch-Site` or a mismatched `Origin` is still rejected with `csrfValidationFailed`. The doc does not mention either check, so integrators following only the doc will be surprised by 403s from behind某些 reverse proxies or preflight-less cross-origin setups.
 
-Concrete failure scenario: An integration follows `docs/api.md`, fetches `/api/auth/csrf`, sends a token header on `POST /api/v1/problems`, and receives `403 {"error":"csrfValidationFailed"}` because the required `X-Requested-With` header is missing.
+**Confidence:** High — code is unambiguous; `docs/authentication.md` and `docs/api.md` grep finds zero mentions of `sec-fetch-site`/`origin`/`same-origin` in the CSRF context.
 
-Suggested fix: Update `docs/api.md` to distinguish Auth.js credential-login CSRF from API-route CSRF. Document `X-Requested-With: XMLHttpRequest` for session-cookie `POST`/`PUT`/`PATCH`/`DELETE`, and keep the note that `Bearer jk_...` API-key requests skip CSRF.
+**Fix:** Extend the CSRF section in `docs/api.md` to document all three checks and the `AUTH_URL` dependency of the host comparison; mirror in `docs/authentication.md`.
 
-### DOC-P1-2 - Authentication docs deny bearer-token support for protected API routes, but API keys use bearer auth
+---
 
-Severity: Medium
+### DOC-2 — "Full-fidelity … all fields included" is false (high)
 
-Confidence: High
+**Doc:** `docs/data-retention-policy.md:46-48`
+```
+**Full-fidelity** (`?full=true`) — all fields included. Use only for
+disaster-recovery backups. Treat the output as a secret; store with
+encryption and access controls equivalent to the live database.
+```
 
-Status: Confirmed
+**Code:**
+- `src/lib/db/export.ts:104-106`:
+  ```ts
+  const activeRedactionMap = options.sanitize
+    ? mergeRedactionMaps(EXPORT_SANITIZED_COLUMNS, EXPORT_ALWAYS_REDACT_COLUMNS)
+    : EXPORT_ALWAYS_REDACT_COLUMNS;
+  ```
+  So even when `sanitize` is false, `EXPORT_ALWAYS_REDACT_COLUMNS` is applied.
+- `src/lib/security/secrets.ts:36-42` — `EXPORT_ALWAYS_REDACT_COLUMNS`:
+  - `users.passwordHash`
+  - `sessions.sessionToken`
+  - `accounts.refresh_token`, `access_token`, `id_token`
+  - `apiKeys.encryptedKey`
+  - `systemSettings.hcaptchaSecret`, `smtpPass`
 
-Evidence: `docs/authentication.md:8-13` says protected `/api/v1/*` routes use the Auth.js session cookie, "not a standalone bearer token", reserving bearer tokens for `/api/v1/judge/poll`. In code, `src/lib/api/auth.ts:61-83` authenticates `Authorization: Bearer jk_...` API keys before trying session cookies, and `docs/api.md:68-76` separately documents those API keys and says they skip CSRF.
+**Contradiction:** "All fields included" is directly false. Seven columns across five tables are nullified in every export, including full-fidelity. The neighbouring comment in `secrets.ts:17-19` explicitly states that `judgeWorkers.secretTokenHash`/`judgeClaimToken` are deliberately retained in full-fidelity "as a reference for operators to re-provision workers after restore" — but `users.passwordHash` is in the ALWAYS-redact set, so the same reasoning was NOT extended to user credentials.
 
-Mismatch: The auth architecture doc contradicts the API reference and the current auth implementation.
+**Operational impact:** An operator who restores user logins from a "full-fidelity" backup will find every `passwordHash` null — every user is locked out and every password must be reset. The doc actively misleads about disaster-recovery scope.
 
-Concrete failure scenario: A CLI/LMS integration author reads `docs/authentication.md`, builds a cookie-login workflow, and misses the supported `Bearer jk_...` API-key path. Conversely, a successful API-key call looks like undocumented behavior.
+**Supporting doc that is also misleading:** `docs/admin-security-operations.md:65` lists "backup artifacts that include full-fidelity secrets" as a secret to protect. The artifact is still sensitive (it retains worker tokens, recruiting token hashes, plugin configs), but the phrase overstates what is present.
 
-Suggested fix: Update `docs/authentication.md` to distinguish public API keys (`Bearer jk_...`) from internal judge-worker bearer tokens. State which protected route families accept API keys and that session cookies remain the browser UI path.
+**Confidence:** High — the redaction is enforced in the export hot path and covered by `secrets.ts` tests.
 
-### DOC-P1-3 - Operator privacy-retention doc says AI chat logs default to 30 days, but runtime default is 5 years
+**Fix:** Rewrite `docs/data-retention-policy.md:48` to enumerate what full-fidelity retains vs ALWAYS-redacts (or at minimum say "all fields except the ALWAYS-redacted credential columns: `users.passwordHash`, active sessions, OAuth tokens, API key material, and the hCaptcha/SMTP secrets"). Add the same caveat to `docs/admin-security-operations.md:65` and `docs/release-readiness-checklist.md:66`.
 
-Severity: High
+---
 
-Confidence: High
+### DOC-3 — Pre-restore snapshot comment claims it "contains password hashes" (high)
 
-Status: Confirmed
+**Doc (code comment):** `src/lib/db/pre-restore-snapshot.ts:34-38`
+```
+* The snapshot is full-fidelity (sanitize=false) — it is the operator's
+* own emergency rollback artifact, not a portable export. Because it
+* contains password hashes, encrypted column ciphertexts, and JWT
+* secrets in their stored form, the file is created with mode 0o600 ...
+```
 
-Evidence: `docs/privacy-retention.md:12-18` says the public `/privacy` page and operator doc must stay in sync, and `docs/privacy-retention.md:20-28` lists "AI chat logs" as 30 days. The newer retention policy says 5 years at `docs/data-retention-policy.md:9-24`. Runtime defaults also use 5 years: `src/lib/data-retention.ts:1-34` sets `chatMessages: 365 * 5` with `CHAT_MESSAGE_RETENTION_DAYS` override, and `src/lib/data-retention-maintenance.ts:40-43` prunes chat messages with that value. The public privacy page now derives retention from `DATA_RETENTION_DAYS` at `src/app/(public)/privacy/page.tsx:39-49`, so the stale surface is the operator-facing `docs/privacy-retention.md`.
+**Code:** `src/lib/db/pre-restore-snapshot.ts:84-86` calls `streamDatabaseExport({ sanitize: false })`, which (per DOC-2) applies `EXPORT_ALWAYS_REDACT_COLUMNS` and nullifies `users.passwordHash`, session tokens, API key material, etc.
 
-Mismatch: Two current policy docs give materially different AI-chat retention periods, and the older "current platform baseline" doc disagrees with code.
+**Contradiction:** The snapshot does NOT contain password hashes — they are redacted to `null` before the stream hits disk. The `0o600` mode is still appropriate (worker tokens, plugin secrets, and recruiting token hashes remain), but the specific claim "contains password hashes, encrypted column ciphertexts, and JWT secrets in their stored form" is false on the password-hash clause and on "JWT secrets" (no JWT secret column exists in the always-retain set; the Auth.js secret lives in env, not the DB).
 
-Concrete failure scenario: An operator or data subject relies on `docs/privacy-retention.md` and expects chat logs to be purged after 30 days, while the default deployment retains them for 1825 days. This is a privacy/compliance disclosure failure even though the public page is code-derived.
+**Operational impact:** An operator relying on a pre-restore snapshot to roll back credential state after a botched import will silently lose every user password hash. This is the exact "emergency rollback artifact" the comment claims it is safe for.
 
-Suggested fix: Update or retire `docs/privacy-retention.md`. If 5 years is the intended baseline, change the table and last-updated date. If 30 days is required for a deployment, document that it must set `CHAT_MESSAGE_RETENTION_DAYS=30` and verify the public `/privacy` page reflects that override.
+**Confidence:** High — same code path as DOC-2; verified `streamDatabaseExport({ sanitize: false })` is the only producer.
 
-### DOC-P1-4 - Docker image API docs use stale authorization labels and an invalid build example
+**Fix:** Correct the comment to state what IS retained (worker `secretTokenHash`/`judgeClaimToken`, `recruitingInvitations.tokenHash`, plugin configs) and what is ALWAYS redacted (`users.passwordHash`, sessions, API keys, system secrets). Cross-reference `EXPORT_ALWAYS_REDACT_COLUMNS`.
 
-Severity: Medium
+---
 
-Confidence: High
+### DOC-4 — AGENTS.md says push-scan "warns"; code `die`s (medium)
 
-Status: Confirmed
+**Doc:** `AGENTS.md:379`
+```
+The script captures push output, scans for the data-loss prompt markers,
+and downgrades the success log to a warn.
+```
+`AGENTS.md:383` then shows the marker line as:
+```
+[WARN] drizzle-kit push detected a destructive schema change but did NOT apply it ...
+```
 
-Evidence: `docs/api.md:1566-1617` documents image pull/remove/prune as "Super Admin only" and shows `POST /api/v1/admin/docker/images/build` with `{ "language": "python3" }`. The actual handlers authorize by capability, not direct role label: `src/app/api/v1/admin/docker/images/route.ts:48-50`, `src/app/api/v1/admin/docker/images/route.ts:75-77`, `src/app/api/v1/admin/docker/images/route.ts:129-131`, `src/app/api/v1/admin/docker/images/build/route.ts:19-21`, and `src/app/api/v1/admin/docker/images/prune/route.ts:11-13` all require `system.settings`. The build route looks up exact `language_configs.language` at `src/app/api/v1/admin/docker/images/build/route.ts:23-42`; the configured language ID is `python`, not `python3` (`docs/languages.md:20`).
+**Code:** `deploy-docker.sh:1080-1085`
+```bash
+if grep -qiE "data loss|are you sure|warning:.*destructive|please confirm" <<<"$PUSH_OUT"; then
+  die "drizzle-kit push detected a destructive schema change but did NOT apply it (interactive prompt unanswered or declined). Review the diff above, then re-run with DRIZZLE_PUSH_FORCE=1 to apply, or use the journal-driven migrate strategy. See AGENTS.md \"Database migration recovery (DRIZZLE_PUSH_FORCE)\" section for details."
+else
+  success "Database migrated"
+fi
+```
+`die()` is defined at `deploy-docker.sh:253` as `error "$*"; exit 1`. The deploy-docker.sh internal comment at L1036-1037 correctly says "it aborts before new app code is started."
 
-Mismatch: The docs describe role requirements too narrowly/broadly depending on custom roles, and the build example is not a valid current language ID.
+**Contradiction:** The doc says the behavior is a warn-and-continue ("downgrades the success log to a warn"); the code aborts the entire deploy with `die` (exit 1). The `[WARN]` log-line snippet in AGENTS.md is also wrong — the actual emission is an `[ERROR]` followed by exit.
 
-Concrete failure scenario: A client copies the documented build body and receives `404 {"error":"languageNotFound"}`. An operator reviewing custom roles may also think only `super_admin` can pull/remove/prune images, while any role carrying `system.settings` can call those endpoints.
+**Operational impact:** An operator reading AGENTS.md before an incident expects a non-fatal warn and a partially-completed deploy (app starts against the old schema). The actual behavior is a hard stop after migrations, before containers restart — app stays on the previous running containers. Runbook expectations diverge.
 
-Suggested fix: Document the required capability (`system.settings`) plus the built-in roles that currently carry it. Change the build example to `{ "language": "python" }`.
+**Confidence:** High — `die` is unambiguous and the deploy script's own comment agrees with the code, not with AGENTS.md.
 
-### DOC-P1-5 - Flix Docker image is documented as `judge-jvm`, but runtime config uses `judge-flix`
+**Fix:** In `AGENTS.md:379` change "downgrades the success log to a warn" to "aborts the deploy with an error" and replace the `[WARN] ...` snippet at L383 with the actual `[ERROR] drizzle-kit push detected a destructive schema change ...` line.
 
-Severity: Medium
+---
 
-Confidence: High
+### DOC-5 — `validation.rs` docstring misleads about production mode (medium)
 
-Status: Confirmed
+**Doc (code docstring):** `judge-worker-rs/src/validation.rs:51-53`
+```
+/// In production (JUDGE_PRODUCTION_MODE=1), requires non-empty trusted registries
+/// and rejects images without a trusted registry prefix.
+```
 
-Evidence: `docs/languages.md:68-74` and `AGENTS.md:108-114` list `flix` as using `judge-jvm`. The TypeScript source of truth uses `judge-flix:latest` at `src/lib/judge/languages.ts:1192-1200`; the Rust fallback config also uses `judge-flix:latest` at `judge-worker-rs/src/languages.rs:1148-1156`; and `docker/Dockerfile.judge-flix:1-11` defines a separate image layered on `judge-jvm`. The static count check found `judge-flix` present in config but absent from `docs/languages.md` image rows.
+**Code:** `judge-worker-rs/src/validation.rs:29-31` (inside `validate_docker_image_with_trusted`):
+```rust
+if !hasRegistryPrefix {
+    return segments.len() == 1;
+}
+```
+For an unqualified reference like `judge-python:latest`, `segments == ["judge-python:latest"]`, so `segments.len() == 1` is true and the function returns `true` without ever consulting `trusted_prefixes`. The production gate at L66-68 only rejects when `trusted.is_empty()`.
 
-Mismatch: The language docs point operators to the base JVM image while the judge/admin UI expects a distinct `judge-flix` image.
+So in production mode with `TRUSTED_DOCKER_REGISTRIES=registry.example.com`:
+- `validate_docker_image("judge-python:latest")` returns **true** (accepted).
+- `validate_docker_image("registry.evil.com/judge-python:latest")` returns false (rejected — good).
+- `validate_docker_image("library/judge-python:latest")` returns false (rejected — `segments.len() != 1` and no registry dot).
 
-Concrete failure scenario: An operator builds `judge-jvm` only, sees Flix documented as available, and then the admin language table or worker reports `judge-flix` as missing/not built. A Docker image remove/build flow may also target the wrong image.
+**Contradiction:** The docstring says production mode "rejects images without a trusted registry prefix." It does not: unqualified `judge-*` images are accepted in production as long as the trusted list is non-empty (the empty-list gate is the only thing production mode adds).
 
-Suggested fix: Update `docs/languages.md` and the AGENTS static table to `judge-flix`. If the desired architecture is to reuse `judge-jvm` directly, then change `src/lib/judge/languages.ts`, the Rust fallback, and remove the separate Dockerfile.
+**Cross-reference:** `README.md:244` is correct: "Unqualified local images such as `judge-python:latest` remain allowed." So the codebase's own README contradicts the Rust docstring.
 
-### DOC-P1-6 - TypeScript judge version is split between 5.9 and 6.0
+**Confidence:** High — covered by the `production_mode_rejects_images_without_trusted_registry` test (L182-199), which only asserts the empty-list case and the qualified-registry case; it does NOT assert that unqualified images are blocked when the list is non-empty (because they are not).
 
-Severity: Medium
+**Fix:** Rewrite the docstring to: "In production (JUDGE_PRODUCTION_MODE=1), requires a non-empty trusted-registry list; unqualified `judge-*` images remain allowed, but any registry-prefixed image must match a trusted prefix." If the intent was actually to block unqualified images in production, that is a code bug, not a doc fix — flag to owner.
 
-Confidence: High
+---
 
-Status: Confirmed
+### DOC-6 — drizzle-kit migrate escape hatch points at a broken journal (medium)
 
-Evidence: `AGENTS.md:35-40` says the `typescript` judge language is TypeScript 5.9. `src/lib/judge/languages.ts:3-13` sets `JUDGE_TOOLCHAIN_VERSIONS.typescript = "6.0"`, `docker/Dockerfile.judge-node:1-4` installs `typescript@6.0`, and `docs/languages.md:20-24` says TypeScript 6.0. However the synced language metadata still says `standard: "TS 5.9"` at `src/lib/judge/languages.ts:294-300`, and `scripts/sync-language-configs.ts:60-70` syncs that standard into `language_configs`.
+**Doc:**
+- `AGENTS.md:388`: "Switch to `drizzle-kit migrate` — change the `npx drizzle-kit push` line in `deploy-docker.sh` to `npx drizzle-kit migrate` for that one deploy. The journal SQL files (`drizzle/pg/<NN>_*.sql`) are then executed in order … Verify `drizzle/pg/meta/_journal.json` and `meta/<NN>_snapshot.json` are in sync with `src/lib/db/schema.pg.ts` before doing this."
+- `deploy-docker.sh:1042-1044` (the in-script escape-hatch comment): "For journal-driven migrations instead, change `drizzle-kit push` to `drizzle-kit migrate` here AND verify drizzle/pg/meta/_journal.json + meta/<NN>_snapshot.json files stay in sync with src/lib/db/schema.pg.ts."
 
-Mismatch: The compiler/runtime is TypeScript 6.0, while the AGENTS table and DB-backed `standard` metadata advertise 5.9.
+**Code/state:** `drizzle/pg/` contains duplicate four-digit prefixes and a gap:
+- `0012_flimsy_korg.sql` AND `0012_public_signup_settings.sql`
+- `0016_fat_loki.sql` AND `0016_wandering_snowbird.sql`
+- `0027_exam_mode_check_and_drift_catchup.sql` AND `0027_upload_max_zip_setting.sql`
+- `0028_platform_mode_restriction_overrides.sql` AND `0028_striped_nicolaos.sql`
+- Gap: `0029`–`0032` absent; sequence jumps 0028 → 0033.
 
-Concrete failure scenario: A student or admin debugs a compiler behavior difference using the admin language table or AGENTS guidance and assumes TS 5.9, while submissions actually compile with TS 6.0.
+`drizzle/pg/meta/_journal.json` mirrors the duplicates (e.g. `idx:11 → 0012_public_signup_settings`, `idx:12 → 0012_flimsy_korg`).
 
-Suggested fix: Set the TypeScript language `standard` and AGENTS table to 6.0, or pin the Docker/runtime compiler back to 5.9. If the README badge at `README.md:10` is only the app's package TypeScript version (`package.json` uses 5.9.3), label it as app/framework TypeScript to avoid judge-toolchain confusion.
+**Contradiction (soft):** Neither doc warns that the journal is in this state. Both frame the "verify _journal.json in sync" step as a routine checkbox, but the verification will fail for any operator who actually runs it, and the behaviour of `drizzle-kit migrate` against duplicate-prefix SQL files is at best confusing (drizzle tracks applied migrations by tag hash in `__drizzle_migrations`, so replay may work, but the on-disk naming is ambiguous and the gap implies deleted/renamed migrations). An operator reaching for this escape hatch during a destructive-migration incident is the exact operator who cannot afford a second surprise.
 
-### DOC-P1-7 - `deploy-docker.sh` header says app-server worker defaults are false, but the script defaults them on
+**Confidence:** Medium — the journal state is unambiguous; the operational risk is that neither doc discloses it. Whether `drizzle-kit migrate` actually fails depends on drizzle-kit version behaviour, which is itself a reason to flag.
 
-Severity: High
+**Fix:** Add a callout under `AGENTS.md` "Database migration recovery" and in the `deploy-docker.sh:1042` comment block: "WARNING: `drizzle/pg/` currently contains duplicate prefixes (0012, 0016, 0027, 0028) and a gap (0029-0032). Do NOT switch to `drizzle-kit migrate` without first reconciling the journal with `src/lib/db/schema.pg.ts` and verifying applied-migration state in the target DB's `drizzle.__drizzle_migrations` table." Longer term, deduplicate the prefixes or regenerate the journal.
 
-Confidence: High
+---
 
-Status: Confirmed
+## Resolved (verified clean at HEAD)
 
-Evidence: The deploy header says `BUILD_WORKER_IMAGE` defaults false on the app server and `INCLUDE_WORKER` defaults false on the app server at `deploy-docker.sh:15-28`. Actual defaults are `INCLUDE_WORKER="${INCLUDE_WORKER:-true}"` and `BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-auto}"` at `deploy-docker.sh:180-185`; `auto` resolves to `INCLUDE_WORKER` at `deploy-docker.sh:225-226`. `CLAUDE.md:7-12` says `algo.xylolabs.com` is app-only and must be deployed with `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`.
+### R1 — Auth bearer doc (prior flag)
+`docs/authentication.md:13-15` and `docs/api.md:68-76` say API keys use `Authorization: Bearer jk_...`. `src/lib/api/api-key-auth.ts:53` enforces `rawKey.startsWith(API_KEY_PREFIX)` with `API_KEY_PREFIX = "jk_"` (`api-key-auth.ts:12`). Non-`jk_` Bearer tokens are rejected in both the fast path (`auth.ts:66`) and the fallback (`auth.ts:82` → `authenticateApiKey`). The CSRF-skip-for-API-keys claim is implemented at `src/lib/api/handler.ts:141-143` (`isApiKeyAuth` via the `_apiKeyAuth` marker). **No mismatch.**
 
-Mismatch: Script documentation implies host-aware app-server defaults that are not implemented.
+### R2 — Privacy retention 30d vs 5y (prior flag)
+`docs/privacy-retention.md:25` says "AI chat logs | 5 years (1,825 days)"; `docs/data-retention-policy.md:14` says "5 years (1825 days)"; `src/lib/data-retention.ts:3` is `chatMessages: 365 * 5`. No 30-day chat-retention remnant exists (the "30" hits in messages are `expiry30d`, backup `BACKUP_RETAIN_DAYS`, and the DSAR 30-day acknowledgement window — all unrelated). **Resolved.**
 
-Concrete failure scenario: An operator deploying to `algo.xylolabs.com` trusts the script header and omits `INCLUDE_WORKER=false BUILD_WORKER_IMAGE=false`. The deploy builds/starts worker pieces on an app-only host, violating the project deployment rules.
+### R3 — Deploy topology (prior flag)
+`deploy-docker.sh` header is generic ("builds Docker images on the server"). The env-var docstrings (L27-29 `BUILD_WORKER_IMAGE`, L23-25 `SKIP_LANGUAGES`, L31-33 `INCLUDE_WORKER`) correctly cross-reference CLAUDE.md for app-only targets. `AGENTS.md:431` states the algo.xylolabs.com contract (`SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`) verbatim. `docs/deployment.md:152,157` documents the split. **No mismatch with CLAUDE.md.**
 
-Suggested fix: Either implement host-aware defaults keyed by target, or change the header to say local worker is enabled by default and app-only targets require explicit `INCLUDE_WORKER=false BUILD_WORKER_IMAGE=false SKIP_LANGUAGES=true`.
+### R4 — minPasswordLength removal (new angle a)
+`schema.pg.ts:591` still defines the column (orphan, not settable), but no doc, message, or policy text references a configurable minimum:
+- `docs/authentication.md:22`: "exactly an 8-character minimum" — matches `FIXED_MIN_PASSWORD_LENGTH = 8`.
+- `AGENTS.md:630-634`: documents the fixed-8 policy and the file location.
+- `messages/*.json`: `passwordTooShort` is hardcoded to "8 characters" / "8자"; the two `{min}` placeholders (`passwordHint`, `accountPasswordTooShort`) are interpolated with `FIXED_MIN_PASSWORD_LENGTH`/`MIN_PASSWORD_LENGTH` at the call sites (`signup-form.tsx:197`, `recruit-start-form.tsx:55`).
+- `docs/api.md:1378-1386` admin settings body omits `minPasswordLength`.
+**No stale reference. Resolved.**
 
-### DOC-P1-8 - AGENTS database version says PostgreSQL 17, production compose uses PostgreSQL 18
+### R5 — en/ko message parity
+Recursive key-diff of `messages/en.json` vs `messages/ko.json`: **0 mismatches** (every key present in one is present in the other). Spot-checked password, retention, and CSRF-adjacent keys. **Clean.**
 
-Severity: Medium
+---
 
-Confidence: High
+## Recommended next steps (priority order)
 
-Status: Confirmed
-
-Evidence: `AGENTS.md:289-296` says the runtime database is PostgreSQL 17. Production compose uses `postgres:18-alpine` at `docker-compose.production.yml:17-18`, and `docs/deployment.md:226-232` explicitly documents PostgreSQL 18's `PGDATA` behavior.
-
-Mismatch: The agent guide and production deployment source disagree on the active PostgreSQL major version.
-
-Concrete failure scenario: An operator plans backup/restore drills, extension compatibility, or incident recovery using PostgreSQL 17 assumptions, then discovers production is on PostgreSQL 18 during a restore or migration incident.
-
-Suggested fix: Update `AGENTS.md` to PostgreSQL 18 or make the compose file match PostgreSQL 17. Name `docker-compose.production.yml` as the runtime image source of truth.
-
-### DOC-P1-9 - Seccomp docs describe default-allow deny-list, but the active profile is default-deny allow-list
-
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `AGENTS.md:298-301` says the seccomp profile uses a deny-list with default action `SCMP_ACT_ALLOW`. `.context/project/current-state.md:176-181` and `.context/development/open-workstreams.md:80-84` repeat the default-allow/deny-list story. The actual profile states default-deny and sets `"defaultAction": "SCMP_ACT_ERRNO"` at `docker/seccomp-profile.json:1-4`; the syscall list action is `SCMP_ACT_ALLOW` at `docker/seccomp-profile.json:264-270`, with a `clone3` errno compatibility rule at `docker/seccomp-profile.json:272-275`.
-
-Mismatch: Operator and agent docs describe the opposite security model from the profile Docker actually loads.
-
-Concrete failure scenario: A future sandbox change or incident response assumes unlisted syscalls are allowed, misdiagnoses runtime failures, or weakens the profile based on the wrong model.
-
-Suggested fix: Update `AGENTS.md` and active `.context/**` notes to say the profile is default-deny with an allow-list. If default-allow was intended, change `docker/seccomp-profile.json` and tests instead.
-
-### DOC-P1-10 - Docker image counts, examples, and preset semantics are inconsistent across current docs and scripts
-
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `README.md:75-132` says there are 102 language-specific Docker images, gives removed/stale examples (`cpp17`, `clang17`, `clang20`) at `README.md:77`, and still lists `judge-malbolge` and `judge-j` at `README.md:86` and `README.md:94`. `docs/languages.md:190-200` still says 102/102 images and 113-language E2E summaries despite the top of the same file saying 125 variants at `docs/languages.md:1-3`; `docs/languages.md:240-247` calls `LANGUAGE_FILTER=everything` the "full 99 set". `AGENTS.md:318-320` also says all 102 Docker images build/run on arm64, while `AGENTS.md:375` says `all` is about 14 GB. Current deploy help says `all` is everything except 18 ARM-prohibitive images and about 30 GB at `deploy-docker.sh:140-176` and `deploy-docker.sh:208-216`. `scripts/setup.sh:53-76` uses a different `all` list that includes the ARM-prohibitive set, including `roc` and `flix`, with no separate `everything` escape hatch.
-
-Mismatch: "All", image counts, and example image names mean different things depending on which current doc or script the operator reads.
-
-Concrete failure scenario: An operator sizes a worker host from README/AGENTS, picks `all` in setup or deploy expecting the same image set, and either under-provisions disk/time or unexpectedly attempts ARM-prohibitive/disabled image builds. Another operator may try to build or preserve `judge-j`/`judge-malbolge` because the README still lists them as part of the fleet.
-
-Suggested fix: Generate the Docker-image inventory from `DEFAULT_JUDGE_LANGUAGES` plus explicit disabled/orphan metadata. Align `scripts/setup.sh` presets with `deploy-docker.sh` (`all` vs `everything`) or document the intentional difference. Remove or archive stale README rows for images no longer present in current language config.
-
-### DOC-P1-11 - API reference is advertised as complete, but shipped route families are omitted
-
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `README.md:288-290` describes `docs/api.md` as "all REST endpoints, authentication, request/response formats". The route tree includes endpoint families that are not covered by `docs/api.md`; representative examples are `POST /api/v1/community/threads` at `src/app/api/v1/community/threads/route.ts:12-16`, `POST /api/v1/auth/forgot-password` at `src/app/api/v1/auth/forgot-password/route.ts:11-17`, and `GET /api/v1/admin/submissions/export` at `src/app/api/v1/admin/submissions/export/route.ts:45-58`. A grep of `docs/api.md` found no entries for `community`, `forgot-password`, or `admin/submissions/export`; it only matched contest access-code and a submission rejudge endpoint among the sampled omitted families.
-
-Mismatch: The README promises complete REST coverage, while the API reference is a partial/core reference.
-
-Concrete failure scenario: Integrators or operators assume community threads, password reset, admin submission CSV export, code snapshots, recruiting validation, or other route families are unavailable or unsupported because the advertised complete API reference omits them.
-
-Suggested fix: Either relabel `docs/api.md` as a core/stable API reference, or generate a route inventory and fill endpoint sections for all shipped `src/app/api/v1/**/route.ts` families.
-
-### DOC-P1-12 - `.context/project/current-state.md` is stale enough to mislead future agents
-
-Severity: Medium
-
-Confidence: High
-
-Status: Confirmed
-
-Evidence: `.context/project/current-state.md:176-181` says both test and production hosts run `judgekit-app` and `judgekit-judge-worker`, and repeats the default-allow seccomp model. `.context/project/current-state.md:312-316` says README/docs reflect 86 language variants across 69 Docker images and mentions `privileged:true`. Current project rules say `algo.xylolabs.com` is app-only at `CLAUDE.md:7-12`; current Docker architecture says the worker uses `docker-proxy` rather than direct privileged access at `AGENTS.md:303-318`; current language docs/config have 125 variants (`AGENTS.md:18-20`, `docs/languages.md:1-3`, `src/lib/judge/languages.ts:1510`).
-
-Mismatch: A file named `current-state.md` in `.context/project/` presents historical deployment/language/security details as current.
-
-Concrete failure scenario: A future review-plan-fix agent reads `.context/**` as requested context, assumes worker/app topology and seccomp posture from this stale file, and produces an unsafe deploy plan or stale language remediation.
-
-Suggested fix: Archive the file or replace it with a short current pointer document listing the live sources of truth: `CLAUDE.md`, `AGENTS.md`, `docs/languages.md`, `src/lib/judge/languages.ts`, compose files, and `deploy-docker.sh`.
-
-## Likely Issues
-
-### LIKELY-P1-1 - Historical language E2E summaries read like current status
-
-Severity: Low
-
-Confidence: Medium
-
-Status: Likely issue
-
-Evidence: `docs/languages.md:190-200` has dated 2026-03-29 E2E summaries for 113 languages directly under the current "Supported Languages (125 variants)" page. `docs/languages.md:133` says output-only languages were excluded from historical totals, which helps, but the section is still placed in a current status document without a freshness boundary.
-
-Mismatch: Historical validation data is mixed into the current support matrix.
-
-Concrete failure scenario: An operator cites "113 of 113 pass" as current validation evidence for a 125-variant deployment and misses newer languages/output-only modes that were not part of that run.
-
-Suggested fix: Move dated E2E results to an archive/changelog section, or regenerate the matrix from current all-language E2E runs and label exclusions explicitly.
-
-### LIKELY-P1-2 - Deploy cleanup comments use dangerous shorthand despite safe code
-
-Severity: Low
-
-Confidence: Medium
-
-Status: Likely issue
-
-Evidence: `deploy-docker.sh:31-36` and `deploy-docker.sh:1208-1214` describe post-deploy cleanup as removing "unused images" and "orphan volumes". The actual cleanup helper is safer and more specific: `deploy-docker.sh:365-401` warns against `docker image prune -af`, uses `docker image prune -f`, and gates `docker volume prune -f` on `judgekit-db` running. `docs/deployment.md:264-275` and `AGENTS.md:432-435` correctly emphasize dangling-only image pruning and volume-prune constraints.
-
-Mismatch: Comments near the operational entry points use shorthand that can be read as `docker image prune -a` or broad volume cleanup, while the detailed docs and code intentionally avoid that.
-
-Concrete failure scenario: During an incident, an operator copies the shorthand into a manual cleanup command and uses `docker image prune -af`, wiping tagged judge images on worker hosts.
-
-Suggested fix: Change script comments/header to "stopped containers, dangling images, BuildKit cache, and DB-gated volume prune" and remove "unused images" wording.
-
-## Manual-Validation Risks
-
-### RISK-P1-1 - Production retention overrides need verification
-
-Severity: High if deployed disclosure differs from configured environment
-
-Confidence: Manual validation required
-
-Evidence: Code defaults to 5-year chat retention (`src/lib/data-retention.ts:1-34`) and public `/privacy` derives values from code (`src/app/(public)/privacy/page.tsx:39-49`), but production may set `CHAT_MESSAGE_RETENTION_DAYS`.
-
-Mismatch to validate: The deployed privacy disclosure, runtime env, and operator docs may not describe the same retention window.
-
-Concrete failure scenario: A production deployment sets a non-default chat retention window but the public privacy page or operator runbook still describes the default, creating a disclosure gap.
-
-Manual validation: Check deployed `.env.production`/runtime env for `CHAT_MESSAGE_RETENTION_DAYS`, then load `/privacy` in that deployment and confirm it matches the legal/operator retention policy.
-
-Suggested fix: If mismatch is found, update env, docs, or policy together; do not leave a doc-only override.
-
-### RISK-P1-2 - Docker image inventory should be regenerated from real build hosts
-
-Severity: Medium
-
-Confidence: Manual validation required
-
-Evidence: Local static config says 98 unique images; docs mention 97/99/102 depending section. Actual remote hosts may have additional orphan/stale images from older deployments.
-
-Mismatch to validate: The repository source-of-truth image set may not match what production hosts actually retain.
-
-Concrete failure scenario: Cleanup or build planning removes an image that is still required by a DB language override, or preserves stale images because docs overstate the current fleet.
-
-Manual validation: On each worker/app Docker host, compare `docker images 'judge-*'` with the generated set from `DEFAULT_JUDGE_LANGUAGES`, `deploy-docker.sh` presets, and intentionally preserved disabled Dockerfiles.
-
-Suggested fix: If mismatch is found, add a generated inventory doc or script output committed with a timestamp, and separate "current config images" from "historical/orphan Dockerfiles kept for reference".
-
-### RISK-P1-3 - API docs completeness should be checked by generation, not spot inspection
-
-Severity: Medium
-
-Confidence: Manual validation required
-
-Evidence: Spot checks found omitted shipped route families, but this review did not build a full route-to-doc coverage map.
-
-Mismatch to validate: The full `src/app/api/v1/**/route.ts` surface may be larger than the advertised complete API reference.
-
-Concrete failure scenario: A route family with production behavior or security requirements remains undocumented because only sampled omissions were reviewed.
-
-Manual validation: Generate the `src/app/api/v1/**/route.ts` route list, normalize dynamic segments, and compare it against headings in `docs/api.md`. Decide whether undocumented internal/test endpoints should be excluded by policy.
-
-Suggested fix: If mismatch is found, add a docs coverage check or a generated appendix so the README's "all REST endpoints" claim stays true.
-
-## Verified Non-Findings From Prior Reviews
-
-- Manual submissions no longer insert as permanent `pending`: `src/app/api/v1/submissions/route.ts:328-331` now sets manual problem submissions to `submitted`, and judge claim still excludes manual problems at `src/lib/judge/claim-query.ts:44-50` and `src/lib/judge/claim-query.ts:139-144`.
-- Dedicated worker docs/helper now include `RUNNER_AUTH_TOKEN`: `docs/deployment.md:169-174`, `README.md:200-212`, `docs/judge-workers.md:54-60`, `scripts/deploy-worker.sh:139-142`, and `docker-compose.worker.yml:58-60` are aligned.
-- Function-judging compile-output remapping now routes through `mapFunctionCompileOutputForDisplay` in the public detail page (`src/app/(public)/submissions/[id]/page.tsx:137-142`), admin submissions list (`src/app/(dashboard)/dashboard/admin/submissions/page.tsx:230-236`), and public submissions list (`src/app/(public)/submissions/page.tsx:276-282`).
-- ZIP restore staging/integrity appears aligned with current docs: `src/app/api/v1/admin/restore/route.ts` uses `parseBackupZip` before DB validation and later calls `restoreParsedBackupFiles`; `src/lib/db/export-with-files.ts` validates the manifest/checksums before staging upload contents.
-
-## Final Missed-Issues Sweep
-
-- Rechecked high-risk doc/code seams: auth/API-key/CSRF, privacy retention, Docker image admin APIs, language source of truth, deploy presets, app-vs-worker deployment defaults, database version, seccomp model, API route coverage, backup/restore claims, function judging, and manual problem judging.
-- Searched for stale terms and footguns across `AGENTS.md`, `README.md`, `docs/**`, `.context/**`, `src/**`, `scripts/**`, and `deploy-docker.sh`.
-- Did not run tests because this was a documentation/code mismatch review. No implementation source files were edited.
-- Existing dirty review files from other agents were left untouched; this pass only wrote `.context/reviews/document-specialist.md`.
+1. **DOC-2 / DOC-3 (high):** Correct every "full-fidelity = all fields" claim and the pre-restore-snapshot comment. These mislead disaster-recovery planning. Single fix in `src/lib/security/secrets.ts` comment + `docs/data-retention-policy.md:48` + `src/lib/db/pre-restore-snapshot.ts:34-38` + `docs/admin-security-operations.md:65`.
+2. **DOC-4:** Align AGENTS.md narrative with the `die` behavior. Trivial wording fix, high runbook value.
+3. **DOC-1:** Document the `Sec-Fetch-Site` + `Origin`/`Host` CSRF gates in `docs/api.md` so external integrators stop hitting surprise 403s.
+4. **DOC-5:** Fix the Rust docstring (or, if the described behaviour was intended, file as a code bug — the unqualified-image path is a real trust-boundary question).
+5. **DOC-6:** Add the journal-integrity warning to both escape-hatch locations; schedule a journal reconciliation task.
