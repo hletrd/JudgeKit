@@ -3,6 +3,7 @@ import { NextRequest } from "next/server";
 import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import { apiError, apiSuccess } from "@/lib/api/responses";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { isProblemLinkedScope } from "@/lib/discussions/permissions";
 import { db } from "@/lib/db";
 import { communityVotes, discussionPosts, discussionThreads } from "@/lib/db/schema";
 import { communityVoteSchema } from "@/lib/validators/discussions";
@@ -60,10 +61,10 @@ export const POST = createApiHandler({
 
     const problemId =
       body.targetType === "thread"
-        ? target && "scopeType" in target && (target.scopeType === "problem" || target.scopeType === "editorial")
+        ? target && "scopeType" in target && isProblemLinkedScope(target.scopeType)
           ? target.problemId
           : null
-        : target && "thread" in target && (target.thread?.scopeType === "problem" || target.thread?.scopeType === "editorial")
+        : target && "thread" in target && isProblemLinkedScope(target.thread?.scopeType)
           ? target.thread?.problemId ?? null
           : null;
 

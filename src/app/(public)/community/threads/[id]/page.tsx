@@ -10,7 +10,7 @@ import { DiscussionPostDeleteButton } from "@/components/discussions/discussion-
 import { DiscussionVoteButtons } from "@/components/discussions/discussion-vote-buttons";
 import { JsonLd } from "@/components/seo/json-ld";
 import { canReadProblemDiscussion, getDiscussionThreadById } from "@/lib/discussions/data";
-import { canModerateDiscussions } from "@/lib/discussions/permissions";
+import { canModerateDiscussions, isProblemLinkedScope } from "@/lib/discussions/permissions";
 import { buildAbsoluteUrl, buildLocalePath, buildPublicMetadata, buildSocialImageUrl, NO_INDEX_METADATA, summarizeTextForMetadata } from "@/lib/seo";
 import { getResolvedSystemSettings, getSystemSettings } from "@/lib/system-settings";
 
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
     getLocale(),
   ]);
 
-  if (!thread || ((thread.scopeType === "problem" || thread.scopeType === "solution") && thread.problem?.visibility !== "public")) {
+  if (!thread || (isProblemLinkedScope(thread.scopeType) && thread.problem?.visibility !== "public")) {
     return {
       title: tShell("community.liveTitle"),
       ...NO_INDEX_METADATA,
@@ -80,7 +80,7 @@ export default async function CommunityThreadDetailPage({ params }: { params: Pr
     notFound();
   }
 
-  if (thread.scopeType === "problem" || thread.scopeType === "solution") {
+  if (isProblemLinkedScope(thread.scopeType)) {
     const canRead = await canReadProblemDiscussion(
       thread.problemId ?? "",
       session?.user ? { userId: session.user.id, role: session.user.role } : null,

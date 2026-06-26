@@ -4,7 +4,7 @@ import { createApiHandler, forbidden, notFound } from "@/lib/api/handler";
 import { db } from "@/lib/db";
 import { discussionPosts, discussionThreads } from "@/lib/db/schema";
 import { discussionPostCreateSchema } from "@/lib/validators/discussions";
-import { canAccessProblem } from "@/lib/auth/permissions";
+import { canAccessProblemScopedThread } from "@/lib/discussions/permissions";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 import { eq } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -35,11 +35,15 @@ export const POST = createApiHandler({
       return apiError("discussionThreadLocked", 409);
     }
 
-    if (thread.scopeType === "problem" && thread.problemId) {
-      const hasAccess = await canAccessProblem(thread.problemId, user.id, user.role);
-      if (!hasAccess) {
-        return forbidden();
-      }
+    // Problem-linked scopes (problem/editorial/solution) require problem
+    // access before a user may reply. Centralized in discussions/permissions.
+    if (
+      !(await canAccessProblemScopedThread(thread.scopeType, thread.problemId, {
+        userId: user.id,
+        role: user.role,
+      }))
+    ) {
+      return forbidden();
     }
 
     const [created] = await db.transaction(async (tx) => {

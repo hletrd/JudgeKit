@@ -5,6 +5,7 @@ import { discussionThreads } from "@/lib/db/schema";
 import { discussionThreadCreateSchema } from "@/lib/validators/discussions";
 import { createApiHandler, forbidden } from "@/lib/api/handler";
 import { canAccessProblem } from "@/lib/auth/permissions";
+import { isProblemLinkedScope } from "@/lib/discussions/permissions";
 import { resolveCapabilities, hasCapability } from "@/lib/capabilities";
 import { sanitizeMarkdown } from "@/lib/security/sanitize-html";
 import { recordAuditEvent } from "@/lib/audit/events";
@@ -14,7 +15,7 @@ export const POST = createApiHandler({
   rateLimit: "community:threads:create",
   schema: discussionThreadCreateSchema,
   handler: async (req: NextRequest, { user, body }) => {
-    if (body.scopeType === "problem" || body.scopeType === "editorial" || body.scopeType === "solution") {
+    if (isProblemLinkedScope(body.scopeType)) {
       const problem = await db.query.problems.findFirst({
         where: (table, { eq }) => eq(table.id, body.problemId!),
         columns: { id: true },
@@ -38,10 +39,7 @@ export const POST = createApiHandler({
 
     const [created] = await db.insert(discussionThreads).values({
       scopeType: body.scopeType,
-      problemId:
-        body.scopeType === "problem" || body.scopeType === "editorial" || body.scopeType === "solution"
-          ? body.problemId ?? null
-          : null,
+      problemId: isProblemLinkedScope(body.scopeType) ? body.problemId ?? null : null,
       authorId: user.id,
       title: body.title,
       content: sanitizeMarkdown(body.content),
