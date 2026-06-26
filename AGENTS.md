@@ -372,15 +372,15 @@ SSH_KEY=key.pem REMOTE_HOST=... REMOTE_USER=... DOMAIN=... ./deploy-docker.sh
 ./deploy-docker.sh --languages=cpp,python,node,rust
 ```
 
-Language presets: `core` (~0.8 GB), `popular` (~2.5 GB), `extended` (~8 GB), `all` (~14 GB), `none`.
+Language presets: `core` (~1.2 GB), `popular` (~4 GB), `extended` (~12 GB), `all` (~30 GB), `none`. (Sizes are empirical figures from `deploy-docker.sh --help`; reconcile any drift there first.)
 
 ### Database migration recovery (`DRIZZLE_PUSH_FORCE`)
 
-The deploy script uses `drizzle-kit push` (schema-vs-DB diff) for migrations. When push detects a destructive change (e.g., `DROP COLUMN`), it prompts interactively. In a non-interactive deploy shell the prompt is unanswered and the destructive change is NOT applied. The script captures push output, scans for the data-loss prompt markers, and downgrades the success log to a warn.
+The deploy script uses `drizzle-kit push` (schema-vs-DB diff) for migrations. When push detects a destructive change (e.g., `DROP COLUMN`), it prompts interactively. In a non-interactive deploy shell the prompt is unanswered and the destructive change is NOT applied. The script captures push output, scans for the data-loss prompt markers, and **aborts the deploy via `die`** so the operator must explicitly opt in via `DRIZZLE_PUSH_FORCE=1`. It does NOT warn-and-continue.
 
-When you see the warn:
+When this happens you will see the deploy abort with:
 ```
-[WARN] drizzle-kit push detected a destructive schema change but did NOT apply it ...
+[FATAL] drizzle-kit push detected a destructive schema change but did NOT apply it ...
 ```
 
 Recovery options:
@@ -404,7 +404,7 @@ The backfill can be REMOVED when BOTH conditions hold:
 
 **Target re-evaluation date:** 2026-10-26.
 
-When both conditions hold, delete the Step 5b block from `deploy-docker.sh` (lines around 544-596) AND this subsection from `AGENTS.md`. Cross-reference: `.context/reviews/_aggregate.md` AGG7-1 (cycle-7 plan).
+When both conditions hold, delete the Step 5b block from `deploy-docker.sh` (the `# Step 5b: Pre-drop secret_token backfill` block, near line 941) AND this subsection from `AGENTS.md`. Cross-reference: `.context/reviews/_aggregate.md` AGG7-1 (cycle-7 plan).
 
 ### SSH Authentication
 

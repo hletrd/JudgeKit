@@ -17,13 +17,15 @@ function getExpectedHost(request: NextRequest) {
 }
 
 /**
- * Validates CSRF protection for state-changing requests.
- * Requires the `X-Requested-With` header to be present on
+ * Validates CSRF protection for state-changing requests via THREE layered
+ * checks (any one passing is sufficient): (1) the `X-Requested-With` header,
+ * (2) `Sec-Fetch-Site` in {same-origin, same-site, none}, and (3) `Origin`
+ * (or Host fallback) matching the configured AUTH_URL host. Applies to
  * non-safe methods (POST, PATCH, PUT, DELETE).
  *
- * This prevents cross-origin form submissions while keeping
- * the API usable from JavaScript clients (fetch/XHR always
- * allow setting custom headers; HTML forms do not).
+ * This prevents cross-origin form submissions while keeping the API usable
+ * from JavaScript clients (fetch/XHR always allow setting custom headers;
+ * HTML forms do not).
  *
  * Returns null if the request passes, or a 403 response if blocked.
  */

@@ -110,12 +110,17 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     expect(csv).not.toContain("alice");
     expect(csv).not.toContain("CS101");
     expect(csv).not.toContain("10.0.0.1");
-    expect(recordAuditEventMock).toHaveBeenCalledWith(
+    // CSV export now uses the durable audit path for parity with the JSON
+    // branch (C4-9): a crash in the buffered flush window must not drop the
+    // PII-read audit row.
+    expect(recordAuditEventDurableMock).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "contest.export_downloaded_anonymized",
         resourceId: "assignment-1",
       })
     );
+    // The legacy buffered path is no longer used for either export branch.
+    expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
 
   it("audits the panel's background JSON PII read via the durable audit path (C3-AGG-1)", async () => {

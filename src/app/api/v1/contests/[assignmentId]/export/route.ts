@@ -5,7 +5,7 @@ import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { computeContestRanking } from "@/lib/assignments/contest-scoring";
 import { getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
-import { recordAuditEvent, recordAuditEventDurable } from "@/lib/audit/events";
+import { recordAuditEventDurable } from "@/lib/audit/events";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
 import { escapeCsvField } from "@/lib/csv/escape-field";
 
@@ -179,7 +179,10 @@ export const GET = createApiHandler({
     ];
 
     const csvSuffix = `${anonymized ? "-anonymized" : ""}-export`;
-    recordAuditEvent({
+    // Use the durable audit helper for parity with the JSON branch (C4-9): a
+    // SIGKILL/OOM in the buffered flush window must not drop the CSV PII-read
+    // audit row.
+    await recordAuditEventDurable({
       actorId: user.id,
       actorRole: user.role,
       action: anonymized ? "contest.export_downloaded_anonymized" : "contest.export_downloaded",

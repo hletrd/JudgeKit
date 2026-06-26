@@ -124,6 +124,18 @@ if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
     set +a
 fi
 
+# Source per-target overrides (e.g. .env.deploy.algo) so a bare
+# `DEPLOY_TARGET=algo ./deploy-docker.sh` honours the CLAUDE.md app-server
+# defaults (SKIP_LANGUAGES=true, BUILD_WORKER_IMAGE=false, INCLUDE_WORKER=false)
+# without manual env vars. Explicit caller env vars still win because the
+# caller-override restoration block below re-applies them after this sourcing.
+if [[ -n "${DEPLOY_TARGET:-}" && -f "${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}" ]]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}"
+    set +a
+fi
+
 # Restore caller overrides (explicit env vars take precedence)
 [[ -n "$_CALLER_REMOTE_HOST" ]] && REMOTE_HOST="$_CALLER_REMOTE_HOST"
 [[ -n "$_CALLER_REMOTE_USER" ]] && REMOTE_USER="$_CALLER_REMOTE_USER"
