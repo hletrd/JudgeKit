@@ -46,6 +46,15 @@ describe("isJudgeIpAllowed", () => {
       vi.stubEnv("NODE_ENV", "production");
       expect(isJudgeIpAllowed(requestWithIp("127.0.0.1"))).toBe(true);
     });
+
+    it("fails closed when JUDGE_STRICT_IP_ALLOWLIST=1 and no allowlist is set (C4-2 Part 2)", () => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.stubEnv("JUDGE_STRICT_IP_ALLOWLIST", "1");
+      resetIpAllowlistCache();
+      // Explicit opt-in: deny every client even though no allowlist is configured.
+      expect(isJudgeIpAllowed(requestWithIp("127.0.0.1"))).toBe(false);
+      expect(isJudgeIpAllowed(requestWithIp("203.0.113.9"))).toBe(false);
+    });
   });
 
   describe("with an exact-IP allowlist", () => {

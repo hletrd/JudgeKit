@@ -9,7 +9,7 @@ import { db, execTransaction } from "@/lib/db";
 import { submissions, submissionResults, judgeWorkers } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { isJudgeAuthorized, isJudgeAuthorizedForWorker } from "@/lib/judge/auth";
+import { isJudgeAuthorizedForWorker } from "@/lib/judge/auth";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import {
   buildSubmissionResultRows,
@@ -66,13 +66,17 @@ export async function POST(request: NextRequest) {
       return apiError("submissionNotFound", 404);
     }
 
-    if (submission.judgeWorkerId) {
-      const workerAuth = await isJudgeAuthorizedForWorker(request, submission.judgeWorkerId);
-      if (!workerAuth.authorized) {
-        return apiError(workerAuth.error ?? "unauthorized", 401);
-      }
-    } else if (!isJudgeAuthorized(request)) {
+    // Per-worker auth is the ONLY accepted path on /poll (C4-2 Part 1). The
+    // shared JUDGE_AUTH_TOKEN is bootstrap-only (/register). A submission
+    // without a judgeWorkerId cannot be reported on by anyone via the shared
+    // token; it will be re-claimed by a registered worker after the stale-claim
+    // timeout.
+    if (!submission.judgeWorkerId) {
       return apiError("unauthorized", 401);
+    }
+    const workerAuth = await isJudgeAuthorizedForWorker(request, submission.judgeWorkerId);
+    if (!workerAuth.authorized) {
+      return apiError(workerAuth.error ?? "unauthorized", 401);
     }
 
     if (IN_PROGRESS_JUDGE_STATUSES.has(status)) {

@@ -114,7 +114,12 @@ beforeEach(() => {
     problemType: "auto",
     functionSpec: null,
   });
-  dbSelectMock.mockReturnValue(makeSelectChain([]));
+  // First select (worker-exists check) yields a valid online worker; later
+  // selects (test cases / docker image) fall back to empty. workerId is
+  // required on /claim as of C4-2 Part 1.
+  dbSelectMock
+    .mockReturnValueOnce(makeSelectChain([{ status: "online", secretTokenHash: "hashed:secret" }]))
+    .mockReturnValue(makeSelectChain([]));
   consumeUserApiRateLimitMock.mockResolvedValue(null);
   getDbNowUncachedMock.mockResolvedValue(new Date());
 });
@@ -127,7 +132,7 @@ async function claim() {
         Authorization: "Bearer test-token",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ workerId: "worker-1", workerSecret: "secret" }),
     }),
   );
 }

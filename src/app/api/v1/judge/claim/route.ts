@@ -9,12 +9,11 @@ import { eq, asc, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { isJudgeAuthorized, isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
+import { isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
 import { buildClaimSql } from "@/lib/judge/claim-query";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { logger } from "@/lib/logger";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
-import { extractClientIp } from "@/lib/security/ip";
 import { deserializeStoredJudgeCommand } from "@/lib/judge/languages";
 import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
 import { assembleFunctionSubmission } from "@/lib/judge/function-judging/assemble";
@@ -101,10 +100,25 @@ async function releaseClaimedSubmission(
   });
 }
 
+// workerId is REQUIRED on /claim: the shared JUDGE_AUTH_TOKEN is bootstrap-only
+// (honoured solely by /register). Requiring a registered worker here removes the
+// exfiltration blast radius — a leaked shared token can no longer claim a
+// submission and read sourceCode + every hidden testCase. See C4-2 Part 1.
 const claimRequestSchema = z.object({
   workerId: z.string().min(1).optional(),
   workerSecret: z.string().min(1).optional(),
 }).superRefine((value, ctx) => {
+  // workerId is REQUIRED on /claim (C4-2 Part 1): the shared JUDGE_AUTH_TOKEN is
+  // bootstrap-only (/register). Requiring a registered worker removes the
+  // exfiltration blast radius — a leaked shared token can no longer claim a
+  // submission and read sourceCode + every hidden testCase.
+  if (!value.workerId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["workerId"],
+      message: "workerIdRequired",
+    });
+  }
   if (value.workerId && !value.workerSecret) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -140,43 +154,23 @@ export async function POST(request: NextRequest) {
       return apiError(parsed.error.issues[0]?.message ?? "invalidRequest", 400);
     }
 
-    const workerId = parsed.data.workerId ?? null;
-    const workerSecret = parsed.data.workerSecret ?? null;
+    const workerId = parsed.data.workerId;
+    const workerSecret = parsed.data.workerSecret;
     workerIdForCleanup = workerId;
 
-    const clientIp = extractClientIp(request.headers);
-    let rateLimitScope: string;
-    if (workerId) {
-      rateLimitScope = workerId;
-    } else if (clientIp) {
-      rateLimitScope = `ip:${clientIp}`;
-    } else {
-      // Fall back to a hash of the Authorization header so different tokens
-      // get different rate-limit buckets. Prevents one token-holder from
-      // exhausting the limit for all unidentifiable workers.
-      const authHeader = request.headers.get("authorization") ?? "";
-      const authHash = authHeader.length > 7
-        ? crypto.createHash("sha256").update(authHeader).digest("hex").slice(0, 16)
-        : "none";
-      rateLimitScope = `auth:${authHash}`;
-    }
+    const rateLimitScope = workerId;
     const rateLimitResponse = await consumeUserApiRateLimit(request, rateLimitScope, "judge:claim");
     if (rateLimitResponse) {
       return rateLimitResponse;
     }
 
-    // Per-worker auth: when a workerId is provided, validate the Bearer token
-    // against the worker's secretTokenHash. Without a workerId, use the shared
-    // token only for the bootstrap/no-worker registration-compatible path.
-    if (workerId) {
-      const workerAuth = await isJudgeAuthorizedForWorker(request, workerId);
-      if (!workerAuth.authorized) {
-        return apiError(workerAuth.error ?? "unauthorized", 401);
-      }
-    } else {
-      if (!isJudgeAuthorized(request)) {
-        return apiError("unauthorized", 401);
-      }
+    // Per-worker auth is now the ONLY auth path on /claim (C4-2 Part 1). The
+    // shared JUDGE_AUTH_TOKEN is no longer honoured here — it is bootstrap-only
+    // (/register). A worker must exist with a secretTokenHash and the request
+    // must carry a matching Bearer token + body workerSecret.
+    const workerAuth = await isJudgeAuthorizedForWorker(request, workerId);
+    if (!workerAuth.authorized) {
+      return apiError(workerAuth.error ?? "unauthorized", 401);
     }
 
     // Validate that the worker exists and is online before attempting an

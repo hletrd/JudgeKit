@@ -167,6 +167,9 @@ describe("POST /api/v1/judge/claim", () => {
     expect(rawQueryOneMock).not.toHaveBeenCalled();
   });
   it("binds a primitive timestamp when claiming submissions", async () => {
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ status: "online", secretTokenHash: "hashed:worker-secret" }])
+    );
     const response = await POST(
       new NextRequest("http://localhost:3000/api/v1/judge/claim", {
         method: "POST",
@@ -174,7 +177,7 @@ describe("POST /api/v1/judge/claim", () => {
           Authorization: "Bearer test-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ workerId: "worker-1", workerSecret: "worker-secret" }),
       })
     );
 
@@ -200,6 +203,9 @@ describe("POST /api/v1/judge/claim", () => {
 
   it("normalizes stored shell-prefixed commands so the worker does not double-wrap them", async () => {
     dbSelectMock
+      .mockReturnValueOnce(
+        makeSelectChain([{ status: "online", secretTokenHash: "hashed:worker-secret" }])
+      )
       .mockReturnValueOnce(makeSelectChain([]))
       .mockReturnValueOnce(
         makeSelectChain([
@@ -218,7 +224,7 @@ describe("POST /api/v1/judge/claim", () => {
           Authorization: "Bearer test-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ workerId: "worker-1", workerSecret: "worker-secret" }),
       })
     );
 
@@ -313,6 +319,9 @@ describe("POST /api/v1/judge/claim", () => {
   });
 
   it("records the pre-claim status when reclaiming a stale submission", async () => {
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ status: "online", secretTokenHash: "hashed:worker-secret" }])
+    );
     rawQueryOneMock.mockResolvedValueOnce({
       id: "submission-1",
       userId: "user-1",
@@ -338,7 +347,7 @@ describe("POST /api/v1/judge/claim", () => {
           Authorization: "Bearer test-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ workerId: "worker-1", workerSecret: "worker-secret" }),
       })
     );
 
@@ -359,6 +368,9 @@ describe("POST /api/v1/judge/claim", () => {
   });
 
   it("releases the claimed row when post-claim row validation fails", async () => {
+    dbSelectMock.mockReturnValueOnce(
+      makeSelectChain([{ status: "online", secretTokenHash: "hashed:worker-secret" }])
+    );
     rawQueryOneMock.mockResolvedValueOnce({
       id: "submission-parse-bad",
       problemId: "problem-1",
@@ -372,7 +384,7 @@ describe("POST /api/v1/judge/claim", () => {
           Authorization: "Bearer test-token",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ workerId: "worker-1", workerSecret: "worker-secret" }),
       })
     );
 
@@ -484,5 +496,30 @@ describe("POST /api/v1/judge/claim", () => {
     );
 
     expect(response.status).toBe(200);
+  });
+
+  it("rejects a claim carrying only the shared token (no workerId) — C4-2 Part 1", async () => {
+    // The shared JUDGE_AUTH_TOKEN is bootstrap-only (/register). A request with
+    // no workerId must be rejected at the schema boundary so a leaked shared
+    // token cannot claim a submission and exfiltrate sourceCode + hidden test
+    // cases. isJudgeAuthorizedMock being true models a valid shared token.
+    isJudgeAuthorizedMock.mockReturnValue(true);
+
+    const response = await POST(
+      new NextRequest("http://localhost:3000/api/v1/judge/claim", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer shared-judge-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      })
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ error: "workerIdRequired" });
+    // The shared-token auth path must not have been consulted.
+    expect(isJudgeAuthorizedMock).not.toHaveBeenCalled();
+    expect(rawQueryOneMock).not.toHaveBeenCalled();
   });
 });
