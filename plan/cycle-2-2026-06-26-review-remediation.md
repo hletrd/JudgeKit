@@ -154,19 +154,30 @@ Each records: file+line · original severity/confidence (NOT downgraded) · reas
 - **LOW-5..8** (A1 first-file-only check, CSV `#` row, health endpoint version leak, server-action missing-Origin dev bypass). LOW. Exit: batched hygiene cycle.
 - **Designer P2** (D-11, D-16..D-32 minus the P1 promoted items). LOW. Exit: UX polish cycle.
 
-## Progress Tracking (Phase A)
-- [ ] A1 import skip-truncate absent tables
-- [ ] A2 api-keys DELETE role gate
-- [ ] A3 snapshot-null abort
-- [ ] A4 language dockerImage allowlist
-- [ ] A5 assignments accessCode projection
-- [ ] A6 editorial thread access
-- [ ] A7 restore+migrate durable audit after file-restore
-- [ ] A8 X-Real-IP gate on trustedHops>0
-- [ ] A9 TS compiler 0o700
-- [ ] A10 worker cleanup timeouts
-- [ ] A11 code-similarity sidecar cap
-- [ ] A12 community scope centralization
-- [ ] A13 problems/[id]/edit page strict gate
-- [ ] A14 Phase-A side-effect LOWs (test timeout, tsc cast, defaultLanguage, tools comment)
-- [ ] A15 Docs (validation.rs, AGENTS.md env, CSRF, push-scan)
+## Progress Tracking (Phase A) — END-OF-CYCLE STATUS
+- [x] A1 import skip-truncate absent tables  — commit 51af8537
+- [x] A2 api-keys DELETE role gate  — c12ce8af
+- [x] A3 snapshot-null abort (restore + migrate)  — 3ed15bd6
+- [x] A4 language dockerImage allowlist  — c4ef40ab
+- [x] A5 assignments accessCode projection  — 3196e6d1
+- [x] A6 editorial thread access (folded into A12)  — 7518a5e1
+- [x] A7 restore+migrate durable audit after file-restore  — a336de90
+- [~] A8 X-Real-IP gate on trustedHops>0  — REVERTED (23851d69); see C2-H7 deferral below
+- [x] A9 TS compiler 0o700 on chown success  — 594f89b0
+- [x] A10 worker cleanup timeouts (inspect/kill/rm)  — 68dc2ad0
+- [x] A11 code-similarity sidecar cap (500)  — d5b20d3d
+- [x] A12 community scope centralization (PROBLEM_LINKED_SCOPES)  — 7518a5e1
+- [x] A13 problems/[id]/edit page strict canManageProblem  — 90bcfcff
+- [x] A14 Phase-A side-effect LOWs (defaultLanguage, tools comment, NODE_ENV cast, durable-mock typing, import-mock typing)  — 6b383ff0
+- [x] A15a validation.rs docstring + A15b AGENTS.md env-perms  — 07bab8dd
+- [~] A15c (CSRF doc AGG-51) / A15d (push-scan wording AGG-52) — deferred (wording-only; tracked in Phase B docs)
+
+Gates: lint ✓ · lint:bash ✓ · test:unit ✓ (2968/2968) · cargo test ✓ (judge-worker 73, code-similarity 49, rate-limiter 2) · db:check ✓ · app tsc --noEmit ✓ · `npm run build` environmental-timeout (>10min tool ceiling; remote prod build succeeded during deploy) · test:e2e infra-unavailable (needs built app + DB/browser). Deploy: per-cycle-success (oj-internal.maum.ai, HTTP 200).
+
+## Deferral added this cycle (with provenance)
+
+### C2-H7 / NEW-H7 — X-Real-IP trust at TRUSTED_PROXY_HOPS=0 (critic C-3)
+- File: `src/lib/security/ip.ts:113-117` · Original severity: HIGH (critic C-3) / Confidence HIGH.
+- Reason for deferral: A8 was implemented (commit 5d6da68c) then REVERTED (23851d69). The judge ip-allowlist tests pin `TRUSTED_PROXY_HOPS=0` to model the deployed worker→app path and rely on X-Real-IP, which nginx sets from `$remote_addr` (`proxy_set_header X-Real-IP $remote_addr`), overwriting any client-supplied value. Gating X-Real-IP on hops>0 made `extractClientIp` return null at hops=0, denying every worker at `/judge/claim` in the deployed config — a production-breaking regression. The spoofing concern is real ONLY if nginx forwards a client-controlled X-Real-IP unset; standard nginx config overwrites it. NOT silently dropped: severity preserved.
+- Exit criterion (re-open condition): verify every production nginx config (algo.xylolabs.com/oj-internal.maum.ai, auraedu) overwrites `X-Real-IP` via `proxy_set_header X-Real-IP $remote_addr`. If ANY target forwards it client-controlled, re-open and gate X-Real-IP behind an explicit proxy-trust flag (e.g. `TRUST_X_REAL_IP=1`) rather than breaking the allowlist unconditionally.
+
