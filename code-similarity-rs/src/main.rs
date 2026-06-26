@@ -22,6 +22,18 @@ use crate::types::{ComputeRequest, ComputeResponse, HealthResponse};
 // OOM the process with a giant payload.
 const MAX_COMPUTE_BODY_BYTES: usize = 16 * 1024 * 1024;
 
+/// Hard cap on the number of submissions per /compute request. The similarity
+/// algorithm is O(n^2); a leaked/bruteable sidecar token must not be able to
+/// pin fleet CPU via a single oversized payload. Mirrors the TS-side cap
+/// (MAX_SUBMISSIONS_FOR_SIMILARITY in src/lib/assignments/code-similarity.ts).
+const MAX_SUBMISSIONS: usize = 500;
+
+/// True when a /compute payload exceeds the submission cap. Extracted so the
+/// boundary can be unit-tested without standing up an axum router.
+fn exceeds_submission_cap(count: usize) -> bool {
+    count > MAX_SUBMISSIONS
+}
+
 /// Bearer token loaded from CODE_SIMILARITY_AUTH_TOKEN at startup.
 /// When unset we keep the service open (and log a warning) so local
 /// single-machine setups without docker-networked callers still work.
@@ -77,6 +89,19 @@ async fn compute(Json(req): Json<ComputeRequest>) -> impl IntoResponse {
     let threshold = req.threshold;
     let ngram_size = req.ngram_size;
     let submissions = req.submissions;
+
+    // Bound the O(n^2) workload at the boundary. Without this, a caller with a
+    // valid token (or one bruteable over the docker bridge) can pin the CPU
+    // with thousands of submissions in a single request.
+    if exceeds_submission_cap(submissions.len()) {
+        tracing::warn!(
+            count = submissions.len(),
+            max = MAX_SUBMISSIONS,
+            "code-similarity /compute rejected: too many submissions"
+        );
+        return (StatusCode::PAYLOAD_TOO_LARGE, Json(ComputeResponse { pairs: Vec::new() }))
+            .into_response();
+    }
 
     if !(0.0..=1.0).contains(&threshold) {
         return (
@@ -217,4 +242,21 @@ async fn main() {
         .expect("server error");
 
     info!("code-similarity stopped");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_SUBMISSIONS, exceeds_submission_cap};
+
+    #[test]
+    fn submission_cap_boundary() {
+        // At the cap is allowed; one over is rejected.
+        assert!(!exceeds_submission_cap(MAX_SUBMISSIONS));
+        assert!(!exceeds_submission_cap(MAX_SUBMISSIONS.saturating_sub(1)));
+        assert!(exceeds_submission_cap(MAX_SUBMISSIONS + 1));
+        // A 5000-submission contest payload (the DoS scenario from PERF-2/FDR-3)
+        // is rejected.
+        assert!(exceeds_submission_cap(5000));
+        assert_eq!(MAX_SUBMISSIONS, 500);
+    }
 }
