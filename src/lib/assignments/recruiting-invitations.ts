@@ -383,35 +383,62 @@ export async function updateRecruitingInvitation(
       throw new Error(`Metadata key "${internalKey}" uses a reserved prefix (${INTERNAL_KEY_PREFIX})`);
     }
   }
-  const updates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
-  if (data.expiresAt !== undefined) updates.expiresAt = data.expiresAt;
+  const baseUpdates: Record<string, unknown> = { updatedAt: await getDbNowUncached() };
+  if (data.expiresAt !== undefined) baseUpdates.expiresAt = data.expiresAt;
   if (data.metadata !== undefined) {
-    // Merge new metadata with existing metadata, preserving _sys.* keys
-    // that hold security-relevant internal flags (e.g., brute-force counters,
-    // password-reset-required). Without this merge, a full metadata replacement
-    // would silently drop those keys. See C10-4.
-    const [existing] = await db
-      .select({ metadata: recruitingInvitations.metadata })
-      .from(recruitingInvitations)
-      .where(eq(recruitingInvitations.id, id))
-      .limit(1);
-    const existingMetadata = existing?.metadata ?? {};
-    // Preserve any _sys.* keys from the existing metadata that are not
-    // already in the new metadata (which is enforced by findInternalKeyViolation
-    // to never contain _sys.* keys).
-    const mergedMetadata: Record<string, string> = { ...data.metadata };
-    for (const [key, value] of Object.entries(existingMetadata)) {
-      if (key.startsWith(INTERNAL_KEY_PREFIX) && !(key in mergedMetadata)) {
-        mergedMetadata[key] = value;
+    // Merge new metadata with existing metadata inside a transaction with
+    // SELECT ... FOR UPDATE. The row lock serializes this read-modify-write
+    // against the atomic jsonb_set brute-force counter increments
+    // (incrementFailedRedeemAttempt) and reset path, which also acquire the
+    // row lock. Without FOR UPDATE, a concurrent increment between the SELECT
+    // and UPDATE would be clobbered by the stale snapshot, defeating the
+    // MAX_FAILED_REDEEM_ATTEMPTS lockout. See C3-AGG-3.
+    await db.transaction(async (tx) => {
+      const [existing] = await tx
+        .select({ metadata: recruitingInvitations.metadata })
+        .from(recruitingInvitations)
+        .where(eq(recruitingInvitations.id, id))
+        .for("update")
+        .limit(1);
+      const existingMetadata = existing?.metadata ?? {};
+      // Preserve any _sys.* keys from the existing metadata that are not
+      // already in the new metadata (which is enforced by findInternalKeyViolation
+      // to never contain _sys.* keys).
+      const mergedMetadata: Record<string, string> = { ...data.metadata };
+      for (const [key, value] of Object.entries(existingMetadata)) {
+        if (key.startsWith(INTERNAL_KEY_PREFIX) && !(key in mergedMetadata)) {
+          mergedMetadata[key] = value;
+        }
       }
-    }
-    updates.metadata = mergedMetadata;
+      const txUpdates = { ...baseUpdates, metadata: mergedMetadata };
+      if (data.status !== undefined) {
+        // Only allow revoking pending invitations — already-redeemed cannot be revoked
+        const result = await tx
+          .update(recruitingInvitations)
+          .set({ ...txUpdates, status: data.status })
+          .where(
+            and(
+              eq(recruitingInvitations.id, id),
+              eq(recruitingInvitations.status, "pending")
+            )
+          );
+        if ((result.rowCount ?? 0) === 0) {
+          throw new Error("invitationCannotBeRevoked");
+        }
+        return;
+      }
+      await tx
+        .update(recruitingInvitations)
+        .set(txUpdates)
+        .where(eq(recruitingInvitations.id, id));
+    });
+    return;
   }
   if (data.status !== undefined) {
     // Only allow revoking pending invitations — already-redeemed cannot be revoked
     const result = await db
       .update(recruitingInvitations)
-      .set({ ...updates, status: data.status })
+      .set({ ...baseUpdates, status: data.status })
       .where(
         and(
           eq(recruitingInvitations.id, id),
@@ -425,7 +452,7 @@ export async function updateRecruitingInvitation(
   }
   await db
     .update(recruitingInvitations)
-    .set(updates)
+    .set(baseUpdates)
     .where(eq(recruitingInvitations.id, id));
 }
 
