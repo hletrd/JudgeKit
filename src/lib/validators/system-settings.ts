@@ -55,6 +55,10 @@ export const footerLocaleSchema = z.object({
 export type FooterLocaleContent = z.infer<typeof footerLocaleSchema>;
 
 export const systemSettingsSchema = z.object({
+  // Optional current-password reconfirmation. Required when the PUT touches any
+  // privilege-affecting key (see SENSITIVE_SETTINGS_KEYS in the route). Mirrors
+  // the restore/backup/migrate reconfirm gate (C3-AGG-7 / NEW-M5).
+  currentPassword: z.string().max(1_000).optional(),
   siteTitle: z.preprocess(
     normalizeOptionalString,
     z.string().max(100, "siteTitleTooLong").optional()

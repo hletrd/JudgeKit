@@ -1,16 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
+import { eq } from "drizzle-orm";
 import { createApiHandler } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
-import { systemSettings } from "@/lib/db/schema";
+import { systemSettings, users } from "@/lib/db/schema";
 import { DEFAULT_PLATFORM_MODE, getSystemSettings, GLOBAL_SETTINGS_ID } from "@/lib/system-settings";
 import { invalidateSettingsCache } from "@/lib/system-settings-config";
 import { isHcaptchaConfigured } from "@/lib/security/hcaptcha";
 import { encrypt, redactSecret } from "@/lib/security/encryption";
+import { verifyAndRehashPassword } from "@/lib/security/password-hash";
 import { SECRET_SETTINGS_KEYS } from "@/lib/security/secrets";
 import { systemSettingsSchema } from "@/lib/validators/system-settings";
 import { getDbNowUncached } from "@/lib/db-time";
 import { recordAuditEventDurable } from "@/lib/audit/events";
+
+/**
+ * Settings keys that affect security posture. Mutating any of these requires
+ * password reconfirmation so a stolen session cookie cannot silently weaken
+ * the platform (disable hCaptcha, raise rate limits, open public signup,
+ * widen allowedHosts, etc.). Mirrors the restore/backup/migrate reconfirm
+ * gate. See C3-AGG-7 / NEW-M5.
+ */
+const SENSITIVE_SETTINGS_KEYS = [
+  "platformMode",
+  "allowedHosts",
+  "publicSignupEnabled",
+  "emailVerificationRequired",
+  "signupHcaptchaEnabled",
+  "hcaptchaSiteKey",
+  "hcaptchaSecret",
+  "communityUpvoteEnabled",
+  "communityDownvoteEnabled",
+  "smtpPass",
+  "loginRateLimitMaxAttempts",
+  "loginRateLimitWindowMs",
+  "loginRateLimitBlockMs",
+  "apiRateLimitMax",
+  "apiRateLimitWindowMs",
+  "submissionRateLimitMaxPerMinute",
+  "submissionMaxPending",
+  "sessionMaxAgeSeconds",
+] as const;
 
 function redactSecretSettings(settings: Record<string, unknown>): void {
   for (const key of SECRET_SETTINGS_KEYS) {
@@ -52,8 +82,32 @@ export const PUT = createApiHandler({
       hcaptchaSiteKey,
       hcaptchaSecret,
       allowedHosts,
+      currentPassword,
       ...restConfig
     } = body;
+
+    // Password reconfirmation when the PUT touches any privilege-affecting
+    // key (C3-AGG-7 / NEW-M5). Mirrors the restore/backup/migrate gate.
+    const touchesSensitiveKey = SENSITIVE_SETTINGS_KEYS.some(
+      (key) => (body as Record<string, unknown>)[key] !== undefined
+    );
+    if (touchesSensitiveKey) {
+      if (!currentPassword) {
+        return NextResponse.json({ error: "passwordReconfirmRequired" }, { status: 401 });
+      }
+      const [dbUser] = await db
+        .select({ passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, user.id))
+        .limit(1);
+      if (!dbUser?.passwordHash) {
+        return NextResponse.json({ error: "authenticationFailed" }, { status: 403 });
+      }
+      const { valid } = await verifyAndRehashPassword(currentPassword, user.id, dbUser.passwordHash);
+      if (!valid) {
+        return NextResponse.json({ error: "invalidPassword" }, { status: 403 });
+      }
+    }
 
     const hasNewKeys = (hcaptchaSiteKey && hcaptchaSiteKey.length > 0) || (hcaptchaSecret && hcaptchaSecret.length > 0);
     if (signupHcaptchaEnabled && !hasNewKeys && !(await isHcaptchaConfigured())) {
