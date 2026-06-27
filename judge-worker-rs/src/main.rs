@@ -324,19 +324,30 @@ async fn main() {
             )
         }
         Err(e) => {
+            // Post C4-2, /claim requires a registered workerId + workerSecret
+            // (the shared-token fallback was removed). An unregistered worker
+            // can therefore never claim work: it would spin in the poll loop
+            // forever, with every /claim rejected as `workerIdRequired` while
+            // submissions pile up unjudged. A registration failure is now
+            // ALWAYS fatal, regardless of JUDGE_ALLOW_UNREGISTERED_MODE. The
+            // flag is still parsed (back-compat) but no longer enables a
+            // broken silent-polling mode (C5-N1).
             if config.allow_unregistered_mode {
-                tracing::warn!(
+                tracing::error!(
                     error = %e,
-                    "Failed to register with app server — running in unregistered mode because JUDGE_ALLOW_UNREGISTERED_MODE is enabled"
+                    "Failed to register with app server. JUDGE_ALLOW_UNREGISTERED_MODE is set, \
+                     but unregistered mode is no longer functional: /claim requires a registered \
+                     workerId + workerSecret (C4-2), so an unregistered worker can never claim \
+                     work. Exiting. (Remove JUDGE_ALLOW_UNREGISTERED_MODE and ensure registration \
+                     succeeds.)"
                 );
-                (None, None, std::time::Duration::from_secs(30))
             } else {
                 tracing::error!(
                     error = %e,
                     "Failed to register with app server — exiting because unregistered mode is disabled"
                 );
-                std::process::exit(1);
             }
+            std::process::exit(1);
         }
     };
 
@@ -494,8 +505,17 @@ async fn main() {
     // (any status). At startup there are no in-flight judgements, so this is
     // safe and reaps the `running` containers leaked by a forced restart
     // (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) that the periodic
-    // `status=exited` sweep cannot touch (R2 / feature-dev F2).
-    docker::cleanup_all_oj_containers_at_startup().await;
+    // `status=exited` sweep cannot touch (R2 / feature-dev F2). Wrapped in the
+    // shutdown select so a deploy SIGTERM during the (internally
+    // timeout-bounded) sweep is honoured immediately instead of queued for up
+    // to ~20 s (C5-N3 / debugger-N6).
+    tokio::select! {
+        _ = &mut shutdown => {
+            tracing::info!("Shutdown signal received during startup sweep, exiting");
+            return;
+        }
+        _ = docker::cleanup_all_oj_containers_at_startup() => {}
+    }
 
     // Exponential backoff for idle polling.
     // After consecutive empty polls the sleep doubles up to MAX_BACKOFF,
@@ -708,5 +728,55 @@ mod tests {
         // panicking again inside the recovery path.
         let payload: Box<dyn Any + Send> = Box::new(42i32);
         assert_eq!(panic_payload_message(payload), "<non-string panic>");
+    }
+
+    /// C5-N1 regression guard: a registration failure must ALWAYS be fatal.
+    /// Post-C4-2, /claim requires a registered workerId + workerSecret, so an
+    /// unregistered worker can never claim work and would silently spin. The
+    /// JUDGE_ALLOW_UNREGISTERED_MODE flag is still parsed (back-compat) but no
+    /// longer enables a poll-forever mode. Reverting to the old silent-spin
+    /// tuple shape flips this red.
+    #[test]
+    fn registration_failure_is_always_fatal_post_c4_2() {
+        let src = include_str!("main.rs");
+        // Locate the registration-failure handling by its unique flag check
+        // (first occurrence is the production site, well before this test mod).
+        let flag = src
+            .find("config.allow_unregistered_mode")
+            .expect("registration flag check present");
+        let after_flag = &src[flag..];
+        let exit = after_flag
+            .find("std::process::exit(1)")
+            .expect("fatal exit after registration flag check");
+        // Both branches must fall through to exit: in the region between the
+        // flag check and the fatal exit, the old silent-spin 30 s tuple must
+        // NOT reappear.
+        let window = &after_flag[..exit];
+        let spin = ["Duration", "::from_secs(30)"].join("");
+        assert!(
+            !window.contains(&spin),
+            "registration failure must be fatal, not a silent-spin tuple (C5-N1)"
+        );
+    }
+
+    /// C5-N3 / debugger-N6 guard: the startup reap-all sweep must be wrapped in
+    /// a shutdown `tokio::select!` so a deploy SIGTERM during the sweep is
+    /// honoured immediately. Reverting to a bare `.await` flips this red.
+    #[test]
+    fn startup_sweep_is_shutdown_select_wrapped() {
+        let src = include_str!("main.rs");
+        // First occurrence is the production call site in main, before this
+        // test module.
+        let call = src
+            .find("docker::cleanup_all_oj_containers_at_startup()")
+            .expect("startup sweep call present");
+        // Generous backward window covers the shutdown branch + tracing line
+        // that precede the sweep call inside the select block.
+        let start = call.saturating_sub(400);
+        let region = &src[start..call];
+        assert!(
+            region.rfind("tokio::select!").is_some(),
+            "startup sweep must be tokio::select!-wrapped against shutdown (C5-N3)"
+        );
     }
 }
