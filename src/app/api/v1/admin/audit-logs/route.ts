@@ -96,22 +96,22 @@ export const GET = createApiHandler({
         and(
           eq(auditEvents.resourceType, "group"),
           sql`EXISTS (SELECT 1 FROM ${groups} WHERE ${groups.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
-        ),
+        )!,
         // assignment: taught via the owning group.
         and(
           eq(auditEvents.resourceType, "assignment"),
           sql`EXISTS (SELECT 1 FROM ${assignments} JOIN ${groups} ON ${groups.id} = ${assignments.groupId} WHERE ${assignments.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
-        ),
+        )!,
         // submission: taught via the assignment's owning group.
         and(
           eq(auditEvents.resourceType, "submission"),
           sql`EXISTS (SELECT 1 FROM ${submissions} JOIN ${assignments} ON ${assignments.id} = ${submissions.assignmentId} JOIN ${groups} ON ${groups.id} = ${assignments.groupId} WHERE ${submissions.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
-        ),
+        )!,
         // problem: authored by the instructor.
         and(
           eq(auditEvents.resourceType, "problem"),
           sql`EXISTS (SELECT 1 FROM ${problems} WHERE ${problems.id} = ${auditEvents.resourceId} AND ${problems.authorId} = ${userId})`
-        ),
+        )!,
       ];
 
       // group_member: JSONB details->>'groupId' IN (taught group ids). Cannot
@@ -123,7 +123,7 @@ export const GET = createApiHandler({
           and(
             eq(auditEvents.resourceType, "group_member"),
             buildGroupMemberScopeFilter(groupIds)
-          )
+          )!
         );
       }
 
