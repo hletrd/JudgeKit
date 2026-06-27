@@ -68,6 +68,18 @@ export function decryptPluginSecret(
           "Otherwise, investigate possible data tampering or incomplete migration."
       );
     }
+    // Plaintext fallback is the known C4-4/AGG-10 attack surface: an attacker
+    // who can write plaintext to a secret column bypasses the GCM auth tag.
+    // The default flip + re-encryption migration are gated on an audit cycle
+    // (see encryption.ts:18-22), so until then emit a production warn so the
+    // fallback is observable — this is the audit trail whose review is the
+    // exit criterion for flipping the default to false. (C4-4 partial)
+    if (process.env.NODE_ENV === "production") {
+      logger.warn(
+        { prefix: value.slice(0, 10) },
+        "[plugins] decryptPluginSecret() fell back to plaintext — possible data tampering or incomplete migration"
+      );
+    }
     return value;
   }
 

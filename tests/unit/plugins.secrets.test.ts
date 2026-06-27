@@ -1,4 +1,19 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Hoisted logger warn spy so the C4-4 plaintext-fallback audit-trail warn is
+// observable without depending on pino's real transport.
+const loggerWarnMock = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    warn: loggerWarnMock,
+    error: vi.fn(),
+    info: vi.fn(),
+    debug: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+  },
+}));
+
 import {
   decryptPluginConfigForUse,
   decryptPluginSecret,
@@ -204,6 +219,49 @@ describe("plugin secret helpers", () => {
         expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
           "plaintext-value"
         );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    // C4-4 partial: the plaintext fallback is the known attack surface, and
+    // the default flip is gated on an audit cycle (encryption.ts:18-22). Until
+    // then the fallback must be OBSERVABLE in production — the warn trail is
+    // the audit signal whose review is the exit criterion for the flip.
+    it("emits a production warn when falling back to plaintext (C4-4 audit trail)", () => {
+      loggerWarnMock.mockClear();
+      vi.stubEnv("NODE_ENV", "production");
+      try {
+        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(loggerWarnMock).toHaveBeenCalledTimes(1);
+        expect(loggerWarnMock).toHaveBeenCalledWith(
+          expect.objectContaining({ prefix: "plaintext-" }),
+          expect.stringContaining("fell back to plaintext")
+        );
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("does not warn when decrypting a properly encrypted value", () => {
+      loggerWarnMock.mockClear();
+      vi.stubEnv("NODE_ENV", "production");
+      const encrypted = encryptPluginSecret("my-secret");
+      loggerWarnMock.mockClear();
+      try {
+        expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
+        expect(loggerWarnMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it("does not warn on plaintext fallback outside production", () => {
+      loggerWarnMock.mockClear();
+      vi.stubEnv("NODE_ENV", "development");
+      try {
+        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(loggerWarnMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
       }
