@@ -51,6 +51,15 @@ vi.mock("@/lib/recruiting/access", () => ({
   getRecruitingAccessContext: getRecruitingAccessContextMock,
 }));
 
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    warn: vi.fn(),
+    info: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
 import {
   assertRole,
   assertAuth,
@@ -63,6 +72,7 @@ import {
   canAccessSubmission,
   getAccessibleProblemIds,
 } from "@/lib/auth/permissions";
+import { withPermissionCache } from "@/lib/auth/permission-cache";
 
 function createSelectResult<T>(result: T[]) {
   // Build a "thenable array" that can be awaited directly (resolves to result[])
@@ -346,6 +356,47 @@ describe("canManageProblem (write authorization, group-scoped)", () => {
     await expect(canManageProblem("problem-public", "user-1", "instructor")).resolves.toBe(false);
     // only the author lookup ran; no group query needed when the actor teaches nothing
     expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("fast-paths to false when the role lacks both problems.edit and problems.delete (F-1)", async () => {
+    // A role with zero manage capability cannot legitimately manage any problem.
+    // The capability fast-path must return false WITHOUT paying the 2 DB hits.
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.view"]));
+
+    await expect(canManageProblem("problem-1", "user-1", "student")).resolves.toBe(false);
+    expect(dbMock.select).not.toHaveBeenCalled();
+    expect(getAssignedTeachingGroupIdsMock).not.toHaveBeenCalled();
+  });
+
+  it("still reaches the DB when the role holds problems.delete but not problems.edit", async () => {
+    // Either capability unlocks manage scope — the fast-path must not over-prune.
+    resolveCapabilitiesMock.mockResolvedValueOnce(new Set(["problems.delete"]));
+    dbMock.select.mockReturnValueOnce(createSelectResult([{ authorId: "user-1" }]));
+
+    await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(true);
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("memoizes repeat calls within a withPermissionCache scope (F-1 ALS)", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValue(createSelectResult([{ authorId: "user-1" }]));
+
+    await withPermissionCache(async () => {
+      await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(true);
+      await expect(canManageProblem("problem-1", "user-1", "instructor")).resolves.toBe(true);
+    });
+    // Author lookup ran exactly once across both calls — the second hit the memo.
+    expect(dbMock.select).toHaveBeenCalledTimes(1);
+  });
+
+  it("recomputes outside a withPermissionCache scope (graceful degradation)", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["problems.edit"]));
+    dbMock.select.mockReturnValue(createSelectResult([{ authorId: "user-1" }]));
+
+    // No withPermissionCache wrapper → no ALS store → no memo → recompute.
+    await canManageProblem("problem-2", "user-1", "instructor");
+    await canManageProblem("problem-2", "user-1", "instructor");
+    expect(dbMock.select).toHaveBeenCalledTimes(2);
   });
 });
 

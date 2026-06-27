@@ -14,6 +14,7 @@ import { isUserRole } from "@/lib/security/constants";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { logger } from "@/lib/logger";
 import { withRecruitingContextCache } from "@/lib/recruiting/request-cache";
+import { withPermissionCache } from "@/lib/auth/permission-cache";
 
 /** Shape returned by getApiUser */
 export type AuthUser = NonNullable<Awaited<ReturnType<typeof getApiUser>>>;
@@ -106,7 +107,11 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
     // This ensures that getRecruitingAccessContext deduplicates DB queries
     // within a single API request, even though React cache() does not work
     // in API route handlers.
-    return withRecruitingContextCache(async () => {
+    return withRecruitingContextCache(async () =>
+    // Per-request permission verdict memo (F-1): nested inside the recruiting
+    // cache so both ALS stores are active. canManageProblem (and peers) hit the
+    // DB once per (userId, resourceId) per request instead of once per call.
+    withPermissionCache(async () => {
     try {
       // --- Rate limiting ---
       if (rateLimit) {
@@ -205,7 +210,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
       logger.error({ err: error, method: req.method, path: req.nextUrl.pathname }, "Unhandled error");
       return NextResponse.json({ error: "internalServerError" }, { status: 500 });
     }
-    });
+    }));
   };
 }
 

@@ -8,6 +8,11 @@ import { isUserRole } from "@/lib/security/constants";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
 import { getAssignedTeachingGroupIds } from "@/lib/assignments/management";
+import {
+  getCachedPermission,
+  setCachedPermission,
+  permissionKey,
+} from "./permission-cache";
 
 export async function canAccessGroup(
   groupId: string,
@@ -188,8 +193,25 @@ export async function canManageProblem(
   userId: string,
   role: string
 ): Promise<boolean> {
+  const cacheK = permissionKey("manageProblem", userId, problemId);
+  const cached = getCachedPermission(cacheK);
+  if (cached !== undefined) return cached;
+
   const caps = await resolveCapabilities(role);
-  if (caps.has("groups.view_all")) return true;
+  if (caps.has("groups.view_all")) {
+    setCachedPermission(cacheK, true);
+    return true;
+  }
+
+  // Capability fast-path (F-1): a role that holds neither problems.edit nor
+  // problems.delete cannot legitimately manage any problem, so there is no
+  // point paying the two DB round-trips below. This is defense-in-depth (the
+  // route caller already gates on the capability) AND a perf win. The check is
+  // free — resolveCapabilities is in-memory cached (60s TTL).
+  if (!caps.has("problems.edit") && !caps.has("problems.delete")) {
+    setCachedPermission(cacheK, false);
+    return false;
+  }
 
   const problem = await db
     .select({ authorId: problems.authorId })
@@ -197,11 +219,20 @@ export async function canManageProblem(
     .where(eq(problems.id, problemId))
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  if (!problem) return false;
-  if (problem.authorId === userId) return true;
+  if (!problem) {
+    setCachedPermission(cacheK, false);
+    return false;
+  }
+  if (problem.authorId === userId) {
+    setCachedPermission(cacheK, true);
+    return true;
+  }
 
   const teachingGroupIds = await getAssignedTeachingGroupIds(userId);
-  if (teachingGroupIds.length === 0) return false;
+  if (teachingGroupIds.length === 0) {
+    setCachedPermission(cacheK, false);
+    return false;
+  }
   const accessRow = await db
     .select({ groupId: problemGroupAccess.groupId })
     .from(problemGroupAccess)
@@ -213,7 +244,9 @@ export async function canManageProblem(
     )
     .limit(1)
     .then((rows) => rows[0] ?? null);
-  return accessRow !== null;
+  const allowed = accessRow !== null;
+  setCachedPermission(cacheK, allowed);
+  return allowed;
 }
 
 export async function getAccessibleProblemIds(
