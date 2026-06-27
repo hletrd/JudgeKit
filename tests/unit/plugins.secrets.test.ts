@@ -181,39 +181,33 @@ describe("plugin secret helpers", () => {
       expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
     });
 
-    it("returns plaintext verbatim in production for legacy rows", () => {
-      // Legacy plaintext rows remain readable until the next plugin save or
-      // export path encrypts them. Callers can still opt into strict mode by
-      // passing { allowPlaintextFallback: false }.
+    // C4-4 / AGG-10: the plaintext-readable fallback default was flipped from
+    // true to false. An attacker who can write plaintext to a secret column
+    // must NOT be able to bypass the GCM auth tag by default. This is the
+    // revert-RED guard: removing the `?? false` default makes this test fail.
+    it("throws on plaintext by default after the C4-4 default flip", () => {
       vi.stubEnv("NODE_ENV", "production");
       try {
-        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(() => decryptPluginSecret("plaintext-value")).toThrow(
+          "decryptPluginSecret() called on non-encrypted value"
+        );
       } finally {
         vi.unstubAllEnvs();
       }
     });
 
-    it("still rejects plaintext when callers opt out of the fallback", () => {
-      vi.stubEnv("NODE_ENV", "production");
-      try {
-        expect(() =>
-          decryptPluginSecret("plaintext-value", { allowPlaintextFallback: false })
-        ).toThrow("decryptPluginSecret() called on non-encrypted value");
-      } finally {
-        vi.unstubAllEnvs();
-      }
-    });
-
-    it("returns plaintext as-is in non-production", () => {
+    it("throws on plaintext by default in non-production too", () => {
       vi.stubEnv("NODE_ENV", "development");
       try {
-        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(() => decryptPluginSecret("plaintext-value")).toThrow(
+          "decryptPluginSecret() called on non-encrypted value"
+        );
       } finally {
         vi.unstubAllEnvs();
       }
     });
 
-    it("allows explicit plaintext fallback even in production", () => {
+    it("allows explicit plaintext fallback even in production (migration opt-in)", () => {
       vi.stubEnv("NODE_ENV", "production");
       try {
         expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
@@ -224,15 +218,16 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    // C4-4 partial: the plaintext fallback is the known attack surface, and
-    // the default flip is gated on an audit cycle (encryption.ts:18-22). Until
-    // then the fallback must be OBSERVABLE in production — the warn trail is
-    // the audit signal whose review is the exit criterion for the flip.
-    it("emits a production warn when falling back to plaintext (C4-4 audit trail)", () => {
+    // C4-4 audit trail: the fallback CODE remains (explicit opt-in) and still
+    // emits the production warn-log so migration callers are observable. The
+    // warn trail is what makes the fallback safe to keep for migration.
+    it("emits a production warn when the explicit fallback is used (C4-4 audit trail)", () => {
       loggerWarnMock.mockClear();
       vi.stubEnv("NODE_ENV", "production");
       try {
-        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
+          "plaintext-value"
+        );
         expect(loggerWarnMock).toHaveBeenCalledTimes(1);
         expect(loggerWarnMock).toHaveBeenCalledWith(
           expect.objectContaining({ prefix: "plaintext-" }),
@@ -256,21 +251,24 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("does not warn on plaintext fallback outside production", () => {
+    it("does not warn on explicit plaintext fallback outside production", () => {
       loggerWarnMock.mockClear();
       vi.stubEnv("NODE_ENV", "development");
       try {
-        expect(decryptPluginSecret("plaintext-value")).toBe("plaintext-value");
+        expect(
+          decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })
+        ).toBe("plaintext-value");
         expect(loggerWarnMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
       }
     });
 
-    it("decryptPluginConfigForUse passes plaintext through for legacy rows", () => {
-      // Runtime decryption returns legacy plaintext values verbatim instead of
-      // clearing them, so pre-migration API keys keep working until the next
-      // admin save encrypts the row.
+    it("decryptPluginConfigForUse clears legacy plaintext rows via the contained failure mode", () => {
+      // Post C4-4 flip: runtime decryption of a legacy plaintext row hits the
+      // default-false fallback, the throw is caught in decryptPluginConfigForUse,
+      // and the value becomes "" (a non-functional secret + logged error) rather
+      // than crashing the process or silently passing plaintext through.
       vi.stubEnv("NODE_ENV", "production");
       try {
         const storedConfig = {
@@ -280,7 +278,7 @@ describe("plugin secret helpers", () => {
           geminiApiKey: "",
         };
         const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
-        expect(decrypted.openaiApiKey).toBe("not-encrypted");
+        expect(decrypted.openaiApiKey).toBe("");
       } finally {
         vi.unstubAllEnvs();
       }

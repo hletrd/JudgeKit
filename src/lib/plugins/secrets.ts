@@ -51,14 +51,22 @@ export function encryptPluginSecret(plaintext: string | null | undefined): strin
 
 /**
  * Read a plugin secret value. Current writes store `enc:v1:iv:tag:ciphertext`
- * ciphertexts, but plaintext fallback remains enabled by default so older rows
- * can still be used until they are touched and migrated.
+ * ciphertexts. The plaintext-readable fallback is OPT-IN only
+ * (`{ allowPlaintextFallback: true }`): the default is `false`, so a value that
+ * lacks the `enc:v1:` prefix throws instead of being returned as-is. This
+ * prevents an attacker who can write plaintext to a secret column from
+ * bypassing the GCM auth tag. The fallback remains available for migration
+ * callers that explicitly request it (and still emits the production warn-log
+ * audit trail when used). The flip from the legacy `true` default is gated by
+ * the warn-log having shipped across deploy cycles (C4-4 / AGG-10); the
+ * contained failure mode in `decryptPluginConfigForUse` (catch → log + `""`)
+ * keeps a stray plaintext value from crashing the process.
  */
 export function decryptPluginSecret(
   value: string,
   options?: { allowPlaintextFallback?: boolean }
 ) {
-  const allowPlaintext = options?.allowPlaintextFallback ?? true;
+  const allowPlaintext = options?.allowPlaintextFallback ?? false;
   // Capture the prefix before isEncryptedPluginSecret()'s `value is string`
   // type-guard narrows `value` to `never` in the negative branch below.
   const prefix = value.slice(0, 10);
