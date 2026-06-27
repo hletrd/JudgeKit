@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
-import { validateZipDecompressedSize } from "@/lib/files/validation";
+import { Readable } from "node:stream";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { validateZipDecompressedSize, measureEntryStreamedSize } from "@/lib/files/validation";
 
 /**
  * Helper: create a ZIP buffer with the given entries.
@@ -82,5 +85,70 @@ describe("validateZipDecompressedSize", () => {
     // Total decompressed: 100 * 1024 = 100 KB. Allow 1 MB.
     const result = await validateZipDecompressedSize(buffer, 1024 * 1024);
     expect(result).toBeNull();
+  });
+});
+
+// NEW-M8 / C3-N8: the slow path (entries lacking uncompressedSize metadata)
+// must stream incrementally and abort the moment a per-entry cap is exceeded,
+// rather than materializing the full decompressed payload via `.async()` and
+// OOMing. These tests pin the streaming + cap-abort behaviour.
+describe("measureEntryStreamedSize (NEW-M8 streaming cap)", () => {
+  /** Build a fake JSZip entry whose `nodeStream()` emits the given chunks. */
+  function makeEntry(chunks: Buffer[]): { nodeStream(): Readable } {
+    return {
+      nodeStream: () => Readable.from(chunks),
+    };
+  }
+
+  it("resolves with the entry's total decompressed size when under the cap", async () => {
+    // 3 chunks of 1 KB → 3072 bytes; cap at 10 KB.
+    const entry = makeEntry([Buffer.alloc(1024, "a"), Buffer.alloc(1024, "b"), Buffer.alloc(1024, "c")]);
+    const size = await measureEntryStreamedSize(entry, 10 * 1024);
+    expect(size).toBe(3072);
+  });
+
+  it("rejects (null) when the entry exceeds the per-entry cap mid-stream", async () => {
+    // 5 chunks of 1 KB = 5 KB total; cap at 3 KB → must abort after the 4th chunk.
+    const entry = makeEntry([
+      Buffer.alloc(1024, "a"),
+      Buffer.alloc(1024, "b"),
+      Buffer.alloc(1024, "c"),
+      Buffer.alloc(1024, "d"),
+      Buffer.alloc(1024, "e"),
+    ]);
+    const size = await measureEntryStreamedSize(entry, 3 * 1024);
+    expect(size).toBeNull();
+  });
+
+  it("rejects (null) on a stream error", async () => {
+    const entry = {
+      nodeStream: () =>
+        Readable.from(
+          (async function* () {
+            yield Buffer.alloc(512, "x");
+            throw new Error("decompress failed");
+          })(),
+        ),
+    };
+    const size = await measureEntryStreamedSize(entry, 10 * 1024);
+    expect(size).toBeNull();
+  });
+});
+
+// Revert-RED contract: the slow path must stream (not `.async()`), so a future
+// refactor that reintroduces the allocate-then-check OOM bug flips this red.
+describe("validateZipDecompressedSize slow-path streaming contract (NEW-M8)", () => {
+  it("streams the slow path via nodeStream (no allocate-then-check .async on entries)", () => {
+    const raw = readFileSync(join(process.cwd(), "src/lib/files/validation.ts"), "utf8");
+    // Strip /* block */ and // line comments so docstring prose mentioning the
+    // old `.async("uint8array")` pattern does not false-positive.
+    const code = raw
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    // The streaming helper must be present and the slow path must use it.
+    expect(code).toContain("measureEntryStreamedSize");
+    // The old allocate-then-check call on a ZIP entry must be gone from code.
+    expect(code).not.toMatch(/entry\.async\s*\(/);
+    expect(code).not.toMatch(/\.async\(\s*["']uint8array["']\s*\)/);
   });
 });

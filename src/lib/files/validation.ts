@@ -43,6 +43,51 @@ export function validateFileSize(
 const MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
 
 /**
+ * Stream a single ZIP entry's decompressed bytes through a running counter and
+ * return the entry's total decompressed size, aborting early (without ever
+ * holding the full payload in memory) the moment the per-entry cap is exceeded.
+ *
+ * Returns `null` if the entry exceeds `maxEntryBytes` or the stream errors;
+ * otherwise resolves with the entry's decompressed byte count. The caller is
+ * responsible for the running total + overall-archive cap.
+ *
+ * Uses JSZip's typed `nodeStream('nodebuffer')` API (a Node Readable) so we can
+ * consume incremental `Buffer` chunks via 'data' events and `destroy()` the
+ * stream as soon as the cap is crossed — a zip-bomb entry never materializes
+ * its full decompressed payload. (NEW-M8 / C3-N8)
+ */
+export async function measureEntryStreamedSize(
+  entry: { nodeStream(type?: "nodebuffer"): NodeJS.ReadableStream },
+  maxEntryBytes: number,
+): Promise<number | null> {
+  // Use the buffered `Readable` import (not the loose `NodeJS.ReadableStream`
+  // type) so `.destroy()` is available for early abort.
+  const stream = entry.nodeStream("nodebuffer") as import("node:stream").Readable;
+  return new Promise<number | null>((resolve) => {
+    let accumulated = 0;
+    let settled = false;
+    const finish = (value: number | null) => {
+      if (settled) return;
+      settled = true;
+      // Remove listeners to avoid duplicate resolution after destroy().
+      stream.removeAllListeners();
+      // Ensure underlying decompression resources are released even on abort.
+      if (!stream.destroyed) stream.destroy();
+      resolve(value);
+    };
+    stream.on("data", (chunk: Buffer) => {
+      accumulated += chunk.length;
+      if (accumulated > maxEntryBytes) {
+        // Cap exceeded — abort immediately without consuming further chunks.
+        finish(null);
+      }
+    });
+    stream.on("end", () => finish(accumulated));
+    stream.on("error", () => finish(null));
+  });
+}
+
+/**
  * Validate the total decompressed size of a ZIP buffer to prevent ZIP bombs.
  *
  * Reads `uncompressedSize` from each entry's metadata when available (O(1) per
@@ -52,7 +97,9 @@ const MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES = 50 * 1024 * 1024; // 50 MB
  *
  * Per-entry size cap prevents OOM from a ZIP bomb with many small entries
  * that each decompress to a large payload — the total check alone would
- * allow up to 10,000 entries * 50 MB each before triggering.
+ * allow up to 10,000 entries * 50 MB each before triggering. The slow path
+ * streams each entry incrementally so a cap-exceeding entry is rejected
+ * before its full payload is allocated.
  */
 export async function validateZipDecompressedSize(
   buffer: Buffer,
@@ -92,15 +139,24 @@ export async function validateZipDecompressedSize(
     }
 
     // Slow path: some entries lack metadata (data descriptors without sizes).
-    // Fall back to decompressing entry by entry to measure actual sizes.
+    // Stream entry by entry, accumulating a running byte counter and aborting
+    // the moment a per-entry or total cap is exceeded. Streaming (rather than
+    // `entry.async("uint8array")`) is essential here: a zip-bomb entry whose
+    // data descriptor hides the size can decompress to gigabytes, and the
+    // non-streaming `.async()` call materializes the entire payload into a
+    // single Uint8Array BEFORE the size check can fire — OOMing the process.
+    // `internalStream()` emits incremental chunks via 'data' events, so we can
+    // `pause()` and reject as soon as the counter crosses the cap, letting GC
+    // reclaim the partial buffer without ever holding the full payload.
+    // (NEW-M8 / C3-N8)
     totalUncompressed = 0;
     for (const entry of entries) {
-      const content = await entry.async("uint8array");
-      // Per-entry size cap
-      if (content.length > MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES) {
-        return "zipDecompressedSizeExceeded";
-      }
-      totalUncompressed += content.length;
+      const entrySize = await measureEntryStreamedSize(
+        entry,
+        MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES,
+      );
+      if (entrySize === null) return "zipDecompressedSizeExceeded";
+      totalUncompressed += entrySize;
       if (totalUncompressed > maxDecompressedSizeBytes) {
         return "zipDecompressedSizeExceeded";
       }
