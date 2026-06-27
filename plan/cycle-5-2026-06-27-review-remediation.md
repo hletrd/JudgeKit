@@ -92,5 +92,5 @@ Each records: file+line · original severity · reason · exit criterion. Securi
 - [x] A6 ride-along (C5-N2 audit details, C5-N4 dead column, C5-N5 dead conditional+comment, UI-15 Label) — commits 2d7cc7e7 + e7c05ced
 - [x] A7 plugins plaintext-fallback warn-log (C4-4 partial) — commit da8e6b1f
 - [x] A8 docs bundle (C5-DOC-2/3/4/5/6/7/8) — commit a84a96d0
-- Gates: lint/lint:bash/build/test:unit/cargo test/db:check — running below. test:e2e skipped (no DB/browser infra locally).
-- Deploy: per-cycle, after green gates.
+- Gates: lint ✓, lint:bash ✓, db:check ✓, cargo test ✓ (80), test:unit ✓ (2995 all green; known-flaky passed this run), tsc --noEmit ✓ (exit 0). build: local-build indeterminate (environmental — next build stalled at ~28 min in uninterruptible-wait with no output on the second run; first run compiled in 5.3 min and the only failure was the now-fixed type error; remote deploy build confirms buildability). test:e2e skipped (no DB/browser infra locally).
+- DEPLOY: per-cycle-success — `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false ./deploy-docker.sh` to algo.xylolabs.com → oj-internal.maum.ai; all containers healthy, "JudgeKit is responding (HTTP 200)", remote build succeeded.
