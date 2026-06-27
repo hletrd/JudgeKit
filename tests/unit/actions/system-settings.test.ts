@@ -19,7 +19,9 @@ const mocks = vi.hoisted(() => {
     // Shared settings-reconfirm gate (ARCH-1). Defaults to "passed" so the
     // existing behaviour tests exercise the mutation path; the dedicated
     // reconfirm test below overrides this to assert the gate fires.
-    requireSettingsReconfirm: vi.fn<() => Promise<{ ok: true }>>().mockResolvedValue({ ok: true }),
+    requireSettingsReconfirm: vi.fn<
+      () => Promise<{ ok: true } | { ok: false; status: number; error: string }>
+    >().mockResolvedValue({ ok: true }),
   };
 });
 
@@ -173,6 +175,31 @@ describe("updateSystemSettings", () => {
 
     const result = await updateSystemSettings(validInput);
     expect(result).toEqual({ success: false, error: "unauthorized" });
+  });
+
+  // ARCH-1 revert-RED guard: the server action must gate sensitive settings on
+  // requireSettingsReconfirm (the same shared helper the REST route uses). A
+  // stolen session POSTing a sensitive key without the actor's currentPassword
+  // must be rejected BEFORE any DB write. validInput already carries sensitive
+  // keys (platformMode, aiAssistantEnabled, publicSignupEnabled,
+  // signupHcaptchaEnabled), so the shared gate fires. The mock for the gate
+  // defaults to { ok: true }; this test overrides it to a failure and asserts
+  // the action short-circuits and never reaches db.insert. (C5-A1)
+  it("rejects a sensitive settings update when the reconfirm gate fails and skips the DB write", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin("admin");
+    mocks.requireSettingsReconfirm.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      error: "passwordReconfirmRequired",
+    });
+
+    const result = await updateSystemSettings(validInput);
+
+    expect(result).toEqual({ success: false, error: "passwordReconfirmRequired" });
+    expect(mocks.requireSettingsReconfirm).toHaveBeenCalledTimes(1);
+    expect(mocks.dbInsertValues).not.toHaveBeenCalled();
+    expect(mocks.dbInsertOnConflictDoUpdate).not.toHaveBeenCalled();
   });
 
   it("allows a custom role with system.settings", async () => {
