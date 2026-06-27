@@ -60,7 +60,7 @@ export function TagFormFields({ value, onChange, nameInputId }: TagFormFieldsPro
               className="size-7 rounded-full border-2 transition-all"
               style={{
                 backgroundColor: c,
-                borderColor: value.color === c ? "hsl(var(--foreground))" : "transparent",
+                borderColor: value.color === c ? "var(--foreground)" : "transparent",
               }}
               onClick={() => selectColor(c)}
               aria-label={c}

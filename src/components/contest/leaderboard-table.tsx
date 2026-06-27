@@ -343,10 +343,10 @@ export function LeaderboardTable({
               z-50+ = overlays (dialogs, dropdowns). Keep these in ascending order. */}
           <TableHeader>
             <TableRow className="sticky top-0 z-10 bg-background shadow-sm">
-              <TableHead className="sticky left-0 z-[5] w-16 bg-background text-center shadow-[1px_0_0_0_hsl(var(--border))]">
+              <TableHead className="sticky left-0 z-[5] w-16 bg-background text-center shadow-[1px_0_0_0_var(--border)]">
                 {t("rank")}
               </TableHead>
-              <TableHead className="sticky left-16 z-[5] min-w-[140px] bg-background shadow-[1px_0_0_0_hsl(var(--border))]">
+              <TableHead className="sticky left-16 z-[5] min-w-[140px] bg-background shadow-[1px_0_0_0_var(--border)]">
                 {t("name")}
               </TableHead>
               {hasAffiliationColumn ? (
@@ -392,7 +392,7 @@ export function LeaderboardTable({
               >
                 <TableCell
                   className={cn(
-                    "sticky left-0 z-[5] text-center shadow-[1px_0_0_0_hsl(var(--border))]",
+                    "sticky left-0 z-[5] text-center shadow-[1px_0_0_0_var(--border)]",
                     getPodiumRowClass(entry.rank) || "bg-background",
                     getPodiumRankClass(entry.rank)
                   )}
@@ -411,7 +411,7 @@ export function LeaderboardTable({
                 </TableCell>
                 <TableCell
                   className={cn(
-                    "sticky left-16 z-[5] shadow-[1px_0_0_0_hsl(var(--border))]",
+                    "sticky left-16 z-[5] shadow-[1px_0_0_0_var(--border)]",
                     getPodiumRowClass(entry.rank) || "bg-background"
                   )}
                 >
