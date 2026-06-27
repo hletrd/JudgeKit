@@ -59,6 +59,9 @@ export function decryptPluginSecret(
   options?: { allowPlaintextFallback?: boolean }
 ) {
   const allowPlaintext = options?.allowPlaintextFallback ?? true;
+  // Capture the prefix before isEncryptedPluginSecret()'s `value is string`
+  // type-guard narrows `value` to `never` in the negative branch below.
+  const prefix = value.slice(0, 10);
 
   if (!isEncryptedPluginSecret(value)) {
     if (!allowPlaintext) {
@@ -76,7 +79,7 @@ export function decryptPluginSecret(
     // exit criterion for flipping the default to false. (C4-4 partial)
     if (process.env.NODE_ENV === "production") {
       logger.warn(
-        { prefix: value.slice(0, 10) },
+        { prefix },
         "[plugins] decryptPluginSecret() fell back to plaintext — possible data tampering or incomplete migration"
       );
     }
