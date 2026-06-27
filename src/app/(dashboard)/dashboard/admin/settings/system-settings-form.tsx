@@ -529,9 +529,9 @@ export function SystemSettingsForm({
       )}
 
       <div className="space-y-2">
-        <label htmlFor="system-settings-current-password" className="text-sm font-medium">
+        <Label htmlFor="system-settings-current-password">
           {t("reconfirmLabel")}
-        </label>
+        </Label>
         <Input
           id="system-settings-current-password"
           type="password"

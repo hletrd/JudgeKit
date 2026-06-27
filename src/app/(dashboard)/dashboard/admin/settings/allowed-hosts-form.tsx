@@ -8,6 +8,7 @@ import { X } from "lucide-react";
 import { updateSystemSettings } from "@/lib/actions/system-settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
 type AllowedHostsFormProps = {
@@ -112,9 +113,9 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
       )}
 
       <div className="space-y-2">
-        <label htmlFor="allowed-hosts-current-password" className="text-sm font-medium">
+        <Label htmlFor="allowed-hosts-current-password">
           {t("reconfirmLabel")}
-        </label>
+        </Label>
         <Input
           id="allowed-hosts-current-password"
           type="password"
