@@ -215,7 +215,13 @@ describe("source-grep test inventory", () => {
     //     identity) so revoked group access closes the stream (C3-AGG-6 /
     //     NEW-M2). The invariant is poll-loop wiring that a behavioural test
     //     cannot drive without exceeding AUTH_RECHECK_INTERVAL_MS.
-    const DOCUMENTED_BASELINE = 158;
+    // Bumped 158 -> 159 (2026-06-27, cycle-5 remediation):
+    //   - tests/unit/api/problem-accepted-solutions.route.test.ts pins that the
+    //     accepted-solutions list/count SELECT carries the eq(users.shareAcceptedSolutions,
+    //     true) filter in SQL (C4-N3/C5-A2). The route's mock architecture
+    //     bypasses SQL, so a behavioural test cannot prove filtering; the
+    //     source-grep contract is the revert-RED guard.
+    const DOCUMENTED_BASELINE = 159;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

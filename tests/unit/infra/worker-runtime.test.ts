@@ -21,12 +21,16 @@ describe("judge worker runtime loops", () => {
     expect(source).toContain('println!("JudgeKit judge worker")');
   });
 
-  it("fails closed on registration errors unless unregistered mode is explicitly enabled", () => {
+  it("fails closed on registration errors regardless of JUDGE_ALLOW_UNREGISTERED_MODE (C5-N1)", () => {
     const configSource = readFileSync(join(process.cwd(), "judge-worker-rs/src/config.rs"), "utf8");
 
+    // The flag is still parsed (back-compat) but post-C4-2 an unregistered
+    // worker can never claim work (/claim requires a registered workerId), so
+    // a registration failure is ALWAYS fatal — both branches exit(1). The old
+    // silent-spin poll-forever mode is gone.
     expect(configSource).toContain("JUDGE_ALLOW_UNREGISTERED_MODE");
     expect(source).toContain("Failed to register with app server — exiting because unregistered mode is disabled");
-    expect(source).toContain("running in unregistered mode because JUDGE_ALLOW_UNREGISTERED_MODE is enabled");
+    expect(source).not.toContain("running in unregistered mode because JUDGE_ALLOW_UNREGISTERED_MODE is enabled");
   });
 
   it("defaults the runner host to loopback unless deployments opt into a wider bind", () => {
