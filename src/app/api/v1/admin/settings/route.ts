@@ -181,16 +181,24 @@ export const PUT = createApiHandler({
       resourceId: GLOBAL_SETTINGS_ID,
       resourceLabel: "Global settings",
       summary: "Updated global system settings via API",
+      // Audit only what was actually written. After the C4-N1 `hasOwnInput`
+      // partial-update fix, omitted fields are no longer persisted, so recording
+      // their destructured-with-defaults values here produced a false positive
+      // ("did this PUT change platformMode?" — the audit row claimed it did,
+      // with the default value, even though the column was untouched). Gate each
+      // detail key on `hasOwnInput` to mirror `baseValues`. (C5-N2)
       details: {
-        siteTitle: siteTitle ?? null,
-        siteDescription: siteDescription ?? null,
-        timeZone: timeZone ?? null,
-        platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
-        aiAssistantEnabled: aiAssistantEnabled ?? true,
-        publicSignupEnabled: publicSignupEnabled ?? false,
-        signupHcaptchaEnabled: signupHcaptchaEnabled ?? false,
-        hcaptchaSiteKey: hcaptchaSiteKey ?? null,
-        hcaptchaSecret: typeof hcaptchaSecret === "string" && hcaptchaSecret.length > 0 ? "••••••••" : null,
+        ...(hasOwnInput("siteTitle") ? { siteTitle: siteTitle ?? null } : {}),
+        ...(hasOwnInput("siteDescription") ? { siteDescription: siteDescription ?? null } : {}),
+        ...(hasOwnInput("timeZone") ? { timeZone: timeZone ?? null } : {}),
+        ...(hasOwnInput("platformMode") ? { platformMode: platformMode ?? DEFAULT_PLATFORM_MODE } : {}),
+        ...(hasOwnInput("aiAssistantEnabled") ? { aiAssistantEnabled: aiAssistantEnabled ?? true } : {}),
+        ...(hasOwnInput("publicSignupEnabled") ? { publicSignupEnabled: publicSignupEnabled ?? false } : {}),
+        ...(hasOwnInput("signupHcaptchaEnabled") ? { signupHcaptchaEnabled: signupHcaptchaEnabled ?? false } : {}),
+        ...(hasOwnInput("hcaptchaSiteKey") ? { hcaptchaSiteKey: hcaptchaSiteKey ?? null } : {}),
+        ...(hasOwnInput("hcaptchaSecret")
+          ? { hcaptchaSecret: typeof hcaptchaSecret === "string" && hcaptchaSecret.length > 0 ? "••••••••" : null }
+          : {}),
       },
       request: req,
     });

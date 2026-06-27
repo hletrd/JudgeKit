@@ -195,16 +195,19 @@ export async function POST(request: NextRequest) {
         return apiError("workerNotFound", 403);
       }
 
-      // Defense-in-depth: also validate the workerSecret from the request body
-      // against the worker's stored secretTokenHash. Plaintext fallback is
-      // gone — workers registered before the hash rollout must re-register.
-      if (worker.secretTokenHash) {
-        if (!workerSecret) {
-          return apiError("workerSecretRequired", 400);
-        }
-        if (!safeTokenCompare(hashToken(workerSecret), worker.secretTokenHash)) {
-          return apiError("invalidWorkerSecret", 403);
-        }
+      // Defense-in-depth: re-confirm the body workerSecret against the stored
+      // secretTokenHash. isJudgeAuthorizedForWorker above already verified the
+      // Bearer token against this hash and rejects hashless workers with
+      // `workerSecretNotMigrated`, so by here the hash is guaranteed non-null
+      // and this re-check binds the BODY workerSecret (required by superRefine
+      // above) to the same stored hash — both the header Bearer and the body
+      // secret are verified. (C5-N5: collapsed a dead `if (secretTokenHash)`
+      // wrapper — the primary gate already enforces the hash.)
+      if (
+        !worker.secretTokenHash ||
+        !safeTokenCompare(hashToken(workerSecret), worker.secretTokenHash)
+      ) {
+        return apiError("invalidWorkerSecret", 403);
       }
     }
 

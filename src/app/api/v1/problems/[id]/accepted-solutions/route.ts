@@ -77,7 +77,6 @@ export const GET = createApiHandler({
         executionTimeMs: submissions.executionTimeMs,
         memoryUsedKb: submissions.memoryUsedKb,
         submittedAt: submissions.submittedAt,
-        shareAcceptedSolutions: users.shareAcceptedSolutions,
         acceptedSolutionsAnonymous: users.acceptedSolutionsAnonymous,
       })
       .from(submissions)
