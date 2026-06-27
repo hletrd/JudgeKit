@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const { consumeApiRateLimitMock, problemsFindFirstMock, selectMock, getApiUserMock } = vi.hoisted(() => ({
   consumeApiRateLimitMock: vi.fn(() => null),
@@ -175,5 +177,35 @@ describe("GET /api/v1/problems/[id]/accepted-solutions", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+});
+
+// C4-N3 / C5-A2 source contract. The mock-based tests above bypass SQL, so a
+// behavioural "mock returns opted-out author" cannot prove filtering. These
+// source-grep assertions read the route source and pin that the list SELECT
+// filters `shareAcceptedSolutions` in SQL (so opted-out authors never consume
+// pageSize/offset slots) and that the old post-query JS `.filter` is gone.
+// Reverting the SQL clause — or reintroducing JS filtering — flips these red.
+describe("C4-N3 source contract: accepted-solutions share filter is in SQL", () => {
+  const ROUTE_PATH =
+    "src/app/api/v1/problems/[id]/accepted-solutions/route.ts";
+  const source = readFileSync(join(process.cwd(), ROUTE_PATH), "utf8");
+
+  it("the list SELECT .where() carries eq(users.shareAcceptedSolutions, true)", () => {
+    expect(source).toMatch(
+      /\.where\(\s*and\(\s*whereClause\s*,\s*eq\(users\.shareAcceptedSolutions,\s*true\)\s*\)\s*\)/
+    );
+  });
+
+  it("the count SELECT also applies the shareAcceptedSolutions filter (total/list parity)", () => {
+    // The count query sits above the list query and must carry the same filter
+    // so `total` matches the rendered list.
+    expect(source).toMatch(
+      /count\(\)[\s\S]{0,400}?\.where\(\s*and\(\s*whereClause\s*,\s*eq\(users\.shareAcceptedSolutions,\s*true\)\s*\)\s*\)/
+    );
+  });
+
+  it("no post-query JS .filter on shareAcceptedSolutions remains", () => {
+    expect(source).not.toMatch(/\.filter\([\s\S]{0,80}?shareAcceptedSolutions/);
   });
 });
