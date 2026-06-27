@@ -213,9 +213,9 @@ end beh;
 
 | Preset | Languages | Est. Size |
 |--------|-----------|-----------|
-| `core` | C/C++, Python, Java/Kotlin | ~0.8 GB |
-| `popular` | Core + Node.js, Rust, Go | ~2.5 GB |
-| `extended` | Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig | ~8 GB |
+| `core` | C/C++, Python, Java/Kotlin | ~1.2 GB |
+| `popular` | Core + Node.js, Rust, Go | ~4 GB |
+| `extended` | Popular + Ruby, Lua, Bash, C#, PHP, Perl, Swift, R, Haskell, Dart, Zig | ~12 GB |
 | `all` | All language images except the 18 ARM-prohibitive ones (see below) | ~30 GB |
 | `everything` | `all` + the ARM-prohibitive set | ~35 GB, multi-hour build on aarch64 |
 

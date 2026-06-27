@@ -559,6 +559,14 @@ Returns `409` if submissions or assignments reference it. Admin can force delete
 
 ---
 
+#### `GET /api/v1/problems/:id/export`
+
+Export a problem's authoring data (`problemType`, `functionSpec`, reference
+solution, and related authoring fields) for migration/backup. Gated behind
+`canManageProblem` (author or admin); `403` otherwise.
+
+---
+
 ### Submissions
 
 #### `GET /api/v1/submissions`
@@ -756,6 +764,51 @@ can correct the input.
     "nonStudentUsernames": ["existing-instructor"]
   }
 }
+```
+
+---
+
+### Group Instructors
+
+#### `GET /api/v1/groups/:id/instructors`
+
+List a group's instructors (co-instructors and TAs). Requires group-resource
+management (`canManageGroupResourcesAsync` — the group's instructor or an admin);
+`403` otherwise. Returns each instructor's `id`, `userId`, `role`
+(`co_instructor` | `ta`), `assignedAt`, `username`, and `name`.
+
+---
+
+#### `POST /api/v1/groups/:id/instructors`
+
+Add or update a group instructor. Requires group-resource management. Rate
+limit: `group-instructors:add`.
+
+**Request Body:**
+```json
+{
+  "userId": "string",
+  "role": "co_instructor" | "ta"
+}
+```
+
+The target user must be active and hold a role above student level
+(`getRoleLevel > 0`); adding a student-level user as an instructor returns
+`409 instructorRoleInvalid` (mirrors the ownership-transfer gate). If the user
+is already an instructor, their `role` is updated and `{ updated: true }` is
+returned; otherwise a new row is inserted and `{ added: true }` is returned
+with `201`.
+
+---
+
+#### `DELETE /api/v1/groups/:id/instructors`
+
+Remove an instructor. Requires group-resource management. Rate limit:
+`group-instructors:remove`.
+
+**Request Body:**
+```json
+{ "userId": "string" }
 ```
 
 ---
@@ -1292,6 +1345,21 @@ Send worker heartbeat. Validates per-worker secret.
 
 Claim a pending submission for judging. Uses atomic SQL for race-condition-free claiming. Returns `null` when no submissions are available.
 
+**Request Body:**
+```json
+{
+  "workerId": "string",
+  "workerSecret": "string"
+}
+```
+
+`workerId` and `workerSecret` are **required**: per-worker credentials issued at
+`/register`. The shared `JUDGE_AUTH_TOKEN` (sent via the `Authorization: Bearer`
+header) is bootstrap-only and is honoured exclusively by `/register`; since the
+shared-token fallback was removed it can no longer claim work. The worker must
+exist, be `online`, and its stored `secretTokenHash` must match both the Bearer
+token and the body `workerSecret`.
+
 **Response:** Full submission object with test cases, language config, and Docker image info.
 
 ---
@@ -1392,9 +1460,20 @@ Update system settings. **Admin only.**
   "siteDescription": "string",
   "timeZone": "string",
   "aiAssistantEnabled": true,
-  "allowedHosts": ["string"]
+  "allowedHosts": ["string"],
+  "currentPassword": "string"
 }
 ```
+
+**Reconfirm gate:** mutating any security-sensitive key (the `SENSITIVE_SETTINGS_KEYS`
+set — `platformMode`, `allowedHosts`, `publicSignupEnabled`, hCaptcha/SMTP secrets,
+exam-mode toggles, the `uploadMax*` ceilings, rate limits, session lifetime, and
+others, sourced from the shared `requireSettingsReconfirm` helper) requires the
+actor's current password in `currentPassword`, verified via `verifyAndRehashPassword`.
+A missing password yields `401 passwordReconfirmRequired`; a wrong password yields
+`403 invalidPassword`. Cosmetic-only edits (`siteTitle`, `siteDescription`,
+`defaultLanguage`, branding) remain editable without reconfirm. Both this route and
+the twin server action gate on the same shared key set.
 
 Invalidates the settings cache on update.
 
@@ -1436,6 +1515,10 @@ Get a single role with user count.
 #### `PATCH /api/v1/admin/roles/:id`
 
 Update a role. Cannot reduce `super_admin` capabilities or change built-in role levels.
+
+Returns `403 cannotEditHigherRole` if the target role's current level exceeds the
+actor's level (prevents lateral cap-stripping by a same-level peer). The target
+`level` must also be ≤ the actor's level.
 
 ---
 
