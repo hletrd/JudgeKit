@@ -1,51 +1,46 @@
-# Code Review — Cycle 4
+# Code Review — Cycle 5
 
-**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `edd45cca` · **Cycle:** 4 (review-plan-fix loop)
-**Scope:** (a) regression-check 13 cycle-1/2/3 fixes · (b) re-validate deferred items · (c) net-new hunt
-**Coverage:** direct read of every priority-(a) file + twin server-action + schema + frontend form + cross-file sweep (`canAccessSubmission`, `onConflictDoUpdate` sites, invite/restore/migrate routes)
+**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `7ebea50e` · **Cycle:** 5 (review-plan-fix loop)
+**Scope:** (a) regression-check the 9 cycle-4 fixes (commits `edd45cca..7ebea50e`) · (b) re-validate the shared `sensitive-settings.ts` module · (c) net-new hunt across the cycle-4 changed surface
+**Coverage:** direct read of every cycle-4 changed file + worker Rust (`docker.rs`, `main.rs`, `api.rs`, `config.rs`) + validator + 3 settings forms + authoring editor (`value-fields.ts`, `function-test-case-editor.tsx`) + per-worker auth helper
 
-**Rigor note (per lead):** severity held tight. No CRITICAL. Findings trended 112→25 over cycles 1-3 and the changed surface is genuinely clean — this cycle produced 1 MEDIUM + 3 LOW, each with a concrete failure scenario. Nothing is inflated to keep the count up.
+**Rigor note (per lead):** severity held tight. No CRITICAL, no HIGH. Findings trended 112→25→28→(cycle-4 MED+3 LOW)→this cycle 1 MEDIUM + 5 LOW. Every cycle-4 fix achieves its stated purpose; the net-new edges are second-order (an opt-in flag rendered moot, audit-accuracy nits, dead code from the fix itself). Nothing inflated to keep the count up.
 
 ### By Severity
 - CRITICAL: 0
 - HIGH: 0
-- MEDIUM: 1 (C4-N1 settings PUT partial-wipe, which also defeats the cycle-3 reconfirm gate)
-- LOW: 3 (C4-N2 equal-level cap-stripping residual; C4-N3 accepted-solutions pagination under-fill; C4-N4 SSE stale caps on terminal event)
-- INFO: 2 (executor source-file 0o666 vs runner 0o600 divergence; A9 deploy-docker per-target sourcing still real)
+- MEDIUM: 1 (C5-N1 — `JUDGE_ALLOW_UNREGISTERED_MODE` is now a silent footgun after the shared-token removal)
+- LOW: 5 (C5-N2 audit-log default misrepresentation; C5-N3 startup sweep not shutdown-wrapped; C5-N4 dead `shareAcceptedSolutions` column fetch; C5-N5 dead `secretTokenHash` conditional + misleading comment; serialize-call-site dead-column nit folded into N4)
+- INFO: 2 (encodeIntLiteral throw correctly unreachable from the editor; DOCKER_CLEANUP_TIMEOUT_SECS=10 bounds the sweep)
 
 ---
 
-## Stage 1 — Spec Compliance (REGRESSION CHECK)
-
-All 13 cycle-1/2/3 changed-surface files re-read in full context. **No production regression found in any of them.** Every fix achieves its stated purpose.
+## Stage 1 — Cycle-4 Regression Check (all 9 fixes VERIFIED, no production regression)
 
 | Fix | File:line | Verdict |
 |---|---|---|
-| Worker `catch_unwind` (AGG-15/C3-AGG-9) | `judge-worker-rs/src/main.rs:559-591`; helper `executor.rs:918-937`, `main.rs:22-29` | VERIFIED — `AssertUnwindSafe(exec_fut).catch_unwind()` traps the panic, `report_panic` emits `runtime_error`, and `active_tasks.fetch_sub(1)` runs *after* the catch (L589) so the capacity counter decrements on the panic path too. Stale-sweep is no longer the only net. |
-| Worker `MAX_TIME_LIMIT_MS` clamp warn (AGG-17) | `judge-worker-rs/src/executor.rs:529-540` | VERIFIED — single `tracing::warn!` when `time_limit_ms > max_time_limit_ms()`; cheap, fires only for API/imported problems (UI caps at 10s). |
-| Runner sidecar chown + 0o700 (C3-AGG-5) | `judge-worker-rs/src/runner.rs:831-881` | VERIFIED — `chown(65534:65534)` → `0o700` on success / `0o777` fallback; source file `0o600`/`0o666` (L874-881). Source-text contract test at L198-213 pins it. |
-| Executor workspace chown + 0o700 (cycle-1) | `judge-worker-rs/src/executor.rs:320-360` | VERIFIED — unchanged and correct. |
-| `cannotEditHigherRole` gate (C3-AGG-2) | `src/app/api/v1/admin/roles/[id]/route.ts:94-96` | VERIFIED — `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403)` before any mutation. Blocks strictly-higher demotions. **Residual:** equal-level case still open (C4-N2). |
-| `admin/settings` PUT password reconfirm (C3-AGG-7) | `src/app/api/v1/admin/settings/route.ts:91-110` | VERIFIED for explicit sensitive keys — **but** the gate is defeated for the hcaptcha/secret path by the partial-wipe bug (C4-N1). The fix is correct in isolation; the sibling wipe undermines it. |
-| Community threads/votes via scoped helper (C3-AGG-4) | `community/threads/route.ts:29`; `community/votes/route.ts:83` | VERIFIED — both now call `canAccessProblemScopedThread`. Helper `discussions/permissions.ts:29-37` is the single source of truth. |
-| Contest export JSON audit unconditional + durable (C3-AGG-1) | `contests/[assignmentId]/export/route.ts:117-127` | VERIFIED — `recordAuditEventDurable` moved out of the `isDownload` block; every JSON PII read audited. |
-| `freezeLeaderboardAt` strip (C3-N6) | `groups/[id]/assignments/route.ts:85` | VERIFIED — stripped alongside `accessCode` for non-managers. |
-| accepted-solutions `total` WHERE filter (C3-N7) | `problems/[id]/accepted-solutions/route.ts:51-56` | VERIFIED for the **count** — **but** the list SELECT was not updated (C4-N3). |
-| SSE re-auth re-runs `canAccessSubmission` (C3-AGG-6) | `submissions/[id]/events/route.ts:475-482` | VERIFIED — re-fetches the row and re-runs `canAccessSubmission`; `canAccessSubmission` signature (`permissions.ts:292`) takes `{userId, assignmentId}` which the refreshed row satisfies. **Residual:** stale `caps` on the terminal event (C4-N4). |
-| Recruiting metadata tx + `FOR UPDATE` (C3-AGG-3) | `src/lib/assignments/recruiting-invitations.ts:396-434` | VERIFIED — SELECT … `.for("update")` inside `db.transaction`; `_sys.*` keys preserved from the locked row; serializes against `jsonb_set` increments. |
-
-**Phase-B side-effect re-confirm:** `redeemRecruitingToken` atomic claim (L768-800) and the brute-force counter paths (L96-144) remain textbook-correct.
+| **C4-N1** settings PUT partial-wipe | `src/app/api/v1/admin/settings/route.ts:110-164` | **VERIFIED FIXED.** Every field write is now guarded by `hasOwnInput(key)`; `baseValues` starts empty (`{ updatedAt }`) and only carries supplied keys. `PUT {siteTitle:"x"}` no longer wipes `hcaptchaSecret`/`publicSignupEnabled`/`platformMode`. The reconfirm gate is no longer bypassable by a side-effect wipe. |
+| **C4-N3** accepted-solutions list filter | `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:90` | **VERIFIED FIXED.** List SELECT WHERE now carries `eq(users.shareAcceptedSolutions, true)` (L90), matching the count query (L55). The redundant JS `.filter` at the old L92 is gone. `total` is now consistent with the paged list. Residual: dead column fetch (C5-N4). |
+| **C4-2 P1** workerId required on /claim + /poll | `src/app/api/v1/judge/claim/route.ts:106-128,177-180`; `poll/route.ts:74-80` | **VERIFIED.** Shared-token fallback removed from both routes; per-worker auth (`isJudgeAuthorizedForWorker`) is the only path. Schema superRefine requires `workerId`+`workerSecret`. Poll rejects any submission lacking `judgeWorkerId` with 401. **Caveat → C5-N1:** the worker-side `JUDGE_ALLOW_UNREGISTERED_MODE` flag is now functionally dead (a worker in that mode can never clear `/claim`). |
+| **C4-2 P2** strict IP allowlist opt-in | `src/lib/judge/ip-allowlist.ts:20-22,182-210` | **VERIFIED.** Opt-in via `JUDGE_STRICT_IP_ALLOWLIST=1` fails-closed when `JUDGE_ALLOWED_IPS` unset; default preserves unset==allow-all with a one-time `logger.warn`. `resetIpAllowlistCache` also resets the warn flag, so tests are deterministic. No default flip — no repeat of `23851d69`. |
+| **C4-1** snapshot `snapshot:true` opt-out | `src/lib/db/export.ts:72,111-115`; `pre-restore-snapshot.ts:87-90` | **VERIFIED.** `snapshot:true` sets `activeRedactionMap = {}`, bypassing `EXPORT_ALWAYS_REDACT_COLUMNS`. The snapshot retains `passwordHash`/`sessionToken`/API-key ciphertext/hCaptcha+SMTP secrets. Only `takePreRestoreSnapshot` passes `snapshot:true`; regular export/backup/migrate keep the always-redact set. At-rest 0o600 file + 0o700 dir unchanged. Docstring (L34-42) matches code. |
+| **F1** int64 verbatim serialization | `serialization.ts:16-31`; `cpp.ts:42-51`; `java.ts:78-86`; `csharp.ts:78-90` | **VERIFIED.** `encodeIntLiteral` emits bigint/string verbatim, accepts safe-integer `number`, throws loudly on unsafe number/non-int. Adapters use `strtoll`/`Long.parseLong(integerToken())`/`long.Parse(IntegerToken(), InvariantCulture)` over sign+digits-only tokens (no `.`/`e`/`E`). **Edge case the lead asked about:** an unsafe `number` throws cleanly with a precise message — and the only hot caller (`function-test-case-editor.tsx:154-161`) pre-validates via `parseFieldValue`, which rejects unsafe ints BEFORE encode, so the throw is correctly unreachable from the UI (defensive guard only). **Caveat → C5-OQ2:** the editor still caps UI-authored ints at 2^53, so F1's end-to-end exit criterion is only partially met. |
+| **C4-3** sensitive-key expansion | `src/lib/security/sensitive-settings.ts:19-54` | **VERIFIED.** Shared list includes exam-mode toggles + the four `uploadMax*` DoS ceilings + rate-limit/session ceilings. Both writers gate the same set. |
+| **ARCH-1** shared reconfirm on BOTH writers | `sensitive-settings.ts:81-121`; `route.ts:72-77`; `system-settings.ts:100-103` | **VERIFIED.** Single `requireSettingsReconfirm` helper, single `SENSITIVE_SETTINGS_KEYS` source of truth. Route maps via `settingsReconfirmToResponse`; action maps via `{ success:false, error }`. Gate runs before any mutation. **Caveat → C5-OQ1:** passwordless (OAuth-only) admins are now locked out of sensitive-settings changes. |
+| **A6** worker cleanup bundle (N1+R2+R4) | `docker.rs:172-279,673-809`; `main.rs:498,515-524` | **VERIFIED.** Every cleanup `docker` Command is `tokio::time::timeout`-wrapped + `.kill_on_drop(true)` (≥5 sites). Periodic sweep uses `status=exited`; startup reap-all (`cleanup_all_oj_containers_at_startup`) removes every `oj-*` regardless of status. Periodic sweep is shutdown-select-wrapped (L515-524). **Caveat → C5-N3:** the STARTUP sweep is awaited bare (no shutdown select). |
 
 ---
 
-## Stage 2 — Deferred Items Re-validation
+## Stage 2 — Shared `sensitive-settings.ts` Module Review
 
-| Item | Status | Evidence |
-|---|---|---|
-| **A9** deploy-docker per-target env sourcing | STILL REAL (LOW, deferred ok) | `deploy-docker.sh:119-123` sources only `.env.deploy`. No `--target=` block sources `.env.deploy.algo/.worv/.auraedu`. Bare invocation still defaults `INCLUDE_WORKER=true`, `BUILD_WORKER_IMAGE=auto`, `SKIP_LANGUAGES=false`, contradicting CLAUDE.md for the algo app server. Operator workaround (env vars / `--no-worker --skip-worker-build --skip-languages`) exists, so bounded. |
-| **A11a** migrate-import 0 snapshot/audit tests | STILL REAL (test gap — **test-engineer lane**) | `admin/migrate/import/route.ts` code is correct: reconfirm (L68/L180), snapshot gate (L102/L215), durable post-commit audit (L123/L233). The gap is coverage, not logic. Cross-agent overlap: test-engineer. |
-| **C4-N1** (this cycle) | The settings PUT reconfirm gate (C3-AGG-7) is undermined — see net-new. | `admin/settings/route.ts:136-169` |
-| AGG-1 / AGG-10 / NEW-M8 / AGG-41 / AGG-43/45 / AGG-54/55 | Not re-opened this cycle | Design-heavy; remain tracked in the cycle-3 aggregate. No line-level change since cycle 3 that would close them. |
+The new module is a clean SRP extraction and the right shape:
+
+- **Single source of truth.** `SENSITIVE_SETTINGS_KEYS` (L19-54) is a `const ... as const` array; both writers import it. Adding a key is now a one-line change that propagates to both gates — the drift class from cycle 3 (C3-AGG-7 undermined by C4-N1) is structurally closed.
+- **Clean helper API.** `requireSettingsReconfirm(input, user)` returns a typed discriminated union (`{ok:true}` | `{ok:false, status, error}`); the route uses `settingsReconfirmToResponse` to map to `NextResponse`, the action maps via `{success, error}`. Both call sites are 3 lines. Good DRY without over-abstraction.
+- **No remaining duplication.** The two writers' field-write blocks (`route.ts:113-164` vs `system-settings.ts:152-235`) still mirror each other — but that is the partial-update shape, not the gate. Collapsing the two write blocks into one `applySystemSettings` core is the ARCH-4 carry-forward (Phase C), correctly out of scope for this cycle's security fix.
+- **Consistency check.** `touchesSensitiveSettingsKey` reads `(input as Record)[key] !== undefined` — matches `hasOwnInput` semantics (key present with any value). Both writers pass the raw input object (route: parsed `body`; action: raw `input`), so `currentPassword` is visible to the helper but filtered out before DB write by `allowedConfigKeys`/non-overlap with columns. Correct.
+
+**One asymmetry worth noting (LOW, not blocking):** the route's `allowedConfigKeys` (L85-97) and the action's `CONFIG_KEYS` (L23-46) are duplicated arrays that must be kept in sync by hand. They currently match (both include the 4 `uploadMax*` keys + rate limits + session). This is the same hand-sync hazard that `SENSITIVE_SETTINGS_KEYS` just centralized for the gate; the config-key list is a candidate for the same treatment next cycle. Not a regression — pre-existing.
 
 ---
 
@@ -53,100 +48,108 @@ All 13 cycle-1/2/3 changed-surface files re-read in full context. **No productio
 
 ### MEDIUM
 
-**[MEDIUM] C4-N1 — `PUT /api/v1/admin/settings` partial update wipes every unspecified field, silently disabling hCaptcha / public signup and bypassing the cycle-3 reconfirm gate**
-- Files: `src/app/api/v1/admin/settings/route.ts:136-169` (the wipe); contrast correct twin `src/lib/actions/system-settings.ts:139-222`.
-- Confidence: HIGH (confirmed by reading both code paths)
-- Status: confirmed
+**[MEDIUM] C5-N1 — `JUDGE_ALLOW_UNREGISTERED_MODE` is now a silent footgun: a worker that opts in can never claim work post-C4-2**
+- Files: `judge-worker-rs/src/main.rs:326-341,552`; `judge-worker-rs/src/config.rs:270-274`; claim gate `src/app/api/v1/judge/claim/route.ts:106-128`.
+- Confidence: HIGH · Status: confirmed (code path read end-to-end)
 
-**Why it's a problem.** The route handler builds `baseValues` **unconditionally**, defaulting every core field, then upserts with `onConflictDoUpdate({ set: baseValues })`:
-```ts
-const baseValues = {
-  siteTitle: siteTitle ?? null,
-  platformMode: platformMode ?? DEFAULT_PLATFORM_MODE,
-  publicSignupEnabled: publicSignupEnabled ?? false,
-  signupHcaptchaEnabled: signupHcaptchaEnabled ?? false,
-  hcaptchaSiteKey: hcaptchaSiteKey ?? null,
-  hcaptchaSecret: hcaptchaSecret ? encrypt(hcaptchaSecret) : null,   // ← wipes the stored secret
-  ...
-};
-```
-Numeric config keys and `allowedHosts` *are* guarded (only written if provided) — but the boolean/string/secret fields above are written on every call. A PUT that supplies only `{ siteTitle: "x" }` overwrites `hcaptchaSecret → null`, `signupHcaptchaEnabled → false`, `publicSignupEnabled → false`, `platformMode → default`, etc.
+**Why it's a problem.** C4-2 Part 1 removed the shared-token fallback from `/claim` (correctly). But the worker binary still honours `JUDGE_ALLOW_UNREGISTERED_MODE`: if registration fails and the flag is set, the worker continues with `worker_id = None`, `worker_secret = None` (main.rs:332) and enters the poll loop. At main.rs:552 it calls `client.poll(None, None)`, which POSTs `{worker_id:null, worker_secret:null}` to `/claim`. The new `claimRequestSchema` superRefine rejects the missing `workerId` with `workerIdRequired` → 400. The poll error path (main.rs:556-561) logs `"Poll failed"` at ERROR and treats it as "no work". The worker therefore spins forever, never claiming, while submissions pile up unjudged.
 
-The server action `updateSystemSettings` does this correctly — it guards **every** field with `hasOwnInput(key)` (`system-settings.ts:144-218`) so omitted fields are preserved. The dashboard form calls the server action, so the UI path is safe. The **public REST endpoint** is the one that is broken, and it is reachable by any `system.settings`-capable session.
+Pre-C4-2 this flag was an intentional resilience escape hatch (survive an app-server registration outage via shared-token claims). Post-C4-2 the flag no longer has any valid function — unregistered workers cannot authenticate to `/claim` under any path — but the binary still lets operators enable it, and the failure is silent at the business level (the worker is "up").
 
-**Failure scenario (two flavors):**
-1. *Data loss:* an admin (or script/external integration) hits `PUT /api/v1/admin/settings` to tweak one numeric limit and silently destroys the stored hCaptcha secret, site title, platform mode, and signup flags.
-2. *Reconfirm-gate bypass (security-posture):* the cycle-3 reconfirm gate (C3-AGG-7) only triggers when an **explicit** sensitive key is in the payload (`touchesSensitiveKey`, L91-93). A stolen admin session cookie sending `{ siteTitle: "x" }` passes no sensitive key → no `currentPassword` required → yet the wipe clears `hcaptchaSecret` and flips `signupHcaptchaEnabled`/`publicSignupEnabled` as a side effect. The password-reconfirm protection that was supposed to gate security-posture changes is bypassed without the password.
+**Failure scenario:** operator sets `JUDGE_ALLOW_UNREGISTERED_MODE=true` for resilience during a flaky app-server upgrade; the worker's registration fails once; it then runs indefinitely doing no judging; the queue grows; the only signal is repeated `Poll failed: 400 ... workerIdRequired` lines in the worker log.
 
-**Fix.** Mirror the server action: only write a field when it was actually supplied. Either (a) replace the unconditional `baseValues` with `hasOwnInput(key)`-guarded assignments exactly like `system-settings.ts:144-222`, or (b) for the API path, build `updateData` from defined fields and use a dynamic update set. The route should also destructure/handle `smtpPass`, `emailVerificationRequired`, `communityUpvoteEnabled`, `communityDownvoteEnabled`, `homePageContent`, `footerContent`, `defaultLocale` — currently they are dropped by the `allowedConfigKeys` whitelist and can never be set via the API (the route is a partial implementation of the settings schema).
+**Fix (pick one):**
+1. Remove the flag and its config plumbing entirely — its sole use case (shared-token claim) is gone.
+2. If the flag must remain as a build/dev escape, make the worker `std::process::exit(1)` (or refuse to enter the poll loop) when unregistered, since claiming is now impossible — fail loud, not silent.
+3. At minimum, downgrade the poll error log to a one-time fatal `error!` that says "unregistered mode is incompatible with workerId-required /claim; exiting" and break the loop.
 
-**Negative test:** `PUT { siteTitle: "x" }` (no sensitive key, no currentPassword) → stored `hcaptchaSecret`/`publicSignupEnabled` unchanged.
+**Negative test:** worker with registration failing + flag=true → no infinite poll-400 loop (exits or never claims).
 
 ---
 
 ### LOW
 
-**[LOW] C4-N2 — roles PATCH still permits equal-level peer cap-stripping**
-- File: `src/app/api/v1/admin/roles/[id]/route.ts:94-109`
-- Confidence: HIGH (code does this) · Status: confirmed
-
-The new `cannotEditHigherRole` gate (L94) compares `role.level > creatorLevel`, so it blocks only *strictly-higher* targets. A peer admin at the same level can still strip capabilities they do not hold from an equal-level custom role: existing caps `{a,b,c,d}`, PATCH `{capabilities:[a,b]}` — `added` filter (L104) is empty (nothing new), so the `ungrantable` check passes; `c,d` are silently removed by an actor who never had them. The capability-add guard's stated rationale ("capabilities already on the role may remain") does not cover *removal* of caps the actor lacks.
-
-**Failure scenario:** an admin weakens another admin's custom role at the same level (removal-only; cannot elevate). Blast radius is bounded — no level raise, no cap add — so LOW.
-
-**Fix:** also gate removals — e.g. `const removed = existingCaps.filter(c => !newSet.has(c)); if (removed.some(c => !caps.has(c))) return apiError("cannotRemoveCapabilityYouLack", 403);` — or tighten the policy to "target capabilities must be a subset of the actor's resolved caps" if the deployment intends peer roles to be fully mutually-isolated.
-
----
-
-**[LOW] C4-N3 — accepted-solutions list query does not filter `shareAcceptedSolutions` in SQL, so pages under-fill (C3-N7 fix was half-applied)**
-- File: `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:51-56` (count, fixed) vs `83-88` + `91-106` (list, not fixed)
+**[LOW] C5-N2 — settings PUT audit `details` records default values for OMITTED fields, misrepresenting the DB change**
+- File: `src/app/api/v1/admin/settings/route.ts:184-194`
 - Confidence: HIGH · Status: confirmed
 
-Cycle-3 added `eq(users.shareAcceptedSolutions, true)` to the **count** query's WHERE (L55) so `total` matches the rendered set. The **list** SELECT (L83-88) still uses the unfiltered `whereClause`, then JS-filters at L92. Result: non-sharing authors' rows consume `pageSize`/`offset` slots and are then discarded, so a page can render fewer than `pageSize` solutions even when more sharing solutions exist beyond the offset (and `total` overstates what is reachable).
+After the C4-N1 `hasOwnInput` fix, omitted fields are no longer written to the DB. But the audit `details` object still records `platformMode ?? DEFAULT_PLATFORM_MODE`, `aiAssistantEnabled ?? true`, `publicSignupEnabled ?? false`, etc. — i.e. the destructured default-applied value, NOT what was actually written. So a `PUT {siteTitle:"x"}` writes only `siteTitle`, yet the audit row claims `platformMode:"homework"`, `publicSignupEnabled:false`, etc. An auditor reviewing "did this PUT change platformMode?" gets a false positive.
 
-**Failure scenario:** a "newest" page of 10 returns 4 solutions because 6 slots were taken by opt-out authors; "X results" never reconciles with what is paged through.
+**Failure scenario:** forensic review of the audit trail concludes an admin flipped `publicSignupEnabled` when in fact the field was untouched.
 
-**Fix:** add `eq(users.shareAcceptedSolutions, true)` to `whereClause` (or a separate list WHERE) and drop the now-redundant `.filter` at L92 so pagination is computed entirely in SQL.
+**Fix:** record what was actually written — only include a key in `details` when `hasOwnInput(key)`, mirroring `baseValues`. Or snapshot `baseValues` (keys actually written) into the audit `details` instead of the destructured-with-defaults set.
 
 ---
 
-**[LOW] C4-N4 — SSE terminal-result event is sanitized with stale capabilities**
-- File: `src/app/api/v1/submissions/[id]/events/route.ts:344` (caps resolved once) + `405-429` (`sendTerminalResult` uses captured `caps`)
-- Confidence: MEDIUM (defense-in-depth) · Status: likely
+**[LOW] C5-N3 — startup reap-all sweep is awaited bare, so it can delay graceful shutdown / risk SIGKILL during deploy**
+- File: `judge-worker-rs/src/main.rs:498`
+- Confidence: HIGH · Status: confirmed (bounded)
 
-`caps` is resolved once at stream open (L344) and captured into the `sendTerminalResult` closure (L410). The re-auth IIFE correctly re-runs `canAccessSubmission` (C3-AGG-6, L475-482), but if the viewer is *downgraded* mid-stream (loses `submissions.view_all` or a detail-revealing capability) yet still passes `canAccessSubmission` (e.g. remains the owner), the final `result` event is sanitized with the pre-downgrade capability set, potentially exposing more detail than the post-downgrade role permits.
+`docker::cleanup_all_oj_containers_at_startup().await` runs before the main loop. Unlike the periodic sweep (L515-524, which is `tokio::select!`-wrapped against `&mut shutdown`), the startup sweep is awaited directly. Each internal `docker` call is bounded by `DOCKER_CLEANUP_TIMEOUT_SECS = 10`, so worst case ≈ 20 s (ps + rm). If a deploy SIGTERM lands during the startup sweep, the worker cannot honour it until the sweep finishes; with a typical 10-30 s SIGTERM grace period the worker may be SIGKILLed mid-startup. Functionally safe (next startup re-runs the same idempotent sweep), but operationally noisy.
 
-**Failure scenario:** instructor downgraded to student mid-judging still owns the submission → `canAccessSubmission` stays true → terminal result sanitized with instructor caps (e.g. `showDetailedResults`/`showRuntimeErrors` framing) for one final event.
+**Failure scenario:** rolling deploy SIGTERMs the worker during its startup sweep; the sweep is mid-`docker rm -f`; shutdown is delayed past the grace period; the container is SIGKILLed and restarts, running the sweep again.
 
-**Fix:** in `sendTerminalResult`, re-resolve caps (`await resolveCapabilities(reAuthUser.role)`) when invoked from the re-auth path, or pass a `caps` override into the helper from the IIFE. Bounded by the access re-check, so LOW.
+**Fix:** wrap the startup sweep in the same `tokio::select! { _ = &mut shutdown => break, _ = cleanup_all_oj_containers_at_startup() => {} }` shape used for the periodic sweep. The functions are already internally timeout-bounded, so the outer select only adds shutdown responsiveness.
+
+---
+
+**[LOW] C5-N4 — accepted-solutions list SELECT still fetches `shareAcceptedSolutions` but never uses it after C4-N3**
+- File: `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:80`
+- Confidence: HIGH · Status: confirmed
+
+After the C4-N3 fix, the WHERE clause filters `shareAcceptedSolutions` in SQL and the `.map` (L96-109) no longer references `solution.shareAcceptedSolutions` — only `acceptedSolutionsAnonymous` is used. The column is still in the SELECT list (L80), so every row carries an unused field. Pure dead fetch; no behaviour impact.
+
+**Fix:** drop `shareAcceptedSolutions: users.shareAcceptedSolutions` from the select list (L80). (`acceptedSolutionsAnonymous` must stay — it drives the `isAnonymous`/`userId`/`username` masking.)
+
+---
+
+**[LOW] C5-N5 — claim route defense-in-depth `if (worker.secretTokenHash)` is now unreachable; the adjacent comment is misleading**
+- File: `src/app/api/v1/judge/claim/route.ts:198-208`
+- Confidence: HIGH · Status: confirmed
+
+The block at L201 (`if (worker.secretTokenHash) { … safeTokenCompare(hashToken(workerSecret), secretTokenHash) … }`) is reached only after `isJudgeAuthorizedForWorker` returned `authorized:true` at L177-180. But `isJudgeAuthorizedForWorker` (auth.ts:78-96) already rejects any worker lacking `secretTokenHash` with `workerSecretNotMigrated`. Therefore by the time control reaches L201 the worker is guaranteed to have a hash, the `if` is always-true, and the implicit else (no hash) is dead. The comment "Plaintext fallback is gone — workers registered before the hash rollout must re-register" reads as if hashless workers are handled here, but they are actually rejected one call earlier.
+
+**Failure scenario:** none at runtime (the check is harmless redundancy). Cost is maintainability — a future reader may "fix" the dead else branch or believe the gate is the primary enforcement point.
+
+**Fix:** either delete the now-redundant inner hash check (the primary `isJudgeAuthorizedForWorker` call already enforces it) OR rewrite the comment to say "defense-in-depth: re-confirms the body `workerSecret` against the hash that `isJudgeAuthorizedForWorker` already verified via the Bearer token" and drop the `if` so the body always reads as a flat assertion.
 
 ---
 
 ### INFO (no action required, recorded for completeness)
 
-- **I-1** `judge-worker-rs/src/executor.rs:392-410` sets the source file to `0o666` unconditionally while `runner.rs:874-881` uses conditional `0o600`/`0o666`. Not a vulnerability — the executor workspace dir is chowned to `65534` then `0o700`, so only uid `65534` can traverse into it regardless of the file mode. Worth a one-line comment cross-reference if you want the two paths to read identically.
-- **I-2** A9 deploy-docker per-target sourcing (see Stage 2) — still real, operator-workaround exists, LOW.
+- **I-1** `serialization.ts:16-31` `encodeIntLiteral` throw is correctly unreachable from the authoring UI. `parseFieldValue` (`value-fields.ts:73-76`) rejects int values > 2^53 via `Number`+`isSafeInteger` BEFORE encode, so the editor call site (`function-test-case-editor.tsx:154-161`) never passes an unsafe number to `encodeArgs`/`encodeValue`. The throw remains the correct fail-loud guard for DB/API callers that bypass the editor. Good defensive design.
+- **I-2** `DOCKER_CLEANUP_TIMEOUT_SECS = 10` (`docker.rs:12`). Each docker call in the periodic and startup sweeps is individually bounded; worst-case total sweep ≈ 20 s. Acceptable for a background sweep; the only residual is C5-N3 (shutdown responsiveness of the startup sweep).
 
 ---
 
-## Open Questions (surfaced, not blocking)
+## Open Questions (low-confidence / surfaced, not blocking)
 
-- **Is `PUT /api/v1/admin/settings` intentionally a public REST surface, or is it superseded by the server action?** If only the dashboard is supposed to mutate settings, consider deprecating/gating the route (or aligning it with `hasOwnInput`). If it must stay, C4-N1 is a ship-blocker for any non-dashboard caller. Needs product intent confirmation.
+- **C5-OQ1 — Are passwordless (OAuth-only) admin accounts a supported deployment shape?** `requireSettingsReconfirm` (`sensitive-settings.ts:94-102`) returns `authenticationFailed` when `passwordHash` is null. ARCH-1 (this cycle) applied the gate to the server action AND all 3 settings forms mark `currentPassword` as an HTML `required` attribute (`allowed-hosts-form.tsx:125`, `config-settings-form.tsx`, `system-settings-form.tsx`). Net effect: an admin who authenticates solely via OAuth (no password set) can no longer change ANY sensitive setting through the dashboard — the form will not submit without a password they do not have, and even via the API the gate returns 403. This is the correct security tradeoff (reconfirm inherently requires a password; allowing passwordless skip would defeat the gate for any OAuth-account takeover), but it is a behaviour change from cycle 3 (the action had no gate) and may lock out real admins. Needs product intent + a doc note. If passwordless admins must be supported, the path is re-auth via fresh OAuth flow rather than password.
+
+- **C5-OQ2 — Is F1's end-to-end int64 exit criterion intended to cover the authoring UI?** The plan's exit ("an int/long > 2^53 round-trips byte-identical … author enters `9223372036854775807`") is met for the encode (`encodeIntLiteral` bigint/string paths) and adapter (`strtoll`/`parseLong`/`long.Parse`) layers, and for values inserted via API/DB as string or bigint. But the authoring UI cannot INPUT such a value: `parseFieldValue` (`value-fields.ts:73-76`) parses int fields with `Number` and rejects `!isSafeInteger`, so an author typing LLONG_MAX gets a field-level `intRangeError` and can never create the test case. The BigInt rework is explicitly deferred (`value-fields.ts:27` "BigInt rework is deferred (out of v1 scope)"). If full UI-authored int64 IS in scope, the follow-up is to parse int fields to `bigint` in `parseFieldValue` (then `encodeIntLiteral`'s bigint path handles it). If it is out of scope, the F1 exit criterion should be re-worded to "encode + adapter + API/DB path" and the UI cap documented.
+
+---
 
 ## Cross-Agent Overlap
 
-- **C4-N1** — logic/data-integrity finding unique to code-reviewer; the *security* angle (reconfirm-gate bypass) likely overlaps with **security-reviewer**. Flag for aggregation.
-- **A11a** — owned by **test-engineer** (coverage gap, not a code defect).
-- **A9** — operational/topology; overlaps **architect** and **document-specialist** (docs batch).
-- C4-N2/N3/N4 — residual edges of cycle-3 fixes; no other agent expected to surface these.
+- **C5-N1** — logic/operational finding unique to code-reviewer; may overlap **security-reviewer** (silent failure mode) and **architect** (flag-removal is a small design decision). Flag for aggregation.
+- **C5-OQ1** — overlaps **security-reviewer** (auth posture) and **document-specialist** (doc note for passwordless admins). Needs product input.
+- **C5-OQ2** — overlaps **test-engineer** (UI bigint authoring test) and **feature-dev** (F1 follow-through).
+- **C5-N2..N5** — residual edges of cycle-4 fixes; no other agent expected to surface these.
+- **Deferred Phase B/C items** from cycle 4 (AGG-1, C4-4/AGG-10, NEW-M8, AGG-41, C4-N2, C4-N4, C4-6/7/8, ARCH-2/3/4) — not re-opened; no line-level change this cycle closes them. Carry forward verbatim.
+
+---
 
 ## Positive Observations
 
-- The **server action** `updateSystemSettings` is a clean reference implementation of partial-update semantics — the API route just needs to match it.
-- `redeemRecruitingToken` and the brute-force counter are textbook atomic SQL; the new `updateRecruitingInvitation` lock-merge composes correctly with them.
-- The SSE re-auth re-fetch + `canAccessSubmission` re-run is the right shape; C4-N4 is a caps-freshness nit, not a structural flaw.
-- All 13 cycle-1/2/3 changed-surface fixes verified with no regression — the loop is converging on the intended invariants.
+- **`sensitive-settings.ts` is a textbook SRP extraction** — one key list, one helper, two thin adapters. The drift class that produced the C3-AGG-7 ↔ C4-N1 bypass is now structurally impossible. Cleanest fix of the cycle.
+- **`encodeIntLiteral` fail-loud design** is exactly right: bigint/string pass through, safe-integer passes, unsafe throws with a precise message. Pairing it with `parseFieldValue` pre-validation means the throw is a defense-in-depth guard, not a live crash path.
+- **Startup reap-all (`cleanup_all_oj_containers_at_startup`)** is the correct R2 shape — idempotent, force-remove every `oj-*`, no `status=exited` filter, only runs when no judgements are in flight.
+- **accepted-solutions count/list symmetry** is fully restored — both queries carry the identical `and(whereClause, eq(users.shareAcceptedSolutions, true))`.
+- **Cycle-4 produced zero production regressions** across all 9 fixes; the net-new findings are second-order consequences (an opt-in flag rendered moot by the fix, audit-accuracy nits, dead code from the fix itself). The loop is converging on the intended invariants.
+
+---
 
 ## Recommendation
 
-**COMMENT.** No CRITICAL, no HIGH. Schedule C4-N1 (the only MEDIUM) — it is a small, mechanical fix (copy the `hasOwnInput` pattern from the server action twin) with a concrete data-loss + security-posture failure scenario, and it closes a gap in the cycle-3 reconfirm gate. C4-N2/N3/N4 are cheap ride-alongs.
+**COMMENT.** No CRITICAL, no HIGH at HIGH confidence. Schedule **C5-N1** (the only MEDIUM) — it is a small, mechanical fix (remove the `JUDGE_ALLOW_UNREGISTERED_MODE` flag OR make the worker exit instead of entering a dead poll loop) with a concrete silent-failure scenario for any operator that opts in. **C5-N2..N5** are cheap ride-alongs (audit accuracy, shutdown responsiveness, dead column, dead conditional). **C5-OQ1/OQ2** need product intent before they become action items. All 9 cycle-4 fixes verified with no production regression.

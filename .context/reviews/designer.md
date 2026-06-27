@@ -1,223 +1,190 @@
-# Cycle 4 — designer
+# Cycle 5 — designer
 
-**Focus:** Re-validate the cycle-3 Designer P1 batch (AGG-58..AGG-61, UI-1..UI-13) that was DEFERRED in cycle 3, regression-check the three cycle-3 UI-adjacent changes (freezeLeaderboardAt strip, accepted-solutions count, rankings ISR), and run a final net-new WCAG 2.2 / color-only-state / Korean-letter-spacing / form-validation sweep.
+**Focus:** Regression-check the three cycle-4 settings forms that gained a `currentPassword` reconfirm field (`allowed-hosts-form`, `config-settings-form`, `system-settings-form`) + their en/ko i18n strings, and re-confirm status of the deferred Designer P1/P2 batch.
 **Date:** 2026-06-27
-**HEAD reviewed:** `edd45cca`
-**Method:** Static analysis only. `git diff 207623f9..edd45cca --name-only -- 'src/**/*.tsx' 'src/**/*.css'` returns **ZERO** `.tsx`/`.css` files changed between cycle 3 and cycle 4 — every touched file is an API route (`.ts`) or lib. The JSX/CSS surface is byte-identical to cycle 3, so every cycle-3 designer finding is re-confirmed by re-reading the same selectors (not by assumption). Dev-server browser pass not feasible; evidence is selectors + classes + computed token math.
-**Framework (unchanged):** Next.js 16.2.9 + React 19.2 + Tailwind 4 + shadcn/Base UI `@base-ui/react@1.4.1` + next-intl 4.9 + next-themes 0.4.
+**HEAD reviewed:** `7ebea50e`
+**Cycle-4 UI surface:** `git diff edd45cca..7ebea50e --name-only -- 'src/**/*.tsx' 'src/**/*.css'` returns **exactly 3 files** — the three settings forms. No `.css`, no other component, no page-level change.
+**Method:** Static review of the JSX + i18n + `Label` component source. A dev-server browser pass is not feasible here (the page lives under `(dashboard)/dashboard/admin/` behind auth + a live DB; cycle-4 gate logged `test:e2e skipped (no DB/browser infra locally)`), and the delta is three ~14-line additions to a known-good form scaffold, so static review is the proportionate lens. Multimodal caveat applies: no screenshots — findings reference selectors, classes, and token math.
+**Framework (unchanged):** Next.js 16.2.9 + React 19.2 + Tailwind 4 + shadcn/Base UI + next-intl 4.9 + next-themes 0.4.
 
 ---
 
-## TL;DR (cycle 4 verdict)
+## TL;DR (cycle 5 verdict)
 
-- **Regression:** NONE. Zero UI files changed; the 3 UI-adjacent changes are all API-level and verified non-breaking for the rendered components (see REG-3..REG-5).
-- **Deferred Designer P1 batch:** ALL STILL PRESENT VERBATIM. None of AGG-58..AGG-61 or UI-1..UI-13 were addressed this cycle. The remediation plan (`plan/cycle-3-2026-06-27-review-remediation.md` Phase B) explicitly carries the whole batch forward. They are re-confirmed below with fresh line numbers — do not re-litigate; pick them up.
-- **Net-new:** Minimal (surface frozen). One quantified item — UI-14: 14 inline error `<p className="text-destructive">` without `role="alert"` (cycle 3 estimated "~14"; cycle 4 enumerates the exact set). Everything else I probed (icon-only buttons, color-only state, Korean letter-spacing) came back clean.
-- **Convergence:** Not inflating. Real, fixable P1 set is unchanged from cycle 3 (4 items + 3 one-liner CSS defects). The cheap batch fixes are unchanged and still ship-in-an-afternoon.
-
----
-
-## REGRESSION (cycle 3 → cycle 4)
-
-### REG-3 (—, HIGH confidence) — No `.tsx`/`.css` changed between cycle 3 (`207623f9`) and cycle 4 (`edd45cca`)
-
-**Evidence:** `git diff 207623f9..edd45cca --name-only -- 'src/**/*.tsx' 'src/**/*.css'` → empty. Touched files are all API routes / lib / Cargo: `api/v1/admin/roles/[id]/route.ts`, `api/v1/admin/settings/route.ts`, `api/v1/community/threads/route.ts`, `api/v1/community/votes/route.ts`, `api/v1/contests/[assignmentId]/export/route.ts`, `api/v1/groups/[id]/assignments/route.ts`, `api/v1/groups/[id]/assignments/[assignmentId]/route.ts`, `api/v1/problems/[id]/accepted-solutions/route.ts`, `api/v1/submissions/[id]/events/route.ts`, `lib/assignments/recruiting-invitations.ts`, `lib/validators/system-settings.ts`. No component, no page, no globals.css edit.
-**Criterion:** Cycle-over-cycle UI regression risk = 0.
-
-### REG-4 (CLEAN ✓, HIGH confidence) — `freezeLeaderboardAt` strip does not break the non-manager assignment card / leaderboard
-
-**Change:** `api/v1/groups/[id]/assignments/[assignmentId]/route.ts:55-58` and `api/v1/groups/[id]/assignments/route.ts:82-85` now `delete … freezeLeaderboardAt` for non-managers (parallel to the existing `accessCode` strip).
-**Consumer audit (UI side):** Every JSX reader of `freezeLeaderboardAt` is inside `AssignmentFormDialog`, which renders only under `{canManageGroup && (...)}` in `groups/[id]/page.tsx:287-288,374,380`. Managers still receive the field; non-managers never open the dialog. The non-manager assignment `<TableRow>` (`groups/[id]/page.tsx:343+`) renders title/description/deadline/problems — none read `freezeLeaderboardAt`. The leaderboard itself honors the freeze server-side (it shapes which score rows are returned), not via the client field. All three readers guard with `?:`/`?? null` anyway (`assignment-form-dialog.tsx:134`, `groups/[id]/page.tsx:333`, `contests/manage/[assignmentId]/page.tsx:259`).
-**Criterion:** No null-deref, no broken render. No designer action.
-
-### REG-5 (CLEAN ✓, HIGH confidence) — accepted-solutions `total` now matches rendered rows; rankings ISR correctly skipped
-
-**(a) accepted-solutions count:** `api/v1/problems/[id]/accepted-solutions/route.ts:55-59` now joins `users` and adds `eq(users.shareAcceptedSolutions, true)` to the count WHERE, matching the rendered list's `.filter((s) => s.shareAcceptedSolutions)` at line ~95. The `AcceptedSolutions` component (`components/problem/accepted-solutions.tsx:80`) consumes `{ total, solutions }` from the API, so the rendered "X results" now matches the row count. Correctness improvement; no rendering regression.
-**(b) rankings ISR:** `(public)/rankings/page.tsx:123` calls `await auth()`, which forces the route `dynamic`. There is no `export const revalidate`. A10d (ISR `revalidate=60`) was therefore correctly SKIPPED — it would have been a no-op. Confirmed by reading the page.
+- **Regression:** NONE. The 3 form additions are consistent, accessible (label + `type=password` + `autoComplete=current-password` + `required`), correctly placed (last field before Save), and the en/ko strings are present, sensible, and obey the CLAUDE.md Korean-letter-spacing rule.
+- **Net-new (polish tier, LOW only — do not inflate):** Two micro-nits.
+  - **UI-15 (LOW):** the new password label uses a plain `<label className="text-sm font-medium">` instead of the `<Label>` component used by every sibling field in two of the forms — small `leading-none`/`select-none` baseline drift inside the same form. Polish.
+  - **UI-16 (LOW):** the server-side `passwordReconfirmRequired` error surfaces only as a toast (sonner aria-live) with no inline `role="alert"` next to the field. Marginal because `required` makes the browser-native validation the real user path; the toast is defense-in-depth.
+- **Deferred Designer P1/P2 batch:** ALL 14 ITEMS STILL VALID. The cycle-4 .tsx diff touches NONE of the selectors cited in cycle 4 (no leaderboard, sidebar, recruit form, error.tsx, headings, tabs, card.tsx, etc.). Re-confirmed by enumeration, not assumption.
+- **Convergence:** 112 → 25 → 28 → now **14 + 2 LOW**. Do not inflate: UI-15 and UI-16 are polish-tier; both can ride along with the existing Cleanup batch.
 
 ---
 
-## DEFERRED DESIGNER P1 BATCH — re-confirmed verbatim on head `edd45cca`
+## REGRESSION — cycle-4 settings password-reconfirm field
 
-All items below were deferred in cycle 3 (`plan/cycle-3-2026-06-27-review-remediation.md` Phase B, "Designer P1 batch"). Because zero UI files changed this cycle, each is re-confirmed by re-reading the same selector. Line numbers refreshed.
+### REG-6 (CLEAN ✓, HIGH confidence) — `currentPassword` field in the 3 settings forms
 
-### AGG-58 — 27 pages emit `<h2>` as the page title with no `<h1>` — CONFIRMED, P1, HIGH confidence
+**Files:**
+- `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:114-128`
+- `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:117-131`
+- `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:531-545`
 
-**Criterion:** WCAG 2.2 Level A 1.3.1 (Info and Relationships) — heading hierarchy; AT users cannot jump-to-h1 on ~27 primary routes (the `(public)`/`(dashboard)` shell layouts render no `<h1>`).
+**Shared shape (identical across all 3):**
+```jsx
+<div className="space-y-2">
+  <label htmlFor="<form>-current-password" className="text-sm font-medium">{t("reconfirmLabel")}</label>
+  <Input
+    id="<form>-current-password"
+    type="password"
+    value={currentPassword}
+    onChange={...}
+    placeholder="••••••••"
+    autoComplete="current-password"
+    required
+  />
+  <p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>
+</div>
+```
 
-**Exact sites on head `edd45cca` (27 — `grep -rn '<h2 className="text-2xl font-bold' src/app`):**
+**Checklist (all PASS):**
 
-Admin (12): `dashboard/admin/workers/page.tsx:26`, `files/page.tsx:129`, `audit-logs/page.tsx:364`, `settings/page.tsx:441`, `languages/page.tsx:44`, `login-logs/page.tsx:242`, `tags/page.tsx:58`, `plugins/page.tsx:23`, `plugins/chat-logs/page.tsx:20`, `plugins/[id]/page.tsx:26`, `users/[id]/page.tsx:74`, `submissions/page.tsx:307`. (`admin/page.tsx:43` and `admin/roles/page.tsx:73` already use `<h1>` — leave them.)
+| Criterion | Status | Evidence |
+|---|---|---|
+| Field placement | ✓ | Last field before the submit `<Button>` in all 3 forms; sits inside the form's `space-y-4` rhythm, not after the button |
+| Label association | ✓ | Each `<label htmlFor>` matches a unique `<Input id>` (`allowed-hosts-`, `config-settings-`, `system-settings-current-password`) — no duplicate ids even though all three forms render on the same `/admin/settings` page |
+| `type="password"` | ✓ | All 3 |
+| `autoComplete` | ✓ | `current-password` — the correct semantic; browser offers the saved site password (NOT `new-password`, NOT absent) |
+| `required` | ✓ | All 3 — browser-native validation blocks empty submit |
+| Validation copy empty-submit | ✓ | `passwordReconfirmRequired` string exists in en/ko; surfaced via `toast.error(t(result.error ?? "updateError"))` if server returns it (defense-in-depth behind `required`) |
+| `state` seeding | ✓ | `useState("")` — no stale value, no uncontrolled input warning |
+| Form-layout break | ✓ None | The field is wrapped in the same `space-y-2` block pattern used by every sibling field; the parent `<form className="space-y-4">` rhythm is preserved |
+| Card composition | ✓ | Each form is hosted in its own `<Card>` (`page.tsx:186, 243, 255` + tabs variant), so the password field does not collide visually with another form's submit |
 
-Public / dashboard (15): `(public)/problems/page.tsx:547`, `problems/[id]/edit/page.tsx:73`, `problems/create/page.tsx:94`, `problem-sets/_components/problem-set-form.tsx:262`, `problem-sets/page.tsx:66`, `groups/page.tsx:213`, `groups/[id]/assignments/[assignmentId]/student/[userId]/page.tsx:175`, `profile/page.tsx:58`, `dashboard/page.tsx:40`, `practice/problems/[id]/rankings/page.tsx:129`, `contests/manage/[assignmentId]/students/[userId]/page.tsx:121`, `contests/manage/[assignmentId]/participant/[userId]/submissions/page.tsx:118`. Plus the two `sm:text-3xl` contest title variants: `contests/[id]/page.tsx:243`, `contests/manage/[assignmentId]/page.tsx:360`.
+**Verdict:** All three forms are well-placed, accessible, validate empty submit, and do not break form layout.
 
-**Fix:** Tag-only swap `<h2 …>→<h1 …>` (identical class → identical visual size). 27 one-line edits, ship as one commit. (`api-keys` and `discussions` have no server-rendered page heading at all — see UI-6.)
+### REG-7 (CLEAN ✓, HIGH confidence) — en/ko i18n strings
 
-### AGG-59 — `leaderboard-table.tsx` invalid `hsl(var(--border))` — CONFIRMED, P1, HIGH confidence
+**Selectors:** `messages/en.json:1621-1623`, `messages/ko.json:1621-1623` under `admin.settings`.
 
-**Selector (4 sites, unchanged):** `src/components/contest/leaderboard-table.tsx:346, 349, 395, 414` — `shadow-[1px_0_0_0_hsl(var(--border))]` on sticky rank/name `<th>`/`<td>`. `--border` is `oklch(0.922 0 0)` / `oklch(1 0 0 / 10%)` dark; `hsl(oklch(…))` is unparseable, so the whole `box-shadow` is dropped and the sticky-column separator never renders in either theme.
-**Fix:** `shadow-[1px_0_0_0_var(--border)]` (drop the `hsl(…)` wrapper), or `border-r border-border` on the sticky cells.
+| key | en | ko |
+|---|---|---|
+| `reconfirmLabel` | Confirm with your password | 비밀번호 확인 |
+| `reconfirmHint` | Required to save security-sensitive changes. | 보안 관련 설정을 저장하려면 필요해요. |
+| `passwordReconfirmRequired` | Enter your current password to save security-sensitive changes. | 보안 관련 설정을 저장하려면 현재 비밀번호를 입력해 주세요. |
 
-### AGG-60 — Recruit start form: no `<form>`, error has no `aria-live`, no `aria-busy` — CONFIRMED, P1, HIGH confidence
-
-**Selector (unchanged):** `src/app/(auth)/recruit/[token]/recruit-start-form.tsx:116` wraps in `<div className="space-y-3">` (no `<form>`); Button at `:134-138` uses `onClick={handlePrimaryAction}` with no `type="submit"` (Enter-key does nothing in the password field); error at `:147` is `<p className="text-sm text-destructive text-center">{error}</p>` (no `role="alert"`/`aria-live`). Sibling auth forms (`login-form.tsx`, `signup-form.tsx`, `reset-password-form.tsx`, `forgot-password-form.tsx`) all use canonical `<form onSubmit>`.
-**Criterion:** WCAG 2.2 Level A 3.2.2 (Predictable), A 4.1.3 (Status Messages), A 2.1.1 (Keyboard).
-**Fix:** Wrap in `<form onSubmit={(e)=>{e.preventDefault(); void handlePrimaryAction();}}>`, make the Button `type="submit"`, add `role="alert"` to the error `<p>`. Keep the `<AlertDialog>` outside the form.
-
-### AGG-61 — 60 of 67 leaf routes lack a local `loading.tsx`/`error.tsx` — CONFIRMED, P1, HIGH confidence
-
-**Counts on head (unchanged):** 67 leaf `page.tsx`; **10** `loading.tsx` (~15%); **5** `error.tsx` (~7%). **60 leaf directories have NEITHER.** Existing boundaries: `(public)/`, `(public)/problems`, `(public)/groups`, `(public)/contests/manage`, `(dashboard)/`, `(dashboard)/dashboard/admin`, `(dashboard)/dashboard/admin/users`, `(dashboard)/dashboard/admin/submissions`, `(auth)/recruit/[token]/results`, `(public)/contests/manage/[assignmentId]/participant` (loading); `(public)`, `(public)/problems`, `(public)/groups`, `(public)/contests/manage`, `(dashboard)`, `(dashboard)/dashboard/admin` (error). Deep leaves (`contests/[id]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `users/[id]`, every admin detail page) show the parent layout's spinner while their own segment resolves, and a server-component throw becomes a full 500 with no in-place recovery.
-**Criterion:** Perceived performance (INP/LCP) + resilience (`error.tsx` is Next.js's only in-place recovery from a server throw).
-**Fix:** Add `loading.tsx` (skeleton matching page chrome) + `error.tsx` (Card + retry) to the top ~10 deep leaves: `contests/[id]`, `practice/problems/[id]/rankings`, `community/threads/[id]`, `profile`, `users/[id]`, `submissions/[id]`, `problems/[id]`, `groups/[id]`, plus admin detail pages.
-
-### UI-1 — `text-muted-foreground/60`, `text-foreground/60` ~2:1 contrast in light mode — CONFIRMED, P1, HIGH confidence
-
-**Sites (unchanged):** `components/resource-usage-bar.tsx:77, 98` (`text-muted-foreground/60`); `components/layout/public-header.tsx:306` (avatar-dropdown eyebrow `text-muted-foreground/60`); `components/ui/tabs.tsx:66` (inactive `TabsTrigger` `text-foreground/60`, with `dark:text-muted-foreground` override so dark is fine).
-**Math (light):** `oklch(0.48 0 0)` at 60% over white composites to ~0.466 → **2.03 : 1** (fails AA 4.5:1). `text-foreground/60` (`oklch(0.145 0 0)` at 60%) → ~**2.32 : 1** (fails). Dark mode passes.
-**Criterion:** WCAG 2.2 Level AA 1.4.3 (Contrast — Minimum).
-**Fix:** Drop `/60` in light mode; use `text-muted-foreground` alone (~6.5:1) or a weight/size step for hierarchy.
-
-### UI-2 — `sidebar.tsx` invalid `hsl(var(--sidebar-border))` / `hsl(var(--sidebar-accent))` — CONFIRMED, P1, HIGH confidence
-
-**Selector (unchanged):** `components/ui/sidebar.tsx:473` — `SidebarMenuButton` variant `"outline"`: `shadow-[0_0_0_1px_hsl(var(--sidebar-border))] … hover:shadow-[0_0_0_1px_hsl(var(--sidebar-accent))]`. Same oklch-in-hsl defect as AGG-59; the outline ring + hover ring are silently invisible.
-**Fix:** `shadow-[0_0_0_1px_var(--sidebar-border)]` + `hover:shadow-[0_0_0_1px_var(--sidebar-accent)]`.
-
-### UI-3 — `tag-form-fields.tsx` inline `hsl(var(--foreground))` borderColor — CONFIRMED, P1, HIGH confidence
-
-**Selector (unchanged):** `(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:63` — `borderColor: value.color === c ? "hsl(var(--foreground))" : "transparent"`. Selected color swatch loses its border highlight in both themes.
-**Criterion:** WCAG 2.2 Level A 4.1.2 (Name, Role, Value — "states").
-**Fix:** `"var(--foreground)"`.
-
-> Note: `grep -rn 'hsl(var(--' src --include=*.tsx --include=*.ts` (excluding `--radius`) returns **exactly these three files** (leaderboard-table ×4, sidebar ×1, tag-form-fields ×1). The HSL→oklch migration is otherwise complete; these 6 occurrences are the entire remaining set and can all be fixed by dropping the `hsl(…)` wrapper.
-
-### UI-4 — `<html nonce={nonce}>` is invalid HTML — CONFIRMED, P2, HIGH confidence
-
-**Selector (unchanged):** `app/layout.tsx:100` — `<html … nonce={nonce}>`. Per HTML spec `nonce` is valid only on `<script>/<style>/<link>/<iframe>`, not `<html>`; browsers ignore it for CSP. The real nonce delivery is the CSP response header + `NonceProvider` (`:118`).
-**Fix:** Remove `nonce={nonce}` from `<html>`.
-
-### UI-5 — Viewport missing `viewport-fit`/`themeColor` — CONFIRMED, P2, MEDIUM confidence
-
-**Selector (unchanged):** `app/layout.tsx:23-26` — `{ width: "device-width", initialScale: 1 }` only. Missing `viewportFit: "cover"` (needed for `env(safe-area-inset-*)` on the full-screen recruit flow + code editor) and a `themeColor` pair. (No `maximum-scale` cap — good for AAA 1.4.4; keep.)
-**Fix:** Add `viewportFit: "cover"` and `themeColor: [{ media: "(prefers-color-scheme: light)", color: "#ffffff" }, { media: "(prefers-color-scheme: dark)", color: "#242424" }]`.
-
-### UI-6 — `api-keys` page has no heading; `discussions` heading is client-only — CONFIRMED, P2, MEDIUM confidence
-
-**Selectors (unchanged):** `(dashboard)/dashboard/admin/api-keys/page.tsx` returns only `<ApiKeysClient>` — no `<h1>/<h2>/<h3>` server-side; the in-client `CardTitle` (`api-keys-client.tsx:325`) renders as a `<div>` (UI-13), so the page has **zero** heading semantics. `(dashboard)/dashboard/admin/discussions/page.tsx` defers its `<h1>` to the client (`discussion-moderation-list.tsx:46`) → hidden until hydration (LCP/CLS) and inconsistent with sibling pages.
-**Fix:** When applying AGG-58, add a server-rendered `<h1 className="text-2xl font-bold">` to both `page.tsx`; demote the in-client discussions `<h1>` to `<h2>`.
-
-### UI-7 — `console.error/log` in production component bundles — CONFIRMED, P2, LOW confidence
-
-**Scale (unchanged from cycle 3):** 7 component files + 7 app-side dialog/form files. Component set: `submissions/_components/comment-section.tsx`, `problem/problem-import-button.tsx`, `discussions/discussion-post-form.tsx`, `discussions/discussion-post-delete-button.tsx`, `discussions/discussion-thread-moderation-controls.tsx`, `discussions/discussion-thread-form.tsx`, `code/compiler-client.tsx`. App set: `admin/roles/role-delete-dialog.tsx`, `admin/roles/role-editor-dialog.tsx`, `admin/languages/language-config-table.tsx`, `admin/settings/database-backup-restore.tsx`, `admin/users/bulk-create-dialog.tsx`, `problems/create/create-problem-form.tsx`, `groups/create-group-dialog.tsx`. Error-boundary `console.error` are correctly dev-gated — those are fine.
-**Fix:** Route through a typed client-safe logger that no-ops in production.
-
-### UI-8 — Design-token drift: hardcoded `bg-green-*`/`text-yellow-*`/etc. — CONFIRMED, P2, MEDIUM confidence
-
-**Scale:** `grep -rEn '(bg|text|border)-(green|yellow|blue|red|orange|purple)-(100|200|300|500|600|700|800)'` returns ~64–74 hits (cycle 3 reported 74 with a slightly broader pattern). Pervasive in `contest/leaderboard-table.tsx`, `contest/anti-cheat-presentation.ts`, `ui/badge.tsx:24`, `contest/participant-timeline-view.tsx`, `api-keys-client.tsx`, `file-upload-dialog.tsx`. Status colors are inlined as Tailwind palettes and do NOT recolor under lecture-mode themes (`.lecture-theme-*` at `globals.css:404-500` redefine semantic tokens only).
-**Criterion:** Visual cohesion; lecture-mode accessibility (a low-vision user who picks a high-contrast lecture theme expects status indicators to recolor — they don't).
-**Fix:** Add `--success/--warning/--info/--danger` semantic tokens, map the inline palettes to them, and extend the lecture-theme blocks to redefine those four tokens.
-
-### UI-9 — `TabsContent` `outline-none` with no `focus-visible` replacement — CONFIRMED, P2, LOW confidence
-
-**Selector (unchanged):** `components/ui/tabs.tsx:81` — `className={cn("flex-1 text-sm outline-none", className)}`. `TabsTrigger` (`:66`) has full `focus-visible:ring-[3px] …`; `TabsContent` does not.
-**Criterion:** WCAG 2.2 Level AA 2.4.7 (Focus Visible).
-**Fix:** `outline-none focus-visible:ring-2 focus-visible:ring-ring/50` (only load-bearing if the panel receives `tabindex`).
-
-### UI-10 — Sticky column `bg-background` mismatches Card `bg-card` in dark mode — CONFIRMED, P2, MEDIUM confidence
-
-**Selector (unchanged):** `contest/leaderboard-table.tsx:345-346,349` — sticky header row + sticky rank/name cells use `bg-background`. Light mode: `--background`=`--card`=`oklch(1 0 0)` (no seam). Dark mode: `--background`=`oklch(0.145 0 0)` vs `--card`=`oklch(0.205 0 0)` (~7% lightness delta) → visible color mismatch on the sticky edge as rows scroll under it. Combined with AGG-59 (no separator), sticky columns read as a rendering bug.
-**Fix:** `bg-card` (or `bg-inherit`) on sticky cells + the AGG-59 separator.
-
-### UI-11 — All 5 `error.tsx` render `<h2>` not `<h1>` — CONFIRMED, P1, HIGH confidence
-
-**Selectors (unchanged):** `(dashboard)/error.tsx:20`, `(dashboard)/dashboard/admin/error.tsx:27`, `(public)/problems/error.tsx:27`, `(public)/groups/error.tsx:27`, `(public)/contests/manage/error.tsx:29` — all `<h2 className="text-2xl font-semibold">{t("errorTitle")}</h2>`. When the boundary replaces the segment, the page's original heading is unmounted, leaving the error screen with no `<h1>`.
-**Criterion:** WCAG 2.2 Level A 1.3.1 / 4.1.2.
-**Fix:** Promote `<h2>` → `<h1>` in all 5 files (identical class).
-
-### UI-12 — `discussion-moderation-list.tsx` `<h1>` at `text-3xl` drifts from sibling pages — CONFIRMED, P2, MEDIUM confidence
-
-**Selector (unchanged):** `components/discussions/discussion-moderation-list.tsx:46` — `<h1 className="text-3xl font-semibold…">`. Sibling admin pages are `text-2xl font-bold`. After AGG-58/UI-6 normalize them to `<h1 className="text-2xl font-bold">`, discussions will be the lone `text-3xl` page.
-**Fix:** Normalize to `<h1 className="text-2xl font-bold">` (server-rendered in `page.tsx` per UI-6).
-
-### UI-13 — `<CardTitle>` is a `<div>`, so 143 card titles have no heading semantics — CONFIRMED (architectural), P2, LOW confidence
-
-**Selector (unchanged):** `components/ui/card.tsx:36-40` — `CardTitle` renders `<div data-slot="card-title">`. ~143 sites. Standard shadcn tradeoff; only a problem where a `CardTitle` is the page's *only* heading-like element (e.g. `api-keys` per UI-6). No action for cards nested under a real `<h1>`.
+**Checks (all PASS):**
+- Both locales define all three keys at the same namespace path the forms resolve (`useTranslations("admin.settings")`). No missing keys → no fall-through to key strings.
+- Tone matches surrounding copy (the ko `…해요` / `…주세요` register is consistent with the rest of the admin/settings copy).
+- **CLAUDE.md Korean-letter-spacing rule: CLEAN.** `grep -c "tracking-" messages/ko.json` → `0`. The ko strings carry no `letter-spacing`/`tracking-*` overrides. Sibling file `home-page-content-form.tsx:49-50` correctly guards its `tracking-wide` behind `locale !== "ko"` — the codebase-wide rule is respected.
 
 ---
 
-## NEW UI/UX FINDINGS (cycle 4)
+## NEW UI/UX FINDINGS (cycle 5) — polish tier only
 
-### UI-14 — 14 inline error `<p className="text-destructive">` lack `role="alert"` (enumerated) — NEW, P3, MEDIUM confidence
+### UI-15 — Password field uses plain `<label>` instead of the `<Label>` component (line-height drift vs sibling labels) — NEW, LOW, MED confidence
 
-Cycle 3's final sweep estimated "~14 form-error `<p>`s" without `role="alert"`/`aria-live`. Cycle 4 enumerates the exact set: `grep -rn '<p[^>]*text-destructive' src` returns 26 total; **14** have no `role="alert"`:
+**Selectors:**
+- `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:115`
+- `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:118`
+- `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:532`
 
-| File:line | Kind |
-|---|---|
-| `components/problem/function-signature-builder.tsx:156, 169, 186, 279` | Form-validation errors (4) |
-| `components/problem/function-test-case-editor.tsx:284, 305` | Form-validation errors (2) |
-| `components/contest/code-timeline-panel.tsx:138` | fetchError status |
-| `components/contest/anti-cheat-dashboard.tsx:339` | fetchError status |
-| `components/contest/analytics-charts.tsx:569` | fetchError status |
-| `components/contest/leaderboard-table.tsx:283` | fetchError status |
-| `components/contest/participant-anti-cheat-timeline.tsx:203` | fetchError status |
-| `(auth)/recruit/[token]/recruit-start-form.tsx:147` | already covered by AGG-60 |
-| `(auth)/signup/signup-form.tsx:218` | password-mismatch (icon+text, but no live region) |
-| `change-password/change-password-form.tsx:141` | password-mismatch (icon+text, but no live region) |
+**Issue:** All three password fields use `<label htmlFor="…" className="text-sm font-medium">`. In `config-settings-form.tsx` and `system-settings-form.tsx`, **every other field label uses the `<Label>` component** (`<Label htmlFor="site-title">` at `:212`, `<Label htmlFor="cfg-…">` at `:91`, etc.). The `Label` component (`components/ui/label.tsx:12`) applies:
+```
+flex items-center gap-2 text-sm leading-none font-medium select-none
+group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50
+peer-disabled:cursor-not-allowed peer-disabled:opacity-50
+```
+The plain `<label className="text-sm font-medium">` drops `leading-none` (so line-height resolves to ~1.25rem instead of 1) and `select-none`. The password label therefore sits at a slightly taller line-box than its sibling field labels in the same form — a small vertical-rhythm / baseline mismatch inside one card.
 
-**Criterion:** WCAG 2.2 Level A 4.1.3 (Status Messages) — SR users get no announcement when these errors appear.
-**Fix:** Add `role="alert"` (for validation/fetch errors that appear on a state change). For the password match/mismatch `<p>` in signup/change-password, also consider `aria-describedby` linking the `<p id>` to the confirm-password input. Purely additive attribute changes; no visual change. P3 because none block task completion and the surrounding inputs are still operable.
+**User impact:** Cosmetic only. No functional issue; label-to-input association is correct. A reviewer with a pixel-ruler would notice the password label is ~3-4px taller than the labels above it in the same card.
+
+**Fix:** Replace the plain `<label>` with `<Label>` in all 3 files. `Label` is already imported in `config-settings-form.tsx:10` and `system-settings-form.tsx:11`; add `import { Label } from "@/components/ui/label";` to `allowed-hosts-form.tsx` (which currently has no `Label` import). Tag-only change, no visual delta once swapped.
+
+**Confidence:** MED-HIGH. The `leading-none` delta is real; the magnitude is small but visible in side-by-side inspection.
+
+### UI-16 — `passwordReconfirmRequired` error is toast-only (no inline `role="alert"` next to the field) — NEW, LOW, LOW-MED confidence
+
+**Selectors:** Identical handler in all 3 forms — `toast.error(t(result.error ?? "updateError"))` then `return`.
+- `allowed-hosts-form.tsx:56-58`
+- `config-settings-form.tsx:73-75`
+- `system-settings-form.tsx:195-197`
+
+**Issue:** When the server action returns `{ success: false, error: "passwordReconfirmRequired" }`, the error surfaces only via a sonner toast. There is no inline `<p role="alert">` adjacent to the password input, and the input has no `aria-describedby` linking it to either the hint or an inline error.
+
+**Mitigations (why this is LOW, not MED):**
+- The `required` attribute on the input means the **browser-native "please fill in this field" tooltip on the field itself** is the path real users hit in ~all cases. The toast path is a defense-in-depth fallback for the rare case where client-side validation is bypassed (form submission via JS, an old browser, etc.).
+- Sonner toasts use `role="status"`/`aria-live="polite"` (verified in cycle-3 sweeps), so the error IS announced to SR users — just not associated with the field.
+- The static hint `<p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>` already explains *why* the field exists ("Required to save security-sensitive changes." / "보안 관련 설정을 저장하려면 필요해요.").
+
+**User impact:** Marginal. A SR user who triggers the server-side error gets a generic toast announcement without "this is about the password field you just skipped" field-level association. Sighted users see a toast near the top-right corner, not next to the field.
+
+**Fix (optional polish, do NOT block cycle 5 on this):**
+1. Add `id="<form>-reconfirm-hint"` to the hint `<p>` and `aria-describedby="<form>-reconfirm-hint"` on the input.
+2. If a future iteration wants the inline path, render `<p role="alert" id="<form>-reconfirm-error">{t("passwordReconfirmRequired")}</p>` when a local `submitError === "passwordReconfirmRequired"` state is set, and link via `aria-describedby`. Today the forms use `toast.error` only, so this would also require capturing the error into state.
+
+**Confidence:** MED. The accessibility gap is real but its blast radius is tiny because `required` short-circuits the user path.
 
 ---
 
-## SWEEPS THAT CAME BACK CLEAN (cycle 4 — no new findings)
+## DEFERRED DESIGNER P1/P2 BATCH — re-confirmed on head `7ebea50e`
 
-- **Icon-only buttons (`size="icon"`):** 11 sites; **all 11 carry `aria-label`** (`locale-switcher.tsx:58`, `code/copy-code-button.tsx:35`, `admin/workers/workers-client.tsx:135,189,206`, `admin/api-keys/api-keys-client.tsx:478`, `admin/settings/footer-content-form.tsx:166`, plus the layout theme/accessibility toggles). No net-new finding.
-- **Color-only state indicators:** audited the likely suspects — workers online/stale/offline is a Badge with a **text label** (`workers-client.tsx:74-84`, `statusVariant` maps to variant only); the disk-usage bar has full `role="progressbar" aria-valuenow aria-valuemin aria-valuemax aria-label` with the numeric `%` also shown as text (`language-config-table.tsx:384-394`); verdict colors in `leaderboard-table.tsx` always accompany a verdict string. No state is conveyed by hue alone.
-- **Korean letter-spacing (CLAUDE.md rule):** CLEAN. 44 `tracking-*` sites; every one is either behind a `locale !== "ko"` ternary (`headingTracking`), on `font-mono` alphanumeric access codes with an explanatory comment (`access-code-manager.tsx:154`, `contest-join-client.tsx:123`), on the literal numeric `"404"` (`not-found.tsx:58`, `(public)/not-found.tsx:24`), or on English-uppercase eyebrows with a comment (`public-header.tsx:305`, `public-home-page.tsx:75`, `recruit/[token]/results/page.tsx:268,279`). The `html:lang(ko)` token override (`globals.css:131-136`) is the global backstop. No regression.
-- **Modals / focus traps:** `Dialog`/`AlertDialog`/`Select`/`DropdownMenu` delegate keyboard + focus-trap to `@base-ui/react` (native arrow-key nav, type-ahead, Escape, focus restore). Mobile menu trap verified in cycle 3. Unchanged.
-- **Reduced motion / dark mode / landmarks / skip-link / i18n:** all unchanged from cycle 3's FINAL SWEEP (still good).
+The cycle-4 .tsx diff is exactly `{allowed-hosts,config-settings,system-settings}-form.tsx`. **None of the selectors cited in the cycle-4 review (`edd45cca`) are touched by these edits.** Therefore every item is re-confirmed by re-reading the same selector at the same (or line-shifted) location. Do NOT re-litigate; status unchanged.
 
----
-
-## CONFIDENCE SUMMARY (cycle 4)
-
-| ID | Sev | Conf | Status vs cycle 3 |
+| ID | Sev | Status | Cycle-5 note |
 |---|---|---|---|
-| REG-3 | — | HIGH | new — zero UI files changed |
-| REG-4 | — | HIGH | new — freezeLeaderboardAt strip non-breaking |
-| REG-5 | — | HIGH | new — count fix correct; ISR correctly skipped |
-| AGG-58 | P1 | HIGH | Confirm (27 sites, exact list) |
-| AGG-59 | P1 | HIGH | Confirm (4 sites) |
-| AGG-60 | P1 | HIGH | Confirm |
-| AGG-61 | P1 | HIGH | Confirm (60 leaves) |
-| UI-1 | P1 | HIGH | Confirm |
-| UI-2 | P1 | HIGH | Confirm |
-| UI-3 | P1 | HIGH | Confirm |
-| UI-4 | P2 | HIGH | Confirm |
-| UI-5 | P2 | MED | Confirm |
-| UI-6 | P2 | MED | Confirm |
-| UI-7 | P2 | LOW | Confirm (14 files) |
-| UI-8 | P2 | MED | Confirm (~64–74 sites) |
-| UI-9 | P2 | LOW | Confirm |
-| UI-10 | P2 | MED | Confirm |
-| UI-11 | P1 | HIGH | Confirm (5 error.tsx) |
-| UI-12 | P2 | MED | Confirm |
-| UI-13 | P2 | LOW | Confirm (architectural) |
-| UI-14 | P3 | MED | **NEW** — 14 error `<p>` without `role="alert"` (enumerated) |
+| AGG-58 | P1 | Still present | 27 `<h2>` page titles — none are in the 3 changed files |
+| AGG-59 | P1 | Still present | `leaderboard-table.tsx` `hsl(var(--border))` ×4 — not touched |
+| AGG-60 | P1 | Still present | `recruit/[token]/recruit-start-form.tsx` — not the settings forms |
+| AGG-61 | P1 | Still present | `loading.tsx`/`error.tsx` coverage — no boundary files added this cycle |
+| UI-1 | P1 | Still present | `/60` opacity contrast sites — not touched |
+| UI-2 | P1 | Still present | `sidebar.tsx` `hsl(var(--sidebar-*))` — not touched |
+| UI-3 | P1 | Still present | `tag-form-fields.tsx` inline `hsl(var(--foreground))` — not touched |
+| UI-4 | P2 | Still present | `<html nonce>` — not touched |
+| UI-5 | P2 | Still present | viewport `viewport-fit`/`themeColor` — not touched |
+| UI-6 | P2 | Still present | `api-keys`/`discussions` headings — not touched |
+| UI-7 | P2 | Still present | production `console.*` — not touched |
+| UI-8 | P2 | Still present | hardcoded status-color palettes — not touched |
+| UI-9 | P2 | Still present | `TabsContent` focus-visible — not touched |
+| UI-10 | P2 | Still present | sticky `bg-background` vs `bg-card` — not touched |
+| UI-11 | P1 | Still present | 5 `error.tsx` render `<h2>` — not touched |
+| UI-12 | P2 | Still present | `discussion-moderation-list.tsx` `text-3xl` — not touched |
+| UI-13 | P2 | Still present | `CardTitle` is `<div>` — architectural; unchanged |
+| UI-14 | P3 | Still present | 14 error `<p>` without `role="alert"` — UI-16 above extends this observation to the new reconfirm error path |
+
+**Batch remediation plan (unchanged from cycle 4):** Batches 1-5 in `plan/cycle-4-2026-06-27-review-remediation.md` Phase B "Designer P1/P2 batch" still stand verbatim. **Batches 1 (drop `hsl(…)` wrappers) and 2 (`<h2>` → `<h1>` tag-only swap) remain trivially cheap and should not defer another cycle.**
 
 ---
 
-## RECOMMENDED FIX ORDER (unchanged from cycle 3 — none shipped)
+## SWEEPS THAT CAME BACK CLEAN (cycle 5)
 
-**Batch 1 — one-line CSS (ship together, one commit):** AGG-59 (4 leaderboard sites) → UI-2 (sidebar) → UI-3 (tag-form). Drop `hsl(…)` wrappers around oklch tokens. These are the *entire* remaining `hsl(var(--token))` set.
+- **Icon-only buttons:** No new icon-only buttons introduced. The "Add" button in `allowed-hosts-form` is text-labeled (`{tCommon("add")}`), the host-remove `<button>` wraps a `<X>` icon but is unchanged from prior cycles (cycle-3/4 sweeps confirmed equivalent patterns). No new finding.
+- **Color-only state indicators:** None added.
+- **Korean letter-spacing (CLAUDE.md rule):** CLEAN. `grep -rn 'tracking-\|letter-spacing' messages/ko.json` → 0 hits. The 3 forms render label/hint/copy via i18n without any `tracking-*` className anywhere on the input, label, or hint. ✓
+- **Form semantics:** Each form is a `<form onSubmit>` with a real submit `<Button>` (no `<div>` pseudo-forms, no `onClick`-only buttons). Keyboard "Enter in password field" submits correctly. ✓
+- **Autofill:** `autoComplete="current-password"` is the spec-correct value for "confirm with your current password." Browsers will offer the saved password for the site. ✓
+- **Focus management / modals:** No new modals. No focus traps added or removed.
+- **i18n parity:** en and ko define the same 3 keys (`reconfirmLabel`, `reconfirmHint`, `passwordReconfirmRequired`) at the same namespace; no orphan keys, no missing translations. ✓
 
-**Batch 2 — heading hierarchy (tag-only, one commit):** AGG-58 (`<h2>`→`<h1>` on 27 pages) → UI-6 (add server `<h1>` to api-keys + discussions) → UI-12 (normalize discussions sizing) → UI-11 (`<h2>`→`<h1>` in 5 error.tsx).
+---
 
-**Batch 3 — form semantics:** AGG-60 (wrap recruit form in `<form onSubmit>`, `type="submit"`, `role="alert"`).
+## CONFIDENCE SUMMARY (cycle 5)
 
-**Batch 4 — contrast:** UI-1 (drop `/60` opacity modifiers on tertiary text in light mode).
+| ID | Sev | Conf | Status vs cycle 4 |
+|---|---|---|---|
+| REG-6 | — | HIGH | new — 3 password fields verified (placement, type, label, autoComplete, required) |
+| REG-7 | — | HIGH | new — en/ko strings present, sensible, letter-spacing-clean |
+| UI-15 | LOW | MED | **NEW** — plain `<label>` vs `<Label>` baseline drift |
+| UI-16 | LOW | LOW-MED | **NEW** — reconfirm error toast-only, no inline `role="alert"` |
+| AGG-58..AGG-61 | P1 | HIGH | Carry-forward verbatim (zero selector overlap with cycle-4 diff) |
+| UI-1..UI-14 | P1/P2/P3 | HIGH | Carry-forward verbatim (zero selector overlap with cycle-4 diff) |
 
-**Batch 5 — boundaries:** AGG-61 (`loading.tsx` + `error.tsx` on top ~10 deep leaves).
+---
 
-**Cleanup (P2/P3, ride-along):** UI-14 (`role="alert"` on 14 error `<p>`), UI-4 (drop `<html nonce>`), UI-5 (viewport cover + themeColor), UI-9 (TabsContent focus-visible), UI-10 (sticky `bg-card`), UI-7 (typed logger), UI-8 (semantic status tokens + lecture-mode extension). UI-13 needs no action.
+## RECOMMENDED FIX ORDER (delta vs cycle-4 plan)
 
-**Batches 1 and 2 are the highest leverage and remain trivially cheap — they should not defer a fifth cycle.**
+The two new LOW findings fold into the existing **Cleanup (P2/P3, ride-along)** batch — no new batch needed:
+
+- **Cleanup batch (add):** UI-15 — swap `<label>` → `<Label>` in the 3 settings forms (tag-only; in `allowed-hosts-form`, add the `Label` import).
+- **Cleanup batch (add, optional):** UI-16 — add `aria-describedby` on the input + `id` on the hint `<p>`. Inline `role="alert"` is a larger lift and is **not** required given the `required` attribute + sonner aria-live.
+
+**Batches 1-5 from cycle 4 remain unchanged and are still the highest-leverage work.** The 3 cycle-4 settings-form additions are production-quality; ship them.

@@ -1,27 +1,40 @@
-# Cycle 4 — debugger
+# Cycle 5 — debugger
 
 Scope: latent-bug / failure-mode / regression review of JudgeKit at head
-`edd45cc5`. Cycle 4 of 100. The cycle-3 surface is `207623f9` + 8 cycle-3
-fixes (43 commits green, converging — do not inflate). Three jobs, exactly as
-mission-scoped: (a) REGRESSION-check the 5 named cycle-3 fixes against their
-edge cases; (b) CLOSE or RE-CONFIRM the cycle-3 debugger residuals **R1..R4**;
-(c) hunt NET-NEW latent bugs (error/edge paths, async cleanup, signal
-handling, leaks).
+`7ebea50e`. Cycle 5 of 100. The cycle-4 surface is `edd45cca..7ebea50e`
+(11 commits). Mission: (a) regression-check the worker cleanup bundle
+(N1+R2+R4), the int64 serialization, the snapshot opt-out, the settings
+reconfirm helper, and the accepted-solutions filter against their named
+edge cases; (b) confirm or escalate the cycle-4 deferred residuals
+**R1/R3**; (c) hunt NET-NEW latent bugs across the cycle-4 surface without
+inflating the count (`112→25→28` converging).
 
 Evidence basis: full read of every cited file at the cited lines —
-`judge-worker-rs/src/main.rs` (spawn body + shutdown + heartbeat),
-`executor.rs` (report_panic / report_with_retry / dead-letter / chown-chmod),
-`runner.rs` (execute_run chown+0o700), `docker.rs` (cleanup sweep / inspect /
-kill / rm), `src/lib/assignments/recruiting-invitations.ts` (tx + FOR UPDATE),
-`src/app/api/v1/admin/settings/route.ts` (password reconfirm),
-`src/app/api/v1/submissions/[id]/events/route.ts` (SSE re-auth IIFE),
-`src/lib/auth/permissions.ts` (`canAccessSubmission` field shape),
-`src/lib/security/password-hash.ts` (`verifyAndRehashPassword`), and
-`src/lib/compiler/execute.ts` (R1). The cycle-3 debugger review
-(`.context/reviews/debugger.md` at `207623f9`) is the baseline.
+`judge-worker-rs/src/docker.rs` (cleanup sweep / startup reap-all /
+inspect / kill / rm / kill_on_drop sites),
+`judge-worker-rs/src/main.rs` (startup hook + periodic-sweep `select!`
++ shutdown wiring),
+`src/lib/judge/function-judging/serialization.ts` (`encodeIntLiteral` /
+`encodeScalar` / `encodeArgs`),
+`src/lib/judge/function-judging/value-fields.ts` (`parseScalar` int
+range gate),
+`src/lib/db/export.ts` + `pre-restore-snapshot.ts` (`snapshot:true`
+opt-out),
+`src/lib/security/sensitive-settings.ts` (shared reconfirm helper),
+`src/lib/security/password-hash.ts` (`verifyPassword` /
+`verifyAndRehashPassword`),
+`src/lib/auth/config.ts` (authorize call site, no try/catch),
+`src/app/api/v1/admin/settings/route.ts` (route writer + `hasOwnInput`),
+`src/lib/actions/system-settings.ts` (action writer + `hasOwnInput`),
+`src/app/api/v1/problems/[id]/accepted-solutions/route.ts` (list/count
+parity), `deploy-docker.sh` (worker restart sequencing), and the cycle-4
+diffs `65ca7ef8`, `e7a17c22`, `b9fcbc92`, `052abf88`, `c858ce22`. The
+cycle-4 debugger review (`.context/reviews/debugger.md` at `edd45cca`)
+and the cycle-4 remediation plan
+(`plan/cycle-4-2026-06-27-review-remediation.md`) are the baseline.
 
-Severity legend: CRITICAL / HIGH / MEDIUM / LOW. Confidence: HIGH / MED / LOW.
-Validation tag: **confirmed** (read + logically proven at head),
+Severity legend: CRITICAL / HIGH / MEDIUM / LOW. Confidence: HIGH / MED /
+LOW. Validation tag: **confirmed** (read + logically proven at head),
 **likely** (read + strong inference), **needs-manual-validation** (requires
 runtime/docker to nail down).
 
@@ -29,419 +42,545 @@ runtime/docker to nail down).
 
 ## EXECUTIVE SUMMARY
 
-All 5 cycle-3 fixes are **CONFIRMED correct** on the mission's named edge
-cases — no regression introduced. Each carries at most a LOW-severity residual
-that is either a pre-existing shared limitation (runner mirrors executor) or a
-theoretical cancel-path fragility with no trigger today.
+All 5 cycle-4 fix bundles are **CONFIRMED correct** on the mission's named
+edge cases — no regression introduced. The cleanup bundle (N1+R2+R4) does
+what it claims: a wedged dockerd can no longer freeze the hot loop OR
+block graceful shutdown, the per-call cleanup paths are leak-free, and the
+startup reap-all covers forced-restart leftovers in the documented
+single-worker-per-host deployment. The int64, snapshot, reconfirm, and
+accepted-solutions fixes all behave correctly.
 
-**R1..R4 all STILL OPEN at head** — none were touched by the cycle-3 commits
-(the cycle-3 LOW batch `6ec17d6e` only added the AGG-17 clamp `warn!`, PB-1,
-and the freezeLeaderboardAt/count fixes). They are re-confirmed below at the
-same severity, not inflated, not dropped.
+**R1 and R3 remain deferred at the same severity** (pre-existing
+low-severity worker residuals; cycle 4 did not touch them and the plan
+correctly kept them in Phase B/C). Not escalated — both are bounded and
+documented.
 
-One **NET-NEW MEDIUM** found: the periodic orphan sweep runs un-timeout'd
-`docker ps`/`docker rm` directly in the worker main loop, so a wedged dockerd
-hangs the entire loop (no polling, no shutdown). This is the symmetric gap the
-cycle-3 R2/R4 per-submission hardening left un-guarded — highest-ROI worker
-item this cycle.
+Two **NET-NEW LATENT** items found — both LOW/MED and theoretical for the
+canonical deployment (they cannot fire on `algo.xylolabs.com` /
+`worker-0.algo.xylolabs.com` today). Neither is a data-loss or
+availability-regression bug; both are forward-looking footguns worth a
+cheap guard. No CRITICAL or HIGH net-new issue.
 
-**Top action items, ranked:**
-1. **N1** (MEDIUM) — `cleanup_orphaned_containers` has no timeout on its
-   `docker ps`/`docker rm`; awaited inline in the main loop → wedged dockerd
-   freezes the worker. Pair with R2/R4 for a complete cleanup-hardening pass.
-2. **R2** (HIGH) — orphan sweep filters `status=exited` only; running `oj-*`
-   leaked by a timed-out kill/rm is never reaped, contradicting the
-   "orphan sweep will reap" log promise (docker.rs:255,273).
-3. **R3** (LOW/MED) — inspect timeout returns `oom_killed:false`, masking a
-   real OOM in the verdict.
-4. **R4** (LOW) — no `kill_on_drop(true)` on the cleanup Commands → orphaned
-   `docker` CLI children under wedged dockerd.
-5. **R1** (LOW) — compiler chown-failure catch still 0o777/0o666 (intentional
-   CAP_CHOWN-less fallback; partial-chown EPERM sub-case still present).
+**Top items, ranked:**
+1. **N5** (LOW/MED) — startup reap-all has no worker-identity guard; a
+   future shared-host deployment (two workers on one host) would have one
+   worker's startup sweep `docker rm -f` the sibling's in-flight `oj-*`
+   containers. Container names are `oj-{uuid}` with no worker-id prefix.
+   Unreachable in the documented single-worker topology; cheap to guard.
+2. **N6** (LOW) — startup reap-all is not wrapped in the `shutdown`
+   select, so a SIGTERM during the up-to-20s startup-sweep window is
+   queued and not honored until the sweep returns. Bounded; minor.
+3. **R3** (LOW→MED, deferred) — inspect-timeout still returns
+   `oom_killed: false` (masks a real OOM whose post-run `docker inspect`
+   stalls past 10s). Cycle-4 added `kill_on_drop` here but did not change
+   the default. Same as cycle 4; not escalated.
+4. **R1** (LOW, deferred) — compiler chown-fallback 0o777/0o666 mirror
+   unchanged. Same as cycle 4; not escalated.
 
-No CRITICAL data-loss / capacity-wedge regression was found in the cycle-3
-surface. The catch_unwind, recruiting-tx, settings-reconfirm, and SSE re-auth
-fixes all behave correctly under their named failure paths.
-
----
-
-## (a) REGRESSION — cycle-3 fixes vs. mission edge cases
-
-### A — `catch_unwind` executor panic recovery: CONFIRMED on Ok + panic; dead-letter survives DB outage; _permit always dropped (LOW residuals noted)
-- Commit `45473b20` · Files: `judge-worker-rs/src/main.rs:559-591`, `executor.rs:899-928` (`report_panic`), `executor.rs:971-1066` (`report_with_retry` + dead-letter)
-- Mission questions, answered:
-  - **`active_tasks` decremented exactly once on every path?** On the **Ok**
-    path `catch_unwind` returns `Ok`, the `if let Err` arm is skipped, and
-    `active_tasks.fetch_sub(1, Relaxed)` (main.rs:589) runs **exactly once**.
-    On the **caught-panic** path `catch_unwind` returns `Err`, `report_panic`
-    is awaited, control falls through to the same single `fetch_sub` —
-    **exactly once**. There is only one `fetch_sub` call site in the task, so
-    double-decrement is structurally impossible. ✓
-  - **Dead-letter survives a DB outage?** **Yes.** `report_panic` →
-    `report_with_retry` (executor.rs:971) retries the HTTP `report_result` 3×
-    (1s, 2s backoff, L1003), then on exhaustion writes a `DeadLetterEntry`
-    JSON file to `config.dead_letter_dir` via `fs::write` (L1046). A DB
-    outage manifests as the app server's `/report` returning 5xx → retries
-    exhaust → **local filesystem** dead-letter. The dead-letter fails only on
-    a *filesystem* fault (disk full / EIO / perms), logged "Result is lost"
-    (L1035/1043/1052). The DB layer is not on this path. ✓
-  - **Outer task still drops `_permit`?** **Yes.** `_permit` (main.rs:562) is
-    the first binding in the `async move` block; a `Semaphore::OwnedSemaphorePermit`
-    releases on `Drop`. On Ok, caught panic, double-panic (unwind), or task
-    cancellation, the permit is dropped → semaphore slot released. ✓
-- **Residual A1 (LOW / HIGH confidence / likely):** `report_panic` is NOT
-  wrapped in `catch_unwind`. If it itself panics (a "double panic"), the
-  unwind skips `fetch_sub` (main.rs:589) → `active_tasks` drifts up by 1 per
-  occurrence. Narrow: `report_panic` is a thin wrapper over `report_with_retry`
-  (network + fs I/O, no `.unwrap()`), and `format!("executor panicked: {msg}")`
-  on a `String` cannot panic. The drift is also self-bounded because the task's
-  `JoinHandle.await` surfaces the JoinError at shutdown (main.rs:633-634) and
-  the semaphore slot still releases via `_permit` drop. Cosmetic capacity
-  over-report to the heartbeat only.
-- **Residual A2 (LOW / HIGH confidence / confirmed):** `active_tasks` is a
-  manual `fetch_add`/`fetch_sub`, NOT RAII like `_permit`. On any future task
-  `abort()` or cancel-mid-await, `fetch_sub` is skipped while `_permit` still
-  releases → the two capacity views diverge (`active_tasks` over-counts,
-  reported to the server as `available = concurrency.saturating_sub(active)`
-  at main.rs:364-365, heartbeated at L369). **No `abort()` exists for executor
-  tasks today** (task_handles are awaited gracefully at L632, never aborted;
-  only `runner_handle` is aborted at L651), so this is a footgun for future
-  maintainers, not a current drift. Fix (cheap, future-proof): replace the
-  manual counter with a `struct ActiveTaskGuard(AtomicUsize)` that increments
-  on creation and decrements on `Drop`, mirroring the permit — then every path
-  including cancel is correct by construction.
-- **Idempotency check (no double-report):** `executor::execute` reports
-  exactly once — every `report_error`/`report_result` site is followed by
-  `return` (executor.rs:314, 359, …; final `report_result` is last). A panic
-  therefore always occurs *before* any report, so `report_panic` cannot
-  produce a second verdict for a submission that already received one. ✓
-- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
-
-### B — `runner.rs` chown + 0o700: CONFIRMED mirrors executor; same shared chmod-after-chown EPERM limitation (LOW, not a new regression)
-- Commit `527a9d60` · File: `judge-worker-rs/src/runner.rs:837-881`
-- Mission questions, answered:
-  - **TOCTOU between chown and chmod?** `tempfile::TempDir` creates the dir at
-    `0o700` (Unix default). `chown` does not change mode, so between `chown`
-    (L837) and `set_permissions(0o700)` (L849) the mode is `0o700` throughout
-    — **no world-writable window** exists. The post-chown owner is 65534; only
-    65534/root (i.e. the sandbox) can access, which is the intent. ✓
-  - **Failure mode if 65534 (nobody) doesn't exist in the container?**
-    **Non-issue.** `chown` and file-access checks operate on the **numeric
-    uid**, not `/etc/passwd`. The container runs `--user 65534:65534`
-    (numeric); the kernel matches uid, not a name. No name lookup is involved
-    in the access path. ✓
-  - **chown succeeds but chmod fails — does the 0o777/0o666 fallback let the
-    container run?** **No fallback for this case, by design — and executor.rs
-    behaves identically.** The fallback mode (`0o777`/`0o666`) is selected
-    only when `chown` *fails* (`chown_ok`/`source_chown_ok` false). If chown
-    *succeeds* the selected mode is `0o700`/`0o600`, and a subsequent
-    `set_permissions` failure returns via `?` (runner.rs:854,881) →
-    `execute_run` returns `Err(String)` → the `/run` HTTP handler surfaces an
-    error (no container spawned). executor.rs (executor.rs:343-360) is the
-    same shape: chmod failure → `report_error` (runtime_error verdict) +
-    `return`. The narrow trigger — a non-root worker with **CAP_CHOWN but not
-    CAP_FOWNER**, so `chown` to 65534 succeeds and the now-non-owner `chmod`
-    EPERMs — is a **pre-existing shared limitation** of both files; runner.rs
-    now mirrors executor.rs rather than introducing a new divergence.
-    Common deployments (root worker; or no-caps dev worker where chown fails →
-    `0o777` fallback) are unaffected.
-- **Status: REGRESSION-CHECK PASSED (consistent with executor).** Verdict:
-  **confirmed**. The chmod-after-chown EPERM edge is restated as N3 (LOW),
-  not a regression.
-
-### C — recruiting metadata tx + FOR UPDATE: CONFIRMED — no deadlock, no lock upgrade, no serialization_failure at default isolation
-- Commit `ec48f84c` · File: `src/lib/assignments/recruiting-invitations.ts:386-448`
-- Mission questions, answered:
-  - **Deadlock with the atomic `jsonb_set` path?** **No.** Both the new tx
-    (`SELECT … FOR UPDATE` + `UPDATE`, L395-447) and the atomic counter
-    (`incrementFailedRedeemAttempt`, a single `UPDATE … WHERE id`) lock exactly
-    **one row** — the invitation row by `id`. A deadlock requires a circular
-    wait across ≥2 resources; with a single-row lock on both paths there is no
-    cycle. The tx locks the row at the `FOR UPDATE` read and holds it through
-    its own `UPDATE`; the atomic path locks it at its single `UPDATE`. They
-    purely serialize. ✓
-  - **Lock upgrade?** **No.** `SELECT … FOR UPDATE` already acquires the
-    strongest row-level lock (row-exclusive). The subsequent `UPDATE` on the
-    same row needs no upgrade — it re-acquires the same lock class on a row it
-    already holds. No lock-upgrade deadlock surface. ✓
-  - **Behavior under `serialization_failure`?** **Non-issue at deployed
-    isolation.** A repo-wide grep for `isolation|serializable|isolationLevel`
-    over `src/lib/db*` and `src/lib/db/` returned **zero hits** — drizzle
-    therefore runs the transaction at PostgreSQL's default **READ COMMITTED**,
-    under which `FOR UPDATE` does not raise `serialization_failure`. (Under a
-    future SERIALIZABLE flip, the tx would need retry-on-40001; not present
-    today.)
-- **Drizzle SQL-order sanity:** the chain `.where(eq(id)).for("update").limit(1)`
-    (L394-396) is reordered by drizzle's builder to emit `FOR UPDATE` *after*
-    `LIMIT` (valid PostgreSQL: `SELECT … LIMIT 1 FOR UPDATE`). No syntax-error
-    risk. ✓
-- **Semantic-preservation check:** when both `metadata` and `status` are set,
-    the status update now runs inside the tx with `WHERE status='pending'`
-    (L420-428) and throws `invitationCannotBeRevoked` (rowCount 0) → tx
-    rollback, which also rolls back the metadata merge. The legacy single-row
-    `UPDATE` had the same atomic semantics; behavior is preserved *plus* the
-    row lock. The non-metadata `status`-only path keeps the legacy plain
-    `UPDATE` (L441-453) — correct, since no read-modify-write needs
-    serialization there. ✓
-- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
-
-### D — settings PUT password reconfirm: CONFIRMED — throw path is a clean pre-mutation 500, no partial update
-- Commit `50af8196` · File: `src/app/api/v1/admin/settings/route.ts:85-112`
-  (gate), `src/lib/security/password-hash.ts:63-83`
-- Mission questions, answered:
-  - **Error path when `verifyAndRehashPassword` throws (not returns false)?**
-    The gate (L97-110) runs **before any settings mutation** — after
-    destructuring `body` (L78-82) and *before* `hasNewKeys` (L112) and the
-    `db.update(systemSettings)` write. So a throw from `verifyAndRehashPassword`
-    propagates to `createApiHandler`'s outer try/catch → **clean 500, no
-    settings row touched**. `verifyAndRehashPassword` itself wraps its only
-    side-effect (the rehash write) in try/catch (password-hash.ts:70-80) and
-    returns `{ valid }` — it does not throw on a rehash failure, only
-    potentially on a malformed `storedHash` inside `verifyPassword`. Either
-    way the gate is pre-mutation → no partial state. ✓
-  - **Partial-update rollback?** The settings write is a single
-    `db.update(systemSettings).set(...)` (one row, atomic). The only
-    preceding mutation is the optional rehash-on-valid (`users` row), an
-    intended transparent side-effect shared with restore/backup/migrate — if
-    the subsequent settings `UPDATE` fails, the rehash remains applied
-    (benign; re-hash-on-success pattern). No multi-row non-atomic mutation was
-    introduced. ✓
-- **Coverage check:** `SENSITIVE_SETTINGS_KEYS` (L24-44) covers the
-  privilege-affecting surface (`platformMode`, `allowedHosts`,
-  `publicSignupEnabled`, `emailVerificationRequired`, hCaptcha keys, SMTP
-  pass, all rate-limit ceilings, `sessionMaxAgeSeconds`). A `touchesSensitiveKey`
-  body scan (L92-94) triggers the gate whenever any is `!== undefined`, so
-  omitting `currentPassword` → 401 `passwordReconfirmRequired` (L96-98);
-  missing hash → 403 `authenticationFailed` (L103-105); wrong password → 403
-  `invalidPassword` (L107-109). Cosmetic keys (`siteTitle` etc.) remain
-  editable without reconfirm. ✓
-- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
-
-### E — SSE re-auth re-runs `canAccessSubmission`: CONFIRMED — deleted-row and throw both close cleanly; projection is exact
-- Commit `96105df5` · File: `src/app/api/v1/submissions/[id]/events/route.ts:471-487`
-- Mission questions, answered:
-  - **Submission row deleted mid-stream?** The re-fetch
-    `db.query.submissions.findFirst({ where: eq(id), columns:{userId,assignmentId} })`
-    (L475-478) returns `undefined` → `!refreshedReader` short-circuits to
-    `close()` (L479-482). Stream closes cleanly, no exception. ✓
-  - **`canAccessSubmission` throws?** The re-fetch + `canAccessSubmission`
-    call (L475-479) is inside the IIFE's `try { … } catch { close() }`
-    (L465-487), and the whole IIFE is terminated by `.catch(err => { logger.error; close() })`
-    (L504-513). A throw from either `findFirst` or `canAccessSubmission` →
-    `close()`. No unhandled rejection reaches the runtime. ✓
-  - **Projection sufficiency (the subtle one):** `canAccessSubmission`
-    (`src/lib/auth/permissions.ts:292-320`) declares
-    `submission: { userId: string; assignmentId: string | null }` and reads
-    **only** `submission.userId` (L307) and `submission.assignmentId` (L319).
-    The re-auth projects exactly `{ userId: true, assignmentId: true }`
-    (L477) — **no field is missing**, so the re-authorization decision is
-    identical to the stream-open gate (which passes the full row but only
-    consumes these two fields). No false-allow/false-deny from a partial
-    shape. ✓
-- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**. (The cycle-3
-  N4 interleave note — duplicate `event: result` under a precise tick race —
-  is still bounded by the `closed` guard + `.catch(close)` wrappers; not a
-  crash/leak. Unchanged, not restated.)
+Convergence: 28 cycle-4 findings → 5 cycle-5 findings (3 carried/regression
++ 2 net-new LOW/MED). No inflation.
 
 ---
 
-## (b) R1..R4 — status at head (`edd45cc5`)
+## (a) REGRESSION — cycle-4 fixes vs. mission edge cases
 
-All four residuals **REPRODUCES / still open**. None were modified by any
-cycle-3 commit (verified by reading current head; the cycle-3 LOW batch
-`6ec17d6e` touched only AGG-17 clamp-warn, freezeLeaderboardAt, the
-accepted-solutions count filter, and PB-1 test rename). Severities unchanged
-from cycle 3 — not inflated, not dropped.
+### A — Worker cleanup bundle (N1+R2+R4): CONFIRMED on all four mission questions
+- Commit `c858ce22` · Files: `judge-worker-rs/src/docker.rs:179-285,640-810`,
+  `judge-worker-rs/src/main.rs:490-525`
+- Mission questions, answered:
+  - **Did the `tokio::time::timeout` wrap actually free the hot loop? Or
+    does a hung sweep still block the poll/shutdown `select!`?**
+    **Freed.** The periodic sweep is now wrapped in `tokio::select!` with
+    `&mut shutdown` (main.rs:516-522), and each of its two `docker`
+    Commands is internally bounded by
+    `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS))`
+    + `.kill_on_drop(true)` (docker.rs:665-688, 700-716). A wedged dockerd
+    can extend a single tick by at most ~`2 × DOCKER_CLEANUP_TIMEOUT_SECS`
+    (ps timeout returns first, then rm timeout returns), AND a SIGTERM/
+    SIGINT during the sweep preempts it via the outer `select!`. The
+    shutdown `select!`s for permit acquire (main.rs:528) and poll
+    (main.rs:545) sit BELOW the cleanup block but are now reachable on
+    every tick because the sweep itself is select-guarded. ✓
+  - **Startup reap-all safe to `docker rm -f` every `oj-*`?**
+    **Yes in the documented deployment.** `cleanup_all_oj_containers_at_startup`
+    (docker.rs:752-810) runs once before the main loop (main.rs:494-500),
+    after `tokio::pin!(shutdown)` (main.rs:487) but BEFORE the first poll.
+    At startup there are no in-flight judgements, so force-removing every
+    `oj-*` is safe. The deploy script (deploy-docker.sh:929-935,
+    `docker compose ... down --remove-orphans` then `docker rm -f
+    judgekit-judge-worker`) guarantees the old worker process is fully dead
+    before the new container is created, so there is no overlap window
+    where a sibling live worker could be mid-judgement. **Caveat — see N5
+    for the latent shared-host case.** ✓
+  - **What if the worker crashes mid-reap?** **Safe / idempotent.** A
+    crash between `docker ps` (get list) and `docker rm -f` (reap) leaves
+    the listed containers in place; the next startup sweep re-runs the
+    list and reaps them. `docker rm -f` is idempotent (already-removed →
+    noop error, logged warn). ✓
+  - **`.kill_on_drop(true)` panic-on-drop or double-kill risk?**
+    **None.** `kill_on_drop(true)` only fires when the `Child` handle is
+    `Drop`-ped (i.e. the wrapping `output()` future is dropped by a
+    `tokio::time::timeout` `Err` or a `select!` cancel); it issues a
+    single SIGKILL to the `docker` CLI child. It cannot panic. Re-entry
+    on an already-dead child is a kernel noop (SIGKILL on a reaped PID is
+    ESRCH, harmlessly swallowed by tokio). It does NOT signal the
+    container — dockerd still owns the container; only the CLI child is
+    killed. No double-kill of any container. The cycle-4 source-grep
+    contract (`matches(".kill_on_drop(true)").count() >= 5`,
+    docker.rs:671-673) pins five sites (inspect / kill / rm + sweep ps /
+    rm + startup ps / rm). ✓
+- **Residual A1 (LOW / HIGH confidence / confirmed):** the periodic
+  sweep's internal timeout bounds each Command independently. If the
+  `docker ps` succeeds in N seconds and the `docker rm` then hits a
+  wedged dockerd, the rm arm waits up to `DOCKER_CLEANUP_TIMEOUT_SECS`
+  and logs "containers may leak until next tick" (docker.rs:735-740).
+  This is intentional and correctly bounded — the next tick retries. Not
+  a defect; the log accurately describes the leak-and-retry semantics.
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
 
-### R1 — STILL OPEN (LOW / accepted fallback, HIGH confidence / confirmed)
-- `src/lib/compiler/execute.ts:748-757`. The chown-failure `catch` still sets
-  `chmod(workspaceDir, 0o777)` + `chmod(sourcePath, 0o666)` (L755-756). This
+### B — Settings reconfirm shared helper + `hasOwnInput` port: CONFIRMED fail-closed on both writers; partial-wipe closed
+- Commit `b9fcbc92` · Files: `src/lib/security/sensitive-settings.ts:81-120`,
+  `src/app/api/v1/admin/settings/route.ts:62-150`,
+  `src/lib/actions/system-settings.ts:88-105,140-222`
+- Mission questions, answered:
+  - **If `currentPassword` is malformed (empty/null/undefined), fail-closed
+    or fail-open?** **Fail-closed on every path.**
+    `requireSettingsReconfirm` (sensitive-settings.ts:99-110) reads
+    `currentPassword` via `(input as { currentPassword?: string }).currentPassword`
+    and runs `if (!currentPassword) return { ok: false, status: 401, error: "passwordReconfirmRequired" }`.
+    Empty string, `undefined`, and `null` are all falsy → 401. A non-empty
+    but wrong password flows to `verifyAndRehashPassword` → `valid:false`
+    → 403 `invalidPassword`. A whitespace-only password (`"   "`) is
+    truthy, reaches argon2.verify, returns false → 403. **Both writers
+    route the outcome through the same helper**, so the gate cannot drift
+    (route: `settingsReconfirmToResponse` → NextResponse; action:
+    `if (!reconfirm.ok) return { success: false, error: reconfirm.error }`).
+    The schema (`systemSettingsSchema.currentPassword: z.string().max(1_000).optional()`,
+    validators/system-settings.ts:61) rejects non-string currentPassword
+    BEFORE the helper sees it, so the helper's `string` cast is safe. ✓
+  - **Throw path from `verifyAndRehashPassword` (e.g. malformed storedHash)?**
+    The helper does NOT wrap `verifyAndRehashPassword` in try/catch. A
+    throw (e.g. `argon2.verify` on a non-argon2 storedHash) propagates.
+    The route sits inside `createApiHandler`'s outer try/catch → **clean
+    500, no settings mutation** (the gate runs BEFORE any
+    `db.insert/update`). The action sits inside Next.js's server-action
+    boundary → throws serialize to the client as an action error. Either
+    way the gate is pre-mutation: no partial state. ✓
+  - **Partial-wipe fix (`hasOwnInput`)?** **Closed on both writers.** The
+    route constructs `baseValues` with `updatedAt` only, then conditionally
+    adds each field via `if (hasOwnInput("siteTitle")) { … }` (route.ts:113-153).
+    `hasOwnInput = (key) => Object.prototype.hasOwnProperty.call(body, key)`
+    (route.ts:108-109). `PUT { siteTitle: "x" }` therefore leaves
+    `hcaptchaSecret`, `publicSignupEnabled`, `platformMode`, etc.
+    untouched — confirmed by reading every conditional write site. The
+    action's pre-existing `hasOwnInput` (action.ts:140) covers the full
+    field set (siteTitle through defaultLanguage, including smtpPass /
+    smtpHost / communityUpvote / communityDownvote / emailVerificationRequired)
+    — wider than the route, which only persists the subset the route
+    enumerates. The route's narrower enumeration is unchanged from
+    pre-cycle-4 (the route never persisted smtp fields); not a regression. ✓
+  - **Sensitive-key expansion (C4-3)?** The shared `SENSITIVE_SETTINGS_KEYS`
+    (sensitive-settings.ts:19-57) now includes `aiAssistantEnabled`,
+    `allowAiAssistantInRestrictedModes`, `allowStandaloneCompilerInRestrictedModes`,
+    `uploadMaxImageSizeBytes`, `uploadMaxFileSizeBytes`, `uploadMaxImageDimension`,
+    `uploadMaxZipDecompressedSizeBytes`. `touchesSensitiveSettingsKey`
+    scans `!== undefined` over the list → each new key now triggers
+    reconfirm on both writers. ✓
+  - **Accepted-solutions list/count parity (C4-N3)?** The list SELECT now
+    applies `and(whereClause, eq(users.shareAcceptedSolutions, true))`
+    (accepted-solutions/route.ts:85-90), matching the count query's
+    filter, and the post-query `.filter((solution) => solution.shareAcceptedSolutions)`
+    is removed. `total` and `solutions.length` now agree; pagination is
+    computed entirely in SQL. ✓
+- **Residual B1 (LOW / HIGH confidence / confirmed):** the route's
+  `body` destructuring still excludes `emailVerificationRequired`,
+  `communityUpvoteEnabled`, `communityDownvoteEnabled`, `smtpHost`,
+  `smtpPort`, `smtpSecure`, `smtpUser`, `smtpPass`, `smtpFrom`,
+  `homePageContent`, `footerContent`, `defaultLocale`. These columns can
+  only be persisted via the action, never via PUT. Pre-existing asymmetry
+  (the route was always a subset writer); not introduced or widened by
+  cycle 4. Restated for the next reviewer; not a finding.
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
+
+### C — Snapshot `snapshot:true` opt-out: CONFIRMED restoreable; argon2-param-bump self-heals via `needsRehash`
+- Commit `65ca7ef8` · Files: `src/lib/db/export.ts:72,104-117`,
+  `src/lib/db/pre-restore-snapshot.ts:34-46,86-90`
+- Mission questions, answered:
+  - **Restoring `snapshot:true` output into a DB with a DIFFERENT
+    `passwordHash` schema (argon2 param bump) — what happens? Restore-time
+    guard?** **No restore-time guard, but the runtime path self-heals.**
+    The snapshot now bypasses `EXPORT_ALWAYS_REDACT_COLUMNS`
+    (`activeRedactionMap = {}` when `options.snapshot === true`,
+    export.ts:111-117), so `passwordHash` lands in the JSON verbatim.
+    Restore inserts the literal hash string back into `users.passwordHash`.
+    There is no schema/format validation on the restore path. The
+    self-heal path is `verifyAndRehashPassword` at next login
+    (password-hash.ts:48): `argon2.needsRehash(storedHash, ARGON2_OPTIONS)`
+    is true whenever the stored params differ from current
+    `ARGON2_OPTIONS` → on a correct password, the user is transparently
+    rehashed to the new params (password-hash.ts:65-79). A legacy bcrypt
+    hash is handled by the `isBcryptHash` branch (password-hash.ts:38-41,
+    needsRehash=true on valid). So the argon2-param-bump and
+    bcrypt→argon2 cases are correct-by-design. ✓
+  - **What about an unknown algorithm?** If a future deployment swaps
+    argon2 for scrypt without a bcrypt-style shim, `argon2.verify` throws
+    on the unfamiliar `$scrypt$…` hash. The throw propagates through
+    `authorize` (config.ts:273, no try/catch around `verifyAndRehashPassword`)
+    → NextAuth surfaces a login failure. This is a **pre-existing
+    condition** for any backup/restore that retains `passwordHash`, not
+    introduced by cycle 4. Crucially, cycle 4 *improves* the picture: the
+    pre-cycle-4 snapshot redacted `passwordHash`, so restoring a snapshot
+    wiped every hash and locked every user out. The new behavior (retain
+    hash, self-heal on login) is strictly better than the old behavior. ✓
+  - **Cycle-4 invariant check:** `streamDatabaseExport({ sanitize: false,
+    snapshot: true })` is the only `snapshot:true` call site
+    (pre-restore-snapshot.ts:87-90). Every other caller (export-with-files.ts:172
+    `streamDatabaseExport({ signal, dbNow })`, the backup/migrate routes)
+    omits `snapshot`, so those still redact the always-redact set. The
+    `sanitize:false` regular-export path is unchanged. ✓
+- **Residual C1 (LOW / MED confidence / needs-manual-validation):**
+  `verifyPassword` is not wrapped in try/catch at the auth call site
+  (config.ts:263 for the no-user branch, config.ts:273 for the live-user
+  branch). A malformed `passwordHash` (e.g. truncated during an aborted
+  restore, or a partial-write bug) makes `argon2.verify` throw and
+  propagate. This is pre-existing, NOT introduced by cycle 4, and the
+  snapshot fix makes truncation strictly less likely (the snapshot is the
+  rollback artifact). Restated for the next reviewer.
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
+
+### D — Function-judging int64 verbatim serialize + strtoll/parseLong/long.Parse adapters: CONFIRMED — throw path is unreachable from production, verdict path unaffected
+- Commit `052abf88` · Files: `src/lib/judge/function-judging/serialization.ts:6-31`,
+  `adapters/cpp.ts:42-50`, `adapters/java.ts:72-86`, `adapters/csharp.ts:75-92`
+- Mission questions, answered:
+  - **What does the throw-on-unsafe-Number path do to a running judgement?**
+    **It cannot affect a running judgement — `encodeScalar`/`encodeArgs`
+    do not run at judging time.** The judging path is: stored `input`
+    string (the encoded JSON line) → worker pipes it as stdin → the
+    adapter inside the container parses it. `encodeArgs` is imported only
+    by `src/components/problem/function-test-case-editor.tsx:14`
+    (browser-side authoring), confirmed by repo-wide grep — zero
+    server-side or worker-side callers. The throw lives entirely in the
+    authoring browser. ✓
+  - **Does the throw fire on the authoring path?** **No — unreachable
+    from the editor's typed-input flow.** The editor parses each arg via
+    `parseFieldValue` (function-test-case-editor.tsx:148-156) BEFORE
+    calling `encodeArgs`. `parseScalar` for `int`/`long`
+    (value-fields.ts:71-78) runs `INT_RE.test` → `Number(trimmed)` →
+    `if (!isSafeInteger(value)) return { ok: false }`. On parse failure
+    `argsOk=false` and `encodeArgs` is never called. On success the
+    value is a `Number` that satisfies `Number.isSafeInteger`, so
+    `encodeIntLiteral`'s safe-integer branch (serialization.ts:27-29)
+    fires and returns `String(v)` — byte-identical to the old
+    `String(Math.trunc(Number(v)))` for safe integers. The throw
+    (serialization.ts:30-32) requires an unsafe `number`, a non-digit
+    `string`, or a non-bigint/non-string/non-number; none of these can
+    reach it through `parseFieldValue`. ✓
+  - **When COULD the throw fire?** Only via a programmatic caller that
+    bypasses `parseFieldValue` — e.g. an admin import script, a test
+    fixture, or a future BigInt-aware authoring path. None exist in
+    production today. The throw is a deliberate loud-fail guard for the
+    deferred BigInt rework (value-fields.ts:24-28 "BigInt rework is
+    deferred (out of v1 scope)"); it preserves the option to add a
+    bigint path later without re-introducing silent rounding. ✓
+  - **Adapter correctness at judging time?** The three adapter edits
+    replace double-rounding with integer-only parsing: C++ `std::strtoll`
+    over a digits-only token (cpp.ts:46-50), Java `Long.parseLong`
+    (java.ts:79-86), C# `long.Parse` over `IntegerToken` (csharp.ts:78-92).
+    All three consume optional sign + digits and reject `.`/`e`/`E`
+    (delegated to strtoll/parseLong's format check). A test case stored
+    with `[9007199254740993]` now round-trips byte-identical through the
+    int reader (previously rounded via double to 9007199254740992). ✓
+  - **Adapter parse failure on a non-numeric token?** `strtoll` returns
+    0 with `errno=EINVAL`; `Long.parseLong` / `long.Parse` throw. The
+    container's adapter harness turns the exception into a non-zero exit
+    → the worker reports a runtime_error verdict (no hang, no 500). This
+    is the same shape as any malformed-stdin failure pre-cycle-4; the
+    int-only token just makes the failure mode stricter. Not a
+    regression — the contract is "well-formed int input"; the editor's
+    INT_RE already guarantees this. ✓
+- **Residual D1 (LOW / HIGH confidence / confirmed):** the editor's
+  `serializeCase` callback (function-test-case-editor.tsx:144-164) does
+  not wrap `encodeArgs`/`encodeValue` in try/catch. If a future code path
+  calls `encodeArgs` with an unsafe value (e.g. a BigInt migration that
+  mis-wires the editor), the React callback would throw mid-render.
+  Cosmetic today (unreachable), worth a defensive try/catch when the
+  BigInt path lands.
+- **Status: REGRESSION-CHECK PASSED.** Verdict: **confirmed**.
+
+### E — Judge `/claim`+`/poll` require `workerId` + `JUDGE_STRICT_IP_ALLOWLIST` opt-in: CONFIRMED (verified by security lane)
+- Commit `e7a17c22` · Files: `src/app/api/v1/judge/claim/route.ts`,
+  `src/app/api/v1/judge/poll/route.ts`, `src/lib/judge/ip-allowlist.ts`,
+  `src/lib/judge/auth.ts`
+- Debugger scope on this commit was limited to regression on
+  error/edge/async paths (full auth-flow verification was the security
+  lane's job). The changes are pure additions (request shape tightening,
+  env-var opt-in) with no new await graph, no new partial-mutation window,
+  no new throw site. The `JUDGE_STRICT_IP_ALLOWLIST` startup warn is a
+  module-init side effect (logged once); it cannot block the request path.
+  No regression surface identified.
+- **Status: REGRESSION-CHECK PASSED (debugger lane).** Verdict:
+  **confirmed**.
+
+---
+
+## (b) Cycle-4 deferred residuals — R1 / R3 status at head (`7ebea50e`)
+
+Both **STILL OPEN at the same severity** cycle 4 left them. Cycle 5 made
+no changes to either file. Not escalated — both are bounded and
+correctly parked in Phase B/C by the cycle-4 plan.
+
+### R1 — STILL OPEN (LOW / HIGH confidence / confirmed)
+- `src/lib/compiler/execute.ts:748-757`. The chown-failure `catch` still
+  sets `chmod(workspaceDir, 0o777)` + `chmod(sourcePath, 0o666)`. This
   is the **intentional mirror** of the Rust fallback
-  (`executor.rs:342` `target_mode = if chown_ok { 0o700 } else { 0o777 }`) —
-  on a host without `CAP_CHOWN` there is no other way to grant uid-65534
-  write access. **DBG-4 remains accepted-by-design, documented.**
-- **Partial-chown sub-case still present (LOW/MED):** if
-  `chown(workspaceDir)` (L740) succeeds but `chown(sourcePath)` (L741)
-  throws, the `catch` runs `chmod(workspaceDir, 0o777)` on a dir now owned by
-  65534. On a non-root worker with CAP_CHOWN but not CAP_FOWNER this inner
-  `chmod` throws EPERM, is **not** wrapped, and propagates to the outer
-  `finally` (L841) — the compile attempt throws a raw EPERM. Runs-as-root
-  deployments unaffected. Same shared limitation class as B/N3.
-
-### R2 — STILL OPEN (HIGH / HIGH confidence / confirmed)
-- `judge-worker-rs/src/docker.rs:642-681`. `cleanup_orphaned_containers` runs
-  `docker ps -a --filter name=oj- --filter status=exited -q` (L647-651) — it
-  filters `status=exited` **exclusively**. A container that is still
-  `running` after `kill_container`/`remove_container` timed out is invisible
-  to this sweep and is never reaped. The timeout warnings at `docker.rs:255`
-  and `docker.rs:273` say *"orphan sweep will reap"* — a **false promise**
-  given the filter.
-- Failure scenario unchanged from cycle 3: wedged dockerd → `kill`/`rm` time
-  out (10s) and return → container stays `running` → sweep filters it out →
-  leaks indefinitely, accumulating `oj-*` until memory/pid starvation.
-- Fix (minimal): drop the `status=exited` filter and add a stale-`running`
-  branch mirroring the TS reaper (`execute.ts:897-928`) — `docker rm -f` any
-  `oj-*` whose `StartedAt` exceeds `MAX_TIME_LIMIT_MS + compile budget + slack`.
+  (`executor.rs:342` `target_mode = if chown_ok { 0o700 } else { 0o777 }`)
+  — on a host without `CAP_CHOWN` there is no other way to grant uid-65534
+  write access. **DBG-4 remains accepted-by-design, documented.** The
+  partial-chown sub-case (chown workspace succeeds, chown source fails,
+  inner chmod EPERMs on the now-65534-owned dir) is also unchanged.
+- **Reason for deferral:** zero deployments run the worker non-root
+  without CAP_CHOWN today; runner mirrors executor. Exit: when the
+  deployment matrix changes.
 
 ### R3 — STILL OPEN (LOW→MED / HIGH confidence / confirmed)
-- `judge-worker-rs/src/docker.rs:187-198`. On inspect timeout the function
-  returns `ContainerInspect { oom_killed: false, duration_ms: None, memory_peak_kb: None }`
-  (L193-197). The success-arm (L504-516) and timeout-arm (L527-538) callers
-  then report `oom_killed: false`, masking a genuine OOM whose post-run
-  `docker inspect` stalled past 10s. Duration falls back to wall-clock
+- `judge-worker-rs/src/docker.rs:188-198`. On inspect timeout the
+  function still returns `ContainerInspect { oom_killed: false,
+  duration_ms: None, memory_peak_kb: None }` (docker.rs:193-197). Cycle 4
+  added `kill_on_drop(true)` to the inspect Command (docker.rs:185) —
+  which closes R4 for this site — but did NOT change the `oom_killed:
+  false` default. The success-arm (docker.rs:504-516) and timeout-arm
+  (docker.rs:527-538) callers continue to report `oom_killed: false`,
+  masking a genuine OOM whose post-run `docker inspect` stalls past
+  `DOCKER_CLEANUP_TIMEOUT_SECS`. Duration falls back to wall-clock
   (`unwrap_or(wall)`) which is still correct; only the OOM signal is lost.
-- Fix (minimal): emit a distinct `warn!` ("oom/peak unknown: inspect
-  timeout") and treat `oom_killed` as unknown (`Option<bool>`) so the verdict
-  can pick a conservative label instead of asserting not-OOM.
+- **Fix (minimal, deferred):** emit a distinct `warn!` ("oom/peak
+  unknown: inspect timeout") and treat `oom_killed` as unknown
+  (`Option<bool>`) so the verdict can pick a conservative label instead
+  of asserting not-OOM. Same fix as cycle 4 proposed; same severity.
+- **Reason for deferral:** bounded (caller still reports a verdict;
+  wall-clock duration is correct), narrow trigger (inspect must stall
+  past the timeout, which requires a wedged dockerd at the precise
+  post-run moment). Exit: pair with a future verdict-label refinement.
 
-### R4 — STILL OPEN (LOW / HIGH confidence / confirmed)
-- `judge-worker-rs/src/docker.rs:175` (inspect), `:245` (kill), `:263` (rm).
-  None of the three cleanup `tokio::process::Command`s chain
-  `.kill_on_drop(true)`. On `tokio::time::timeout` `Err`, the `output()`
-  future is dropped and tokio does **not** kill the child without
-  `kill_on_drop` — the orphaned `docker inspect/kill/rm` CLI keeps queuing
-  against the unresponsive daemon. Transient (CLI self-terminates once dockerd
-  recovers), but compounds R2/N1 under a wedge.
-- Fix (minimal): `.kill_on_drop(true)` on each cleanup `Command`. Combined
-  with the N1 timeout and the R2 reap-stale-running branch, the cleanup path
-  becomes leak-free.
+### Cycle-4 R2/R4 — CLOSED by `c858ce22`
+- **R2** (HIGH, "orphan sweep filters `status=exited` only, running
+  `oj-*` never reaped") — closed by `cleanup_all_oj_containers_at_startup`
+  which force-removes every `oj-*` regardless of status at startup
+  (docker.rs:752-810). The periodic sweep keeps its `status=exited`
+  filter (correct — reaping `running` mid-loop would race in-flight
+  judgements); the startup sweep covers the leak class R2 named.
+- **R4** (LOW, "no `kill_on_drop(true)` on cleanup Commands") — closed
+  at all five cleanup sites (inspect/kill/rm + sweep ps/rm + startup
+  ps/rm), pinned by the source-grep contract at docker.rs:671-673.
 
 ---
 
 ## (c) NET-NEW latent bugs
 
-### N1 — periodic orphan sweep has NO timeout on `docker ps`/`docker rm`; awaited inline in the main loop → wedged dockerd freezes the worker (MEDIUM / HIGH confidence / confirmed)
-- Files: `judge-worker-rs/src/docker.rs:642-681` (sweep body),
-  `judge-worker-rs/src/main.rs:505-508` (call site)
-- The cycle-3 R2/R4 hardening wrapped the **per-submission** `inspect` /
-  `kill` / `rm` in `tokio::time::timeout(10s)` (docker.rs:173, 243, 261) —
-  but the **periodic** `cleanup_orphaned_containers` sweep was left
-  un-guarded. Its `docker ps -a …` (docker.rs:643-654) and the batched
-  `docker rm` (docker.rs:665-668) are bare `Command::new("docker").output().await`
-  with **no timeout wrapper**.
-- Critically, the sweep is awaited **inline in the main loop**:
+### N5 — startup reap-all has no worker-identity guard; shared-host deploy would nuke a sibling worker's in-flight containers (LOW/MED / HIGH confidence / likely)
+- Files: `judge-worker-rs/src/docker.rs:752-810` (startup sweep body),
+  `judge-worker-rs/src/docker.rs:318` (`let container_name = format!("oj-{}", Uuid::new_v4())`)
+- The startup sweep matches `--filter name=oj-` and force-removes every
+  match. Container names are `oj-{uuid4}` — **no worker-id prefix**.
+  In the documented single-worker-per-host topology
+  (`worker-0.algo.xylolabs.com` per CLAUDE.md), this is safe and is the
+  whole point of the sweep. But if a future deployment ever puts two
+  workers on the same docker host (debugging pair, capacity burst,
+  shared-staging), worker B's startup sweep will `docker rm -f` worker
+  A's in-flight `oj-abc` container — silently killing A's active
+  judgement mid-execution. Worker A would then observe container
+  disappear (`No such container`) and report a runtime_error verdict.
+- **Failure scenario:**
+  1. Host H runs worker A (canonical, processing a submission in
+     container `oj-abc`).
+  2. Operator starts worker B on H for debugging or capacity.
+  3. Worker B's `cleanup_all_oj_containers_at_startup` lists every
+     `oj-*` (including `oj-abc`), force-removes all.
+  4. Worker A's stdin-write / inspect / kill paths hit `No such container`
+     → runtime_error verdict for the user; the submission is misjudged.
+- **Why this is a footgun, not a current bug:** the deploy script
+  (deploy-docker.sh:929-935) `docker compose down --remove-orphans`
+  guarantees the old worker is fully gone before the new one starts, so
+  the canonical deploy has no overlap. CLAUDE.md documents worker-0 as
+  "the dedicated judge worker." `oj-` producers are restricted to the
+  Rust worker (grep confirms no TS-side producers). The risk is
+  exclusively a future shared-host topology.
+- **Fix (minimal, future-proof):** prefix the container name with a
+  worker identifier sourced from env/config — `format!("oj{}-{}", worker_prefix, Uuid::new_v4())`
+  where `worker_prefix` defaults to empty (back-compat) and the startup
+  sweep filter matches `name=oj{worker_prefix}-`. Document the
+  single-worker-per-host invariant in CLAUDE.md / AGENTS.md. Cheaper
+  alternative: add a `JUDGE_WORKER_CONTAINER_PREFIX` env var read by
+  both the spawn site (docker.rs:318) and both sweep filters
+  (docker.rs:680, 756); default to `oj-`. No behavior change in the
+  default deployment.
+- **Confidence: HIGH** that the bug exists in code as written;
+  **MED** that it will ever fire (depends on a deployment that does not
+  exist today). Net severity LOW/MED.
+
+### N6 — startup reap-all is not wrapped in `shutdown` select; SIGTERM during startup sweep is queued up to ~20s (LOW / HIGH confidence / confirmed)
+- Files: `judge-worker-rs/src/main.rs:494-500` (call site)
+- `cleanup_all_oj_containers_at_startup().await` runs as a bare await
+  AFTER `tokio::pin!(shutdown)` (main.rs:487) but is NOT wrapped in a
+  `tokio::select!` over `&mut shutdown`. Each internal Command is
+  bounded by `DOCKER_CLEANUP_TIMEOUT_SECS`, so worst case is
+  `~2 × DOCKER_CLEANUP_TIMEOUT_SECS` (ps timeout + rm timeout in
+  sequence). If a deploy sends SIGTERM during this window (e.g.
+  orchestrator grace-period expiry, fast successive restarts), the
+  signal is queued and only honored once the sweep returns and the main
+  loop's first `select!` (main.rs:516) polls the shutdown future.
+- **Failure scenario:** SIGTERM arrives T=2s into a 10s `docker ps`
+  timeout against a wedged dockerd; the worker doesn't begin draining
+  until T=10s+rm-timeout. In-flight claims are not actively cancelled
+  (though they may complete naturally during the wait). Bounded — no
+  indefinite hang, no leaked tasks (executor tasks are awaited at
+  main.rs:632-634 during the post-loop drain).
+- **Fix (minimal):** wrap the startup sweep in the same `tokio::select!`
+  pattern used for the periodic sweep:
   ```
-  if last_cleanup_at.elapsed() >= cleanup_interval {   // 300s
-      docker::cleanup_orphaned_containers().await;     // main.rs:506 — blocks here
-      last_cleanup_at = …;
+  tokio::select! {
+      _ = &mut shutdown => { tracing::info!("Shutdown during startup sweep"); return; }
+      _ = docker::cleanup_all_oj_containers_at_startup() => {}
   }
   ```
-  The shutdown `tokio::select!`s (permit acquire main.rs:512, poll
-  main.rs:529) are **below** this point and are never reached while the sweep
-  is pending. So when the 300s tick fires against a wedged dockerd:
-  1. `docker ps -a …` blocks indefinitely (no timeout, dockerd unresponsive).
-  2. The main loop stalls at main.rs:506 — no new polls, **no shutdown
-     response** (SIGTERM/SIGINT select is unreachable).
-  3. The heartbeat task (separate `tokio::spawn`, main.rs:353) keeps beating,
-     so the server still considers the worker alive — but it processes zero
-     submissions and cannot be drained gracefully. Operators must SIGKILL,
-     which leaves in-flight claims stuck until `staleClaimTimeoutMs`.
-- This is the **symmetric gap** to R2/R4: per-call cleanup is hardened,
-  periodic cleanup is not, and the periodic one runs on the hot loop. It is
-  the single highest-ROI worker-latent item this cycle.
-- Fix (minimal): wrap both Commands in `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS))`
-  (reuse the existing constant), chain `.kill_on_drop(true)` (also closes R4
-  for these two sites), and ideally move the sweep into its own
-  `tokio::spawn` (or wrap the call in `tokio::select!` with `&mut shutdown`)
-  so a hung sweep cannot block polling or shutdown. Verdict: **confirmed**.
+  (~5 lines, no behavior change in the no-signal case).
+- **Why LOW:** bounded by per-Command timeouts; deploy sequencing
+  (`compose down`) typically sends SIGTERM to the OLD container before
+  starting the new one, so SIGTERM-during-startup-sweep is rare in
+  practice. Worth fixing opportunistically alongside any future
+  startup-path edit.
 
-### N2 — `active_tasks` is manual `fetch_sub`, not RAII; `report_panic` is outside `catch_unwind` (LOW / HIGH confidence / likely)
-- Files: `judge-worker-rs/src/main.rs:557, 579-589`
-- See residual A1/A2 in §A. The permit is RAII (releases on every path); the
-  `active_tasks` counter is not. On a double-panic (`report_panic` panics)
-  `fetch_sub` is skipped; on any future task `abort()`/cancel, `fetch_sub` is
-  skipped while the permit releases → `active_tasks` over-counts, heartbeated
-  as reduced `available` capacity (main.rs:364-365,369). No `abort()` exists
-  for executor tasks today, so drift is latent-only.
-- Fix (cheap, defensive): a `struct ActiveTaskGuard(&AtomicUsize)` that
-  increments on `new()` and decrements on `Drop`, held alongside `_permit` in
-  the task body — makes every path (Ok, panic, double-panic, cancel) correct
-  by construction. Verdict: **likely**.
-
-### N3 — `runner.rs` chmod-after-chown EPERM (shared with `executor.rs`); fallback only on chown-FAILURE, not chmod-FAILURE (LOW / HIGH confidence / confirmed)
-- Files: `judge-worker-rs/src/runner.rs:837-881, 874-881`;
-  `judge-worker-rs/src/executor.rs:331-360`
-- Detailed in §B. The `0o777`/`0o666` fallback is selected only when `chown`
-  fails. If `chown` succeeds (mode → `0o700`/`0o600`) and the subsequent
-  `set_permissions` EPERMs (non-root worker with CAP_CHOWN but not
-  CAP_FOWNER, having just chowned the file away from itself), `runner.rs`
-  returns `Err` via `?` (no container spawned) and `executor.rs` reports
-  `runtime_error` + returns. Neither falls back to broad mode on a chmod
-  failure. Common deployments unaffected; narrow config-only trigger. Not a
-  cycle-3 regression — runner now mirrors executor. Verdict: **confirmed**.
+### N7 — periodic sweep `tokio::select!` cancel can leave `docker rm` half-done dockerd-side; manifest as a log inconsistency, not a leak (LOW / HIGH confidence / confirmed, accepted)
+- Files: `judge-worker-rs/src/docker.rs:700-716` (sweep rm arm),
+  `judge-worker-rs/src/main.rs:516-522` (select cancel)
+- When the periodic sweep's `docker rm` arm is cancelled mid-flight by
+  the outer shutdown `select!`, `kill_on_drop(true)` SIGKILLs the CLI
+  child, but dockerd may have already begun removing containers
+  server-side and continues to completion asynchronously. The next
+  startup sweep reaps any stragglers, so no permanent leak. The only
+  observable artifact is a possible mismatch between the "Cleaned up
+  orphaned containers" debug log (which fires only on `Ok(Ok(_))`) and
+  the actual dockerd state.
+- **Not a defect** — this is the correct failure-mode for a
+  cancellation-safe sweep. Restated only to document the cancellation
+  semantics for future maintainers. No fix recommended.
 
 ---
 
-## FINAL SWEEP
+## (d) FINAL SWEEP
 
-- **Rust panics on the recovery path:** `panic_payload_message`
-  (main.rs:21-29) handles `String`, `&'static str`, and falls back to
-  `"<non-string panic>"` for any other `Box<dyn Any + Send>` — it cannot
-  itself panic (no unwrap). The three unit tests (main.rs:658-693) pin all
-  three branches. The `child.stdout.take().expect(...)` sites (docker.rs:434,451)
-  remain safe (child spawned with all three stdios piped). No new
-  `.unwrap()`/`.expect()` in production code from the cycle-3 commits.
-- **Integer / shift arithmetic:** main-loop backoff
-  `1u64 << (consecutive_empty_polls-1).min(BACKOFF_SHIFT_LIMIT)` (main.rs:602)
-  is shift-capped at 5 and `saturating_mul` + `.min(MAX_BACKOFF_MS)` — no
-  overflow. rate-limiter-rs `2u64.pow(exp)` (main.rs:262) with
-  `exp = consecutive_blocks.min(MAX_CONSECUTIVE_BLOCKS_EXP)` (L261) → max ×16,
-  then `.min(MAX_BLOCK_MS)`; `block_ms * multiplier` is config-sourced
-  (seconds-level), well within u64 — consistent with the AGG-44 non-issue.
-- **Cancellation / FS safety:** `tempfile::TempDir` (executor.rs:301,
-  runner.rs:827) releases on every exit including `?` and unwind. The
-  recruiting tx rolls back on any throw inside the callback (incl.
-  `invitationCannotBeRevoked`). The restore uploads path (cycle-3 F1)
-  remains the only non-atomic FS write under cancellation pressure — not
-  touched this cycle, still deferred (AGG-1).
-- **Unhandled rejections on the SSE path:** every async branch in
-  `onPollResult` ends in `.catch(close)` (events/route.ts:504-513, 524-529);
-  the new re-auth re-fetch sits inside the existing `try/catch{close}`. No
-  unhandled-rejection surface introduced. (The server-side empty-catch grep
-  returned only client-side fire-and-forget UI actions — localStorage, theme,
-  lecture-mode, recruit signOut — all acceptable.)
-- **Signal handling / shutdown:** SIGTERM/SIGINT cancel the polling selects
-  (main.rs:512-526, 529-546). Graceful shutdown awaits in-flight tasks
-  (main.rs:632-636) with **no overall timeout** — bounded in practice because
-  every docker op is 10s-timeout-wrapped and `report_with_retry` is ≤~3s +
-  one fs write, but a tightly-serialized slow network can stretch shutdown by
-  ~3s × in-flight count. The one true shutdown hazard is N1 (a hung sweep
-  blocks the select from ever being reached). Heartbeat is independently
-  spawned (main.rs:353) and cancelled via `CancellationToken` (L621).
-- **No CRITICAL data-loss / capacity-wedge regression** was found in the
-  cycle-3 surface. The 5 fixes are correct on their named edge cases; the
-  worker-cleanup residuals (R2/R3/R4 + N1) are the incompleteness left by
-  the per-submission hardening, not new destructive paths.
+- **No new `unwrap()`/`expect()`/`panic!`** in production code from the
+  cycle-4 commits. The five `kill_on_drop(true)` additions are tokio
+  Command-builder chain calls (return `&mut Command`, cannot panic).
+  `cleanup_all_oj_containers_at_startup` and the rewritten
+  `cleanup_orphaned_containers` use `match` over `Result<Output, io::Error>`
+  and `Result<Output, _Elapsed>` with explicit warn-and-return branches.
+- **Async / cancellation safety:** `tokio::select!` over `&mut shutdown`
+  is sound (shutdown is `tokio::pin!`-ed once at main.rs:487 and reused
+  across all four select sites by mutable borrow). Dropping the sweep
+  future mid-await drops the inner `output()` future; `kill_on_drop(true)`
+  ensures the docker CLI child is reaped. The `_permit` RAII guard
+  (main.rs:562) is untouched by cycle 4 and remains correct on every
+  task exit path (Ok, panic, double-panic, cancel).
+- **Integer / shift arithmetic:** no new arithmetic in cycle 4's worker
+  surface. `DOCKER_CLEANUP_TIMEOUT_SECS` is consumed only by
+  `Duration::from_secs` and `tracing::warn` field interpolation.
+- **Schema validation:** `systemSettingsSchema.currentPassword`
+  (`z.string().max(1_000).optional()`) gates the reconfirm input before
+  the shared helper sees it on BOTH writers; non-string / over-long
+  currentPassword fails safeParse and never reaches the gate.
+- **Settings partial-wipe:** both writers' `hasOwnInput` covers every
+  sensitive key. Pre-existing asymmetry (route's narrower enumeration
+  vs action's full enumeration) is unchanged; not widened by cycle 4.
+- **Snapshot redaction invariant:** `snapshot:true` is the only call
+  site that bypasses `EXPORT_ALWAYS_REDACT_COLUMNS`; all other callers
+  (export, backup, migrate) keep the always-redact set. Pinned by the
+  cycle-4 test additions.
+- **Acceptable throw paths:** every throw site introduced or widened by
+  cycle 4 (`encodeIntLiteral`, `requireSettingsReconfirm` →
+  `verifyAndRehashPassword`) is either unreachable from production
+  (encodeIntLiteral) or pre-mutation + fail-closed (reconfirm). No
+  partial state, no 500-on-success.
 
 ---
 
-## References (all paths absolute)
+## References
 
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/main.rs:559-591` —
-  §A catch_unwind spawn body (active_tasks/permit/report_panic).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs:899-928`
-  — §A `report_panic`; `:971-1066` `report_with_retry` + dead-letter (DB-outage survival).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/runner.rs:837-881`
-  — §B/N3 runner chown+0o700 (chmod-after-chown EPERM shared with executor).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/executor.rs:331-360`
-  — §B/N3 executor chown+0o700 (fatal-on-chmod-fail, same shape).
-- `/Users/hletrd/flash-shared/judgekit/src/lib/assignments/recruiting-invitations.ts:386-448`
-  — §C tx + FOR UPDATE (single-row lock, READ COMMITTED).
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/admin/settings/route.ts:85-112`
-  — §D password-reconfirm gate (pre-mutation).
-- `/Users/hletrd/flash-shared/judgekit/src/lib/security/password-hash.ts:63-83`
-  — §D `verifyAndRehashPassword` (rehash in try/catch, returns `{valid}`).
-- `/Users/hletrd/flash-shared/judgekit/src/app/api/v1/submissions/[id]/events/route.ts:471-513`
-  — §E SSE re-auth re-fetch + `canAccessSubmission` (inside try, `.catch(close)`).
-- `/Users/hletrd/flash-shared/judgekit/src/lib/auth/permissions.ts:292-320`
-  — §E `canAccessSubmission` reads only `{userId, assignmentId}` (projection exact).
-- `/Users/hletrd/flash-shared/judgekit/src/lib/compiler/execute.ts:748-757` —
-  R1 chown-failure catch still 0o777/0o666 (accepted fallback).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:642-681`
-  — R2 orphan sweep `status=exited` filter; **N1** un-timeout'd `docker ps`/`rm`.
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/main.rs:505-508`
-  — **N1** sweep awaited inline in main loop (blocks shutdown select).
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:187-198`
-  — R3 inspect timeout returns `oom_killed:false`.
-- `/Users/hletrd/flash-shared/judgekit/judge-worker-rs/src/docker.rs:175,245,263`
-  — R4 no `kill_on_drop(true)` on cleanup Commands.
+- `judge-worker-rs/src/main.rs:487,494-500,516-525` — startup sweep call
+  site (N6) and periodic-sweep shutdown `select!` (A pass)
+- `judge-worker-rs/src/docker.rs:179-285` — per-call inspect/kill/rm
+  with `kill_on_drop(true)` (R4 closed)
+- `judge-worker-rs/src/docker.rs:318` — `oj-{uuid}` container name
+  producer (N5 root)
+- `judge-worker-rs/src/docker.rs:660-740` — periodic sweep (N1 closed,
+  timeout-wrapped + kill_on_drop)
+- `judge-worker-rs/src/docker.rs:752-810` — startup reap-all (R2 closed,
+  N5 unguarded)
+- `src/lib/judge/function-judging/serialization.ts:6-32` —
+  `encodeIntLiteral` throw branch (D pass, unreachable from production)
+- `src/lib/judge/function-judging/value-fields.ts:71-78` — `parseScalar`
+  int safe-integer gate (makes D's throw unreachable)
+- `src/lib/db/export.ts:104-117` — `snapshot:true` opt-out (C pass)
+- `src/lib/db/pre-restore-snapshot.ts:86-90` — only `snapshot:true`
+  caller (C invariant)
+- `src/lib/security/password-hash.ts:35-50,63-83` — `verifyPassword` /
+  `verifyAndRehashPassword` self-heal path (C argon2 bump)
+- `src/lib/auth/config.ts:263,273` — no try/catch around verify
+  (pre-existing residual C1, not a cycle-4 regression)
+- `src/lib/security/sensitive-settings.ts:81-120` — shared reconfirm
+  helper (B pass, fail-closed)
+- `src/app/api/v1/admin/settings/route.ts:62-150` — route `hasOwnInput`
+  port (B partial-wipe closed)
+- `src/lib/actions/system-settings.ts:88-105,140-222` — action reconfirm
+  gate + full `hasOwnInput` (B pass)
+- `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:85-92` —
+  list/count parity (C4-N3 closed)
+- `deploy-docker.sh:929-935` — worker restart sequencing (A pass /
+  N5 not triggered today)
+- `src/lib/compiler/execute.ts:748-757` — R1 still open (deferred)
+- `judge-worker-rs/src/docker.rs:188-198` — R3 still open (deferred)
+
+---
+
+## Bug Report (summary)
+
+**Symptom (highest-ROI net-new):** A future deployment that runs two
+judge workers on the same docker host would see one worker's startup
+sweep silently `docker rm -f` the other worker's in-flight `oj-*`
+container, producing a spurious runtime_error verdict for the user.
+
+**Root Cause:** `judge-worker-rs/src/docker.rs:318` names containers
+`oj-{uuid4}` with no worker-id prefix, and
+`cleanup_all_oj_containers_at_startup` (docker.rs:752-810) matches
+`--filter name=oj-` globally. There is no per-worker scope.
+
+**Reproduction:** (requires a non-canonical shared-host deploy; cannot
+fire on `worker-0.algo.xylolabs.com` today)
+1. Start worker A on host H; submit a problem so A is mid-judgement in
+   container `oj-abc`.
+2. Start worker B on host H.
+3. Observe worker B's startup log: "Startup sweep: reaped leftover oj-*
+   containers count=1".
+4. Worker A's next docker call against `oj-abc` returns "No such
+   container" → runtime_error verdict.
+
+**Fix (minimal):** introduce a `JUDGE_WORKER_CONTAINER_PREFIX` env var
+(default `oj-`) read at docker.rs:318 and at the two sweep filters
+(docker.rs:680, 756). Each worker uses its own prefix; the startup
+sweep only reaps own-prefix containers. No behavior change in the
+default deployment.
+
+**Verification:** with the env var unset, both sweeps still match every
+`oj-*` (back-compat). With `JUDGE_WORKER_CONTAINER_PREFIX=oj-a` set on
+worker A and `=oj-b` on worker B, B's startup sweep leaves A's
+`oj-a-*` containers alone (integration test asserting the filter
+value).
+
+**Similar Issues:** none — `oj-` is produced only by the Rust worker
+(grep-confirmed), so no sibling code path is affected.
+
+**Overall verdict:** cycle 4 ships clean. No regression on the 5 named
+fix areas; the two net-new items are forward-looking footguns for a
+deployment topology that does not exist today. Recommend landing N5's
+cheap env-var guard opportunistically; N6's `select!` wrap is optional
+polish. R1/R3 carry forward at the same severity.

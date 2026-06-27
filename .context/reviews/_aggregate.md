@@ -1,165 +1,137 @@
-# Cycle 4 Aggregate Review
+# Cycle 5 — Aggregated Review (merged from per-agent files)
 
-Date: 2026-06-27
-Repository: `/Users/hletrd/flash-shared/judgekit`
-Head: `edd45cca` (cycle-3 Phase A complete; 43 commits green across cycles 1–3)
-Prior: cycle-1/2/3 aggregates preserved in git history. Per-agent files overwritten with cycle-4 reviews.
+**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `7ebea50e` (cycle-4 close) · **Date:** 2026-06-27
+**Sources aggregated (7 cycle-5 per-agent files, written 04:51–05:01):** `code-reviewer.md`, `security-reviewer.md`, `tracer.md`, `debugger.md`, `test-engineer.md`, `designer.md`, `document-specialist.md`. (architect/critic/verifier/perf-reviewer did not rewrite this cycle — their last output is carried via the cycle-4 aggregate + carry-forward plans.)
+**Carry-forward plans read:** `plan/cycle-{1,2,3,4}-2026-06-2{6,7}-review-remediation.md` (cycle-4 Phase B/C deferred list is the pre-validated backlog).
 
-## Fan-Out Status
-
-All 11 dispatched review agents completed successfully (no failures, no retries). Per-agent files live alongside this one.
-
-- `security-reviewer.md` — 0 CRITICAL + 2 HIGH (C4-1, C4-2) + 2 MED (C4-3, C4-4) + 5 LOW (C4-5..C4-9)
-- `code-reviewer.md` — 0 CRIT + 0 HIGH + 1 MED (C4-N1) + 3 LOW (C4-N2/N3/N4) + 2 INFO
-- `critic.md` — VERDICT: REVISE; one HIGH (A8 on wrong path — 5-agent convergence)
-- `architect.md` — REG-A3/A4/A7/A8 sound; ARCH-1 HIGH (settings reconfirm wrong path) + ARCH-2/3/4 LOW; PERF lane + DESIGN lane re-confirmed
-- `verifier.md` — 11/12 VERIFIED + 1 PARTIAL (settings reconfirm N1); 0 FAILED; net-new N1..N5
-- `tracer.md` — F-recruit/F-roles/F-sse/F-export/F-settings/F-claim/F-restore traced; F-snapshot CLOSED (mechanism = the bug)
-- `debugger.md` — 5 cycle-3 fixes CONFIRMED; R1..R4 still open; N1 net-new MEDIUM (cleanup sweep no timeout)
-- `document-specialist.md` — no doc regression; DOC-2/DOC-3 HIGH prose mismatch; AGG-51/52/C3-D1/C3-D2 + C4-D5/D6 + NEW-1/2/3
-- `designer.md` — REG-3/4/5 clean (zero UI files changed); Designer P1 batch re-confirmed verbatim; UI-14 NEW P3
-- `test-engineer.md` — cycle-3 a1/a2/a3 STRONG; a4/a5/a6 WEAKEST; C4-A6 + C4-N1 (auth-token) + A11a highest-ROI
-- `feature-dev-code-reviewer.md` — NEW-1 + AGG-15 verified landed; F1 HIGH (int64 precision); F2 MED (orphan sweep); F3 LOW-MED (pids_limit dead branch)
-
-No agent failures this cycle.
+Method: per-finding dedupe (preserve highest severity, note cross-agent agreement), regression-first ordering. Severity held tight per lead — no inflation of polish.
 
 ---
 
-## VALIDATED THIS CYCLE (multi-agent convergence is load-bearing)
+## HEADLINE
 
-Every HIGH below is confirmed by direct Read of the cited lines by ≥1 agent this cycle, and the cross-agent convergences are flagged. **No CRITICAL was found by any agent.** The regression surface (8 cycle-3 fixes) holds cleanly: 8/8 security-reviewer regression checks PASS, verifier 11/12 VERIFIED + 1 PARTIAL, debugger 5/5 CONFIRMED, architect A3/A4/A7/A8 CLEAN.
-
----
-
-## CRITICAL (must fix this cycle)
-
-*None.* No agent produced a CRITICAL-at-HIGH-confidence finding.
+- **Cycle-1..4 code regressions: NONE.** All 7 reviewers independently confirm the 6–9 cycle-4 fix bundles (C4-1 snapshot, C4-2 claim/poll workerId + strict IP, ARCH-1/C4-N1/C4-3 settings reconfirm on BOTH writers, F1 int64, C4-9 CSV durable audit, A6 worker cleanup N1/R2/R4) achieve their stated purpose with no production regression. Tracer labels all four named flows (F-claim, F-snapshot, F-settings, F-int64) **CLOSED**; debugger labels all five mission areas **CONFIRMED**; security-reviewer **6/6 PASS**; code-reviewer **9/9 VERIFIED**.
+- **One cycle-4-introduced REGRESSION (doc-only):** C5-DOC-1 / C5-L1 — commit `2c224ab0` rewrote the CSRF doc/docstring into a FALSE "any one passing is sufficient" (OR-semantics) claim; the code is actually AND-shaped (`X-Requested-With: XMLHttpRequest` is REQUIRED). Behaviour is correct AND stricter than the doc, so there is **no exploitable gap** — but the doc teaches the wrong mental model and the regression was introduced by a cycle-4 commit. Two-agent agreement (doc-specialist HIGH-regression; security-reviewer LOW-doc). Cheap text fix.
+- **Findings trend:** 112 → 25 → 28 → (cycle-4 MED+LOW) → **cycle-5: 0 CRITICAL, 0 HIGH (behaviour), 1 MED net-new (C5-N1), rest LOW + 1 HIGH-ROI test gap (C5-A1) + doc drift.** Converging.
+- **Deferred carry-forward unchanged:** C4-4/AGG-10 plaintext-decryption default (MED, the only remaining open MED security item), plus the LOW Phase B/C backlog (C4-6/7/8/N2, NEW-M8, R1/R3, perf queue, Designer P1/P2, A8 test-gap batch).
 
 ---
 
-## HIGH (schedule this cycle — pre-validated, non-deferrable security/data-loss/correctness)
+## STAGE 1 — Regression verdict on cycle-1..4 fixes (all PASS)
 
-### C4-2 / NEW-H5 / F-claim — Judge `/claim` honors the shared token with no `workerId`; IP allowlist default-open (HIGH, security-reviewer + tracer)
-**Source:** security-reviewer C4-2 · tracer F-claim · **Validated:** `src/app/api/v1/judge/claim/route.ts:104-115,176-180,410-424`; `src/lib/judge/ip-allowlist.ts:14,163-166`; sibling routes `poll/deregister/heartbeat`
-**Issue:** When `workerId` is omitted (schema optional, L104-115), auth falls back to the **shared** `JUDGE_AUTH_TOKEN` (`isJudgeAuthorized`, L176-180). `buildClaimSql(false)` then claims a real submission and the response (L410-424) returns `sourceCode` + every hidden `testCase` (`input` + `expectedOutput`). A shared-token holder exfiltrates the full problem suite without registering a worker. Compounded by `ip-allowlist.ts:164-166` returning `true` when `JUDGE_ALLOWED_IPS` is unset (default-open). The shared token is the broadest judge secret (`.env`, `docker-compose.worker.yml`, CI, every worker host).
-**Fix — decouple into two independently-shippable parts (different revert risk):**
-- **Part 1 — SHIP; low revert risk (the security fix).** Make `workerId`+`workerSecret` **required** on `/claim`, `/poll`, `/deregister`, `/heartbeat`; shared token becomes `/register`-only. Removes the exfil blast radius. Only breaks clients authenticating with the shared token alone — exactly the legacy pattern that should re-register.
-- **Part 2 — HIGH revert risk; opt-in hardening, NOT a bare default flip.** `ip-allowlist.ts:6-7,16,163` documents `unset == allow-all` as back-compat. **The cycle-2 attempt to flip this default was reverted in `23851d69` (C2-H7) because it broke deployed workers** — do NOT repeat that. Safe shape: keep `unset == allow-all` for back-compat, emit a loud startup WARN, and add an explicit opt-in `JUDGE_STRICT_IP_ALLOWLIST=1` (equivalently, fail-closed only when `JUDGE_ALLOWED_IPS` is set) so operators opt into strictness deliberately.
-**Sequencing:** Part 1 is the security fix and must not be blocked by Part 2. Part 2 is defence-in-depth and must not be a blanket behaviour change.
-**Exit:** a leaked shared token can no longer claim work or read `sourceCode`/`testCases`; operators can opt into strict IP enforcement without a forced migration.
+| Fix bundle | Verdict | Cross-agent agreement |
+|---|---|---|
+| C4-2 P1 workerId required on /claim + /poll + /deregister + /heartbeat; shared token /register-only | **PASS / CLOSED** | security 6/6, code-reviewer, tracer (F-claim CLOSED, mechanism certain), debugger |
+| C4-2 P2 `JUDGE_STRICT_IP_ALLOWLIST` opt-in, unset==allow-all preserved + warn | **PASS** | security, code-reviewer, tracer |
+| C4-1 `snapshot:true` opt-out bypasses ALWAYS_REDACT; only `takePreRestoreSnapshot` passes it | **PASS / CLOSED** | security, code-reviewer, tracer (F-snapshot CLOSED), debugger (argon2 self-heal verified) |
+| ARCH-1 + C4-N1 + C4-3 shared reconfirm helper on BOTH writers + `hasOwnInput` port + sensitive-key expansion + accepted-solutions list filter | **PASS / CLOSED** | security, code-reviewer, tracer (F-settings CLOSED), debugger (fail-closed on every path) |
+| F1 int64 verbatim serialize + strtoll/parseLong/long.Parse | **PASS / CLOSED (wire-level)** | security, code-reviewer, tracer (F-int64 CLOSED wire; UI cap at 2^53 is pre-existing v1 deferral), debugger (throw unreachable from production) |
+| C4-9 contest CSV export durable audit | **PASS** | security, code-reviewer |
+| A6 worker cleanup bundle N1+R2+R4 | **PASS / CONFIRMED** | code-reviewer, debugger (R2/R4 CLOSED, all 4 mission questions answered), test-engineer (a8 revert-RED structural contract) |
 
-### C4-1 / AGG-2 / C3-1 / DOC-2 / DOC-3 — Pre-restore snapshot is unrestoreable (HIGH, security-reviewer + document-specialist + tracer)
-**Source:** security-reviewer C4-1 · document-specialist DOC-2/DOC-3 · tracer F-snapshot · **Validated:** `src/lib/db/export.ts:104-106`; `src/lib/db/pre-restore-snapshot.ts:34-39,84-86`; `src/lib/security/secrets.ts:36-42`; `docs/data-retention-policy.md:48`; `docs/admin-security-operations.md:65`
-**Issue:** `EXPORT_ALWAYS_REDACT_COLUMNS` is applied even at `sanitize:false` (export.ts:104-106). `takePreRestoreSnapshot` calls `streamDatabaseExport({ sanitize: false })` (pre-restore-snapshot.ts:84-86), so the snapshot loses `users.passwordHash`, `sessions.sessionToken`, `accounts.*_token`, `apiKeys.encryptedKey`, `systemSettings.{hcaptchaSecret,smtpPass}`. Restoring after a bad import = **total lockout + every active session invalidated**. The pre-restore-snapshot.ts:34-39 docstring ("contains password hashes, encrypted column ciphertexts, and JWT secrets in their stored form") is **provably false**.
-**Fix:** Add a `snapshot:true` opt-out in `streamDatabaseExport` (bypass `EXPORT_ALWAYS_REDACT_COLUMNS` when `snapshot` is set); pass `snapshot:true` from `pre-restore-snapshot.ts:84`. At-rest exposure is already covered by `createWriteStream(fullPath, { mode: 0o600 })` + dir `chmod 0o700`. Pair with the DOC-2/DOC-3 prose fix (correct the false full-fidelity claim — the prose fix is independent text-only work; the code fix makes the claim true).
-**Exit:** snapshots faithfully restoreable without secret-exfiltration path; docstring + docs match code reality.
-
-### ARCH-1 / A8-wrong-path — Settings password-reconfirm gate is on the WRONG write path (HIGH, 5-agent convergence: critic + architect + verifier + security-reviewer + tracer)
-**Source:** critic ARCH-1 · architect ARCH-1 · verifier §2 PARTIAL · security-reviewer C4-3/C4-5 · tracer F-settings · **Validated:** `src/app/api/v1/admin/settings/route.ts:89-110` (gated API route, no UI caller); `src/lib/actions/system-settings.ts:63-82` (UNGATED server action the UI calls); UI callers `src/app/(dashboard)/dashboard/admin/settings/{allowed-hosts-form.tsx:53, config-settings-form.tsx:70, system-settings-form.tsx:166, footer-content-form.tsx:105, home-page-content-form.tsx:94}`
-**Issue:** A8 put `verifyAndRehashPassword` on the API route PUT. But **no UI client PUTs to that route** (grep finds only nav-link strings). Every admin settings form calls the **server action** `updateSystemSettings`, which has **no** `currentPassword`/`verifyAndRehashPassword` anywhere (grep-confirmed empty). The most sensitive field `allowedHosts` has its own dedicated form calling `updateSystemSettings({ allowedHosts })` — exactly the "silently widen allowedHosts" threat A8 documented, still live on the real UI path.
-**Fix:** Extract reconfirm into a shared helper `requireReconfirmIfSensitive(body, SENSITIVE_SETTINGS_KEYS, user)` returning a `NextResponse | null` (or a server-action-shaped result); call it at the top of **both** the API route and the server action. Move `SENSITIVE_SETTINGS_KEYS` to a shared module imported by both writers.
-**Exit:** stolen session POSTing `allowedHosts` via the action without `currentPassword` → 401; both writers share one sensitive-key set.
-
-**Sub-findings bundled into the same settings area (same files, same commit cluster):**
-
-- **C4-N1 (code-reviewer MED; security-reviewer C4-5 LOW)** — `PUT /api/v1/admin/settings` partial update wipes every unspecified field. `baseValues` is built **unconditionally** with defaults (route.ts:136-150); a PUT supplying only `{siteTitle:"x"}` overwrites `hcaptchaSecret → null`, `signupHcaptchaEnabled → false`, `publicSignupEnabled → false`. The twin server action guards every field with `hasOwnInput` (system-settings.ts:144-222) — the UI path is safe, the public REST endpoint is broken. **Also defeats the C3-AGG-7 reconfirm gate** (a stolen session sending `{siteTitle:"x"}` passes no sensitive key → no `currentPassword` → yet wipes `hcaptchaSecret` as a side effect). **Fix:** port the `hasOwnInput` guard from the action to the route; preserve the existing `touchesSensitiveKey` gate. **Negative test:** `PUT {siteTitle:"x"}` (no sensitive key, no currentPassword) → stored `hcaptchaSecret`/`publicSignupEnabled` unchanged.
-
-- **C4-3 (security-reviewer MED; verifier N1)** — `SENSITIVE_SETTINGS_KEYS` is provably incomplete vs the persisted set. `allowAiAssistantInRestrictedModes` + `allowStandaloneCompilerInRestrictedModes` (persisted route.ts:143-144; action system-settings.ts:162-167) flip platform-mode **exam-mode restrictions** off but are absent from the sensitive list — a stolen session can re-enable AI assistant / standalone compiler during a restricted/exam-mode contest with no reconfirm, directly defeating the exam-integrity trust boundary. Also `uploadMaxImageSizeBytes` / `uploadMaxFileSizeBytes` / `uploadMaxZipDecompressedSizeBytes` / `uploadMaxImageDimension` (allowlist route.ts:128-129) widen upload DoS ceilings without reconfirm. **Fix:** add `allowAiAssistantInRestrictedModes`, `allowStandaloneCompilerInRestrictedModes`, `aiAssistantEnabled`, the four `uploadMax*` keys to the shared `SENSITIVE_SETTINGS_KEYS`.
-
-- **C4-N3 (code-reviewer LOW)** — accepted-solutions list SELECT under-fills pages. Cycle-3 added `eq(users.shareAcceptedSolutions, true)` to the **count** WHERE (route.ts:51-56) but the **list** SELECT (route.ts:69-88) still uses the unfiltered `whereClause`, then JS-filters at L92. Non-sharing authors consume `pageSize`/`offset` slots and are discarded → a page renders fewer than `pageSize` solutions while `total` overstates. **Fix:** add `eq(users.shareAcceptedSolutions, true)` to the list WHERE; drop the now-redundant `.filter` at L92.
-
-- **C4-5 (security-reviewer LOW; verifier N2; tracer F-settings)** — `emailVerificationRequired`, `communityUpvoteEnabled`, `communityDownvoteEnabled`, `smtpPass` are listed in `SENSITIVE_SETTINGS_KEYS` (so they trigger reconfirm) but are neither destructured nor in `allowedConfigKeys` in the **route** — silently dropped by the `restConfig` filter. The action persists them; the route does not. Fixed by ARCH-1 (shared key set + align the two writers' key sets) subsumes this.
-
-### F1 — Function-judging int64 precision broken end-to-end (HIGH, judge-correctness)
-**Source:** feature-dev-code-reviewer F1 · **Validated:** `src/lib/judge/function-judging/serialization.ts:6`; `src/lib/judge/function-judging/adapters/cpp.ts:47`; `adapters/java.ts:75`; `adapters/csharp.ts:78-80`
-**Issue:** `serialization.ts:6` `String(Math.trunc(Number(v)))` coerces to IEEE-754 float64 → every integer with magnitude `> 2^53` (9007199254740992) is **silently rounded at encode time** on the app server, before any adapter sees it. Concrete: author enters `9223372036854775807` (LLONG_MAX) → `Number()` rounds to `9223372036854775808`, which is **outside int64 range**. Reached by both stdin args (`encodeArgs` → `encodeJson` → `encodeScalar`) and return (`encodeValue` → `encodeJson` → `encodeScalar`). Secondary: C++/Java/C# adapters parse ints through `double` (`cpp.ts:47` `llround(stod(...))`, `java.ts:75` `Math.round(Double.parseDouble(...))`, `csharp.ts:78` `Math.Round(double.Parse(...))`). Large-int function problems get wrong verdicts; harness can throw out-of-range.
-**Fix (BOTH layers together, or fixing one alone creates cross-language divergence):**
-- `serialization.ts:6`: serialize `int`/`long` verbatim — emit the value as a string token without `Number()` coercion; accept string/bigint input at the boundary.
-- `adapters/cpp.ts:47`: replace `llround(stod(...))` with `strtoll`/`std::stoll` over an integer-only token.
-- `adapters/java.ts:75`: replace with `Long.parseLong(...)`.
-- `adapters/csharp.ts:78-80`: replace with `long.Parse(..., CultureInfo.InvariantCulture)`.
-Document that JS/TS remain bounded to `Number.MAX_SAFE_INTEGER` for function judging.
-**Exit:** an `int`/`long` value `> 2^53` round-trips byte-identical through stdin→adapter→return for C++/Java/C#/Python/Go.
+**Regressions requiring a fix this cycle: see C5-DOC-1 below (doc-only).**
 
 ---
 
-## MEDIUM (high-ROI, schedule if reachable this cycle)
+## STAGE 2 — Net-new findings (cycle-5), deduped
 
-### Worker cleanup-hardening bundle — debugger N1 + R2 + R4 + feature-dev F2 (MED, 2-agent convergence)
-**Source:** debugger N1 + R2 + R4 · feature-dev F2 · **Validated:** `judge-worker-rs/src/docker.rs:642-681,175,245,263`; `judge-worker-rs/src/main.rs:505-508`
-**Issue (N1, highest-ROI worker item):** `cleanup_orphaned_containers` (docker.rs:642-681) runs un-timeout'd `docker ps`/`docker rm` and is awaited **inline in the main loop** (main.rs:505-508); the shutdown `tokio::select!`s sit *below* this point, so a wedged dockerd freezes polling **and** blocks graceful shutdown (operators must SIGKILL, leaving claims stuck until `staleClaimTimeoutMs`). The heartbeat task keeps beating, so the server thinks the worker is alive while it processes zero submissions.
-**Issue (R2):** the sweep filters `status=exited` only (docker.rs:647-651). A container still `running` after `kill`/`rm` timed out is invisible to the sweep and never reaped, contradicting the "orphan sweep will reap" log promise (docker.rs:255,273). On a forced restart (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) every in-flight `oj-*` container leaks, each pinning its `--memory`/`--pids-limit`/CPU.
-**Issue (R4):** none of the cleanup Commands chain `.kill_on_drop(true)` (docker.rs:175,245,263) → orphaned `docker` CLI children under wedged dockerd.
-**Fix:** wrap both sweep Commands in `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS))` (reuse existing constant); chain `.kill_on_drop(true)` (also closes R4 for these sites); add a one-shot **startup** sweep that force-removes all `oj-*` containers regardless of status (at startup there are no in-flight judgements, so nuking every `oj-*` is safe); move the periodic sweep off the hot loop (`tokio::spawn` or `tokio::select!` with `&mut shutdown`) so a hung sweep cannot block polling/shutdown.
-**Exit:** a wedged dockerd cannot freeze the main loop or block shutdown; no `oj-*` container accumulates across a forced restart.
+### C5-DOC-1 / C5-L1 — CSRF doc/docstring false "any one passing is sufficient" (REGRESSION, cycle-4-introduced; doc-only)
+- **Severity:** HIGH as a *doc-correctness regression* (doc-specialist) / LOW as a *security* item (security-reviewer — behaviour is stricter than doc, no exploit). **Merged: fix it — cheap text fix to both `docs/api.md:80-84` and `src/lib/security/csrf.ts:20-31`.**
+- **Cross-agent agreement:** 2 agents (document-specialist C5-DOC-1, security-reviewer C5-L1).
+- **Root cause:** cycle-4 commit `2c224ab0` overcorrected the prior accurate "X-Requested-With required" wording into a false OR claim. Code (`csrf.ts:42-47`) returns 403 whenever `X-Requested-With !== "XMLHttpRequest"` BEFORE the Sec-Fetch-Site / Origin checks even run.
+- **Exit:** both doc + docstring say `X-Requested-With: XMLHttpRequest` is REQUIRED (HTML forms cannot set it); Sec-Fetch-Site (when present) and Origin (when present + AUTH_URL resolvable) are additional fail-closed gates.
 
-### C4-4 / AGG-10 — Plaintext-decryption fallback default true (MED, re-confirmed)
-**Source:** security-reviewer C4-4 · architect AGG-10 · **Validated:** `src/lib/plugins/secrets.ts:61`; `src/lib/security/encryption.ts:99` (core already `false`); `src/lib/email/providers/smtp.ts:54`; `src/lib/security/hcaptcha.ts:23`
-**Issue:** encryption core default is already `false` (encryption.ts:99), but `plugins/secrets.ts:61` still defaults `true` and two production read-paths (`smtp.ts:54`, `hcaptcha.ts:23`) pass `{ allowPlaintextFallback: true }` explicitly. A plaintext row planted via SQL/insider access is returned as-is, bypassing AES-256-GCM authentication. No mechanism forces migration to completion.
-**Fix:** flip `plugins/secrets.ts:61` default to `false`; drop the explicit `true` at the two call sites (or have them pass it deliberately with a deadline). Pairs with NEW-B (key-version prefix) — do together.
-**Exit:** `allowPlaintext` defaults false everywhere; explicit opt-in only.
+### C5-N1 — `JUDGE_ALLOW_UNREGISTERED_MODE` is a silent footgun post-C4-2 (MEDIUM, judge-operational) — code-reviewer (unique)
+- **Files:** `judge-worker-rs/src/main.rs:326-341,552`; `judge-worker-rs/src/config.rs:270-274`; claim gate `src/app/api/v1/judge/claim/route.ts:106-128`.
+- **Issue:** C4-2 removed the shared-token fallback from `/claim` (correctly). But the worker binary still honours `JUDGE_ALLOW_UNREGISTERED_MODE`: if registration fails and the flag is set, the worker continues with `worker_id=None`/`worker_secret=None` and polls forever; each poll POSTs `{worker_id:null,...}` → `/claim` superRefine rejects `workerIdRequired` → 400 → worker logs "Poll failed" and treats it as "no work". Submissions pile up unjudged while the worker is "up". Pre-C4-2 this was an intentional resilience escape hatch; post-C4-2 it has no valid function.
+- **Exit:** a worker that cannot register does not silently spin — fail loud (refuse to enter the poll loop / exit non-zero) when unregistered, since claiming is now impossible. (Remove the flag OR make unregistered mode fatal.)
+
+### C5-A1 — ARCH-1 action-side reconfirm gate is unguarded (HIGH-ROI test gap, S effort) — test-engineer #1
+- **Files:** `tests/unit/actions/system-settings.test.ts:19-22,63,148-342`; prod `src/lib/actions/system-settings.ts:100`.
+- **Issue:** the test wires `requireSettingsReconfirm: vi.fn().mockResolvedValue({ ok: true })` and the comment at :19-21 says "the dedicated reconfirm test below overrides this…" — **but no such test exists.** Every `it()` covers auth/rate-limit/validation/success; none overrides the mock to assert the action rejects on `{status:401, error:"passwordReconfirmRequired"}`. The route twin has a real revert-RED test (a5); the action twin has only a passing mock. A refactor that inverts the gate stays green.
+- **Exit:** ~15-line test: override mock → `mockResolvedValue({ status:401, error:"passwordReconfirmRequired" })`, call `updateSystemSettings({allowedHosts:[...]})`, assert `{success:false, error:"passwordReconfirmRequired"}` and `dbInsert` NOT called.
+
+### C5-A2 — C4-N3 accepted-solutions SQL filter is NOT revert-RED (MEDIUM, test tightens correctness) — test-engineer
+- **Files:** `tests/unit/api/problem-accepted-solutions.route.test.ts:142-160`; prod `accepted-solutions/route.ts:88`.
+- **Issue:** the test mock was edited to drop the opted-out author, so the test *assumes* the SQL filter exists rather than *proving* it. Reverting the `eq(users.shareAcceptedSolutions, true)` clause leaves the test green.
+- **Exit:** ~12-line behavioral test: mock list SELECT to return BOTH an opted-in and an opted-out author; assert response contains ONLY the opted-in one.
+
+### C5-N2 — settings PUT audit `details` records default values for OMITTED fields (LOW, audit-accuracy) — code-reviewer
+- **File:** `src/app/api/v1/admin/settings/route.ts:184-194`.
+- **Issue:** after the C4-N1 `hasOwnInput` fix, omitted fields are no longer written to the DB, but the audit `details` still records `platformMode ?? DEFAULT_PLATFORM_MODE`, `aiAssistantEnabled ?? true`, etc. — the default-applied value, NOT what was written. A forensic reviewer gets a false positive ("did this PUT change platformMode?").
+- **Exit:** only include a key in `details` when `hasOwnInput(key)` (mirror `baseValues`).
+
+### C5-N3 / debugger-N6 — startup reap-all sweep is awaited bare; SIGTERM during startup sweep is queued ~20s (LOW) — code-reviewer + debugger AGREEMENT
+- **File:** `judge-worker-rs/src/main.rs:498` (`cleanup_all_oj_containers_at_startup().await`).
+- **Issue:** unlike the periodic sweep (L515-524, `tokio::select!`-wrapped against `&mut shutdown`), the startup sweep is awaited directly. Each internal docker call is bounded by `DOCKER_CLEANUP_TIMEOUT_SECS=10`, so worst case ≈ 20s; a deploy SIGTERM in that window is queued. Bounded, idempotent, self-healing — operationally noisy only.
+- **Exit:** wrap the startup sweep in the same `tokio::select! { _ = &mut shutdown => ..., _ = cleanup_all_oj_containers_at_startup() => {} }` shape.
+
+### C5-N4 — dead `shareAcceptedSolutions` column fetch in accepted-solutions list SELECT (LOW) — code-reviewer
+- **File:** `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:80`.
+- **Issue:** after C4-N3, the WHERE filters `shareAcceptedSolutions` in SQL and the `.map` (L96-109) no longer references `solution.shareAcceptedSolutions` — only `acceptedSolutionsAnonymous` is used. The column is still in the SELECT list (dead fetch).
+- **Exit:** drop `shareAcceptedSolutions: users.shareAcceptedSolutions` from the select list (`acceptedSolutionsAnonymous` must stay).
+
+### C5-N5 — claim route defense-in-depth `if (worker.secretTokenHash)` now unreachable + misleading comment (LOW) — code-reviewer
+- **File:** `src/app/api/v1/judge/claim/route.ts:198-208`.
+- **Issue:** reached only after `isJudgeAuthorizedForWorker` returned `authorized:true`, which already rejects hashless workers (`workerSecretNotMigrated`). The inner `if` is always-true, the else is dead; the comment reads as if hashless workers are handled here.
+- **Exit:** delete the redundant inner hash check (primary `isJudgeAuthorizedForWorker` already enforces it) and rewrite the comment as a flat defense-in-depth assertion.
+
+### debugger-N5 — startup reap-all has no worker-identity guard; shared-host deploy would nuke sibling worker's in-flight containers (LOW/MED, future topology) — debugger
+- **Files:** `judge-worker-rs/src/docker.rs:752-810,318`.
+- **Issue:** container names are `oj-{uuid4}` (no worker-id prefix); the startup sweep matches `--filter name=oj-` globally. Safe in the documented single-worker-per-host topology (CLAUDE.md; `deploy-docker.sh:929-935` `compose down --remove-orphans` guarantees no overlap). Risk is exclusively a future shared-host topology.
+- **Exit:** add a `JUDGE_WORKER_CONTAINER_PREFIX` env var read at the spawn site + both sweep filters (default `oj-`); no behavior change in the default deployment. Forward-looking; defer with provenance.
+
+### tracer net-new (LOW trio)
+- **tracer-N1** `/claim` audit `actorRole:"system"` despite per-worker attribution being available (LOW, observability). `claim/route.ts:284-301`. Worker IS a system actor; audit dashboards grouping by `actorId` lose granularity. Defer.
+- **tracer-N2** Pre-fix in-flight submissions stall ~5 min on deploy (LOW, one-time, self-heals). `/poll` hard-rejects `judgeWorkerId=null` submissions; they clear when the 5-min stale-claim timeout fires. Runbook note. Defer.
+- **tracer-N3** `streamDatabaseExport({snapshot:true})` API shape is a footgun (LOW, single call site today). Rename to `includeLiveSecrets` or move behind a dedicated fn. Defer.
+
+### Designer net-new (LOW polish)
+- **UI-15** password field uses plain `<label>` instead of `<Label>` component in 3 settings forms (baseline drift). Trivial tag-only swap. Ride-along.
+- **UI-16** `passwordReconfirmRequired` error is toast-only (no inline `role="alert"`). Marginal — `required` attribute is the real user path. Defer.
+
+### Document-specialist net-new doc drift (text-only)
+- **C5-DOC-2** (MED) settings PUT doc STILL omits `currentPassword` + sensitive-key gate — commit `2c224ab0` message falsely claimed C4-D5 done. `docs/api.md:1380-1395`.
+- **C5-DOC-3** (MED) roles PATCH doc STILL omits `cannotEditHigherRole` gate. `docs/api.md:1432-1434`.
+- **C5-DOC-4** (MED) `/claim` doc shows no request body at all post-C4-2 (net-new drift — worker integrator would not know to send `workerId`/`workerSecret`). `docs/api.md:1287-1291`.
+- **C5-DOC-5** (MED) `docs/languages.md:216-218` sizes stale (NEW-1 half-reconciled; AGENTS.md fixed, languages.md missed).
+- **C5-DOC-6** (MED) `GET /problems/:id/export` undocumented (2nd deferral).
+- **C5-DOC-7** (MED) `POST /groups/:id/instructors` undocumented (2nd deferral).
+- **C5-DOC-8** (LOW) `.env.production.example` missing 5 vars + judge-section auth vagueness.
 
 ---
 
-## LOW (defer-or-bundle; see Phase C / backlog)
+## STAGE 3 — Carry-forward backlog (cycle-4 Phase B/C, unchanged this cycle)
 
-- **C4-N2** roles PATCH equal-level peer cap-stripping residual (code-reviewer) — strict-`>` gate permits same-level removal of caps the actor lacks. Bounded (no level raise, no cap add). Phase C.
-- **C4-N4** SSE terminal-result event sanitized with stale capabilities (code-reviewer) — one final `event: result` under a mid-stream downgrade. Bounded by access re-check. Phase C.
-- **C4-6** roles PATCH TOCTOU, no `FOR UPDATE` unlike DELETE (security-reviewer) — narrow concurrent-promotion window. Phase C.
-- **C4-7** `resetRecruitingInvitationAccountPassword` clobbers brute-force counter (security-reviewer/tracer H3) — unserialized metadata RMW. Under-count by ~1 on a rare admin action. Phase C.
-- **C4-8** executor.rs source file hardcoded `0o666` vs runner `0o600` (security-reviewer/code-reviewer INFO) — consistency nit; workspace dir 0o700 gates traversal. Phase C.
-- **C4-9** contest CSV export non-durable audit (security-reviewer/tracer/critic A1-residual) — swap to `recordAuditEventDurable` for parity. Cheap ride-along.
-- **F3** `pids_limit` dead if/else both `"128"` (feature-dev) — resolve branch or raise run-phase for VM languages. Phase C.
-- **N-C2/C4-6** roles PATCH should take the same row lock as DELETE (critic/architect).
-- **A7 page-read residual** `community/threads/[id]/page.tsx:83` still uses sibling helper (critic N-C3).
-- **A9** `deploy-docker.sh` per-target env sourcing still deferred (critic un-defer recommendation; CLAUDE.md mandate). Still real at `deploy-docker.sh:119-123,184-187`.
-- **Designer P1/P2 batch** AGG-58/59/60/61 + UI-1..UI-14 — zero UI files changed this cycle, all re-confirmed verbatim. Backlog.
+Re-validated at HEAD by security-reviewer / tracer / debugger. None escalated; none closed by cycle-5 line-level change. Severity preserved.
 
-## Test-gap cluster (test-engineer; high-ROI, test-only)
-- **C4-A6** main.rs `active_tasks.fetch_sub` exactly-once accounting (High) — extract spawn-body tail, assert 0→1→0 on happy + panic paths.
-- **A11a / NEW-1** migrate/import 0 snapshot/audit tests (High) — mirror the 4 restore cases; mock scaffolding already exists.
-- **C4-N1-test** auth-token lifecycle untested at lib AND route layer (High) — `@/lib/email` token functions + 4 auth routes have zero tests.
-- **A11b / NEW-4** docker.rs cleanup-timeout coverage (High) — source-grep contract.
-- **C4-A4/A5** SSE re-auth behavioral + recruiting race serialization (Medium) — wiring tests today.
-- PB-2/PB-3, GS-1..GS-4, A12e X-Real-IP CI-grep — backlog.
+**Open MED security/correctness (deferrable only with provenance — quoted rule):**
+- **C4-4 / AGG-10** plaintext-decryption fallback default `true` (MED). `src/lib/plugins/secrets.ts:61`. Pairs with **NEW-B** `enc:` key-version prefix (`encryption.ts:78`). Exit: `allowPlaintext` defaults false everywhere + re-encryption migration; zero-downtime key rotation.
+- **AGG-1** Restore DB↔files atomicity (MED, design). `restore/route.ts:163` commits DB before the bare-write FS loop. Mitigated by cycle-2 durable failure audit + cycle-4 faithful snapshot. Exit: staging-then-rename (PHB-1).
+- **NEW-M8 / C3-N8** ZIP-bomb streaming decompression (LOW-MED, tracer; perm-gated + authenticated upload). `src/lib/files/validation.ts:96-107` slow path allocates before per-entry cap. Exit: streaming decompress with running-byte counter.
 
-## Doc batch (text-only, no behavior change — bundle into one docs commit)
-- **DOC-2/DOC-3** (HIGH prose) — false "full-fidelity = all fields included" / "contains password hashes" claims. Reword to match redaction-actual (becomes true once C4-1 ships snapshot mode).
-- **AGG-51** `docs/api.md:78-83` CSRF doc understates the gate (documents only one header; impl enforces three).
-- **AGG-52** `AGENTS.md:379` push-scan wording says "downgrades to warn"; code is a hard `die()` abort.
-- **C3-D2** `AGENTS.md:407` line cite `544-596` stale → marker description or `:941`.
-- **C3-D1** `.env.example` omits 6 security-relevant vars (`TRUSTED_PROXY_HOPS`, `JUDGE_ALLOWED_IPS`, `SANDBOX_ALLOW_UNVERIFIED_EMAIL`, `ALLOW_UNSNAPSHOTTED_RESTORE`, `TRUSTED_DOCKER_REGISTRIES`, `JUDGE_PRODUCTION_MODE`).
-- **C4-D5/D6** `docs/api.md:1372-1388` settings PUT doc omits password-reconfirm; `:1424-1426` roles PATCH doc omits `cannotEditHigherRole`.
-- **NEW-1/2/3** language-preset disk sizes diverge across 3 sources (AGENTS.md `all`~14GB stale vs ~30GB); `GET /problems/:id/export` + `POST /groups/:id/instructors` undocumented.
-- **AGG-55** orphaned `min_password_length` column in `schema.pg.ts:591` — dead schema, no writer.
+**Open LOW (Phase C):**
+- **C4-6** roles PATCH TOCTOU (no `FOR UPDATE` unlike DELETE). `admin/roles/[id]/route.ts:59-63,121-124`.
+- **C4-7** `resetRecruitingInvitationAccountPassword` metadata clobber. `recruiting-invitations.ts:463-509`.
+- **C4-N2** lateral (same-level) cap-stripping (`role.level > creatorLevel` strict `>`). `admin/roles/[id]/route.ts:94`.
+- **C4-8** executor.rs source `0o666` vs runner `0o600`. `judge-worker-rs/src/executor.rs`.
+- **R3** inspect-timeout returns `oom_killed:false` (masks real OOM whose inspect stalls >10s). `docker.rs:188-198`.
+- **R1** compiler chown-fallback `0o777`/`0o666` (intentional mirror of runner; accepted-by-design). `compiler/execute.ts:748-757`.
+- **AGG-12/SEC-12** `postcss` XSS via `next` (MED, build-time, bundled). Exit: next `next` bump.
+- **AGG-41** audit IN→EXISTS; **F-1** `canManageProblem` fast-path + memoize (perf, MED). Deferred with provenance.
+- **ARCH-2/3/4** dead-letters; `_sys.*` merge centralization; collapse two settings writers into one `applySystemSettings` core.
+- **Designer P1/P2 batch** AGG-58/59/60/61 + UI-1..UI-14 (zero UI files changed cycles 4 or 5 except the 3 settings forms; re-confirmed verbatim).
+- **A8 test-gap batch** (test-engineer re-validated OPEN): C4-A6 main.rs `active_tasks` exactly-once; A11a migrate/import mirror tests; C4-N1-test auth-token lifecycle; PB-2/PB-3/A12e/GS-1/GS-2/C4-A4/C4-A5; C5-A3 snapshot behavioral output-byte test.
+- SEC-16/17/20/21, ARCH-6/8, NEW-M9, C3-N9, feature-dev NEW-2 — unchanged backlog.
 
 ---
 
-## Cross-Agent Agreement (high-signal — flagged by ≥2 agents)
+## RECOMMENDED CYCLE-5 SCOPE (priority order)
 
-| Topic | Agents | Unified ID | Verdict |
-|---|---|---|---|
-| Settings reconfirm on wrong path | critic, architect, verifier, security, tracer | ARCH-1 / A8 | **DO this cycle (5-agent convergence)** |
-| Snapshot unrestoreable | security, document-specialist, tracer | C4-1 / AGG-2 / DOC-2/3 | **DO this cycle** |
-| Judge `/claim` shared-token + IP default-open | security, tracer | C4-2 / NEW-H5 | **DO this cycle (Part 1 + Part 2 opt-in)** |
-| Settings reconfirm list incomplete (exam-mode + upload) | security, verifier | C4-3 / N1 | **DO this cycle** |
-| Settings PUT partial-wipe | code-reviewer, security (C4-5) | C4-N1 | **DO this cycle** |
-| Function-judging int64 precision | feature-dev | F1 | **DO this cycle** |
-| Worker cleanup sweep no-timeout / no-startup-reap | debugger (N1+R2+R4), feature-dev (F2) | Worker bundle | **DO this cycle** |
-| Roles PATCH TOCTOU (no FOR UPDATE) | security (C4-6), critic (N-C2), tracer (F-roles) | — | Backlog (LOW) |
-| Recruiting reset counter clobber | security (C4-7), tracer (H3) | — | Backlog (LOW) |
-| CSV audit non-durable | security (C4-9), tracer, critic (A1-residual) | — | Cheap ride-along |
-
-## Items verified FIXED / CLOSED / NON-ISSUES this cycle
-
-- **All 8 cycle-3 fixes** — security-reviewer 8/8 PASS, verifier 11/12 VERIFIED + 1 PARTIAL (settings reconfirm list — promoted to C4-3), debugger 5/5 CONFIRMED, architect A3/A4/A7/A8 CLEAN. No regression.
-- **AGG-37** rankings ISR — **CLOSED** (page calls `auth()` → forces dynamic; ISR flag would be a no-op).
-- **AGG-56** contrast — **INVALIDATED** (re-confirmed false positive, 6.54:1).
-- **AGG-44** rate-limiter overflow — non-issue (re-confirmed `MAX_CONSECUTIVE_BLOCKS_EXP=4`, max `2^4=16`).
-- **AGG-43/45** C++ family registry — **closed-by-design** (feature-dev: registry gate is clean end-to-end; users never reach a confusing compile error). Backlog polish if parity desired.
-- **NEW-M8** ZIP-bomb fast-path — well-mitigated on the fast path; slow-path (data-descriptor) OOM risk still open in backlog.
-- **NEW-M7** recruiting brute-force race — RESOLVED in cycle 3 (atomic UPDATE); residual metadata-clobber tracked (C4-7, LOW).
-
-## Note on Deferrals
-
-Detailed deferral records (file+line, original severity/confidence preserved, reason, exit criterion) are authored in PROMPT 2 under `plan/cycle-4-2026-06-27-review-remediation.md`. Per repo rules (CLAUDE.md, AGENTS.md, .context/**), security/correctness/data-loss findings are NOT silently dropped. The HIGH/MEDIUM items above are scheduled for THIS cycle; the design-heavy deferrals each record a concrete exit criterion and quote the permitting repo rule where applicable (AGENTS.md:438 permits LOW-severity defense-in-depth/observability polish deferral).
+1. **C5-DOC-1 / C5-L1** — fix the cycle-4-introduced CSRF doc regression (text-only). The only true regression.
+2. **C5-N1** — kill the `JUDGE_ALLOW_UNREGISTERED_MODE` silent footgun (the only MED net-new; judge-operational silent failure).
+3. **C5-A1** — action-side reconfirm test (HIGH-ROI, ~15 lines, mock pre-wired).
+4. **C5-A2** — accepted-solutions behavioral test (tightens C4-N3; pairs with C5-N4).
+5. **Cheap ride-alongs:** C5-N2 (audit details), C5-N3/N6 (startup sweep `select!`), C5-N4 (dead column), C5-N5 (dead conditional + comment), UI-15 (`<Label>` swap).
+6. **Docs bundle (text-only):** C5-DOC-2, C5-DOC-3, C5-DOC-4, C5-DOC-5, C5-DOC-6, C5-DOC-7, C5-DOC-8.
+7. **Defer with provenance (preserve severity):** C4-4/AGG-10+NEW-B (MED, migration risk), AGG-1, NEW-M8, debugger-N5, perf queue, Designer P1/P2, remaining A8 test gaps, LOW Phase C.

@@ -1,103 +1,125 @@
-# Cycle 4 — test-engineer
+# Cycle 5 — test-engineer
 
 Date: 2026-06-27
 Repository: `/Users/hletrd/flash-shared/judgekit`
-Cycle: 4 of 100. Prior cycle-3 review preserved in git history.
-Method: every cycle-3 test addition was read in full and traced to the
+Cycle: 5 of 100. Prior cycle-4 review preserved in git history (`7ebea50e^`).
+Head: `7ebea50e` (cycle-4 shipped head). Suite green: **378 files / 2988 passed / 0 failed** (`npx vitest run`, 33s).
+
+Method: every cycle-4 test addition was read in full and traced to the
 production hunk it claims to lock; assertion strength was graded by asking
-"does reverting the fix flip this test red?" Deferred items (A11a/b, A12e,
-PB-2/3, GS-1..4) were re-verified against current source. Net-new sweep:
-fixed-string cross-reference of all 113 API route files vs. the test tree.
+"does reverting the fix flip this test red?" (revert-RED). The deferred A8
+batch (C4-A6, A11a/b, C4-N1-test) — the cycle-4 deferred high-ROI set — was
+re-verified against current source. Net-new: scanned every cycle-4 source
+hunk for an unguarded sibling (action-side reconfirm, snapshot behavioral).
 
 Severity: **Critical** (silent miss of security/data-loss bug) > **High**
 (shipped fix unenforced / unguarded invariant) > **Medium** (defense-in-depth)
 > **Low** (hygiene). Findings capped to the high-confidence set; no inflation.
 
-Headline: the cycle-3 **data-leak / authz cluster is well-locked**
-(admin-roles lateral strip, settings reconfirm, contest-export JSON audit).
-The residual risk concentrates in three places: (1) two cycle-3 fixes whose
-tests pin **wiring shape, not behavior** (SSE re-auth, recruiting race); (2)
-the **main.rs panic-recovery accounting** which is not asserted at all; (3)
-the **migrate-import + worker-timeout twins** carried open since cycle 2.
+Headline: cycle-4's security cluster is **well-locked** — C4-2 (claim workerId
++ strict IP), F1 (int64 verbatim), C4-9 (CSV durable audit), and the route-side
+settings reconfirm are all revert-RED with behavioral assertions. One deferred
+item closed this cycle (A11b docker.rs cleanup source-grep landed inline at
+`docker.rs:647`). The residual risk concentrates in three places: (1) the
+**ARCH-1 action-side reconfirm gate is unguarded** — the mock is wired and the
+test comment promises an assertion that was never delivered (highest ROI); (2)
+the **deferred A8 batch** (C4-A6 active_tasks, A11a migrate/import, C4-N1 auth
+tokens) is still open; (3) two cycle-4 tests are **wiring-shape, not behavior**
+(C4-N3 accepted-solutions SQL filter; C4-1 snapshot output bytes).
 
 ---
 
-## (a) REGRESSION-CHECK — cycle-3 test additions
+## (a) REGRESSION-CHECK — cycle-4 test additions
 
 "Revert-RED?" = does the test fail if the production hunk is reverted?
-"Vector?" = does the test exercise the exact attack vector the fix targets?
+"Vector?" = does the test exercise the exact vector the fix targets?
 
 | # | Test | Fix | Verdict | Evidence |
 |---|------|-----|---------|----------|
-| a1 | `tests/unit/api/admin-roles.route.test.ts:294-331` | `cannotEditHigherRole` lateral cap-strip (C3-AGG-2) | **STRONG — revert-RED, vector exact.** | Actor `admin` (level 3) edits a level-4 custom role via `{capabilities: []}` — a *removal*, the vector that bypassed the `added`-caps filter. Asserts 403 + `cannotEditHigherRole`. The strip (not add) path is precisely the regression. Confidence High. |
-| a2 | `tests/unit/api/admin-settings-reconfirm.test.ts:123-149` | privileged-vs-cosmetic password reconfirm (C3-AGG-7) | **STRONG — distinction proven both ways.** | `publicSignupEnabled`/`allowedHosts` ⇒ 401 `passwordReconfirmRequired` / 403 `invalidPassword`; `siteTitle` ⇒ 200 **and** `verifyAndRehashPassword NOT called`. The negative assertion on the cosmetic path is what makes it a real distinction test. Confidence High. |
-| a3 | `tests/unit/api/contest-export.route.test.ts:121-144` | audit on `?format=json` without `download=1` (C3-AGG-1) | **STRONG — exact gap closed.** | Asserts `recordAuditEventDurableMock` called with `{format:"json", download:false}` **and** `recordAuditEventMock` NOT called (legacy buffered path retired for the JSON branch). This is the programmatic-panel-read leak the fix targeted. Confidence High. |
-| a4 | `tests/unit/api/submission-events-reauth-authorization-implementation.test.ts:20-42` | SSE mid-stream re-auth re-runs `canAccessSubmission` (C3-AGG-6) | **WEAK — source-grep only, no mid-stream revocation.** See **C4-A4** below. | Reads `src/app/api/v1/submissions/[id]/events/route.ts` as text and asserts the IIFE string + ordering. The test's own header concedes a behavioral test is "disproportionately heavy." No test drives the poll loop past `AUTH_RECHECK_INTERVAL_MS` with a revoked viewer and asserts the stream closes. Confidence High (gap), Medium (severity — wiring is correct today). |
-| a5 | `tests/unit/assignments/recruiting-invitation-metadata-race.test.ts:100-160` | metadata-merge `FOR UPDATE` serialization (C3-AGG-3) | **PARTIAL — lock asserted, no behavioral race.** See **C4-A5** below. | `forMock` called with `"update"` (line 114) proves the lock is *requested*; `_sys.*` preservation + no-tx-for-expiresAt are good. But no test runs two concurrent `updateRecruitingInvitation` calls and proves the counter isn't clobbered. Lock-acquisition is a proxy for serialization, not a serialization proof. Confidence High (gap), Medium (severity). |
-| a6 | `judge-worker-rs/src/main.rs:668-695` (panic-recovery tests) | executor panic → `catch_unwind` + `report_panic` + `active_tasks` decrement (C3-AGG-9) | **GAP — `active_tasks` accounting untested.** See **C4-A6** below. | The 3 tests assert only `panic_payload_message` rendering + that `catch_unwind` traps a standalone panicking async. None spawn the real task body or assert `active_tasks.fetch_sub` fires after a panic, fires exactly once, and is not skipped/duplicated. |
-
-### C4-A4 — SSE re-auth is source-grep, not behavioral  (Medium)
-- **Files:** `tests/unit/api/submission-events-reauth-authorization-implementation.test.ts:26-33`; prod `src/app/api/v1/submissions/[id]/events/route.ts`.
-- **What's missing:** a test that opens the event stream, lets the re-auth interval elapse with `canAccessSubmission → false` (group revoked / role downgraded), and asserts the connection closes (or stops emitting). The source-grep passes even if the IIFE's interval is accidentally cleared, the condition inverted, or `refreshedReader` is fetched outside the re-auth path.
-- **Suggested test:** inject a fake clock / make `AUTH_RECHECK_INTERVAL_MS` overridable; drive the route handler's poll loop two iterations with a mock that returns authorized on iteration 1 and unauthorized on iteration 2; assert the second iteration yields a close. ~40 lines if the interval is made injectable, else a focused route-unit that calls the re-auth IIFE directly.
-- **Confidence: High** (gap), **confirmed**.
-
-### C4-A5 — recruiting race: lock-request asserted, serialization not  (Medium)
-- **Files:** `tests/unit/assignments/recruiting-invitation-metadata-race.test.ts:100-115`; prod `src/lib/assignments/recruiting-invitations.ts` (`updateRecruitingInvitation`).
-- **What's missing:** `expect(harness.forMock).toHaveBeenCalledWith("update")` proves the `SELECT ... FOR UPDATE` is issued, but a refactor that acquires the lock and then reads `metadata` *outside* the locked statement, or commits the `UPDATE` on a stale read, still passes. No interleaved two-transaction test demonstrates that a concurrent `jsonb_set` brute-force increment survives the merge.
-- **Suggested test:** integration test via `tests/integration/support/test-db.ts` — two `updateRecruitingInvitation` calls + a concurrent raw `UPDATE ... jsonb_set` on `_sys.failedRedeemAttempts`, assert the final metadata reflects both the merge edit and the incremented counter (no lost update). Reuses the PB-2 harness.
-- **Confidence: High** (gap), **confirmed**.
-
-### C4-A6 — main.rs panic-recovery: `active_tasks` not asserted  (High)
-- **Files:** `judge-worker-rs/src/main.rs:557-590` (spawn body: `fetch_add` then `catch_unwind` → `report_panic` → `fetch_sub`); tests at `:668-695`.
-- **What's missing:** the spawn body does `active_tasks.fetch_add(1)` (line 557), and after `catch_unwind` always does `active_tasks.fetch_sub(1)` (line 589). The invariant — *a panic still decrements exactly once* (no leak, no underflow) — is not asserted anywhere. If `report_panic` is awaited and a future change moves `fetch_sub` above it, or wraps it in a conditional, or a second `fetch_sub` is introduced on an error path, every test stays green. The existing tests only prove message rendering for three payload shapes.
-- **Suggested test:** extract the spawn-body tail into a testable `async fn run_executor_slot(active_tasks, exec_fut, report_fn)` that mirrors lines 559-590; assert `active_tasks` goes 0→1→0 on the happy path, 0→1→0 on the panic path (with `report_fn` recorded once), and that `fetch_sub` is unreachable-twice. ~30 lines; same refactor-for-testability shape as cycle-1 A12.
-- **Confidence: High** (gap), **confirmed**.
+| a1 | `tests/unit/api/judge-poll.route.test.ts:500-525` | `/claim` requires `workerId` (C4-2 Part 1) | **STRONG — revert-RED, vector exact.** | `isJudgeAuthorizedMock.mockReturnValue(true)` (models a valid shared token) + body `{}` → asserts 400 `workerIdRequired` **and** `isJudgeAuthorizedMock` NOT called **and** `rawQueryOneMock` NOT called. The shared-token path is provably unreachable. Confidence High. |
+| a2 | `tests/unit/judge/ip-allowlist.test.ts:50-57` | `JUDGE_STRICT_IP_ALLOWLIST=1` fail-closed (C4-2 Part 2) | **STRONG — revert-RED.** | Stubs `JUDGE_STRICT_IP_ALLOWLIST=1` + no allowlist → asserts both 127.0.0.1 and 203.0.113.9 denied. Reverting the flag check flips this green→red. Properly isolated (`beforeEach`/`afterEach` + `unstubAllEnvs` + `resetIpAllowlistCache`). Confidence High. |
+| a3 | `tests/unit/db/pre-restore-snapshot.test.ts:85` | snapshot call-site passes `snapshot:true` (C4-1) | **STRONG at the call boundary — revert-RED.** | `expect(streamDatabaseExport).toHaveBeenCalledWith({ sanitize: false, snapshot: true })`. Removing `snapshot:true` from `pre-restore-snapshot.ts` flips this red. But `streamDatabaseExport` is mocked here — the *output bytes* are never checked (see **C5-A3** below). Confidence High (call-site), Medium (behavioral gap). |
+| a4 | `tests/unit/db/export-sanitization.test.ts:138-148` | snapshot branch bypasses ALWAYS_REDACT (C4-1) | **MEDIUM — source-grep, revert-RED for full-branch removal only.** | Regex `/options\.snapshot\s*\?[^?]*\{\}/` + `not.toContain("contains password hashes…")`. Catches a full revert of the `? {}` ternary, but a regression that swaps `{}` for a populated redaction map still matches `[^?]*`. The real lock is a3 (call-site); this is defense-in-depth. Confidence High (gap), Medium (severity). |
+| a5 | `tests/unit/api/admin-settings-reconfirm.test.ts:151-176` | route partial-wipe guard + `allowAiAssistantInRestrictedModes` reconfirm (ARCH-1 route side, C4-N1, C4-3) | **STRONG on the ROUTE side — revert-RED.** | Wipe test asserts `onConflictDoUpdate.set` contains `siteTitle` and NOT `hcaptchaSecret`/`publicSignupEnabled`/`platformMode` (proxy for the `hasOwnInput` guard). Reconfirm test asserts 401 `passwordReconfirmRequired` for the exam toggle. **But the ACTION side is unguarded** — see **C5-A1**. Confidence High. |
+| a6 | `tests/unit/judge/function-judging/serialization.test.ts:11-26` | JS-side int64 verbatim serialization (F1) | **STRONG — revert-RED, behavioral.** | `encodeValue(9007199254740993n, "int")` → byte-identical string; `encodeValue(9007199254740993, "int")` (unsafe Number) → throws `/safe-integer/`. Reverting to `String(Math.trunc(Number(v)))` flips both red. Confidence High. |
+| a7 | `tests/unit/judge/function-judging/adapters/cpp.test.ts:56-64` (+ java/csharp twins) | adapter `readInt`/`readLong` use strtoll/parseLong/long.Parse (F1) | **STRONG — revert-RED via golden behavioral round-trip.** | `expect(cppAdapter.assemble(spec, CORRECT_TWO_SUM)).toBe(golden)`. The golden fixture (updated in the same commit) now contains `std::strtoll`. Reverting `cpp.ts:50` to `llround(stod(...))` makes `assemble()` output diverge from the golden → red. This is *better* than the source-grep the plan asked for — it's behavioral on the emitted scaffold. Same shape for java/csharp. Confidence High. |
+| a8 | `judge-worker-rs/src/docker.rs:647-671` (inline `#[test]`) | cleanup timeout + startup reap-all + kill_on_drop (A6 / N1+R2+R4) | **STRONG — revert-RED structural contract.** | Asserts the periodic-sweep `tokio::time::timeout(...)` snippet is present byte-for-byte, the `cleanup_all_oj_containers_at_startup` fn exists, `rm -f` is emitted, and `.kill_on_drop(true)` appears ≥5 times. Reverting any of the three hunks fails at least one assertion. **Closes A11b/NEW-4** (deferred since cycle 2). Confidence High. |
+| a9 | `tests/unit/api/contest-export.route.test.ts:113-124` | CSV export uses durable audit (C4-9) | **STRONG — revert-RED, vector exact.** | Asserts `recordAuditEventDurableMock` called with `contest.export_downloaded_anonymized` **and** `recordAuditEventMock` NOT called. Reverting to the buffered path flips both. Confidence High. |
+| a10 | `tests/unit/api/problem-accepted-solutions.route.test.ts:142-160` | list SELECT applies `eq(users.shareAcceptedSolutions, true)` in SQL (C4-N3) | **WEAK — NOT revert-RED for the SQL filter.** See **C5-A2** below. | The test *changed the mock* to omit submission-2 (opted-out author). It asserts the route returns 1 solution — but if someone reverts the SQL `eq(users.shareAcceptedSolutions, true)` filter, the route still passes because the mock never returns opted-out authors. The `.filter`-removal is also unasserted. Wiring-shape, not behavior. Confidence High (gap). |
 
 ---
 
-## (b) DEFERRED ITEMS — close / re-confirm
+## (b) DEFERRED A8 BATCH — priority re-validation (the cycle-5 brief target)
 
-| ID | Item | Status | Evidence (current source) |
-|----|------|--------|---------------------------|
-| **A11a / NEW-1** | migrate/import snapshot-gate + durable-audit + skippedTables | **STILL OPEN — High.** | `src/app/api/v1/admin/migrate/import/route.ts:98-107` (snapshot abort), `:123-133` & `:233-243` (durable audit post-commit), `:131,140,251` (skippedTables). The only migrate/import tests are password-confirmation: `admin-backup-security.route.test.ts:263-292`. The restore twin at `:347-543` has all four cases; the migrate/import twin has none. Reverting any of the three migrate/import hunks passes the suite. **Cheapest high-ROI win.** |
-| **A11b / NEW-4** | docker.rs cleanup-timeout coverage | **STILL OPEN — High.** | `judge-worker-rs/src/docker.rs:172-240` (inspect), `:242-258` (kill), `:260-276` (rm) — three `tokio::time::timeout(Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS), …)` wrappers. `grep DOCKER_CLEANUP_TIMEOUT_SECS|inspect_container_state|kill_container|remove_container` across `tests/` + `judge-worker-rs/` (excl. target) → **0 hits**. No source-grep contract, no runtime test. |
-| **A12e** | X-Real-IP on every `proxy_pass` (CI/source-grep guard) | **OPEN (invariant holds, unguarded) — Medium.** NEW framing this cycle. | Verified all 16 `proxy_pass` across 5 files carry `X-Real-IP`: `scripts/online-judge.nginx.conf` (4/4), `scripts/online-judge.nginx-http.conf` (2/2), `static-site/static.nginx.conf` (1/1), `deploy-docker.sh` (8/8), `deploy.sh` (1/1). But **no test enforces it**: `grep "X-Real-IP|proxy_pass" tests/` returns only app-level IP tests (`ip.test.ts`, `ip-allowlist.test.ts`); `judge-report-nginx.test.ts` checks only the poll-endpoint body-size limit. A new `proxy_pass` block omitting `X-Real-IP` (→ `extractClientIp` falls back, anti-cheat IP logging degrades) ships silently. |
-| **PB-2** | restore/import FK runtime test | **STILL OPEN — High.** | `tests/integration/db/` has `catalog-numbers`, `judge-claim-reclaim`, `submission-lifecycle`, `user-crud` — none exercise `importDatabase`. `tests/integration/support/test-db.ts` `createTestDb()` (isolated DB + real migrations) is unused by any restore/import test. A truncate/insert reorder or upstream FK-catch in `import.ts` ships green. |
-| **PB-3** | poll-route stale-token (`rowCount:0 ⇒ 403`) | **STILL OPEN — Medium.** | Route `src/app/api/v1/judge/poll/route.ts:96-98` (in-progress arm) & `:167-169` (terminal arm) throw `invalidJudgeClaim` → caught → `apiError("invalidJudgeClaim", 403)` at `:111` / `:187+`. `judge-status-report.route.test.ts:129,191,259` stub every `where` with `{rowCount:1}`. No `rowCount:0` case, no 403 assertion. (The SQL guard itself IS hit by `judge-claim-reclaim.test.ts:178-193` real-PG, but not under `test:unit`.) |
-| **GS-1** | `lint:bash` covers only 2 scripts | **STILL OPEN — Medium.** | `package.json` still `"lint:bash": "bash -n deploy-docker.sh && bash -n deploy.sh"`. The 17+ other shell scripts in `scripts/` remain unchecked. |
-| **GS-2** | Playwright `retries` | **OPEN — Low/Medium.** Reframed. | `playwright.config.ts` has **no `retries` field** (defaults to 0) — which is the *correct* strict posture (flakes should surface, not be masked). `playwright-profiles.test.ts` pins profile/testMatch/timeout but **does not pin `retries` absent**. Suggested gate: a one-line assertion that the config does not set `retries:` to a positive number, so no one silently adds `retries: 2` to hide a flake. (Cycle-3's "set retries:1+" recommendation is rejected here — retries mask the flakes this role exists to catch.) |
-| **GS-3** | `test:unit` bypasses coverage | **PARTIALLY CLOSED — Low residual.** | `ci-suite-completeness.test.ts:12-14` now asserts CI runs `test:unit:coverage` **and** that bare `npm run test:unit(?!:)` is absent from `ci.yml`. CI is guarded. Residual: the script dichotomy remains (local `test:unit` still skips coverage); acceptable. Downgraded from cycle-3 Medium. |
-| **GS-4** | test-placement trap (A10 GET-gate) | **STILL OPEN — Low.** Unchanged since cycle-3. | GET-gate coverage still lives in `problems-function-spec.route.test.ts`; stale source-grep in `problem-detail-capabilities-implementation.test.ts` still matches PATCH/DELETE only. Navigational trap persists. |
+These are the four high-ROI gaps cycle-4 deferred at `plan/cycle-4-…:146`.
+Re-validated against current head `7ebea50e`.
+
+| ID | Status | Evidence (current source) |
+|----|--------|---------------------------|
+| **A11b / NEW-4** | **CLOSED ✓** | `judge-worker-rs/src/docker.rs:647` `cleanup_sweep_and_startup_reap_are_timeout_guarded_with_kill_on_drop` landed in commit `c858ce22`. See a8 above. |
+| **C4-A6** | **STILL OPEN — High.** | `judge-worker-rs/src/main.rs:570-605` spawn body: `fetch_add(1)` at :573, `catch_unwind` → `report_panic`, `fetch_sub(1)` at :605. The `#[cfg(test)]` module has ONE test (`panic_payload_message` rendering at :32). `grep active_tasks|fetch_sub|run_executor_slot` inside the test module → **0 hits.** No test asserts 0→1→0 on the panic path, no test asserts `fetch_sub` fires exactly once, no extraction of the spawn-body tail into a testable `run_executor_slot`. A future change that moves `fetch_sub` above `report_panic`, wraps it in a conditional, or adds a second decrement on an error path stays green. |
+| **A11a / NEW-1** | **STILL OPEN — High.** | `tests/unit/api/admin-backup-security.route.test.ts` — the 4 restore semantic-safety cases (snapshot abort :347, durable-audit-after-commit :416-432, not-recorded-on-fail :474-500, skippedTables) ALL target `/api/v1/admin/restore`. The migrate/import twin (`src/app/api/v1/admin/migrate/import/route.ts:98-251` has the same 4 hunks: snapshot abort, post-commit durable audit ×2, skippedTables) has ONLY the 2 password-confirmation tests (:263-292). Reverting any of the 3 migrate/import hunks passes the suite. Mock scaffolding (`takePreRestoreSnapshotMock`, `recordAuditEventDurableMock`, `importDatabaseMock`) already exists — this is a copy-adapt job. **Cheapest high-ROI win remaining.** |
+| **C4-N1-test** | **STILL OPEN — High.** | `tests/unit/email/` contains only `providers-index.test.ts` + `templates.test.ts`. `grep generatePasswordResetToken|validatePasswordResetToken|consumeVerificationToken|generateEmailVerificationToken|resetPassword tests/` → **0 hits.** `tests/unit/api/auth/` does not exist; the 4 auth routes (`reset-password`, `forgot-password`, `verify-email`, `resend-verification`) have zero route-level tests. Single-use enforcement, expiry, and the token-prefix rate-limit (`reset_password:token:${token.slice(0,8)}`) are untested. Account-takeover-adjacent surface, no regression net. |
 
 ---
 
-## (c) NET-NEW gaps
+## (c) NET-NEW gaps (this cycle)
 
-### C4-N1 — Auth token lifecycle is untested at lib AND route layer  (High)
-- **Files (prod):** `src/lib/email/` — `generatePasswordResetToken`, `validatePasswordResetToken`, `resetPassword`, `generateEmailVerificationToken`, `consumeVerificationToken`. Routes: `src/app/api/v1/auth/reset-password/route.ts`, `…/forgot-password/route.ts`, `…/verify-email/route.ts`, `…/resend-verification/route.ts`.
-- **Gap:** `grep validatePasswordResetToken|resetPassword|generatePasswordResetToken|consumeVerificationToken|generateEmailVerificationToken tests/` → **0 hits.** `tests/unit/email/` contains only `providers-index.test.ts` + `templates.test.ts`. The four auth routes (49–59 lines each, all thin wrappers over `@/lib/email`) have **zero route-level tests** — they appear in the untested-route set (13/113 routes untested, fixed-string match). Single-use token enforcement, expiry, token rotation, and the route-layer rate-limit-by-token-prefix (`reset_password:token:${token.slice(0,8)}` at `reset-password/route.ts:24`) are all untested. This is an account-takeover-adjacent surface with no regression net.
-- **Suggested test:** (1) lib-level tests for `@/lib/email` token functions — generate→validate→consume→reject-reuse→reject-expired; (2) route-level test for `reset-password` covering the four branches (`invalidOrExpiredToken`, `passwordTooShort`, `rateLimited` via token-prefix, success) with mocked `@/lib/email`.
+### C5-A1 — ARCH-1 action-side reconfirm gate is unguarded (High, S effort) ★ highest ROI
+- **Files:** `tests/unit/actions/system-settings.test.ts:19-22,63` (mock wired, default pass); prod `src/lib/actions/system-settings.ts:100` (`const reconfirm = await requireSettingsReconfirm(input, session.user)`).
+- **Gap:** the test file wires `requireSettingsReconfirm: vi.fn().mockResolvedValue({ ok: true })` and the *comment at :19-21 literally says* "the dedicated reconfirm test below overrides this to assert the gate fires" — **but no such test exists below.** Every `it()` under `describe("updateSystemSettings")` (:148-342) covers auth/rate-limit/validation/success; NONE overrides the mock to return `{ status: 401, error: "passwordReconfirmRequired" }` and asserts the action rejects. The action calls the gate at :100, so a stolen session POSTing `allowedHosts` via the action without `currentPassword` is enforced in prod — but if a refactor inverts the gate's early-return or drops the call, every test stays green.
+- **Why it matters:** the ROUTE twin has a real revert-RED test (a5); the ACTION twin has only a passing mock. ARCH-1's whole point was "both writers gate the same key set" — one writer's gate is unguarded. This is the asymmetry the cycle-4 plan A4 explicitly called out and the deferred A8 batch carried.
+- **Proposed test:** in `system-settings.test.ts`, override `requireSettingsReconfirm` to `mockResolvedValue({ status: 401, error: "passwordReconfirmRequired" })`, call `updateSystemSettings({ allowedHosts: [...] }, ...)`, assert `{ success: false, error: "passwordReconfirmRequired" }` and that `dbInsert` is NOT called. ~15 lines. Scaffolding is 90% done.
 - **Confidence: High. Confirmed.**
 
-### C4-N2 — Thirteen routes with zero test references  (Medium aggregate; subset High)
-- **Method:** fixed-string cross-reference of all 113 `src/app/api/**/route.ts` vs. `tests/`. 100/113 referenced; 13 are not. Triage:
-  - **High-value (account/security):** `auth/reset-password`, `auth/forgot-password`, `auth/verify-email`, `auth/resend-verification` — see C4-N1.
-  - **Destructive/admin:** `admin/docker/images/prune/route.ts` (96-line destructive admin op), `internal/cleanup/route.ts` (destructive batched DELETE — but defended: 410-by-default + `CRON_SECRET` + `safeTokenCompare` + rate-limit; route-layer auth gate still untested).
-  - **Low/trivial:** `auth/[...nextauth]` (NextAuth thin handler, config tested via `config.ts`), `health/route.ts`, `test/seed/route.ts` (dev-only).
-- **Confidence: High** (untested), **confirmed**. The auth + prune subset is the action.
+### C5-A2 — C4-N3 accepted-solutions SQL filter is not revert-RED (Medium)
+- **Files:** `tests/unit/api/problem-accepted-solutions.route.test.ts:142-160`; prod `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:88` (`.where(and(whereClause, eq(users.shareAcceptedSolutions, true)))`).
+- **Gap:** the test asserts the route returns the mock's 1 opted-in solution. The mock was edited to drop submission-2 (the opted-out author) — so the test now *assumes* the SQL filter exists rather than *proving* it. Reverting the `eq(users.shareAcceptedSolutions, true)` clause from the route leaves the test green (the mock never yields opted-out authors). The dropped `.filter` is also unasserted.
+- **Why it matters:** a future refactor that moves pagination back into JS (re-introducing the `pageSize`/offset slot consumption bug C4-N3 fixed) ships silently.
+- **Proposed test:** mock the list SELECT to return BOTH submission-1 (sharing) and submission-2 (`shareAcceptedSolutions: false`); assert the response contains ONLY submission-1 (proving the route filters), OR assert the mock's `where` was composed with the share clause. The former is behavioral and revert-RED. ~12 lines.
+- **Confidence: High. Confirmed.**
 
-### C4-N3 — `internal/cleanup` route auth gate untested despite being well-defended  (Low)
-- **File:** `src/app/api/internal/cleanup/route.ts:1-58`.
-- **Gap:** the route has three layered gates (410 unless `ENABLE_CRON_CLEANUP=true`; 503 without `CRON_SECRET`; 401 unless `safeTokenCompare(Bearer $CRRON_SECRET)`; rate-limit). None are exercised. The defense is strong; the only ask is a source-grep or 3-case route test so a future refactor that drops `safeTokenCompare` for `===` (timing attack) is caught.
-- **Confidence: Medium. Likely.**
+### C5-A3 — C4-1 snapshot has no behavioral output-byte test (Medium)
+- **Files:** `tests/unit/db/pre-restore-snapshot.test.ts` (mocks `streamDatabaseExport` at :13,21); prod `src/lib/db/export.ts:111` (`activeRedactionMap = options.snapshot ? {} : (options.sanitize ? mergeRedactionMaps(...) : EXPORT_ALWAYS_REDACT_COLUMNS)`).
+- **Gap:** `streamDatabaseExport` is mocked in every test that touches it (`grep -rln streamDatabaseExport tests/` → 5 files, all mock it). No test runs the real pipeline with `snapshot:true` and asserts the output stream *contains* `passwordHash`/`sessionToken` bytes (and with `snapshot` unset, *omits* them). The source-grep (a4) catches a full-branch revert but not a subtle regression (e.g., snapshot retained for `users` but not `sessions`, or a future column added to `EXPORT_ALWAYS_REDACT_COLUMNS` that leaks past the snapshot bypass).
+- **Why it matters:** the entire point of C4-1 is that the snapshot is *faithfully restoreable*. Without a behavioral test, "faithful" is asserted by reading source text, not by observing output.
+- **Proposed test:** add a focused unit that constructs a tiny in-memory row set (users with `passwordHash`/`sessionToken`, sessions, api_keys), runs `streamDatabaseExport({ snapshot: true })` to completion, and asserts the JSON contains those columns; then runs with `snapshot` unset and asserts they are redacted. ~40 lines. (If the pipeline is hard to drive without DB, a thinner alternative: assert `activeRedactionMap` resolution by exporting the helper or testing the column-resolution branch directly.)
+- **Confidence: High (gap), Medium (severity — the call-site test a3 + source-grep a4 already lock the primary vector).**
 
 ---
 
-## FLAKY-TEST watch (no change from cycle-3)
+## (d) FLAKY-TEST watch
 
-- Rust workspace: still no `set_var`/`remove_var`/`unsafe` in `judge-worker-rs`, `code-similarity-rs`, `rate-limiter-rs`. Parallel-test flake remains gone.
-- Vitest `process.env` mutation: same latent intra-file set as cycle-3 (`metrics.route.test.ts`, `admin-docker-images-build.route.test.ts`, `storage-path-traversal.test.ts`, `execute.test.ts`, `data-retention.test.ts`). No active cross-file flake. Model-citizen pattern remains `tests/unit/compiler/execute-implementation.test.ts:79-99`.
+- **No new flake introduced this cycle.** The two new cycle-4 test files with env mutation are well-isolated:
+  - `tests/unit/judge/ip-allowlist.test.ts` — `beforeEach`/`afterEach` call `vi.unstubAllEnvs()` + `resetIpAllowlistCache()` at :24-32; the new strict-allowlist case (:50-57) repeats `resetIpAllowlistCache()` after stubbing. No cross-file leakage.
+  - `tests/unit/db/export-sanitization.test.ts` — no env mutation; pure source-grep.
+- **Rust workspace:** still no `set_var`/`remove_var`/`unsafe` in `judge-worker-rs`, `code-similarity-rs`, `rate-limiter-rs`. Parallel-test flake remains gone. The new `docker.rs:647` test is a pure `include_str!` source-grep — no runtime, no env, no flake surface.
+- **Known-flaky (pre-existing, isolated-pass):** `tests/unit/infra/migration-drift-cleanup.test.ts`, `tests/unit/public-route-metadata.test.ts`, `tests/unit/public-seo-metadata.test.ts`. Not flagging as regressions — they are unrelated to cycle-4 and pass in isolation.
+- **Latent intra-file `process.env` set** (unchanged from cycle-4): `metrics.route.test.ts`, `admin-docker-images-build.route.test.ts`, `storage-path-traversal.test.ts`, `execute.test.ts`, `data-retention.test.ts`. No active cross-file flake. Model-citizen pattern remains `tests/unit/compiler/execute-implementation.test.ts:79-99`.
+
+---
+
+## (e) Source-grep contract robustness (cycle-4 brief item 4)
+
+| Contract | Location | Robustness | Verdict |
+|----------|----------|------------|---------|
+| F1 adapters: strtoll/parseLong/long.Parse present, stod/parseDouble absent in int-reader | `adapters/{cpp,java,csharp}.test.ts` golden round-trip (a7) | **Strong** — behavioral `assemble()==golden`, not text grep. Golden contains the correct readers; a source revert diverges the emitted scaffold. The "absent" half is implicitly enforced (golden has no `stod` in `readInt`). | Robust. |
+| docker.rs cleanup: timeout + kill_on_drop + startup reap | `docker.rs:647` (a8) | **Strong** — exact multi-line snippet match + `matches(.kill_on_drop(true)).count() >= 5`. Catches both removal and under-counting. Slightly brittle on whitespace (exact `\n` indentation in the snippet), but a `cargo fmt`-stable file won't drift. | Robust. |
+| C4-1 snapshot branch | `export-sanitization.test.ts:138-148` (a4) | **Medium** — `/options\.snapshot\s*\?[^?]*\{\}/` matches any `options.snapshot ? <not-?>{}`. Revert-RED for full removal, blind to a populated-map regression. Acceptable as secondary; C5-A3 is the real fix. | Acceptable. |
+
+---
+
+## (f) Carry-forward (unchanged from cycle-4, re-confirmed)
+
+| ID | Status | Evidence |
+|----|--------|----------|
+| **PB-2** restore/import FK integration | **STILL OPEN — High.** | `tests/integration/db/` has `catalog-numbers`, `judge-claim-reclaim`, `submission-lifecycle`, `user-crud` — none exercise `importDatabase`. `createTestDb` still unused by any restore/import test. |
+| **PB-3** poll-route stale-token `rowCount:0 ⇒ 403` | **STILL OPEN — Medium.** | `judge-status-report.route.test.ts` still stubs every `where` with `{rowCount:1}`. The 403 assertions in `judge-poll.route.test.ts:392,462` are the CLAIM route's `invalidWorkerSecret`/schema-mismatch, NOT the POLL route's stale-claimToken arms (`poll/route.ts:96-98`, `:167-169`). |
+| **A12e** X-Real-IP source-grep guard | **STILL OPEN — Medium.** | `grep X-Real-IP|proxy_set_header tests/unit/` → no nginx guard. Invariant holds in source (16/16 `proxy_pass` blocks) but unguarded. |
+| **GS-1** `lint:bash` covers 2 scripts | **STILL OPEN — Medium.** | `package.json:10` unchanged: `bash -n deploy-docker.sh && bash -n deploy.sh`. 17+ other `scripts/*.sh` unchecked. |
+| **GS-2** Playwright `retries` pinned absent | **STILL OPEN — Low.** | `playwright-profiles.test.ts` has no `retries` assertion. |
+| **C4-A4** SSE re-auth behavioral | **STILL OPEN — Medium.** | Source-grep only; no revoked-viewer-mid-stream test. |
+| **C4-A5** recruiting metadata serialization | **STILL OPEN — Medium.** | Lock-request asserted, no two-transaction serialization proof. |
 
 ---
 
@@ -105,21 +127,24 @@ the **migrate-import + worker-timeout twins** carried open since cycle 2.
 
 | # | ID | Finding | Severity | Effort | Confidence |
 |---|----|---------|----------|--------|------------|
-| 1 | A11a / NEW-1 | Mirror the 4 restore cases against `admin/migrate/import/route` (snapshot abort, durable-audit-after-commit, not-recorded-on-fail, skippedTables). Mock scaffolding already exists in `admin-backup-security.route.test.ts`. | High | S | Confirmed |
-| 2 | A11b / NEW-4 | Source-grep contract: `docker.rs` has 3× `tokio::time::timeout(` wrapping `Command::new("docker")` with `"inspect"`/`"kill"`/`"rm"` and `Err(_)` arms that log+return (don't panic). Runtime trait-injection version = Phase B. | High | S | Confirmed |
-| 3 | C4-A6 | main.rs `active_tasks` accounting test (extract spawn-body tail; assert 0→1→0 on happy + panic paths, `report_panic` once, no double-decrement). | High | S | Confirmed |
-| 4 | C4-N1 | Auth token lifecycle: lib tests for `@/lib/email` (generate/validate/consume/reuse/expiry) + route tests for the 4 auth routes (token-prefix rate-limit, branch mapping). | High | M | Confirmed |
-| 5 | PB-2 | Restore/import FK-ordering integration test via `createTestDb` (parent+child export, missing-parent rejection, insert-order spy). | High | M | Confirmed |
-| 6 | PB-3 | Poll-route stale-token unit test: `rowCount:0` ⇒ 403 `invalidJudgeClaim` for both arms. | Medium | S | Confirmed |
-| 7 | A12e | X-Real-IP source-grep guard: every `proxy_pass` block in `scripts/*.nginx.conf`, `static-site/*.nginx.conf`, `deploy*.sh` is preceded/followed by `proxy_set_header X-Real-IP`. | Medium | S | Confirmed |
-| 8 | C4-A4 | SSE re-auth behavioral test (injectable re-auth interval; revoked viewer ⇒ stream closes). | Medium | M | Confirmed |
-| 9 | C4-A5 | Recruiting metadata-merge serialization: concurrent `jsonb_set` + merge integration test (reuses PB-2 harness). | Medium | M | Confirmed |
-| 10 | GS-1 | Expand `lint:bash` to all `scripts/*.sh`; wire into CI. | Medium | S | Confirmed |
-| 11 | GS-2 | Pin Playwright `retries` absent/0 in `playwright-profiles.test.ts` (prevent silent flake-masking). | Low | S | Confirmed |
-| 12 | GS-4 | Move A10 GET-gate test into a discoverable `problems.route.test.ts`; delete stale source-grep in `problem-detail-capabilities-implementation.test.ts`. | Low | S | Confirmed |
+| 1 | **C5-A1** | ARCH-1 action-side reconfirm: override `requireSettingsReconfirm` mock → assert action returns `passwordReconfirmRequired` and skips `dbInsert`. Mock + comment already in place; ~15 lines. | High | S | Confirmed |
+| 2 | **A11a / NEW-1** | Mirror the 4 restore semantic cases against `admin/migrate/import/route` (snapshot abort, durable-audit-after-commit, not-recorded-on-fail, skippedTables). Mock scaffolding already exists in `admin-backup-security.route.test.ts`. | High | S | Confirmed |
+| 3 | **C4-A6** | main.rs `active_tasks` accounting: extract spawn-body tail into testable `run_executor_slot(active_tasks, exec_fut, report_fn)`; assert 0→1→0 on happy + panic paths, `report_fn` once, no double-decrement. | High | S | Confirmed |
+| 4 | **C4-N1** | Auth token lifecycle: lib tests for `@/lib/email` (generate/validate/consume/reuse/expiry) + route tests for the 4 auth routes (token-prefix rate-limit, branch mapping). | High | M | Confirmed |
+| 5 | **C5-A2** | C4-N3 accepted-solutions: mock list SELECT to return opted-in AND opted-out authors; assert route filters to opted-in only (behavioral, revert-RED for the SQL clause). | Medium | S | Confirmed |
+| 6 | **C5-A3** | C4-1 snapshot: behavioral test running real `streamDatabaseExport({snapshot:true})` over in-memory rows; assert passwordHash/sessionToken present in output, absent when unset. | Medium | M | Confirmed |
+| 7 | PB-2 | Restore/import FK-ordering integration test via `createTestDb` (parent+child export, missing-parent rejection). | High | M | Confirmed |
+| 8 | PB-3 | Poll-route stale-token unit test: `rowCount:0` ⇒ 403 `invalidJudgeClaim` for BOTH arms (in-progress :96-98 + terminal :167-169). | Medium | S | Confirmed |
+| 9 | A12e | X-Real-IP source-grep guard: every `proxy_pass` block in `scripts/*.nginx.conf`, `static-site/*.nginx.conf`, `deploy*.sh` carries `proxy_set_header X-Real-IP`. | Medium | S | Confirmed |
+| 10 | C4-A4 | SSE re-auth behavioral test (injectable re-auth interval; revoked viewer ⇒ stream closes). | Medium | M | Confirmed |
+| 11 | C4-A5 | Recruiting metadata-merge serialization: concurrent `jsonb_set` + merge integration test (reuses PB-2 harness). | Medium | M | Confirmed |
+| 12 | GS-1 / GS-2 | Expand `lint:bash` to all `scripts/*.sh`; pin Playwright `retries` absent in `playwright-profiles.test.ts`. | Low | S | Confirmed |
 
-**Verdict:** cycle-3's data-leak/authz fixes (a1–a3) are locked with real
-behavioral assertions. The converging risk is the worker + the migrate-import
-twin (A11a/b, C4-A6) — three S-effort tasks close the highest-severity
-residuals. The auth-token-lifecycle cluster (C4-N1) is the largest *new*
-untested security surface found this cycle and should not wait for cycle 5.
+**Verdict:** cycle-4's security fixes (a1, a2, a5-route, a6, a7, a9) are locked
+with real behavioral assertions; the worker cleanup source-grep (a8) closes
+A11b. The single highest-ROI action is **C5-A1** — the action-side reconfirm
+mock is wired and its comment promises a test that was never written; ~15 lines
+delivers a revert-RED guard for the ARCH-1 invariant the cycle was built to
+enforce. The deferred A8 batch (A11a, C4-A6, C4-N1) remains the converging
+risk. Two cycle-4 tests (C5-A2, C5-A3) should be tightened from wiring-shape to
+behavioral while the context is fresh.
