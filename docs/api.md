@@ -78,14 +78,18 @@ API key requests skip CSRF validation automatically.
 ### CSRF Protection
 
 Mutation methods (`POST`, `PUT`, `PATCH`, `DELETE`) enforce **three** layered
-checks when using session-cookie authentication (any one passing is sufficient
-on same-origin browsers; failures return 403):
+checks when using session-cookie authentication. **All applicable checks must
+pass** — a failure on any one returns 403. The checks are layered, not
+alternatives:
 
-1. The custom header `X-Requested-With: XMLHttpRequest` is present (HTML forms
-   cannot set custom headers; fetch/XHR can).
-2. `Sec-Fetch-Site` is `same-origin`, `same-site`, or `none` (blocks
-   cross-site fetches from browsers that emit Fetch Metadata).
-3. The `Origin` (or `Host` fallback) matches the configured `AUTH_URL` host.
+1. The custom header `X-Requested-With: XMLHttpRequest` is **required** (HTML
+   forms cannot set custom headers, so this alone provides the CSRF boundary;
+   fetch/XHR clients always set it). A missing or mismatched value is rejected
+   before the remaining checks are evaluated.
+2. When `Sec-Fetch-Site` is present, it must be `same-origin`, `same-site`, or
+   `none` (blocks cross-site fetches from browsers that emit Fetch Metadata).
+3. When `Origin` is present and `AUTH_URL` is configured, the origin host must
+   match the configured `AUTH_URL` host.
 
 This is the API-route CSRF guard; it is separate from Auth.js sign-in CSRF.
 API-key requests skip CSRF validation automatically.
