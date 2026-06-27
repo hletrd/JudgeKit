@@ -180,6 +180,10 @@ export async function POST(request: NextRequest) {
         filesRestored = await restoreParsedBackupFiles(pendingUploadedFiles);
       } catch (err) {
         logger.error({ err }, "[restore] restoreParsedBackupFiles failed after DB commit");
+        const missingFiles =
+          err instanceof Error && Array.isArray((err as Error & { missing?: unknown }).missing)
+            ? ((err as Error & { missing: string[] }).missing)
+            : undefined;
         await recordAuditEventDurable({
           actorId: user.id,
           actorRole: user.role,
@@ -191,11 +195,17 @@ export async function POST(request: NextRequest) {
           details: {
             preRestoreSnapshotPath: preSnapshotPath,
             error: err instanceof Error ? err.message : String(err),
+            missingFiles,
           },
           request,
         });
         return NextResponse.json(
-          { error: "restoreFailed", details: ["fileRestoreFailed"], preRestoreSnapshotPath: preSnapshotPath },
+          {
+            error: "restoreFailed",
+            details: ["fileRestoreFailed"],
+            missingFiles,
+            preRestoreSnapshotPath: preSnapshotPath,
+          },
           { status: 500 },
         );
       }

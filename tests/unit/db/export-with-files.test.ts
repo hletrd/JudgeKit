@@ -10,6 +10,7 @@ const {
   ensureUploadsDirMock,
   resolveStoredPathMock,
   accessMock,
+  uploadedFileExistsMock,
 } = vi.hoisted(() => ({
   dbSelectMock: vi.fn(),
   streamDatabaseExportMock: vi.fn(),
@@ -18,6 +19,7 @@ const {
   ensureUploadsDirMock: vi.fn(),
   resolveStoredPathMock: vi.fn((storedName: string) => `/tmp/${storedName}`),
   accessMock: vi.fn(),
+  uploadedFileExistsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -46,6 +48,7 @@ vi.mock("@/lib/files/storage", () => ({
   resolveStoredPath: resolveStoredPathMock,
   writeUploadedFile: writeUploadedFileMock,
   ensureUploadsDir: ensureUploadsDirMock,
+  uploadedFileExists: uploadedFileExistsMock,
 }));
 
 vi.mock("node:fs/promises", () => ({
@@ -60,6 +63,8 @@ vi.mock("@/lib/logger", () => ({
   logger: {
     info: vi.fn(),
     warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
   },
 }));
 
@@ -112,6 +117,8 @@ describe("export-with-files integrity manifests", () => {
     readUploadedFileMock.mockResolvedValue(Buffer.from("hello upload"));
     ensureUploadsDirMock.mockResolvedValue(undefined);
     writeUploadedFileMock.mockResolvedValue(undefined);
+    // By default every restored file is present on disk after writing.
+    uploadedFileExistsMock.mockResolvedValue(true);
   });
 
   it("embeds a checksum manifest alongside database.json and uploads", async () => {
@@ -285,5 +292,45 @@ describe("export-with-files integrity manifests", () => {
       { name: "uploads/b.bin", dir: false, _data: { uncompressedSize: half } },
       { name: "uploads/c.bin", dir: false, _data: { uncompressedSize: 1 } },
     ])).toThrow("backupZipTooLarge");
+  });
+
+  describe("restoreParsedBackupFiles post-write consistency verification (AGG-1 partial)", () => {
+    it("returns the count when every written file is present on disk", async () => {
+      const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
+      uploadedFileExistsMock.mockResolvedValue(true);
+
+      const count = await restoreParsedBackupFiles([
+        { storedName: "upload-1.bin", buffer: Buffer.from("a") },
+        { storedName: "upload-2.bin", buffer: Buffer.from("b") },
+      ]);
+
+      expect(count).toBe(2);
+      expect(writeUploadedFileMock).toHaveBeenCalledTimes(2);
+      expect(uploadedFileExistsMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("throws fileRestoreIncomplete naming the missing files after a silent partial write", async () => {
+      const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
+      // Simulate a silent partial write: writeUploadedFile did not throw, but
+      // uploadedFileExists reports upload-2.bin as absent on disk.
+      uploadedFileExistsMock.mockImplementation(async (storedName: string) =>
+        storedName !== "upload-2.bin"
+      );
+
+      const promise = restoreParsedBackupFiles([
+        { storedName: "upload-1.bin", buffer: Buffer.from("a") },
+        { storedName: "upload-2.bin", buffer: Buffer.from("b") },
+        { storedName: "upload-3.bin", buffer: Buffer.from("c") },
+      ]);
+
+      // The error must be the structured fileRestoreIncomplete signal and carry
+      // the missing names so the route's audit surfaces them. Revert-RED:
+      // removing the verification makes this resolve to 3 instead of throwing.
+      await expect(promise).rejects.toThrow("fileRestoreIncomplete");
+      await expect(promise).rejects.toMatchObject({
+        message: "fileRestoreIncomplete",
+        missing: ["upload-2.bin"],
+      });
+    });
   });
 });

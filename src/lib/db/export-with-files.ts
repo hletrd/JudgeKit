@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { files } from "@/lib/db/schema";
 import { streamDatabaseExport, type JudgeKitExport } from "@/lib/db/export";
-import { readUploadedFile, resolveStoredPath, writeUploadedFile, ensureUploadsDir } from "@/lib/files/storage";
+import { readUploadedFile, resolveStoredPath, writeUploadedFile, ensureUploadsDir, uploadedFileExists } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { asc } from "drizzle-orm";
 import { access } from "node:fs/promises";
@@ -355,6 +355,37 @@ export async function restoreParsedBackupFiles(
   for (const upload of uploads) {
     await writeUploadedFile(upload.storedName, upload.buffer);
   }
+
+  // Post-write consistency verification (AGG-1 partial). The DB transaction
+  // commits BEFORE this function runs, so a silent partial write — an
+  // intermittent I/O error that leaves some files absent without throwing —
+  // would leave the DB referencing blobs that do not exist on disk, and the
+  // route would return success. Re-check every expected file is present; if any
+  // are missing, throw a structured error naming them so the route's catch
+  // records a durable audit + returns a clear restoreFailed surface (instead of
+  // a false success). The full atomic fix (staging-then-rename) is deferred —
+  // see plan/cycle-7-2026-06-28-review-remediation.md Phase B.
+  const missing: string[] = [];
+  for (const upload of uploads) {
+    if (!(await uploadedFileExists(upload.storedName))) {
+      missing.push(upload.storedName);
+    }
+  }
+  if (missing.length > 0) {
+    logger.error(
+      {
+        filesExpected: uploads.length,
+        filesRestored: uploads.length - missing.length,
+        filesMissing: missing.length,
+        missing,
+      },
+      "[restore] post-write verification found missing upload files (DB already committed)"
+    );
+    const err = new Error("fileRestoreIncomplete") as Error & { missing?: string[] };
+    err.missing = missing;
+    throw err;
+  }
+
   logger.info({ filesRestored: uploads.length }, "Restored uploaded files from backup ZIP");
   return uploads.length;
 }
