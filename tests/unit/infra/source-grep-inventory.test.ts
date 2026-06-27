@@ -221,7 +221,17 @@ describe("source-grep test inventory", () => {
     //     true) filter in SQL (C4-N3/C5-A2). The route's mock architecture
     //     bypasses SQL, so a behavioural test cannot prove filtering; the
     //     source-grep contract is the revert-RED guard.
-    const DOCUMENTED_BASELINE = 159;
+    // Bumped 159 -> 161 (2026-06-27, cycle-6 remediation):
+    //   - tests/unit/api/audit-logs-instructor-scope.test.ts pins that the
+    //     audit-logs instructor scope uses correlated EXISTS subqueries (not the
+    //     4-round-trip IN-array fan-out) and emits the scope filter
+    //     unconditionally (AGG-41 + fail-closed). The route's mock architecture
+    //     bypasses SQL.
+    //   - tests/unit/files/zip-validation.test.ts pins that the ZIP slow path
+    //     streams via measureEntryStreamedSize (no allocate-then-check .async)
+    //     so a zip-bomb entry is rejected before its full payload is allocated
+    //     (NEW-M8 / C3-N8).
+    const DOCUMENTED_BASELINE = 161;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
