@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createApiHandler, type HandlerContext } from "@/lib/api/handler";
 import { apiSuccess } from "@/lib/api/responses";
 import { db } from "@/lib/db";
-import { auditEvents, users } from "@/lib/db/schema";
-import { and, desc, eq, gte, inArray, lte, or, sql, type SQL } from "drizzle-orm";
+import { auditEvents, users, groups, assignments, submissions, problems } from "@/lib/db/schema";
+import { and, desc, eq, gte, lte, or, sql, type SQL } from "drizzle-orm";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
 import { escapeCsvField } from "@/lib/csv/escape-field";
 import { parsePositiveInt } from "@/lib/validators/query-params";
@@ -71,79 +71,66 @@ export const GET = createApiHandler({
     const isInstructorViewer = !isAdminViewer;
 
     if (isInstructorViewer) {
+      // Instructor scope: only audit events for resources they own. Previously
+      // this fanned out to 4 preparatory findMany round-trips and wide
+      // `IN (id, id, ...)` lists built from the results. Restructured to
+      // correlated `EXISTS` subqueries so the DB plans each scope in one
+      // round-trip with per-table selectivity (AGG-41). Only the taught-group
+      // id list is still fetched (one round-trip) because the `group_member`
+      // scope is a JSONB `details->>'groupId' IN (...)` lookup that cannot be
+      // expressed as a correlated EXISTS on a foreign key.
+      //
+      // The EXISTS predicates are always emitted for instructors (no
+      // `length > 0` guards): an instructor who owns nothing now sees nothing
+      // (fail-closed), whereas the prior IN-array form would push no filter at
+      // all and let an empty-scope instructor see every event.
+      const userId = ctx.user.id;
       const ownedGroups = await db.query.groups.findMany({
-        where: (g, { eq: equals }) => equals(g.instructorId, ctx.user.id),
+        where: (g, { eq: equals }) => equals(g.instructorId, userId),
         columns: { id: true },
       });
       const groupIds = ownedGroups.map((g) => g.id);
-      const assignmentIds =
-        groupIds.length > 0
-          ? (
-              await db.query.assignments.findMany({
-                where: (a, { inArray: inArrayOp }) => inArrayOp(a.groupId, groupIds),
-                columns: { id: true },
-              })
-            ).map((a) => a.id)
-          : [];
-      const submissionIds =
-        assignmentIds.length > 0
-          ? (
-              await db.query.submissions.findMany({
-                where: (s, { inArray: inArrayOp }) => inArrayOp(s.assignmentId, assignmentIds),
-                columns: { id: true },
-              })
-            ).map((s) => s.id)
-          : [];
-      const problemIds =
-        groupIds.length > 0
-          ? (
-              await db.query.problems.findMany({
-                where: (p, { eq: equals }) => equals(p.authorId, ctx.user.id),
-                columns: { id: true },
-              })
-            ).map((p) => p.id)
-          : [];
 
-      const scopeFilters: SQL[] = [];
-
-      if (groupIds.length > 0) {
-        const groupScope = and(
+      const scopeFilters: SQL[] = [
+        // group: directly taught.
+        and(
           eq(auditEvents.resourceType, "group"),
-          inArray(auditEvents.resourceId, groupIds)
-        );
-        const memberScope = and(
-          eq(auditEvents.resourceType, "group_member"),
-          buildGroupMemberScopeFilter(groupIds)
-        );
-        if (groupScope) scopeFilters.push(groupScope);
-        if (memberScope) scopeFilters.push(memberScope);
-      }
-
-      if (assignmentIds.length > 0) {
-        const assignmentScope = and(
+          sql`EXISTS (SELECT 1 FROM ${groups} WHERE ${groups.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
+        ),
+        // assignment: taught via the owning group.
+        and(
           eq(auditEvents.resourceType, "assignment"),
-          inArray(auditEvents.resourceId, assignmentIds)
-        );
-        if (assignmentScope) scopeFilters.push(assignmentScope);
-      }
-
-      if (submissionIds.length > 0) {
-        const submissionScope = and(
+          sql`EXISTS (SELECT 1 FROM ${assignments} JOIN ${groups} ON ${groups.id} = ${assignments.groupId} WHERE ${assignments.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
+        ),
+        // submission: taught via the assignment's owning group.
+        and(
           eq(auditEvents.resourceType, "submission"),
-          inArray(auditEvents.resourceId, submissionIds)
-        );
-        if (submissionScope) scopeFilters.push(submissionScope);
-      }
-
-      if (problemIds.length > 0) {
-        const problemScope = and(
+          sql`EXISTS (SELECT 1 FROM ${submissions} JOIN ${assignments} ON ${assignments.id} = ${submissions.assignmentId} JOIN ${groups} ON ${groups.id} = ${assignments.groupId} WHERE ${submissions.id} = ${auditEvents.resourceId} AND ${groups.instructorId} = ${userId})`
+        ),
+        // problem: authored by the instructor.
+        and(
           eq(auditEvents.resourceType, "problem"),
-          inArray(auditEvents.resourceId, problemIds)
+          sql`EXISTS (SELECT 1 FROM ${problems} WHERE ${problems.id} = ${auditEvents.resourceId} AND ${problems.authorId} = ${userId})`
+        ),
+      ];
+
+      // group_member: JSONB details->>'groupId' IN (taught group ids). Cannot
+      // be a correlated EXISTS on a FK; keep the IN-array form for this single
+      // scope. When the instructor teaches no groups, emit a fail-closed
+      // predicate so the OR below does not silently broaden to "all events".
+      if (groupIds.length > 0) {
+        scopeFilters.push(
+          and(
+            eq(auditEvents.resourceType, "group_member"),
+            buildGroupMemberScopeFilter(groupIds)
+          )
         );
-        if (problemScope) scopeFilters.push(problemScope);
       }
 
-      const scopedInstructorFilter = scopeFilters.length > 0 ? or(...scopeFilters) : null;
+      // OR of all scopes. Always non-empty (4 EXISTS predicates above), so an
+      // instructor with zero owned resources resolves to OR(false, ...) →
+      // false → sees nothing, fail-closed.
+      const scopedInstructorFilter = or(...scopeFilters);
       if (scopedInstructorFilter) filters.push(scopedInstructorFilter);
     }
 
