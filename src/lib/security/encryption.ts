@@ -2,10 +2,22 @@
  * AES-256-GCM symmetric encryption for sensitive column values.
  *
  * Ciphertext invariant: every encrypted value produced by `encrypt()` starts
- * with the literal `enc:` prefix followed by hex(IV || authTag || ciphertext).
- * Anything missing the `enc:` prefix is treated as legacy plaintext.
+ * with the versioned literal `enc:v1:` followed by `hex(iv):hex(ciphertext):
+ * hex(authTag)` (NEW-B key-version prefix). Values written before NEW-B lack
+ * the version segment and look like `enc:hex(iv):hex(ciphertext):hex(authTag)`;
+ * `decrypt()` treats any unversioned `enc:` value as v1 (current key) so every
+ * existing secret stays readable across the upgrade. Anything missing the
+ * `enc:` prefix entirely is treated as legacy plaintext.
  *
- * Plaintext-fallback risk profile (C7-AGG-7, deferred):
+ * Key rotation (NEW-B): the current key is `NODE_ENCRYPTION_KEY`. The optional
+ * comma-separated `NODE_ENCRYPTION_KEY_PREVIOUS` env var holds prior keys;
+ * `decrypt()` tries the current key first, then each previous key, returning
+ * the first plaintext whose GCM auth tag verifies. New writes always use the
+ * current key. This enables zero-downtime rotation: deploy with PREVIOUS set to
+ * the old key + a new NODE_ENCRYPTION_KEY → old ciphertexts stay readable while
+ * new writes migrate to the new key.
+ *
+ * Plaintext-fallback risk profile (C7-AGG-7):
  *   - `decrypt()` accepts an `allowPlaintextFallback` option that defaults to
  *     `false` in all environments. When the flag is explicitly set to `true`
  *     and the input lacks the `enc:` prefix, the value is returned as-is and a
@@ -15,10 +27,8 @@
  *     stored plaintext that may not yet have been re-encrypted). It is a known
  *     attack surface: an attacker who can write plaintext to an encrypted
  *     column bypasses the authenticity guarantee of the GCM tag.
- *   - Hard removal of the fallback is DEFERRED until: a production tampering
- *     incident is detected (warn-log review), or a dedicated audit cycle
- *     confirms all encrypted columns contain only `enc:`-prefixed values. Do
- *     NOT silently drop the fallback; preserve the warn-log audit trail.
+ *   - The plugin-path counterpart (`decryptPluginSecret`) defaults to `false`
+ *     as of C4-4/AGG-10; this main path has always defaulted to `false`.
  *
  * Throws if `NODE_ENCRYPTION_KEY` is not set, regardless of `NODE_ENV`.
  */
@@ -28,6 +38,12 @@ import { logger } from "@/lib/logger";
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96-bit IV recommended for GCM
 const AUTH_TAG_LENGTH = 16; // 128-bit tag
+
+// Versioned ciphertext format (NEW-B). New writes emit
+// `enc:v1:iv:ciphertext:authTag`. Legacy unversioned `enc:` values are treated
+// as v1 by the decrypt path so existing secrets stay readable.
+const ENCRYPTION_VERSION = "v1";
+const VERSIONED_PREFIX = `enc:${ENCRYPTION_VERSION}:`;
 
 /**
  * Get the 32-byte encryption key from the NODE_ENCRYPTION_KEY env var.
@@ -60,8 +76,69 @@ function getKey(): Buffer {
 }
 
 /**
+ * Previous encryption keys for zero-downtime rotation (NEW-B). Populated from
+ * the optional `NODE_ENCRYPTION_KEY_PREVIOUS` env var — a comma-separated list
+ * of 64-char hex strings. Empty/unset → no previous keys, identical to
+ * pre-rotation behaviour. Cached for the process lifetime (env vars do not
+ * change at runtime; tests use vi.resetModules() to clear the cache).
+ */
+let _cachedPreviousKeys: Buffer[] | undefined;
+
+function getPreviousKeys(): Buffer[] {
+  if (_cachedPreviousKeys) return _cachedPreviousKeys;
+
+  const keys: Buffer[] = [];
+  const raw = process.env.NODE_ENCRYPTION_KEY_PREVIOUS?.trim();
+  if (raw) {
+    for (const hex of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+      const buf = Buffer.from(hex, "hex");
+      // Silently skip malformed entries; a wrong-length key would never
+      // authenticate a GCM ciphertext anyway, so including it is harmless but
+      // wasteful. The current key (32 bytes) is always tried first.
+      if (buf.length === 32) {
+        keys.push(buf);
+      }
+    }
+  }
+  _cachedPreviousKeys = keys;
+  return keys;
+}
+
+/** Full keyring: current key first, then previous keys for rotation. */
+function getKeyring(): Buffer[] {
+  return [getKey(), ...getPreviousKeys()];
+}
+
+/**
+ * Try every key in the keyring until GCM authentication succeeds. Returns the
+ * decrypted plaintext on the first key whose auth tag verifies; throws the last
+ * auth error if no key validates (tampered ciphertext, or all keys rotated out).
+ */
+function decryptWithKeyring(iv: Buffer, ciphertext: Buffer, authTag: Buffer): string {
+  const keys = getKeyring();
+  let lastErr: unknown;
+  for (const key of keys) {
+    try {
+      const decipher = createDecipheriv(ALGORITHM, key, iv, {
+        authTagLength: AUTH_TAG_LENGTH,
+      });
+      decipher.setAuthTag(authTag);
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
+        "utf8"
+      );
+    } catch (err) {
+      lastErr = err;
+      continue;
+    }
+  }
+  throw lastErr instanceof Error
+    ? lastErr
+    : new Error("Failed to decrypt value with any available key");
+}
+
+/**
  * Encrypt a plaintext string using AES-256-GCM.
- * Returns `enc:iv:ciphertext:authTag` as a hex-encoded string.
+ * Returns the versioned form `enc:v1:iv:ciphertext:authTag` (hex-encoded).
  * Throws if NODE_ENCRYPTION_KEY is not set.
  */
 export function encrypt(plaintext: string): string {
@@ -75,11 +152,16 @@ export function encrypt(plaintext: string): string {
   ]);
   const authTag = cipher.getAuthTag();
 
-  return `enc:${iv.toString("hex")}:${encrypted.toString("hex")}:${authTag.toString("hex")}`;
+  return `${VERSIONED_PREFIX}${iv.toString("hex")}:${encrypted.toString("hex")}:${authTag.toString("hex")}`;
 }
 
 /**
  * Decrypt a value encrypted by `encrypt()`.
+ *
+ * Accepts both the versioned form (`enc:v1:iv:ciphertext:authTag`, current
+ * writes) and the legacy unversioned form (`enc:iv:ciphertext:authTag`, values
+ * written before NEW-B). Unversioned values are treated as v1 and fed to the
+ * same keyring, so existing secrets remain readable across the upgrade.
  *
  * If the value does not start with `enc:`, the behavior depends on the
  * `allowPlaintextFallback` option:
@@ -115,27 +197,36 @@ export function decrypt(encoded: string, options?: { allowPlaintextFallback?: bo
     return encoded;
   }
 
-  const key = getKey();
+  let ivHex: string;
+  let ciphertextHex: string;
+  let authTagHex: string;
 
-  const parts = encoded.split(":");
-  // enc:iv:ciphertext:authTag
-  if (parts.length !== 4) {
-    throw new Error("Invalid encrypted value format");
+  if (encoded.startsWith(VERSIONED_PREFIX)) {
+    // Versioned format: enc:v1:iv:ciphertext:authTag (5 segments).
+    const parts = encoded.split(":");
+    if (parts.length !== 5) {
+      throw new Error("Invalid encrypted value format");
+    }
+    ivHex = parts[2];
+    ciphertextHex = parts[3];
+    authTagHex = parts[4];
+  } else {
+    // Legacy unversioned format: enc:iv:ciphertext:authTag (4 segments).
+    // Treat as v1 — every pre-NEW-B enc:-prefixed secret stays readable.
+    const parts = encoded.split(":");
+    if (parts.length !== 4) {
+      throw new Error("Invalid encrypted value format");
+    }
+    ivHex = parts[1];
+    ciphertextHex = parts[2];
+    authTagHex = parts[3];
   }
 
-  const iv = Buffer.from(parts[1], "hex");
-  const ciphertext = Buffer.from(parts[2], "hex");
-  const authTag = Buffer.from(parts[3], "hex");
-
-  const decipher = createDecipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
-  decipher.setAuthTag(authTag);
-
-  const decrypted = Buffer.concat([
-    decipher.update(ciphertext),
-    decipher.final(),
-  ]);
-
-  return decrypted.toString("utf8");
+  return decryptWithKeyring(
+    Buffer.from(ivHex, "hex"),
+    Buffer.from(ciphertextHex, "hex"),
+    Buffer.from(authTagHex, "hex")
+  );
 }
 
 /**
@@ -146,5 +237,5 @@ export function decrypt(encoded: string, options?: { allowPlaintextFallback?: bo
  */
 export function redactSecret(value: string | null | undefined): string | null {
   if (!value || value.length === 0) return null;
-  return "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022";
+  return "••••••••";
 }
