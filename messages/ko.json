@@ -282,7 +282,7 @@
     "uptimeStatusTitle": "가동 시간",
     "responseTimeStatusTitle": "헬스 체크 지연",
     "queueUsageValue": "{pending} / {limit}",
-    "workerFleetValue": "온라인 {online} · 주의 {stale} · 오프라인 {offline}",
+    "workerFleetValue": "온라인 {online}, 주의 {stale}, 오프라인 {offline}",
     "uptimeValue": "{seconds}초",
     "responseTimeValue": "{ms}ms",
     "judgeSystemSectionTitle": "채점 시스템 스냅샷",
