@@ -218,7 +218,7 @@ impl Config {
                 let n = val.parse::<usize>().map_err(|_| {
                     format!("JUDGE_CONCURRENCY must be a positive integer, got: {val}")
                 })?;
-                if n < 1 || n > 16 {
+                if !(1..=16).contains(&n) {
                     return Err(
                         "JUDGE_CONCURRENCY must be between 1 and 16 (inclusive)".to_string()
                     );

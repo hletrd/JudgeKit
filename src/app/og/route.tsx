@@ -1,9 +1,8 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "nodejs";
-export const contentType = "image/png";
 export const revalidate = 86400;
-export const size = {
+const imageSize = {
   width: 1200,
   height: 630,
 };
@@ -201,6 +200,6 @@ export async function GET(request: Request) {
         </div>
       </div>
     ),
-    size,
+    imageSize,
   );
 }

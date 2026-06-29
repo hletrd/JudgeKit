@@ -8,7 +8,7 @@ function read(relativePath: string) {
 
 describe("contest analytics timeline implementation", () => {
   it("requests timeline data from contest analytics computation", () => {
-    const source = read("src/app/api/v1/contests/[assignmentId]/analytics/route.ts");
+    const source = read("src/lib/assignments/contest-analytics-cache.ts");
 
     expect(source).toContain("computeContestAnalytics(assignmentId, true)");
   });

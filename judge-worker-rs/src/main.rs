@@ -10,11 +10,11 @@ mod validation;
 
 use api::ApiClient;
 use config::Config;
+use futures_util::FutureExt;
 use std::any::Any;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Semaphore;
-use futures_util::FutureExt;
 
 /// Best-effort string rendering of a panic payload caught by `catch_unwind`.
 /// Used by the executor spawn body's panic recovery (AGG-15 / C3-AGG-9) and
@@ -357,7 +357,6 @@ async fn main() {
         let wid = wid.clone();
         let wsecret = worker_secret.clone();
         let active_tasks = Arc::clone(&active_tasks);
-        let heartbeat_interval = heartbeat_interval;
         let heartbeat_cancel = tokio_util::sync::CancellationToken::new();
         let heartbeat_cancel_clone = heartbeat_cancel.clone();
 
@@ -602,7 +601,8 @@ async fn main() {
                     let submission_id = submission.id.clone();
                     let claim_token = submission.claim_token.clone();
                     let worker_secret_opt = worker_secret.as_deref();
-                    let exec_fut = executor::execute(&client, &config, submission, worker_secret_opt);
+                    let exec_fut =
+                        executor::execute(&client, &config, submission, worker_secret_opt);
                     if let Err(panic_payload) =
                         std::panic::AssertUnwindSafe(exec_fut).catch_unwind().await
                     {

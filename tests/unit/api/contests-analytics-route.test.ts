@@ -235,7 +235,7 @@ describe("GET /api/v1/contests/[assignmentId]/analytics — staleness & cooldown
     vi.resetModules();
     vi.stubEnv("NODE_ENV", "production");
     try {
-      const mod = await import("@/app/api/v1/contests/[assignmentId]/analytics/route");
+      const mod = await import("@/lib/assignments/contest-analytics-cache");
       expect(mod.__test_internals).toBeUndefined();
     } finally {
       vi.unstubAllEnvs();
@@ -247,7 +247,7 @@ describe("GET /api/v1/contests/[assignmentId]/analytics — staleness & cooldown
     await callRoute();
 
     const { __test_internals } = await import(
-      "@/app/api/v1/contests/[assignmentId]/analytics/route"
+      "@/lib/assignments/contest-analytics-cache"
     );
     // __test_internals is `TestInternals | undefined` post cycle-5 AGG5-3.
     // In a test run vitest sets NODE_ENV=test, so it must be defined here.

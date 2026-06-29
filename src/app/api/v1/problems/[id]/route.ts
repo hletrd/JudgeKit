@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, execTransaction } from "@/lib/db";
@@ -228,7 +228,7 @@ export const DELETE = createApiHandler({
 
     const force = req.nextUrl.searchParams.get("force") === "true";
 
-    let blocked = false;
+    let blockedDetails: { assignmentLinkCount: number; submissionCount: number } | null = null;
     await execTransaction(async (tx) => {
       const submissionCountRows = await tx
         .select({ total: sql<number>`count(${submissions.id})` })
@@ -246,15 +246,21 @@ export const DELETE = createApiHandler({
       const assignmentLinkCount = Number(assignmentLinkCountRow.total ?? 0);
 
       if ((submissionCount > 0 || assignmentLinkCount > 0) && !(force && canDeleteProblem)) {
-        blocked = true;
+        blockedDetails = { assignmentLinkCount, submissionCount };
         return;
       }
 
       await tx.delete(problems).where(eq(problems.id, id));
     });
 
-    if (blocked) {
-      return apiError("problemDeleteBlocked", 409);
+    if (blockedDetails) {
+      return NextResponse.json(
+        {
+          details: blockedDetails,
+          error: "problemDeleteBlocked",
+        },
+        { status: 409 }
+      );
     }
 
     recordAuditEvent({

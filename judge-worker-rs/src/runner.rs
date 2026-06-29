@@ -182,85 +182,6 @@ fn contains_shell_variable_expansion(cmd: &str) -> bool {
         .any(|window| window[0] == b'$' && (window[1].is_ascii_alphanumeric() || window[1] == b'_'))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{MEMORY_LIMIT_MB, validate_shell_command};
-
-    #[test]
-    fn compiler_runner_memory_limit_matches_node_executor() {
-        assert_eq!(MEMORY_LIMIT_MB, 2048);
-    }
-
-    /// The runner sidecar workspace must mirror the executor/compiler hardening
-    /// (chown to 65534, then 0o700 on success / 0o777 fallback) rather than the
-    /// pre-cycle-1 unconditional 0o777. C3-AGG-5. A source-text contract is the
-    /// lowest-risk way to pin this — execute_run itself requires docker.
-    #[test]
-    fn workspace_is_hardened_with_chown_and_0o700() {
-        let source = include_str!("runner.rs");
-        assert!(
-            source.contains("chown(workspace_dir, Some(65534), Some(65534))"),
-            "runner workspace must chown to 65534 before setting perms"
-        );
-        assert!(
-            source.contains("let workspace_mode = if chown_ok { 0o700 } else { 0o777 }"),
-            "runner workspace must use 0o700 on chown success (not unconditional 0o777)"
-        );
-        assert!(
-            source.contains("let source_mode = if source_chown_ok { 0o600 } else { 0o666 }"),
-            "runner source file must use 0o600 on chown success"
-        );
-    }
-
-    #[test]
-    fn accepts_simple_commands() {
-        assert!(validate_shell_command("python3 /workspace/main.py"));
-        assert!(validate_shell_command(
-            "HOME=/tmp mono /workspace/solution.exe"
-        ));
-        assert!(validate_shell_command("java -cp /workspace Main"));
-    }
-
-    #[test]
-    fn rejects_shell_metacharacters() {
-        for cmd in [
-            "python3 main.py || echo hi",
-            "python3 main.py | cat",
-            "python3 main.py > out.txt",
-            "python3 main.py < in.txt",
-            "python3 $(printf hi)",
-            "python3 `printf hi`",
-            "python3 main.py\ncat /etc/passwd",
-        ] {
-            assert!(
-                !validate_shell_command(cmd),
-                "expected command to be rejected: {cmd}"
-            );
-        }
-    }
-
-    #[test]
-    fn allows_admin_chained_compile_steps() {
-        // && and ; are permitted because admin-configured compile commands
-        // frequently chain steps (e.g., `mkdir -p out && javac …`).
-        assert!(validate_shell_command("mkdir -p out && javac Main.java"));
-        assert!(validate_shell_command("cd /workspace; make"));
-    }
-
-    #[test]
-    fn rejects_eval_even_without_other_metacharacters() {
-        assert!(!validate_shell_command("eval python3 /workspace/main.py"));
-    }
-
-    #[test]
-    fn rejects_source_and_unbraced_shell_variables() {
-        assert!(!validate_shell_command("source /workspace/env.sh"));
-        assert!(!validate_shell_command("echo $PATH"));
-        assert!(!validate_shell_command("echo $1"));
-        assert!(!validate_shell_command("echo $_"));
-    }
-}
-
 async fn run_command(
     program: &str,
     args: &[&str],
@@ -1021,4 +942,83 @@ pub fn create_router(state: Arc<RunnerState>) -> Router {
         .route("/docker/disk-usage", get(disk_usage_handler))
         .layer(DefaultBodyLimit::max(MAX_RUNNER_BODY_BYTES))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MEMORY_LIMIT_MB, validate_shell_command};
+
+    #[test]
+    fn compiler_runner_memory_limit_matches_node_executor() {
+        assert_eq!(MEMORY_LIMIT_MB, 2048);
+    }
+
+    /// The runner sidecar workspace must mirror the executor/compiler hardening
+    /// (chown to 65534, then 0o700 on success / 0o777 fallback) rather than the
+    /// pre-cycle-1 unconditional 0o777. C3-AGG-5. A source-text contract is the
+    /// lowest-risk way to pin this — execute_run itself requires docker.
+    #[test]
+    fn workspace_is_hardened_with_chown_and_0o700() {
+        let source = include_str!("runner.rs");
+        assert!(
+            source.contains("chown(workspace_dir, Some(65534), Some(65534))"),
+            "runner workspace must chown to 65534 before setting perms"
+        );
+        assert!(
+            source.contains("let workspace_mode = if chown_ok { 0o700 } else { 0o777 }"),
+            "runner workspace must use 0o700 on chown success (not unconditional 0o777)"
+        );
+        assert!(
+            source.contains("let source_mode = if source_chown_ok { 0o600 } else { 0o666 }"),
+            "runner source file must use 0o600 on chown success"
+        );
+    }
+
+    #[test]
+    fn accepts_simple_commands() {
+        assert!(validate_shell_command("python3 /workspace/main.py"));
+        assert!(validate_shell_command(
+            "HOME=/tmp mono /workspace/solution.exe"
+        ));
+        assert!(validate_shell_command("java -cp /workspace Main"));
+    }
+
+    #[test]
+    fn rejects_shell_metacharacters() {
+        for cmd in [
+            "python3 main.py || echo hi",
+            "python3 main.py | cat",
+            "python3 main.py > out.txt",
+            "python3 main.py < in.txt",
+            "python3 $(printf hi)",
+            "python3 `printf hi`",
+            "python3 main.py\ncat /etc/passwd",
+        ] {
+            assert!(
+                !validate_shell_command(cmd),
+                "expected command to be rejected: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn allows_admin_chained_compile_steps() {
+        // && and ; are permitted because admin-configured compile commands
+        // frequently chain steps (e.g., `mkdir -p out && javac …`).
+        assert!(validate_shell_command("mkdir -p out && javac Main.java"));
+        assert!(validate_shell_command("cd /workspace; make"));
+    }
+
+    #[test]
+    fn rejects_eval_even_without_other_metacharacters() {
+        assert!(!validate_shell_command("eval python3 /workspace/main.py"));
+    }
+
+    #[test]
+    fn rejects_source_and_unbraced_shell_variables() {
+        assert!(!validate_shell_command("source /workspace/env.sh"));
+        assert!(!validate_shell_command("echo $PATH"));
+        assert!(!validate_shell_command("echo $1"));
+        assert!(!validate_shell_command("echo $_"));
+    }
 }

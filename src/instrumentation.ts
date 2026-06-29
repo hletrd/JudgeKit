@@ -1,5 +1,5 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === "edge") {
+  if (process.env.NEXT_RUNTIME === "edge" || process.env.NEXT_PHASE === "phase-production-build") {
     return;
   }
 

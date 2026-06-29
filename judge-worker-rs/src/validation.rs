@@ -184,7 +184,11 @@ mod tests {
             &[],
         ));
         assert!(!validate_docker_image_with_config("-flag", false, &[]));
-        assert!(!validate_docker_image_with_config("alpine:3.18", false, &[]));
+        assert!(!validate_docker_image_with_config(
+            "alpine:3.18",
+            false,
+            &[]
+        ));
         assert!(!validate_docker_image_with_config(
             "library/judge-python:latest",
             false,
@@ -223,7 +227,11 @@ mod tests {
             false,
             &[],
         ));
-        assert!(!validate_admin_image_tag_with_config("alpine:latest", false, &[]));
+        assert!(!validate_admin_image_tag_with_config(
+            "alpine:latest",
+            false,
+            &[]
+        ));
         assert!(!validate_admin_image_tag_with_config(
             "library/judge-python:latest",
             false,
@@ -258,8 +266,12 @@ mod tests {
 
     #[test]
     fn dockerfile_build_path_stays_under_judge_dockerfiles() {
-        assert!(validate_dockerfile_path_for_build("docker/Dockerfile.judge-python"));
-        assert!(!validate_dockerfile_path_for_build("../docker/Dockerfile.judge-python"));
+        assert!(validate_dockerfile_path_for_build(
+            "docker/Dockerfile.judge-python"
+        ));
+        assert!(!validate_dockerfile_path_for_build(
+            "../docker/Dockerfile.judge-python"
+        ));
         assert!(!validate_dockerfile_path_for_build("docker/Dockerfile.app"));
     }
 }

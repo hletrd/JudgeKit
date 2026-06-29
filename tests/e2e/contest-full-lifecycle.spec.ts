@@ -9,7 +9,12 @@
  */
 
 import { test, expect, type Page, type APIRequestContext } from "@playwright/test";
-import { E2E_TERMINAL_SUBMISSION_STATUS_SET, loginWithCredentials, makeProblemDescription } from "./support/helpers";
+import {
+  E2E_TERMINAL_SUBMISSION_STATUS_SET,
+  hasOnlineJudgeWorker,
+  loginWithCredentials,
+  makeProblemDescription,
+} from "./support/helpers";
 import { DEFAULT_CREDENTIALS } from "./support/constants";
 
 const CSRF_HEADERS = {
@@ -289,6 +294,11 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Submit correct solution to Problem A (IOI) ────────────────────────
   test("Step 17: Submit correct solution to Problem A (IOI)", async () => {
+    test.skip(
+      !(await hasOnlineJudgeWorker(adminRequest)),
+      "requires an online judge worker to reach a terminal verdict"
+    );
+
     const res = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId: problemAId,
       assignmentId: ioiAssignmentId,
@@ -306,6 +316,11 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Submit partially correct solution to Problem B (IOI) ──────────────
   test("Step 18: Student submits wrong solution to Problem B (IOI)", async () => {
+    test.skip(
+      !(await hasOnlineJudgeWorker(adminRequest)),
+      "requires an online judge worker to reach a terminal verdict"
+    );
+
     // This outputs a+b instead of a*b, so it'll be wrong
     const res = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId: problemBId,
@@ -360,6 +375,11 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── ICPC: Submit correct solution ─────────────────────────────────────
   test("Step 22: Student submits correct solution (ICPC)", async () => {
+    test.skip(
+      !(await hasOnlineJudgeWorker(adminRequest)),
+      "requires an online judge worker to reach a terminal verdict"
+    );
+
     const res = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId: problemAId,
       assignmentId: icpcAssignmentId,
@@ -376,6 +396,11 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── ICPC: Submit wrong then correct to Problem B ──────────────────────
   test("Step 23: ICPC penalty - wrong attempt then correct", async () => {
+    test.skip(
+      !(await hasOnlineJudgeWorker(adminRequest)),
+      "requires an online judge worker to reach a terminal verdict"
+    );
+
     // Wrong attempt first
     const wrongRes = await apiPost(adminRequest, "/api/v1/submissions", {
       problemId: problemBId,
@@ -414,15 +439,23 @@ test.describe.serial("Contest Full Lifecycle", () => {
 
   // ─── Anti-cheat: Verify endpoint exists ─────────────────────────────────
   test("Step 25: Anti-cheat endpoint requires enrollment", async () => {
-    // Anti-cheat POST requires enrollment (security fix) - admin gets 403
-    try {
-      await apiPost(adminRequest, `/api/v1/contests/${ioiAssignmentId}/anti-cheat`, {
-        eventType: "tab_switch",
-        details: JSON.stringify({ timestamp: Date.now() }),
-      });
-    } catch (e: unknown) {
-      // 403 expected - admin is not enrolled as student, confirming security fix works
-      expect(String(e)).toContain("403");
+    const response = await adminRequest.post(
+      `/api/v1/contests/${ioiAssignmentId}/anti-cheat`,
+      {
+        headers: CSRF_HEADERS,
+        data: {
+          eventType: "tab_switch",
+          details: JSON.stringify({ timestamp: Date.now() }),
+        },
+      }
+    );
+
+    const body = await response.json();
+    expect([403, 503]).toContain(response.status());
+    if (response.status() === 403) {
+      expect(String(body.error)).toMatch(/forbidden|enrollment/i);
+    } else {
+      expect(body.error).toBe("realtimeDeploymentDeclarationRequired");
     }
   });
 

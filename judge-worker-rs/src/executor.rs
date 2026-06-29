@@ -551,8 +551,7 @@ async fn execute_inner(
         // isn't killed prematurely. The verdict logic below still uses the
         // Docker-reported `duration_ms` (StartedAt → FinishedAt) for TLE so
         // the buffer doesn't change pass/fail semantics.
-        let run_timeout_ms =
-            effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
+        let run_timeout_ms = effective_time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS);
 
         let run_opts = DockerRunOptions {
             image: docker_image.to_string(),
@@ -611,17 +610,15 @@ async fn execute_inner(
         // reported runtime crosses the problem's time limit on its own.
         // The classification is delegated to `classify_test_case_verdict` so
         // it can be unit-tested without spinning up a real container.
-        let verdict = classify_test_case_verdict(
-            VerdictInputs {
-                timed_out: execution.timed_out,
-                duration_ms: execution.duration_ms,
-                effective_time_limit_ms,
-                oom_killed: execution.oom_killed,
-                exit_code: execution.exit_code,
-                output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
-                is_correct,
-            },
-        );
+        let verdict = classify_test_case_verdict(VerdictInputs {
+            timed_out: execution.timed_out,
+            duration_ms: execution.duration_ms,
+            effective_time_limit_ms,
+            oom_killed: execution.oom_killed,
+            exit_code: execution.exit_code,
+            output_limit_exceeded: execution.stdout_truncated || execution.stderr_truncated,
+            is_correct,
+        });
 
         let actual_output =
             reportable_test_case_output(verdict, &execution.stdout, &execution.stderr);
@@ -637,7 +634,7 @@ async fn execute_inner(
             status: verdict.as_str().to_string(),
             actual_output,
             execution_time_ms: execution.duration_ms,
-            memory_used_kb: memory_used_kb.into(),
+            memory_used_kb,
             runtime_error_type: if verdict == Verdict::RuntimeError {
                 runtime_error_type(&execution.stderr, execution.exit_code)
             } else {
@@ -716,7 +713,10 @@ mod tests {
         let mut inputs = base_inputs();
         inputs.output_limit_exceeded = true;
         inputs.is_correct = false;
-        assert_eq!(classify_test_case_verdict(inputs), Verdict::OutputLimitExceeded);
+        assert_eq!(
+            classify_test_case_verdict(inputs),
+            Verdict::OutputLimitExceeded
+        );
     }
 
     #[test]
@@ -899,12 +899,14 @@ async fn report_error(
     report_with_retry(
         client,
         config,
-        &submission.id,
-        &submission.claim_token,
-        status,
-        message,
-        &[],
-        worker_secret,
+        ReportRetry {
+            submission_id: &submission.id,
+            claim_token: &submission.claim_token,
+            status,
+            compile_output: message,
+            results: &[],
+            worker_secret,
+        },
     )
     .await;
 }
@@ -926,12 +928,14 @@ pub async fn report_panic(
     report_with_retry(
         client,
         config,
-        submission_id,
-        claim_token,
-        "runtime_error",
-        &format!("executor panicked: {panic_message}"),
-        &[],
-        worker_secret,
+        ReportRetry {
+            submission_id,
+            claim_token,
+            status: "runtime_error",
+            compile_output: &format!("executor panicked: {panic_message}"),
+            results: &[],
+            worker_secret,
+        },
     )
     .await;
 }
@@ -948,12 +952,14 @@ async fn report_result(
     report_with_retry(
         client,
         config,
-        &submission.id,
-        &submission.claim_token,
-        status,
-        compile_output,
-        results,
-        worker_secret,
+        ReportRetry {
+            submission_id: &submission.id,
+            claim_token: &submission.claim_token,
+            status,
+            compile_output,
+            results,
+            worker_secret,
+        },
     )
     .await;
 }
@@ -968,16 +974,25 @@ struct DeadLetterEntry<'a> {
     failed_at: String,
 }
 
-async fn report_with_retry(
-    client: &ApiClient,
-    config: &Config,
-    submission_id: &str,
-    claim_token: &str,
-    status: &str,
-    compile_output: &str,
-    results: &[TestResult],
-    worker_secret: Option<&str>,
-) {
+struct ReportRetry<'a> {
+    submission_id: &'a str,
+    claim_token: &'a str,
+    status: &'a str,
+    compile_output: &'a str,
+    results: &'a [TestResult],
+    worker_secret: Option<&'a str>,
+}
+
+async fn report_with_retry(client: &ApiClient, config: &Config, report: ReportRetry<'_>) {
+    let ReportRetry {
+        submission_id,
+        claim_token,
+        status,
+        compile_output,
+        results,
+        worker_secret,
+    } = report;
+
     for attempt in 0..3u32 {
         match client
             .report_result(

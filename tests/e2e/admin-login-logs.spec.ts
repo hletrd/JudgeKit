@@ -61,6 +61,11 @@ async function deleteLoginLogFixtures(prefix: string) {
     .where(sql`${loginEvents.attemptedIdentifier} like ${`${prefix}%`}`);
 }
 
+async function chooseOutcomeFilter(page: import("@playwright/test").Page, optionName: string) {
+  await page.getByRole("combobox", { name: "Outcome" }).click();
+  await page.getByRole("option", { name: optionName }).click();
+}
+
 test("admin can navigate, filter, and paginate login logs safely", async ({
   runtimeAdminPage: page,
   runtimeSuffix,
@@ -136,6 +141,8 @@ test("admin can navigate, filter, and paginate login logs safely", async ({
       .values([...paginationEvents, ...focusedEvents]);
 
     await test.step("show the admin sidebar entry and first filtered page", async () => {
+      await page.goto("/dashboard/admin", { waitUntil: "networkidle" });
+
       const loginLogsLink = page.getByRole("link", { name: "Login Logs" });
 
       await expect(loginLogsLink).toBeVisible();
@@ -164,7 +171,7 @@ test("admin can navigate, filter, and paginate login logs safely", async ({
     await test.step("apply a literal search plus outcome filter without exposing raw metadata", async () => {
       await page.goto(LOGIN_LOGS_PATH, { waitUntil: "networkidle" });
       await page.locator("#login-log-search").fill(literalNeedle);
-      await page.locator("#login-log-outcome").selectOption("invalid_credentials");
+      await chooseOutcomeFilter(page, "Invalid Credentials");
       await page.getByRole("button", { name: "Apply Filters" }).click();
 
       await expect(loginLogsTable).toContainText(`${literalNeedle}@example.com`);
@@ -178,7 +185,7 @@ test("admin can navigate, filter, and paginate login logs safely", async ({
 
     await test.step("render and filter policy-denied outcomes", async () => {
       await page.goto(LOGIN_LOGS_PATH, { waitUntil: "networkidle" });
-      await page.locator("#login-log-outcome").selectOption("policy_denied");
+      await chooseOutcomeFilter(page, "Policy Denied");
       await page.getByRole("button", { name: "Apply Filters" }).click();
 
       await expect(loginLogsTable).toContainText(`${prefix}-policy-denied@example.com`);

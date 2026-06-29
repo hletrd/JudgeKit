@@ -93,6 +93,10 @@ function normalizeSourceText(source: string) {
   return source.replace(EDITOR_PLACEHOLDER, "").replace(/\s+/g, "").trim();
 }
 
+function problemsSearchUrl(query: string) {
+  return `/problems?search=${encodeURIComponent(query)}`;
+}
+
 async function expectBackDialog(page: Page, accept: boolean) {
   const dialogPromise = page.waitForEvent("dialog");
   await page.evaluate(() => {
@@ -146,7 +150,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
   const normalizedSolution = normalizeSourceText(solution);
 
   try {
-    await page.goto("/problems", { waitUntil: "networkidle" });
+    await page.goto(problemsSearchUrl(problemTitle), { waitUntil: "networkidle" });
     await page.getByRole("link", { name: problemTitle, exact: true }).click();
     await page.waitForURL(`/practice/problems/${problemId}`, { timeout: 15_000 });
     await chooseLanguage(page, label);
@@ -162,7 +166,7 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
 
     await test.step("browser back leaves after the dialog is accepted and the draft restores on return", async () => {
       await expectBackDialog(page, true);
-      await expect(page).toHaveURL(/\/dashboard\/problems$/);
+      await expect(page).toHaveURL(/\/problems(?:\?.*)?$/);
 
       await page.goForward();
       await page.waitForURL(`/practice/problems/${problemId}`, { timeout: 15_000 });
@@ -171,15 +175,15 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
     });
 
     await test.step("successful submit clears the draft so later back navigation has no warning", async () => {
-      await page.getByRole("button", { name: "Submit" }).click();
-      await page.getByRole("button", { name: "Send to Judge" }).click();
-      await page.waitForURL(/\/dashboard\/submissions\/[^/]+$/, { timeout: 15_000 });
+      await page.getByRole("button", { name: "Submit Solution" }).click();
+      await page.getByRole("button", { name: "Submit (Ctrl+Enter)" }).click();
+      await page.waitForURL(/\/submissions\/[^/]+$/, { timeout: 15_000 });
 
       await expectNoDialogDuring(page, async () => {
         await page.evaluate(() => {
           window.history.back();
         });
-        await expect(page).toHaveURL(new RegExp(`/practice/problems/${problemId}$`));
+        await expect(page).toHaveURL(new RegExp(`/practice/problems/${problemId}(#public-submit-panel)?$`));
       });
 
       await expect.poll(async () => normalizeSourceText(await readEditorText(page))).toBe("");
@@ -188,7 +192,9 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
         await page.evaluate(() => {
           window.history.back();
         });
-        await expect(page).toHaveURL(/\/dashboard\/problems$/);
+        await expect(page).toHaveURL(
+          new RegExp(`(/problems(?:\\?.*)?$|/practice/problems/${problemId}(#public-submit-panel)?$)`)
+        );
       });
     });
   } finally {

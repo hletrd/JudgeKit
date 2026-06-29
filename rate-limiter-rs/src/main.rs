@@ -1,10 +1,10 @@
 use axum::{
+    Json, Router,
     extract::{DefaultBodyLimit, Request, State},
     http::StatusCode,
     middleware::{self, Next},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
@@ -149,10 +149,7 @@ async fn health() -> impl IntoResponse {
     Json(OkResponse { ok: true })
 }
 
-async fn check(
-    State(store): State<Store>,
-    Json(req): Json<CheckRequest>,
-) -> impl IntoResponse {
+async fn check(State(store): State<Store>, Json(req): Json<CheckRequest>) -> impl IntoResponse {
     let now = now_ms();
 
     let mut entry = store.entry(req.key).or_insert_with(|| RateLimitEntry {
@@ -283,10 +280,7 @@ async fn record_failure(
     )
 }
 
-async fn reset(
-    State(store): State<Store>,
-    Json(req): Json<ResetRequest>,
-) -> impl IntoResponse {
+async fn reset(State(store): State<Store>, Json(req): Json<ResetRequest>) -> impl IntoResponse {
     store.remove(&req.key);
     Json(OkResponse { ok: true })
 }
@@ -322,7 +316,10 @@ fn spawn_eviction_task(store: Store) {
 
 fn env_flag(name: &str, default: bool) -> bool {
     match std::env::var(name) {
-        Ok(value) => matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"),
+        Ok(value) => matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "1" | "true" | "yes" | "on"
+        ),
         Err(_) => default,
     }
 }
@@ -364,8 +361,7 @@ async fn main() {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -423,19 +419,18 @@ async fn main() {
 
     let protected = protected
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(auth_state.clone(), require_bearer))
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            require_bearer,
+        ))
         .with_state(store);
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .merge(protected);
+    let app = Router::new().route("/health", get(health)).merge(protected);
 
-    let addr: SocketAddr = format!("{host}:{port}")
-        .parse()
-        .unwrap_or_else(|_| {
-            warn!("invalid host/port, falling back to 127.0.0.1:{port}");
-            SocketAddr::from(([127, 0, 0, 1], port))
-        });
+    let addr: SocketAddr = format!("{host}:{port}").parse().unwrap_or_else(|_| {
+        warn!("invalid host/port, falling back to 127.0.0.1:{port}");
+        SocketAddr::from(([127, 0, 0, 1], port))
+    });
 
     info!(%addr, "rate limiter starting");
 
@@ -467,24 +462,48 @@ mod tests {
     async fn check_increments_and_blocks_at_limit() {
         let store: Store = Arc::new(DashMap::new());
 
-        let first: CheckResponse = decode_json(check(
-            State(Arc::clone(&store)),
-            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
-        ).await).await;
+        let first: CheckResponse = decode_json(
+            check(
+                State(Arc::clone(&store)),
+                Json(CheckRequest {
+                    key: "login:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(first.allowed);
         assert_eq!(first.remaining, 1);
 
-        let second: CheckResponse = decode_json(check(
-            State(Arc::clone(&store)),
-            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
-        ).await).await;
+        let second: CheckResponse = decode_json(
+            check(
+                State(Arc::clone(&store)),
+                Json(CheckRequest {
+                    key: "login:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(second.allowed);
         assert_eq!(second.remaining, 0);
 
-        let third: CheckResponse = decode_json(check(
-            State(store),
-            Json(CheckRequest { key: "login:user".into(), max_attempts: 2, window_ms: 60_000 }),
-        ).await).await;
+        let third: CheckResponse = decode_json(
+            check(
+                State(store),
+                Json(CheckRequest {
+                    key: "login:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(!third.allowed);
         assert_eq!(third.remaining, 0);
         assert!(third.retry_after.is_some());
@@ -494,40 +513,62 @@ mod tests {
     async fn record_failure_blocks_and_reset_clears_entry() {
         let store: Store = Arc::new(DashMap::new());
 
-        let first: RecordFailureResponse = decode_json(record_failure(
-            State(Arc::clone(&store)),
-            Json(RecordFailureRequest {
-                key: "auth:user".into(),
-                max_attempts: 2,
-                window_ms: 60_000,
-                block_ms: 1_000,
-            }),
-        ).await).await;
+        let first: RecordFailureResponse = decode_json(
+            record_failure(
+                State(Arc::clone(&store)),
+                Json(RecordFailureRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                    block_ms: 1_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(!first.blocked);
         assert!(first.blocked_until.is_none());
 
-        let second: RecordFailureResponse = decode_json(record_failure(
-            State(Arc::clone(&store)),
-            Json(RecordFailureRequest {
-                key: "auth:user".into(),
-                max_attempts: 2,
-                window_ms: 60_000,
-                block_ms: 1_000,
-            }),
-        ).await).await;
+        let second: RecordFailureResponse = decode_json(
+            record_failure(
+                State(Arc::clone(&store)),
+                Json(RecordFailureRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                    block_ms: 1_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(second.blocked);
         assert!(second.blocked_until.is_some());
 
-        let _: OkResponse = decode_json(reset(
-            State(Arc::clone(&store)),
-            Json(ResetRequest { key: "auth:user".into() }),
-        ).await).await;
+        let _: OkResponse = decode_json(
+            reset(
+                State(Arc::clone(&store)),
+                Json(ResetRequest {
+                    key: "auth:user".into(),
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(store.get("auth:user").is_none());
 
-        let after_reset: CheckResponse = decode_json(check(
-            State(store),
-            Json(CheckRequest { key: "auth:user".into(), max_attempts: 2, window_ms: 60_000 }),
-        ).await).await;
+        let after_reset: CheckResponse = decode_json(
+            check(
+                State(store),
+                Json(CheckRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
         assert!(after_reset.allowed);
         assert_eq!(after_reset.remaining, 1);
     }

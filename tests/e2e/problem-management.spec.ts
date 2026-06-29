@@ -27,6 +27,10 @@ let problemId: string;
 const problemTitle = `[E2E] Problem CRUD ${suffix}`;
 const updatedTitle = `[E2E] Problem CRUD Updated ${suffix}`;
 
+function problemsSearchUrl(query: string) {
+  return `/problems?search=${encodeURIComponent(query)}`;
+}
+
 async function loginAsAdmin(page: Page) {
   await loginWithCredentials(page, DEFAULT_CREDENTIALS.username, DEFAULT_CREDENTIALS.password, {
     allowPasswordChange: true,
@@ -84,11 +88,10 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 4: Problem appears in problems list", async () => {
-    await navigateTo(adminPage, "/problems");
+    await navigateTo(adminPage, problemsSearchUrl(problemTitle));
     await adminPage.waitForLoadState("networkidle");
 
-    const content = await adminPage.textContent("body");
-    expect(content).toContain(problemTitle);
+    await expect(adminPage.getByRole("link", { name: problemTitle, exact: true })).toBeVisible();
   });
 
   test("Step 5: Navigate to problem detail page", async () => {
@@ -158,12 +161,11 @@ test.describe.serial("Problem Management", () => {
   });
 
   test("Step 10: Deleted problem no longer appears in list", async () => {
-    await navigateTo(adminPage, "/problems");
+    await navigateTo(adminPage, problemsSearchUrl(updatedTitle));
     await adminPage.waitForLoadState("networkidle");
 
-    const content = await adminPage.textContent("body");
-    // The updated title should not appear (original title also should be gone)
-    expect(content).not.toContain(updatedTitle);
+    await expect(adminPage.getByRole("link", { name: updatedTitle, exact: true })).toHaveCount(0);
+    await expect(adminPage.getByText("No problems available.")).toBeVisible();
   });
 
   test("Step 11: Cleanup - close admin page", async () => {

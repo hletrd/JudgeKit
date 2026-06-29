@@ -99,7 +99,10 @@ async fn compute(Json(req): Json<ComputeRequest>) -> impl IntoResponse {
             max = MAX_SUBMISSIONS,
             "code-similarity /compute rejected: too many submissions"
         );
-        return (StatusCode::PAYLOAD_TOO_LARGE, Json(ComputeResponse { pairs: Vec::new() }))
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(ComputeResponse { pairs: Vec::new() }),
+        )
             .into_response();
     }
 
@@ -219,11 +222,12 @@ async fn main() {
     let protected = Router::new()
         .route("/compute", post(compute))
         .layer(DefaultBodyLimit::max(MAX_COMPUTE_BODY_BYTES))
-        .layer(middleware::from_fn_with_state(auth_state.clone(), require_bearer));
+        .layer(middleware::from_fn_with_state(
+            auth_state.clone(),
+            require_bearer,
+        ));
 
-    let app = Router::new()
-        .route("/health", get(health))
-        .merge(protected);
+    let app = Router::new().route("/health", get(health)).merge(protected);
 
     let addr: SocketAddr = format!("{host}:{port}").parse().unwrap_or_else(|_| {
         tracing::warn!("invalid host/port, falling back to 127.0.0.1:{port}");

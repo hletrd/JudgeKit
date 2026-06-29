@@ -1,5 +1,5 @@
 import { flushAuditBuffer } from "./events";
-import { stopSseCleanupTimer, stopSharedPollTimer } from "@/app/api/v1/submissions/[id]/events/route";
+import { stopSseCleanupTimer, stopSharedPollTimer } from "@/lib/submissions/events-stream-timers";
 
 type ProcessLike = {
   once: (event: string, listener: () => void) => unknown;

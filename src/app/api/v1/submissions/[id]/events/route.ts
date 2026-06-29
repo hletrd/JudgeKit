@@ -93,6 +93,7 @@ const CLEANUP_INTERVAL_MS = 60_000;
 declare global {
   var __sseCleanupTimer: ReturnType<typeof setInterval> | undefined;
   var __sseCleanupInitialized: boolean | undefined;
+  var __submissionEventsSharedPollTimer: ReturnType<typeof setInterval> | undefined;
 }
 
 // Cached stale threshold with 5-minute TTL to avoid calling getConfiguredSettings()
@@ -144,27 +145,6 @@ if (globalThis.__sseCleanupTimer && typeof globalThis.__sseCleanupTimer === "obj
   globalThis.__sseCleanupTimer.unref();
 }
 
-/**
- * Stop the SSE cleanup timer. Exported for test teardown.
- */
-export function stopSseCleanupTimer() {
-  if (globalThis.__sseCleanupTimer) {
-    clearInterval(globalThis.__sseCleanupTimer);
-    globalThis.__sseCleanupTimer = undefined;
-    globalThis.__sseCleanupInitialized = false;
-  }
-}
-
-/**
- * Stop the shared SSE poll timer. Exported for graceful shutdown.
- */
-export function stopSharedPollTimer() {
-  if (sharedPollTimer) {
-    clearInterval(sharedPollTimer);
-    sharedPollTimer = null;
-  }
-}
-
 // Graceful shutdown: in-memory connection tracking is cleaned up on process
 // exit automatically. The audit-buffer flush is handled by
 // registerAuditFlushOnShutdown() in node-shutdown.ts (called from
@@ -177,7 +157,6 @@ export function stopSharedPollTimer() {
 type PollCallback = (status: string) => void;
 
 const submissionSubscribers = new Map<string, Set<PollCallback>>();
-let sharedPollTimer: ReturnType<typeof setInterval> | null = null;
 
 function subscribeToPoll(submissionId: string, callback: PollCallback): void {
   let subs = submissionSubscribers.get(submissionId);
@@ -188,7 +167,7 @@ function subscribeToPoll(submissionId: string, callback: PollCallback): void {
   subs.add(callback);
 
   // Start the shared poll timer if not already running
-  if (!sharedPollTimer) {
+  if (!globalThis.__submissionEventsSharedPollTimer) {
     startSharedPollTimer();
   }
 }
@@ -202,21 +181,22 @@ function unsubscribeFromPoll(submissionId: string, callback: PollCallback): void
   }
 
   // Stop the timer if no more subscribers
-  if (submissionSubscribers.size === 0 && sharedPollTimer) {
-    clearInterval(sharedPollTimer);
-    sharedPollTimer = null;
+  if (submissionSubscribers.size === 0 && globalThis.__submissionEventsSharedPollTimer) {
+    clearInterval(globalThis.__submissionEventsSharedPollTimer);
+    globalThis.__submissionEventsSharedPollTimer = undefined;
   }
 }
 
 function startSharedPollTimer(): void {
   const configuredInterval = getConfiguredSettings().ssePollIntervalMs;
   const pollIntervalMs = Math.max(1000, configuredInterval);
-  sharedPollTimer = setInterval(() => {
+  globalThis.__submissionEventsSharedPollTimer = setInterval(() => {
     void sharedPollTick();
   }, pollIntervalMs);
   // Allow the process to exit even if the timer is still active
-  if (sharedPollTimer && typeof sharedPollTimer === "object" && "unref" in sharedPollTimer) {
-    sharedPollTimer.unref();
+  const timer = globalThis.__submissionEventsSharedPollTimer;
+  if (timer && typeof timer === "object" && "unref" in timer) {
+    timer.unref();
   }
 }
 

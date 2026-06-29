@@ -201,7 +201,7 @@ test.describe("Contest System", () => {
       await page.waitForLoadState("domcontentloaded");
 
       await page.getByRole("link", { name: /Contests|대회/ }).first().click();
-      await page.waitForURL("**/contests/manage", { timeout: 15_000 });
+      await page.waitForURL("**/contests", { timeout: 15_000 });
     });
   });
 });

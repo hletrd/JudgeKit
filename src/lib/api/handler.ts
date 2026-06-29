@@ -67,6 +67,7 @@ export type HandlerConfig<T = undefined> = {
 };
 
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+type NextRouteContext = { params: Promise<Record<string, string>> };
 
 /**
  * Factory that wraps a Next.js App Router route handler with common middleware:
@@ -86,9 +87,9 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
  * ```
  */
 // Overload: when schema is provided, body is typed as the schema output
-export function createApiHandler<T>(config: HandlerConfig<T> & { schema: ZodSchema<T> }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<Response>;
+export function createApiHandler<T>(config: HandlerConfig<T> & { schema: ZodSchema<T> }): (req: NextRequest, routeCtx: NextRouteContext) => Promise<Response>;
 // Overload: when no schema, body is undefined
-export function createApiHandler(config: HandlerConfig<undefined> & { schema?: undefined }): (req: NextRequest, routeCtx?: { params: Promise<Record<string, string>> }) => Promise<Response>;
+export function createApiHandler(config: HandlerConfig<undefined> & { schema?: undefined }): (req: NextRequest, routeCtx: NextRouteContext) => Promise<Response>;
 // Implementation
 export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
   const {
@@ -101,7 +102,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
 
   return async function apiHandler(
     req: NextRequest,
-    routeCtx?: { params: Promise<Record<string, string>> }
+    routeCtx?: NextRouteContext
   ): Promise<Response> {
     // Initialize per-request AsyncLocalStorage cache for recruiting context.
     // This ensures that getRecruitingAccessContext deduplicates DB queries

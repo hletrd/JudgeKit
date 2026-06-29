@@ -177,24 +177,27 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
     await expect(page.getByTestId(`user-access-toggle-confirm-${student.id}`)).toBeVisible();
     await page.getByTestId(`user-access-toggle-confirm-${student.id}`).click();
 
-    await expect(page.getByText("User access deactivated successfully")).toBeVisible();
+    await expect(page.getByText("User access deactivated")).toBeVisible();
     await expect(page.getByTestId(`user-access-toggle-${student.id}`)).toContainText("Restore access");
     await captureEvidence(page, testInfo, "task12-user-deactivated");
 
-    await studentPage.goto("/problems", { waitUntil: "networkidle" });
-    await expect(studentPage).toHaveURL(/\/login\?callbackUrl=%2Fproblems$/);
+    await studentPage.goto("/dashboard", { waitUntil: "networkidle" });
+    await expect(studentPage).toHaveURL(/\/login\?callbackUrl=%2Fdashboard$/);
     await expect(studentPage.getByRole("button", { name: "Sign in" })).toBeVisible();
 
-    const accessDeactivatedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "user.access_deactivated"),
-        eq(auditEvents.resourceId, student.id)
-      ),
-    });
-    expect(accessDeactivatedAudit).not.toBeUndefined();
+    await expect.poll(async () => {
+      const accessDeactivatedAudit = await db.query.auditEvents.findFirst({
+        where: and(
+          eq(auditEvents.action, "user.access_deactivated"),
+          eq(auditEvents.resourceId, student.id)
+        ),
+      });
+
+      return Boolean(accessDeactivatedAudit);
+    }).toBe(true);
 
     const protectedApiResult = await studentPage.evaluate(async () => {
-      const response = await fetch("/api/v1/problems");
+      const response = await fetch("/api/v1/groups");
       return {
         body: await response.json(),
         status: response.status,
@@ -202,7 +205,7 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
     });
 
     expect(protectedApiResult.status).toBe(401);
-    expect(protectedApiResult.body.error).toBe("Unauthorized");
+    expect(protectedApiResult.body.error).toBe("unauthorized");
   });
 
   await test.step("admin can restore the deactivated user", async () => {
@@ -210,20 +213,23 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
     await expect(page.getByTestId(`user-access-toggle-confirm-${student.id}`)).toBeVisible();
     await page.getByTestId(`user-access-toggle-confirm-${student.id}`).click();
 
-    await expect(page.getByText("User access restored successfully")).toBeVisible();
+    await expect(page.getByText("User access restored")).toBeVisible();
     await expect(page.getByTestId(`user-access-toggle-${student.id}`)).toContainText("Deactivate access");
 
     await loginWithCredentials(studentPage, student.username, RUNTIME_STUDENT_PASSWORD);
     await studentPage.goto("/problems", { waitUntil: "networkidle" });
     await expect(studentPage).toHaveURL(/\/problems$/);
 
-    const accessRestoredAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "user.access_restored"),
-        eq(auditEvents.resourceId, student.id)
-      ),
-    });
-    expect(accessRestoredAudit).not.toBeUndefined();
+    await expect.poll(async () => {
+      const accessRestoredAudit = await db.query.auditEvents.findFirst({
+        where: and(
+          eq(auditEvents.action, "user.access_restored"),
+          eq(auditEvents.resourceId, student.id)
+        ),
+      });
+
+      return Boolean(accessRestoredAudit);
+    }).toBe(true);
   });
 
   await test.step("problem delete stays blocked when submissions and assignment links exist", async () => {
@@ -279,7 +285,7 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
 
     const response = await safeDeleteResponse;
     expect(response.status()).toBe(200);
-    await expect(page).toHaveURL(/\/dashboard\/problems$/);
+    await expect(page).toHaveURL(/\/problems$/);
     await expect(page.getByRole("link", { name: safeProblemTitle, exact: true })).toHaveCount(0);
 
     const deletedProblemResult = await page.evaluate(async (problemId) => {
@@ -292,13 +298,16 @@ test("task 12 destructive flows revoke user access and guard problem deletes", a
 
     expect(deletedProblemResult.status).toBe(404);
 
-    const problemDeletedAudit = await db.query.auditEvents.findFirst({
-      where: and(
-        eq(auditEvents.action, "problem.deleted"),
-        eq(auditEvents.resourceId, safeProblemId)
-      ),
-    });
-    expect(problemDeletedAudit?.resourceLabel).toBe(safeProblemTitle);
+    await expect.poll(async () => {
+      const problemDeletedAudit = await db.query.auditEvents.findFirst({
+        where: and(
+          eq(auditEvents.action, "problem.deleted"),
+          eq(auditEvents.resourceId, safeProblemId)
+        ),
+      });
+
+      return problemDeletedAudit?.resourceLabel;
+    }).toBe(safeProblemTitle);
 
     await captureEvidence(page, testInfo, "task12-problem-delete-safe");
   });

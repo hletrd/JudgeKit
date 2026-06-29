@@ -114,6 +114,7 @@ describe("SystemSettingsForm", () => {
 
     await user.clear(screen.getByLabelText("siteTitle"));
     await user.type(screen.getByLabelText("siteTitle"), "JudgeKit Updated");
+    await user.type(screen.getByLabelText("reconfirmLabel"), "admin-password");
     await user.click(screen.getByRole("button", { name: "save" }));
 
     await waitFor(() => {
@@ -136,6 +137,7 @@ describe("SystemSettingsForm", () => {
     const user = userEvent.setup();
     renderForm("Not/A/RealZone");
 
+    await user.type(screen.getByLabelText("reconfirmLabel"), "admin-password");
     await user.click(screen.getByRole("button", { name: "save" }));
 
     expect(updateSystemSettingsMock).not.toHaveBeenCalled();

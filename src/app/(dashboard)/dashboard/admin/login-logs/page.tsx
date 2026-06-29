@@ -264,6 +264,7 @@ export default async function AdminLoginLogsPage({
                 {t("filters.outcomeLabel")}
               </label>
               <FilterSelect
+                id="login-log-outcome"
                 name="outcome"
                 defaultValue={outcomeFilter}
                 placeholder={t("filters.allOutcomes")}

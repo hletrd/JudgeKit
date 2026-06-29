@@ -11,8 +11,12 @@ describe("OG route implementation", () => {
     const source = read("src/app/og/route.tsx");
 
     expect(source).toContain('export const runtime = "nodejs"');
-    expect(source).toContain('export const contentType = "image/png"');
     expect(source).toContain('export const revalidate = 86400');
+    expect(source).toContain('import { ImageResponse } from "next/og"');
+    expect(source).toContain("const imageSize = {");
+    expect(source).toContain("width: 1200");
+    expect(source).toContain("height: 630");
+    expect(source).toContain("new ImageResponse(");
   });
 
   it("keeps the polished OG card styling cues in place", () => {

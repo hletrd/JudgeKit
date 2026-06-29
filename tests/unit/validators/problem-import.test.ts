@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { problemImportSchema } from "@/app/api/v1/problems/import/route";
+import { problemImportSchema } from "@/lib/validators/problem-import";
 
 const VALID_DESCRIPTION = [
   "### Problem",

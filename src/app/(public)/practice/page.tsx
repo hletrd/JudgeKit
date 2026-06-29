@@ -77,7 +77,7 @@ export async function generateMetadata({
   searchParams,
 }: {
   searchParams?: Promise<{ page?: string; pageSize?: string; difficulty?: string }>;
-} = {}): Promise<Metadata> {
+}): Promise<Metadata> {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const pageSize = normalizePageSize(resolvedSearchParams?.pageSize);
   const requestedPage = normalizePage(resolvedSearchParams?.page);

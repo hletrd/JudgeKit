@@ -51,9 +51,10 @@ test("admin audit logs render server-action and route mutation events", async ({
 
   try {
     await test.step("create an audit event from a server action", async () => {
-    await page.goto("/dashboard/admin/settings", { waitUntil: "networkidle" });
-    await page.locator("#site-title").fill(auditTitle);
-    await page.getByRole("button", { name: "Save" }).click();
+      await page.goto("/dashboard/admin/settings", { waitUntil: "networkidle" });
+      await page.locator("#site-title").fill(auditTitle);
+      await page.locator("#system-settings-current-password").fill(RUNTIME_ADMIN_INITIAL_PASSWORD);
+      await page.getByRole("button", { name: "Save" }).click();
 
       await expect(page.getByText("System settings updated")).toBeVisible();
       await expect.poll(async () => {

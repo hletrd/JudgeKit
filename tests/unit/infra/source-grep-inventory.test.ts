@@ -231,7 +231,11 @@ describe("source-grep test inventory", () => {
     //     streams via measureEntryStreamedSize (no allocate-then-check .async)
     //     so a zip-bomb entry is rejected before its full payload is allocated
     //     (NEW-M8 / C3-N8).
-    const DOCUMENTED_BASELINE = 161;
+    // Bumped 161 -> 162 (2026-06-30, cycle-1 remediation):
+    //   - tests/unit/instrumentation-build-phase.test.ts pins that Next
+    //     production builds do not execute runtime instrumentation startup
+    //     jobs or database startup work.
+    const DOCUMENTED_BASELINE = 162;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
