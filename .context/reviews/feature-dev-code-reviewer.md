@@ -1,119 +1,88 @@
-# Feature-Dev Code Reviewer — Cycle 4
+# Deployment / Storage Review - cycle 1/100
 
-Repo: `/Users/hletrd/flash-shared/judgekit` (Next.js 16 + Drizzle/PostgreSQL + Rust judge worker).
-Scope: regression-check cycle-3 fixes (NEW-1, AGG-15), then deep review of the worker + judge path and net-new high-impact issues.
-Confidence scale: confirmed / likely / needs-manual-validation.
+Scope: `deploy-docker.sh`, legacy/auxiliary deploy scripts, Docker compose files, target env files, Docker image management API paths, storage/backup/volume scripts, deployment docs, and tests. Lens: safe target-machine storage handling before builds/deploys, safe Docker cleanup, never deleting DB/user-data volumes, target resolution, per-target env correctness, deployment command safety, and docs/tests drift.
 
----
+## Findings
 
-## (a) Regression check — both cycle-3 fixes VERIFIED LANDED
+### 1. High - bare `deploy-docker.sh` still resolves to a stale/unsafe target mix
 
-### NEW-1 — runner.rs workspace + source-file hardening — CONFIRMED CORRECT
-`judge-worker-rs/src/runner.rs:837-854` (workspace) and `:872-881` (source file):
+**Citations:** `.env.deploy:1-13`, `deploy-docker.sh:119-136`, `deploy-docker.sh:195-199`, `deploy-docker.sh:239-240`, `deploy-docker.sh:753-817`, `CLAUDE.md:9-11`
 
-- Workspace: `chown(workspace_dir, 65534, 65534)` → on success `0o700`, on chown failure logs a warning and falls back to `0o777`. Matches the executor pattern.
-- Source file: `chown(&source_path, 65534, 65534).is_ok()` → `0o600`, else `0o666` fallback.
-- The fallback semantics (`0o777` / `0o666` only when chown fails, i.e. rootless dev) are correct: in production (worker has CAP_CHOWN) the dirs/files are `0o700`/`0o600` owned by 65534, so a non-root host process as a different uid cannot read in-flight artifacts.
-- Consistent with the reference pattern at `executor.rs:331-360` (workspace chown → `0o700`/`0o777`). The runner sidecar is no longer the world-readable sibling.
+The base `.env.deploy` says `oj-internal.maum.ai` but sets `REMOTE_HOST=algo.xylolabs.com` and `DOMAIN=oj-internal.maum.ai`, while leaving the integrated-worker defaults active. `deploy-docker.sh` sources `.env.deploy` unconditionally and only sources `.env.deploy.${DEPLOY_TARGET}` when `DEPLOY_TARGET` is set. With no target override, `SKIP_LANGUAGES=false`, `INCLUDE_WORKER=true`, and `BUILD_WORKER_IMAGE=auto -> true`, so the script can build the worker and the full language image set on `algo.xylolabs.com`, directly violating the repo rule that algo is app/DB/nginx only.
 
-Verdict: fix landed correctly and is internally consistent with the executor.
+**Failure scenario:** an operator runs `./deploy-docker.sh` relying on the checked-in deploy env. The script connects to `algo.xylolabs.com`, configures nginx/AUTH_URL for `oj-internal.maum.ai`, and starts no-cache app/worker/language builds on the app server. This is exactly the storage class that previously filled algo's root filesystem before post-deploy pruning could run.
 
-### AGG-15 — main.rs catch_unwind → runtime_error + dead-letter + active_tasks decrement — CONFIRMED CORRECT
-`judge-worker-rs/src/main.rs:559-590`:
+**Suggested fix:** make `.env.deploy` a non-target template with no `REMOTE_HOST`/`DOMAIN`, or fail closed unless `DEPLOY_TARGET` is one of `algo`, `worv`, `auraedu` or explicit `REMOTE_HOST`/`DOMAIN` are provided. Add a hard deploy-script validation: if `REMOTE_HOST=algo.xylolabs.com`, require `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, and `INCLUDE_WORKER=false` before any Docker build starts. Add a unit/static test that rejects `oj-internal.maum.ai` in active deploy env defaults and asserts the three allowed targets are the only shortcuts.
 
-- `submission_id` and `claim_token` are captured **before** `submission` is moved into `executor::execute(...)` (lines 566-568), so they are available in the panic branch. Correct ordering.
-- `std::panic::AssertUnwindSafe(exec_fut).catch_unwind().await` — on panic, calls `executor::report_panic(...)` which routes through `report_with_retry` (`executor.rs:918-937` → `:971`) → 3 attempts with exponential backoff → on exhaustion, dead-letter JSON file (`executor.rs:1009-1061`) + `prune_dead_letter_dir(..., 1000)`. Verdict is `"runtime_error"`. Correct.
-- `active_tasks.fetch_sub(1, Relaxed)` runs at line 589 on **every** exit path of the task (normal completion and panic recovery), so the gauge cannot leak on panic. Correct.
-- `panic_payload_message` (`main.rs:22-29`) handles `String`, `&'static str`, and falls back to `"<non-string panic>"`. Correct.
+**Confidence:** High.
 
-Verdict: fix landed correctly; the panic path now produces a real verdict instead of silently dropping the submission and skewing `active_tasks`.
+### 2. High - dedicated worker builds have no pre-build disk guard
 
----
+**Citations:** `deploy-docker.sh:513-541`, `deploy-docker.sh:1156-1222`, `.env.deploy.algo:31-36`, `.env.deploy.worv:30-35`
 
-## (b) Worker + judge path — deep review
+The app host has a pre-build disk guard that prunes dangling images/build cache/history and aborts above the hard threshold. The dedicated worker path configured by `WORKER_HOSTS` does not run that guard before rsyncing, no-cache building `judgekit-judge-worker:latest`, and restarting the worker. Cleanup on the worker only runs after the new worker is proven up.
 
-### F1 — Function-judging int64 precision is broken end-to-end — HIGH (confirmed)
+**Failure scenario:** `worker-0.algo.xylolabs.com` or `worker.test.worv.ai` is already near full from previous BuildKit cache or language-image rebuilds. The app deploy succeeds, then the worker no-cache build fills the worker disk and fails before the post-build prune. The app is now on new code, the worker remains stale or down, and judging fails until manual cleanup.
 
-**Root cause (server layer):** `src/lib/judge/function-judging/serialization.ts:6`
-```ts
-case "int": case "long": return String(Math.trunc(Number(v)));
-```
-`Number(v)` coerces to IEEE-754 float64, which cannot represent every int64. Every integer with magnitude `> 2^53` (9007199254740992) is **silently rounded at encode time**, on the app server, before the worker or any adapter ever sees the value. This `encodeScalar` is reached by both the stdin args path (`encodeArgs` → `encodeJson` → `encodeScalar`) and the return-value path (`encodeValue` → `encodeJson` → `encodeScalar`).
+**Suggested fix:** factor the app-host disk preflight into a reusable function and run it for each `WORKER_HOSTS` entry before rsync/build/restart. It should check the worker's Docker storage filesystem, run only safe cleanup (`docker image prune -f`, `docker builder prune -af`, `docker buildx history rm --all`; no volume prune on worker hosts), and abort before building if still above `DEPLOY_DISK_HARD_PCT`. Add a static test that the `WORKER_HOSTS` loop invokes the same preflight before `docker build --no-cache`.
 
-Concrete: author enters `9007199254740993` for an `int`/`long` param → serialized stdin arg becomes `9007199254740992`. Enter `9223372036854775807` (LLONG_MAX) → `Number()` rounds to `9223372036854775808`, which is **outside the int64 range** — the harness then receives a value that cannot be parsed by a strict int64 reader.
+**Confidence:** High.
 
-**Secondary (adapter layer):** Even if `serialization.ts` were fixed to emit full-precision integers, three adapters would still corrupt them because they parse ints through `double`:
-- C++ — `adapters/cpp.ts:47` `readInt()` → `(long long)llround(stod(...))`
-- Java — `adapters/java.ts:75` `readLong()` → `Math.round(Double.parseDouble(number()))`
-- C#  — `adapters/csharp.ts:78-80` `ReadLong()` → `(long)Math.Round(double.Parse(Number(), ...))`
+### 3. High - admin Docker image builds can start while the target disk is already unsafe
 
-For comparison, the other adapters are exact for the in-text token: Python uses `json.loads` (arbitrary precision), Go uses `json.Unmarshal` into `int64` (full int64 range). JS/TS use `JSON.parse` → `Number` (inherently float64; not fixable without `BigInt`, acceptable to document).
+**Citations:** `src/app/api/v1/admin/docker/images/build/route.ts:119-141`, `src/lib/docker/client.ts:504-539`, `judge-worker-rs/src/runner.rs:375-395`, `judge-worker-rs/src/runner.rs:397-416`, `judge-worker-rs/src/runner.rs:659-694`, `judge-worker-rs/src/runner.rs:696-718`, `tests/unit/api/admin-docker-images-build.route.test.ts:224-253`
 
-**Impact (why this is the highest-impact net-new finding):**
-1. *Test-case fidelity loss:* for any function problem whose `int`/`long` parameters or return exceed 2^53, the value actually judged is not the value the author wrote. A boundary test at LLONG_MAX becomes an out-of-range token.
-2. *False verdicts:* when `expectedOutput` is hand-authored for the intended full-precision value (or for a return that prints full-precision from e.g. C++ `std::to_string(long long)`), but the stdin arg is rounded, a correct submission computes on the wrong input and gets a wrong-answer verdict. The reverse (accepting a solution that is wrong on the real input) is also possible.
-3. *Harness fragility:* once a rounded token exceeds int64 range, the C++/Java/C# readers can throw/out-of-range and the submission dies with a misleading runtime error.
+The language-management build endpoint validates the language/image/Dockerfile and then immediately calls `buildDockerImage`. The TypeScript client forwards to `/docker/build`, and the Rust worker runs `docker build` directly. The worker exposes `/docker/disk-usage`, and the admin image listing displays disk info, but there is no server-side threshold, safe cleanup, or fail-closed check before starting a build. The current tests cover validation and audit behavior, not disk-pressure behavior.
 
-**Fix (both layers must change together, or fixing one alone creates cross-language divergence):**
-- `serialization.ts:6`: serialize `int`/`long` without `Number()`. If the source value arrives as a JS `Number` it is already lossy at the boundary, so the input must be carried as a `string`/`bigint` through the authoring → DB → encode path and emitted verbatim, or validated/rejected at authoring time with a clear message when `!Number.isSafeInteger(v)`.
-- `adapters/cpp.ts:47`: replace `llround(stod(...))` with `strtoll`/`std::stoll` over an integer-only token.
-- `adapters/java.ts:75`: replace `Math.round(Double.parseDouble(number()))` with `Long.parseLong(...)` (integer token).
-- `adapters/csharp.ts:78-80`: replace `Math.Round(double.Parse(...))` with `long.Parse(..., InvariantCulture)`.
-- Document that JS/TS remain bounded to `Number.MAX_SAFE_INTEGER` for function judging.
+**Failure scenario:** an admin sees a language marked "Not built" and clicks Build while the worker/app host is at 90-95% disk. Building a large image such as Swift, Rust, R, or Haskell fills Docker storage. On an integrated host this can also affect PostgreSQL and app writes; on a dedicated worker it can take judging offline. Because the guard is not server-side, a direct worker API call with the runner token bypasses any UI warning.
 
-Confidence: confirmed (the `Number()` truncation is a mathematical certainty; code paths traced through `encodeArgs`/`encodeValue` and all four adapters).
+**Suggested fix:** enforce disk policy in the build execution path, preferably in the Rust worker before `docker build` so all callers are covered. Use configurable warn/hard thresholds, run the same safe prune sequence once at warn level, then reject the build at hard level with a clear error. The Next.js route can preflight too for better UX, but the worker must be authoritative. Add tests for "build rejected at hard disk threshold" and "safe cleanup attempted once before build".
 
-### F2 — Orphan sweep never reaps running `oj-*` containers; no startup sweep — MEDIUM (confirmed)
+**Confidence:** High.
 
-`judge-worker-rs/src/docker.rs:642-681` `cleanup_orphaned_containers()` filters `status=exited` only. It is invoked exclusively from the main loop every 300 s (`main.rs:505-508`) — never at startup. The normal-path cleanup in `run_docker_once` (`docker.rs:499-541`) does `kill_container` + `remove_container(-f)` and the graceful-shutdown path awaits in-flight tasks to completion (`main.rs:625-638`), so the happy paths self-clean. The gap is the ungraceful path:
+### 4. High - split-host runner URL from target env files is ignored on first deploy and never corrected
 
-- A forced restart (deploy SIGTERM → SIGKILL after a short grace, OOM-kill of the worker, host reboot, or a worker panic outside `catch_unwind`) leaves every in-flight `oj-<uuid>` container in `running` state with no live parent to kill it. Because the orphan sweep matches `status=exited` only, and there is no startup sweep, those running containers are **never reaped** — they accumulate indefinitely, each pinning its `--memory`/`--pids-limit`/CPU share until manual `docker rm -f`. On a worker that runs N concurrent jobs and is redeployed, that is N leaked containers per deploy.
+**Citations:** `.env.deploy.worv:19-21`, `.env.deploy.algo:21-22`, `deploy-docker.sh:722-727`, `deploy-docker.sh:731-736`, `docker-compose.production.yml:101-109`
 
-This matches and sharpens the prior R2 note: severity is MEDIUM, not low, because the trigger (a redeploy or worker crash with in-flight jobs) is a normal operational event, not a double-failure.
+The split-host target files declare `COMPILER_RUNNER_URL`, with `test.worv.ai` requiring the worker's VPC private IP. After syncing `.env.production`, `deploy-docker.sh` ignores the sourced `COMPILER_RUNNER_URL` and backfills a hardcoded `http://host.docker.internal:3001` whenever `INCLUDE_WORKER!=true`. If the key already exists, `ensure_env_literal` does nothing, so a stale or wrong remote value is only warned about when it equals the local default.
 
-**Fix:** add a one-shot startup sweep, before the main loop begins polling, that force-removes **all** `oj-*` containers regardless of status (e.g. `docker ps -a --filter name=oj- -q | xargs docker rm -f`). At startup there are no in-flight judgements, so nuking every `oj-*` container is safe. The existing every-5-min exited-only sweep can stay as-is (reaping `running` mid-loop would race in-flight judgements). Optionally add `kill_on_drop(true)` on the `docker run` child so a dropped handle also tears down the container.
+**Failure scenario:** a fresh `DEPLOY_TARGET=worv` app deploy creates a remote `.env.production` without `COMPILER_RUNNER_URL`; the script backfills `host.docker.internal` instead of `http://172.31.62.69:3001`. The app starts healthy but cannot reach the dedicated worker runner, so submissions and Docker image management fail despite the correct `.env.deploy.worv` file.
 
-Confidence: confirmed (sweep filter and sole call site verified; graceful-shutdown path verified to self-clean only when allowed to drain).
+**Suggested fix:** use the target-provided value: `ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_URL:-http://host.docker.internal:3001}"`. For split-host targets, fail if the resolved value is missing or still equals the local default unless the target explicitly opted into it. Consider updating mismatched remote values for known targets, or at least failing closed with a remediation command. If algo really depends on `host.docker.internal` from inside Linux Docker, add the required `extra_hosts: ["host.docker.internal:host-gateway"]` or switch to a routable worker address.
 
-### F3 — `pids_limit` is a dead if/else; both branches `"128"` — LOW-MEDIUM (likely)
+**Confidence:** High.
 
-`judge-worker-rs/src/docker.rs:319-323`:
-```rust
-let pids_limit = if options.phase == Phase::Compile {
-    "128"
-} else {
-    "128"
-};
-```
-The preceding comment (lines 317-318) explicitly says “VM-based languages (JVM, BEAM, .NET, pwsh) spawn many threads even at runtime, so the run-phase limit must accommodate them,” yet the run branch is also `128`. Either the run-phase value was meant to be higher (e.g. 256/512) and was left at 128, or the branch is purely vestigial. In the first reading, JVM/.NET/Erlang submissions with GC+JIT+application threads can plausibly exceed 128 processes/threads (Linux `pids` cgroup counts threads) and fail with `Resource temporarily unavailable` → spurious runtime error for VM-language submissions. In the second reading it is harmless dead code. Either way the code does not match its own comment.
+### 5. Medium - standalone worker/image rebuild scripts can fill target disks before their safe prune runs
 
-**Fix:** pick one — raise the run-phase `pids_limit` for VM-based languages (keyed off `needs_exec_tmp` or a per-language flag), or delete the degenerate if/else and leave a single `let pids_limit = "128";` with a corrected comment.
+**Citations:** `scripts/rebuild-worker-language-images.sh:92-118`, `docs/judge-worker-incident-runbook.md:106-122`, `scripts/deploy-worker.sh:87-93`, `scripts/deploy-worker.sh:154-161`, `deploy-test-backends.sh:139-142`
 
-Confidence: likely (dead branch is certain; the *intent* to raise the run-phase limit is inferred from the comment — needs manual validation on whether 128 actually binds for the JVM/.NET images in practice).
+The incident runbook recommends `scripts/rebuild-worker-language-images.sh` for rebuilding the full worker language set, but that script pulls/builds each image and only prunes after all builds finish. `scripts/deploy-worker.sh` similarly streams `docker load` and optional language images to the worker before any disk check. `deploy-test-backends.sh` performs a remote app build without the hardened pre-build disk guard used in `deploy-docker.sh`.
 
-### AGG-43/45 — C++ family breadth in function judging — re-confirmed LOW / closed by design
+**Failure scenario:** a recovery run on a half-full worker tries `LANGUAGE_FILTER=all`; the first large images consume the remaining Docker storage, causing later builds to fail and leaving the host in a worse state. The final prune never recovers enough because the script may exit or the disk may already be full.
 
-The registry (`src/lib/judge/function-judging/registry.ts:10-18`) registers only `cpp23`. `languages.ts` also defines `cpp20` (line 220) and `clang_cpp23` (line 646), neither of which has an adapter, so `supportsFunctionJudging("cpp20" | "clang_cpp23")` is false. Unlike a latent bug, this is gated cleanly end-to-end: the function-problem language picker filters to `FUNCTION_JUDGING_LANGUAGES` (`problem-submission-form.tsx:84`), the submission API rejects unsupported languages with a 400 (`api/v1/submissions/route.ts:265-270`), and authoring validation requires at least one function-judging-capable enabled language (`validators/problem-management.ts:106`). Users never reach a confusing compile error. Closing as low/informational: if parity for `cpp20`/`clang_cpp23` is desired, point their registry key at the existing `cppAdapter` (the generated harness is standard C++ that all three front-ends compile).
+**Suggested fix:** share a `safe_docker_disk_preflight` shell helper across these scripts. Run it before any `docker build`, `docker load`, or `--sync-images` loop, and optionally between very large language builds. Document the same thresholds as `deploy-docker.sh`. Add bash/static tests that each build/load entrypoint calls the helper before the first Docker write-heavy operation.
 
-### Executor run loop — no defects found
-Spot-checked the full judge flow (app queues → worker claims → executes → reports):
-- Fail-fast vs IOI partial scoring is correct: `executor.rs:648-654` breaks on first non-Accepted **unless** `submission.run_all_test_cases`, and `:658-662` derives the final status from the first non-Accepted result — so the partial-score denominator is not truncated.
-- TLE classification is delegated to the unit-tested `classify_test_case_verdict` using Docker-reported `duration_ms`, with the wall-clock kill timeout padded by `DOCKER_RUN_OVERHEAD_BUDGET_MS` so the buffer does not flip pass/fail semantics (`executor.rs:546-624`).
-- Empty-test-cases guard (`executor.rs:515-527`) and over-ceiling time-limit clamp with observability warn (`:529-540`) are correct.
-- Per-test cleanup via `temp_dir` drop on function exit is correct.
+**Confidence:** High.
 
----
+### 6. Medium - disk checks report `/`, not necessarily Docker's data-root filesystem
 
-## (c) Net-new — nothing else at high impact
+**Citations:** `deploy-docker.sh:524`, `scripts/docker-disk-cleanup.sh:30`, `src/lib/docker/client.ts:375-386`, `judge-worker-rs/src/runner.rs:397-416`
 
-After the sweep above, no additional high-impact correctness/maintainability issue in the worker + judge path. Minor note (not a finding): the executor leaves the source file at `0o666` unconditionally (`executor.rs:392-410`) rather than mirroring the runner’s `chown → 0o600 / 0o666` source hardening. This is acceptable in production because the parent workspace dir is `0o700` owned by 65534 (the `0o666` file is unreachable to other host uids through the locked parent), so it is a consistency nit, not a security gap.
+Every disk-usage implementation checks `df /`. That is accurate only when Docker's data root lives on the root filesystem. If a target moves Docker to a separate mount, for example `/var/lib/docker` or another `DockerRootDir`, the preflight can pass while the Docker filesystem is already full.
 
----
+**Failure scenario:** `/` is 45% used but `/var/lib/docker` is 94% used. `deploy-docker.sh` reports the disk preflight as OK and starts a no-cache build, which fails mid-layer and leaves the Docker mount at 100%.
 
-## Priority order for the next plan
+**Suggested fix:** resolve Docker's actual root with `docker info --format '{{.DockerRootDir}}'` and run `df` on that path. Keep `/` as a fallback if Docker info fails. Return both root and Docker-root usage in admin APIs/UI so operators can distinguish app filesystem pressure from Docker storage pressure.
 
-1. **F1** (HIGH) — function-judging int64 precision: fix `serialization.ts:6` plus the C++/Java/C# adapter int readers as one coordinated change; add a regression test with an `int` value `> 2^53` run cross-language.
-2. **F2** (MEDIUM) — startup `oj-*` container sweep (all statuses) + optional `kill_on_drop`.
-3. **F3** (LOW-MEDIUM) — resolve the `pids_limit` dead branch (raise run-phase for VM languages, or delete the branch and fix the comment).
+**Confidence:** Medium.
 
-NEW-1 and AGG-15 are verified landed and need no further action.
+## Verified protections
+
+- Production and test PostgreSQL compose services pin `PGDATA=/var/lib/postgresql/data` on the named volume (`docker-compose.production.yml:44-55`, `docker-compose.test-backends.yml:24-33`), and CI checks that invariant (`.github/workflows/ci.yml:255-262`).
+- The main cleanup helper uses dangling-only image prune and skips volume prune unless `judgekit-db` is running (`deploy-docker.sh:399-420`).
+- The recurring Docker cleanup script never prunes volumes and uses `docker image prune -f`, not `-af` (`scripts/docker-disk-cleanup.sh:4-21`, `scripts/docker-disk-cleanup.sh:35-47`).
+- I found no active `oj.worv.ai` references in code/docs/tests after excluding generated logs/artifacts. The remaining stale target drift is `oj-internal.maum.ai`, especially the active `.env.deploy` default and test-backends defaults.
+
+## Final sweep note
+
+Final sweep covered active deploy scripts, Docker compose files, target env files, backup/volume safety scripts, Docker image management API/worker endpoints, deployment docs, and CI/unit tests. The core data-volume safeguards are present, but build-time storage safety is inconsistent: app-host deploys are guarded, while worker-host builds, admin-triggered image builds, and auxiliary rebuild/load scripts can still start write-heavy Docker operations without a target-side disk preflight.

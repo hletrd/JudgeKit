@@ -1,153 +1,349 @@
-# Cycle 4 — architect
+# Architect review - cycle 1/100
 
-**Scope:** regression-check the cycle-3 fixes for architectural soundness (A3 recruiting `FOR UPDATE`, A4 worker `catch_unwind`, A7 community scope-helper, A8 settings password-reconfirm); re-confirm/close the PERF lane by direct Read (AGG-36..41, F-1, AGG-37, plus NEW hotspots from cycle-3); re-validate the deferred DESIGN items with sketches; net-new architectural risks. READ-ONLY. Every finding cites file:line. Head: `edd45cca`.
+Scope: architectural and deployment-design review for JudgeKit. Focus areas:
+monolithic deploy-script maintainability, target-specific behavior, app/worker
+split, Docker cleanup abstractions, and safe data-volume boundaries.
 
-Confidence legend: **CONFIRMED** (direct Read of cited code) · **LIKELY** (strong inference from cited code) · **NEEDS-MANUAL-VALIDATION** (cited but runtime behavior not observed).
+Confidence legend:
+- High: directly supported by cited code/docs.
+- Medium: directly supported by code, but final impact depends on host/runtime configuration.
+- Low: plausible risk needing manual validation.
 
----
+## Inventory
 
-## 1. REGRESSION — architectural quality of cycle-3 fixes
+Reviewed deployment and topology entrypoints:
+- `deploy-docker.sh`
+- `deploy.sh`
+- `deploy-test-backends.sh`
+- `docker-compose.production.yml`
+- `docker-compose.worker.yml`
+- `.env.deploy.algo`, `.env.deploy.worv`, `.env.deploy.auraedu`
+- `scripts/deploy-worker.sh`
+- `scripts/rebuild-worker-language-images.sh`
+- `scripts/docker-disk-cleanup.sh`
+- `scripts/pg-volume-safety-check.sh`
+- `Dockerfile`, `Dockerfile.judge-worker`
 
-### REG-A8 — Settings password-reconfirm: gate is correct but landed on the WRONG write path (HEADLINE — see NET-NEW ARCH-1)
+Reviewed app/worker Docker-management path:
+- `src/lib/docker/client.ts`
+- `src/app/api/v1/admin/docker/images/route.ts`
+- `src/app/api/v1/admin/docker/images/build/route.ts`
+- `src/app/api/v1/admin/docker/images/prune/route.ts`
+- `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx`
+- `judge-worker-rs/src/main.rs`
+- `judge-worker-rs/src/runner.rs`
+- `judge-worker-rs/src/validation.rs`
 
-**Files:** `src/app/api/v1/admin/settings/route.ts:89-110` (the gated API route); `src/lib/actions/system-settings.ts:63-82` (the UNGATED server action the UI actually calls); UI call sites `src/app/(dashboard)/dashboard/admin/settings/{allowed-hosts-form,config-settings-form,system-settings-form,footer-content-form}.tsx`.
+Reviewed persistent-data and backup path:
+- `src/lib/files/storage.ts`
+- `src/lib/db/export-with-files.ts`
+- `src/app/api/v1/admin/backup/route.ts`
+- `scripts/backup-db.sh`
+- `docs/deployment.md`
+- `docs/deployment-automation.md`
+- `docs/judge-workers.md`
+- `docs/judge-worker-incident-runbook.md`
+- `CLAUDE.md`
+- `tests/unit/infra/deploy-security.test.ts`
+- `tests/unit/infra/env-generation.test.ts`
+- `tests/unit/infra/language-inventory.test.ts`
 
-The regression question was *“did the reconfirm introduce a divergent privilege-field set vs the sibling restore/migrate/backup routes (DRY/drift)?”* Answer on that narrow question: **no harmful drift.** The siblings (`restore/route.ts:44-62`, migrate/import, backup) reconfirm *unconditionally*; settings reconfirms *conditionally* on `SENSITIVE_SETTINGS_KEYS` (`settings/route.ts:24-43`). That divergence is intentional and documented (settings mixes cosmetic + sensitive keys), and the shared core `verifyAndRehashPassword` is reused — DRY is honored at the verification layer. **CONFIRMED.**
+## Findings
 
-One minor drift surface (**LIKELY, LOW**): four entries in `SENSITIVE_SETTINGS_KEYS` — `emailVerificationRequired`, `communityUpvoteEnabled`, `communityDownvoteEnabled`, `smtpPass` — are **not writable via this API route** (not destructured at `:71-87`, not in `allowedConfigKeys` at `:118-130`). Their presence triggers reconfirm but the value is silently dropped by the `allowedConfigKeys` filter (`:132-134`). This is over-strict/defense-in-depth (safe direction), but it shows the sensitive-list and the writable-list are maintained independently — a future sensitive key added to `allowedConfigKeys` could be missed by `SENSITIVE_SETTINGS_KEYS`. Cosmetic DRY smell, not a hole.
+### ARCH-1 - High - Monolithic deploy target contracts are optional env state, so known app-only hosts can still take worker/language builds
 
-**But the real regression is in NET-NEW ARCH-1** (the server-action bypass): the gate is correct in isolation yet does not cover the primary UI write path. Promoted out of this section because it is net-new in impact, not a quality-of-the-fix question.
+Evidence:
+- The repo rule says `algo.xylolabs.com` is app/DB/nginx only, and worker/language images must be built on `worker-0.algo.xylolabs.com`: `CLAUDE.md:7-11`.
+- The correct `algo` profile exists and sets `INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, and `SKIP_LANGUAGES=true`: `.env.deploy.algo:15-19`.
+- `deploy-docker.sh` loads per-target overrides only when `DEPLOY_TARGET` is set: `deploy-docker.sh:127-136`.
+- Caller-provided `REMOTE_HOST` then overrides whatever the target file loaded: `deploy-docker.sh:139-148`.
+- The script defaults to `SKIP_LANGUAGES=false`, `INCLUDE_WORKER=true`, and `BUILD_WORKER_IMAGE=auto`, then resolves `auto` to `INCLUDE_WORKER`: `deploy-docker.sh:195-199`, `deploy-docker.sh:239-240`.
+- Those defaults build the worker image and language images on `REMOTE_HOST`: `deploy-docker.sh:753-817`.
+- The app-only compose override is generated only when `INCLUDE_WORKER != true`: `deploy-docker.sh:831-842`.
+- The deployment automation doc still presents direct `REMOTE_HOST=... REMOTE_USER=... DOMAIN=... SSH_KEY=... ./deploy-docker.sh` as the current production baseline: `docs/deployment-automation.md:7-11`.
 
-### REG-A7 — Community scope-helper centralization: covers all WRITE surfaces, no contract fragmentation (CLEAN)
+Risk:
+The target architecture is encoded as a convention, not as an enforced contract.
+An operator can deploy to `REMOTE_HOST=algo.xylolabs.com` without
+`DEPLOY_TARGET=algo`, or with caller env that accidentally overrides the profile.
+The script then follows integrated-host defaults and builds/starts worker pieces
+and the language-image set on the app server, violating the documented split and
+recreating the exact disk-pressure class the hardening notes are trying to avoid.
 
-**Files:** `src/lib/discussions/permissions.ts:29-37` (helper); `src/app/api/v1/community/threads/route.ts:28-35` (create, post-A7); `community/votes/route.ts:82-89` (vote, post-A7); `community/threads/[id]/posts/route.ts:40-47` (posts, pre-existing); read path `src/app/(public)/community/threads/[id]/page.tsx:26,83`; list path `src/lib/discussions/data.ts:149-183`.
+Scenario:
+During an incident, an operator copies the baseline command from
+`docs/deployment-automation.md` and sets `REMOTE_HOST=algo.xylolabs.com` directly.
+No `.env.deploy.algo` profile is loaded. The deploy builds `judgekit-judge-worker`
+and all default language images on the ARM app host, fills Docker storage, and may
+also start a local worker path that should not exist on that target.
 
-The regression question was *“does centralization cover all four surfaces, or did it create a new helper variant that fragments the contract?”* Answer: **CLEAN, no new variant.** A7 reused the existing `canAccessProblemScopedThread` (no companion/variant was added — good; the plan had floated a `assertProblemScopedThreadAccessByFields` companion that was correctly NOT introduced). All three WRITE surfaces (post, create, vote) now route through the one helper. Verified by grep: the only direct `isProblemLinkedScope` call sites outside `permissions.ts` are (a) the create route’s scope-presence guard at `threads/route.ts:17,47` (correct — that is “is this a problem-linked scope at all,” not the access decision) and (b) the read-side page at `page.tsx:26`. No write path inlines `canAccessProblem` anymore (`community/` grep shows only helper calls). **CONFIRMED.**
+Fix:
+Make production targets first-class and fail closed. At minimum:
+- Require `DEPLOY_TARGET` for any known production host.
+- Add a host/profile assertion after flag resolution: if `REMOTE_HOST` is
+  `algo.xylolabs.com`, hard-fail unless `SKIP_LANGUAGES=true`,
+  `BUILD_WORKER_IMAGE=false`, and `INCLUDE_WORKER=false`.
+- Emit a dry-run deployment plan showing target, app/worker mode, language build
+  scope, worker hosts, and cleanup policy before any build starts.
+- Add shell/unit tests that simulate `DEPLOY_TARGET=algo`, direct
+  `REMOTE_HOST=algo.xylolabs.com`, typoed `DEPLOY_TARGET`, and caller override
+  precedence. Current configured bash lint is syntax-only:
+  `package.json:9-10`, while existing tests mostly string-match invariants such
+  as the generated app-only override: `tests/unit/infra/deploy-security.test.ts:134-143`.
 
-Residual (intentional, LOW): the READ paths do not use the helper. `page.tsx:26` uses `isProblemLinkedScope(...) && thread.problem?.visibility !== "public"` (a render-time visibility guard, different semantics — fine). `listAllProblemDiscussionThreads` (`data.ts:177-181`) bulk-calls `canAccessProblem` per distinct problem (intentional batching for perf — calling the per-row helper in a loop would be worse). These are correct non-uses, not drift. The write-side contract — the surface that actually caused C2-H5/SEC-9 — is now uniform.
+Confidence: High.
 
-### REG-A4 — Worker `catch_unwind`: composes safely with report_with_retry / dead-letter / active_tasks (CLEAN)
+### ARCH-2 - High - Dedicated `WORKER_HOSTS` deploys refresh worker code but leave language images out-of-band
 
-**Files:** `judge-worker-rs/src/main.rs:557-591` (spawn + catch_unwind + fetch_sub); `judge-worker-rs/src/executor.rs:918-937` (`report_panic`), `:971-1062` (`report_with_retry` + dead-letter), `:939-959` (`report_result`).
+Evidence:
+- The app-only `algo` profile skips language builds on the app server:
+  `.env.deploy.algo:15-19`.
+- The same profile configures `WORKER_HOSTS` for the dedicated worker:
+  `.env.deploy.algo:31-36`.
+- The `WORKER_HOSTS` loop rsyncs source and builds only
+  `judgekit-judge-worker:latest`: `deploy-docker.sh:1156-1204`.
+- A nearby cleanup comment says worker hosts accumulate stale images because
+  "judge-worker + every language image is rebuilt --no-cache here", but the code
+  does not build language images in that block: `deploy-docker.sh:1213-1216`.
+- The dedicated worker compose file requires judge language images to be
+  available locally or via registry: `docker-compose.worker.yml:10-15`.
+- The recovery script documents the same gap explicitly:
+  `deploy-docker.sh WORKER_HOSTS step only rebuilds judge-worker:latest; it never
+  builds the language images`: `scripts/rebuild-worker-language-images.sh:5-9`.
 
-Sound on all three sub-questions. **CONFIRMED.**
+Risk:
+The app deploy, DB language configuration, worker binary, and actual language
+container fleet can drift independently. For split topology, the app is the place
+where language configs are synchronized, but the worker host is where `judge-*`
+images must exist and be fresh.
 
-1. **Double-report risk — none in practice.** `report_panic` fires only when `catch_unwind().await` returns `Err` (`main.rs:570-572`). Inside `executor::execute`, every `report_result(...)` call is a *terminal* statement followed immediately by `return` (`executor.rs:482→492`, `501→511`, and the final `664`→return). There is no code window between a successful report and the function returning in which a panic could occur, so catch_unwind never observes `Err` after a successful report. Even in the residual case (panic somehow following a report, or a panic after `staleClaimTimeoutMs` reaped+reclaimed the row), the server guards the report `UPDATE` with `eq(submissions.judgeClaimToken, claimToken)` (`poll/route.ts:93,164`) → 0 rows → `invalidJudgeClaim` 403. The stale/duplicate report is rejected; at worst `report_with_retry` writes a *spurious dead-letter file* (harmless, fail-safe, never a double-verdict).
-2. **Leaked-slot risk — none.** `active_tasks.fetch_add(1)` at `main.rs:557` (before spawn); `active_tasks.fetch_sub(1)` at `:589` is **unconditional and after** the `catch_unwind` block — it runs whether `execute` succeeded, erred, or panicked, and after `report_panic` completes. The `_permit` (`:562`) is dropped at task-body end. No slot leak on the panic path. **LIKELY** residual only if `report_panic`/`report_with_retry` itself panics (then `:589` is unwound past) — but `report_with_retry` is defensive throughout (`match` on `Err`, no `unwrap`/`expect`/indexing; `executor.rs:971-1062`), so panic-free in practice.
-3. **`AssertUnwindSafe` soundness — yes.** The future captures `Arc<ApiClient>`, `Arc<Config>`, owned `Submission`, and the shared state is `Arc<AtomicI64>` + an owned semaphore permit (`main.rs:552-562`). No `RefCell`/`Cell` in the captured state, so unwinding cannot leave shared mutable state inconsistent. The DB row is mutated via network (report), not in-process mutable state. Canonical unwind-safe pattern.
+Scenario:
+A commit changes `docker/Dockerfile.judge-python` or a compile/run contract in
+`src/lib/judge/languages.ts`. An `algo` deploy correctly skips language builds on
+the app host and refreshes only `judgekit-judge-worker` on `worker-0`. New
+submissions are claimed by a worker whose `judge-python:latest` is stale or
+missing, so students see compile/runtime failures even though the app-side
+language config is current.
 
-### REG-A3 — Recruiting `FOR UPDATE`: no deadlock vs the atomic jsonb_set path (CLEAN)
+Fix:
+Promote language-image rollout into the worker-host deployment contract. Options:
+- Add `WORKER_LANGUAGE_FILTER=none|core|popular|all|everything|<list>` and run the
+  same sequential build loop on each `WORKER_HOSTS` entry before restart.
+- Or fail loudly when any `docker/Dockerfile.judge-*` or language config changed
+  and no worker language rebuild was requested.
+- Longer term, publish versioned/digest-pinned `judge-*` images to a registry and
+  have workers pull the exact release image set instead of relying on local
+  mutable `:latest` images.
+- Remove or correct the false cleanup comment at `deploy-docker.sh:1213-1216`.
 
-**Files:** `src/lib/assignments/recruiting-invitations.ts:396-434` (metadata-merge tx, post-A3); `:96-115` (`incrementFailedRedeemAttempt`, atomic `jsonb_set` UPDATE); `:128-144` (`resetFailedRedeemAttempt`, atomic); `:204-229` (`regenerateRecruitingInvitationToken`, atomic).
+Confidence: High.
 
-Sound. **CONFIRMED.** The deadlock question resolves cleanly: **both the A3 transaction and the atomic `jsonb_set` UPDATEs lock exactly one row** — the same `recruiting_invitations` row identified by `id` / `tokenHash`. Single-resource locking cannot form a wait-cycle, so it serializes rather than deadlocks, under both READ COMMITTED (default) and SERIALIZABLE. There is no multi-table lock ordering in either path (the metadata tx touches only `recruiting_invitations`; the increment/reset/regenerate paths touch only `recruiting_invitations`). The brute-force counter increment is launched fire-and-forget (`void`, per its own docstring at `:88-89`) on its own connection, so it does not share the redeem transaction’s locks on `users`/`sessions` — it merely serializes against the metadata tx on the one invitation row. The merge correctly preserves `_sys.*` keys (`:408-412`) and the `FOR UPDATE` now prevents the read-modify-write from clobbering `incrementFailedRedeemAttempt`’s atomic write. Fix is minimal and correct.
+### ARCH-3 - Medium/High - Docker build-management capability is advertised through the app/worker API but blocked by the socket-proxy contract
 
----
+Evidence:
+- Worker-backed Docker management reports `canBuild: true` whenever
+  `COMPILER_RUNNER_URL`/`RUNNER_AUTH_TOKEN` are configured:
+  `src/lib/docker/client.ts:120-126`.
+- The admin language table fetches `/api/v1/admin/docker/images` but ignores the
+  returned `capabilities` object: `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:123-142`.
+- The Build button is rendered enabled for every row except while that row is
+  already building: `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:505-516`.
+- The build route calls `buildDockerImage(...)`:
+  `src/app/api/v1/admin/docker/images/build/route.ts:119-141`.
+- The worker client forwards this to `/docker/build`:
+  `src/lib/docker/client.ts:532-540`.
+- The Rust worker build handler shells out to `docker build`:
+  `judge-worker-rs/src/runner.rs:375-385`, `judge-worker-rs/src/runner.rs:659-687`.
+- Production integrated compose explicitly sets `BUILD=0` and says builds must
+  not flow through the worker path: `docker-compose.production.yml:70-79`.
+- Dedicated worker compose also hardcodes `BUILD=0`:
+  `docker-compose.worker.yml:37-39`.
+- Docs say operators can opt into build management with
+  `WORKER_DOCKER_PROXY_BUILD=1`, but the compose file does not consume that
+  variable: `docs/judge-workers.md:95-102`, `docker-compose.worker.yml:37-39`.
+- Tests currently codify the hardcoded `BUILD=0` expectation rather than the
+  documented opt-in path: `tests/unit/infra/deploy-security.test.ts:175-183`.
 
-## 2. PERFORMANCE LANE — re-confirm or close by direct Read
+Risk:
+The app, UI, docs, worker API, and socket-proxy permissions disagree about the
+same capability. This is a layering violation: the UI trusts a static app-side
+capability model, while the real enforcement point is the worker host's Docker
+socket proxy.
 
-All re-confirmed by Read of cited lines this cycle. None were implemented in cycle 3; all remain real but most are low-impact relative to their frequency. Updated severity reflects that.
+Scenario:
+An admin sees a stale or missing language image and clicks Build in
+`/dashboard/admin/languages`. The app reports build capability as available and
+calls the runner. The runner executes `docker build` through `DOCKER_HOST`, but
+the socket proxy rejects BuildKit/build endpoints because `BUILD=0`. The UI shows
+a generic build error, and the operator must discover that the documented
+`WORKER_DOCKER_PROXY_BUILD=1` opt-in is not wired.
 
-### AGG-36 — SSE global advisory lock — CONFIRMED real, LOW impact (was MED)
-`src/lib/realtime/realtime-coordination.ts:101` — `withPgAdvisoryLock("realtime:sse:acquire", ...)` uses a single hardcoded lock key, so every SSE connection acquisition across every user serializes through one transaction holding 4 statements (delete-expired `:104`, count-total/user-total `:111-122`, insert). **But** acquisition is one-shot per connection *open*, not per poll tick (long-lived streams), so contention is bounded by connection-open rate, not steady-state tick rate. For a judge platform’s connection counts this is fine. Sharding the key by `userId` hash bucket would still reduce contention. Defer unless SSE concurrency rises materially.
+Fix:
+Use one source of truth for Docker-management capabilities:
+- Add a worker `/docker/capabilities` endpoint that actively probes or reads the
+  proxy permission model for list/build/remove.
+- Make `getDockerManagementCapabilities()` consume that worker capability result
+  instead of assuming `canBuild=true` for every worker-backed deployment.
+- Have the language admin UI store and honor capabilities, disabling Build/Remove
+  with an operator-facing reason when unavailable.
+- Either wire `WORKER_DOCKER_PROXY_BUILD=${WORKER_DOCKER_PROXY_BUILD:-0}` into
+  `docker-compose.worker.yml` with explicit docs about temporary use, or remove
+  the build endpoint/UI from worker-backed production and route builds through a
+  separate release/build pipeline.
 
-### AGG-37 — Rankings ISR — CLOSE (cycle-3 skip reasoning CONFIRMED)
-`src/app/(public)/rankings/page.tsx:123` calls `await auth()`, which reads cookies → opts the page into dynamic rendering. On top of that the page does a viewer-specific recruiting-mode redirect (`:122-135`). `export const revalidate` would be a no-op (or `force-static` an error). Cycle-3’s skip was correct. The page is heavy (2× `first_accepts` CTE over `submissions` at `:141-149,166-198`) but that cost is inherent to the auth-gated design. A future win would split a public static shell from the personalized redirect — that is a redesign, not an ISR flag. **CLOSE.**
+Confidence: High.
 
-### AGG-38 — Announcements GET missing pagination — CONFIRMED real, LOW
-`src/app/api/v1/contests/[assignmentId]/announcements/route.ts:49-52` — `findMany` with no `limit` returns all announcements for the assignment. SQL predicate is fine (`eq(assignmentId)`, indexed). Realistically a handful per contest; low impact. Add `limit` + cursor if contests ever accumulate large announcement volumes.
+### ARCH-4 - Medium - App-only runner URL depends on `host.docker.internal` without compose-level host-gateway wiring
 
-### AGG-39 — Clarifications GET missing pagination + post-fetch JS visibility filter — CONFIRMED real, LOW-MED
-`src/app/api/v1/contests/[assignmentId]/clarifications/route.ts:49-56` — `findMany` with no `limit`, then `rows.filter((row) => row.userId === user.id || (row.isPublic && row.answer))` in JS for non-managers. Two issues: (1) no pagination; (2) the visibility predicate is evaluated in JS after fetching every row, so a non-manager pulls the full clarification set then discards most of it. Push the visibility predicate into SQL (`WHERE user_id = $self OR (is_public AND answer IS NOT NULL)`) and add a `limit`. Moderate on large exams.
+Evidence:
+- When `INCLUDE_WORKER=false`, deploy defaults `COMPILER_RUNNER_URL` to
+  `http://host.docker.internal:3001`: `deploy-docker.sh:724-726`.
+- The post-sync check only warns when the URL is still the local worker default
+  `http://judge-worker:3001`, not when the URL is the host bridge default:
+  `deploy-docker.sh:731-736`.
+- The `algo` profile uses that host bridge value:
+  `.env.deploy.algo:21-22`.
+- The production app service consumes `COMPILER_RUNNER_URL` but the cited app
+  service block has no `extra_hosts` / `host-gateway` mapping:
+  `docker-compose.production.yml:88-109`.
+- Dedicated worker compose publishes the runner on worker-host loopback:
+  `docker-compose.worker.yml:52-53`.
+- The worker docs describe loopback as useful for split topologies through an SSH
+  tunnel or host bridge path: `docs/judge-workers.md:104-112`.
 
-### AGG-40 — Submissions global-count inside per-user lock — CONFIRMED real, LOW
-`src/app/api/v1/submissions/route.ts:385-388` — the global pending count `WHERE status IN ('pending','queued')` (no user filter) runs inside the per-user advisory lock tx acquired at `:349`, extending that tx’s critical section. Moving it before the lock shortens the per-user hold. Note the global queue limit is inherently TOCTOU (a soft DoS ceiling, not a hard invariant) — a true global cap would need a global lock serializing all submitters (bad for throughput), which is not worth it. So this is a pure lock-duration micro-opt, not a correctness fix. Low.
+Risk:
+On standard Linux Docker, `host.docker.internal` is not guaranteed to resolve
+inside containers unless `host-gateway` is explicitly configured. The deployment
+contract assumes a host bridge exists, but compose does not create it and deploy
+does not validate it from inside the app container.
 
-### AGG-41 — Audit-logs IN-array → EXISTS — CONFIRMED real, MED
-`src/app/api/v1/admin/audit-logs/route.ts:73-148` — the instructor path pre-fetches `groupIds`, `assignmentIds`, `submissionIds`, `problemIds` (4 queries, `:74-105`) then builds four `inArray(auditEvents.resourceId, …)` clauses (`:112,125,133,141`) OR-ed together. `submissionIds` is the worst: a busy instructor can have thousands of submissions → a multi-thousand-element IN clause materialized in app memory. An `EXISTS` rewrite (correlated subquery against `submissions ⋈ assignments ⋈ groups WHERE instructor_id = $self`) avoids materializing the IDs and shrinks the SQL. Frequency is low (admin/instructor action), but per-call cost for busy instructors is real. Best ROI item in the perf queue.
+Scenario:
+The app host maintains an SSH tunnel from app-host port 3001 to
+`worker-0:127.0.0.1:3001`. The app container starts with
+`COMPILER_RUNNER_URL=http://host.docker.internal:3001`, but Docker DNS inside the
+container cannot resolve that name. Submissions fail at runner delegation even
+though the worker container itself is healthy.
 
-### F-1 — `canManageProblem` per-request DB hit — CONFIRMED real, MED
-`src/lib/auth/permissions.ts:186-217`. For a non-`groups.view_all`, non-author caller it costs 2 DB hits per call (`problems.authorId` `:194-199`, then `getAssignedTeachingGroupIds` `:203` + `problemGroupAccess` `:205-215`). No per-request memoization (AsyncLocalStorage) and **no capability fast-path**: a student (no `problems.edit`/`.delete`) still pays the `authorId` + teaching-groups queries to learn they cannot manage. Two cheap wins: (1) early `return false` when the capability set has neither `problems.edit` nor `problems.delete` (eliminates the student path entirely); (2) per-request memo of `canManageProblem(problemId,userId)` so list rendering that re-checks the same problem stops re-querying. A bulk variant `getAccessibleProblemIds` already exists (`:219`) for the read side — the write-side lacks an equivalent. Moderate impact on problem-list/edit pages.
+Fix:
+Make the split-runner network path explicit and testable:
+- Add `extra_hosts: ["host.docker.internal:host-gateway"]` to the app service or
+  to the generated app-only compose override when the URL uses that hostname.
+- Add a deploy preflight after app startup that runs a small in-container request
+  from `judgekit-app` to `${COMPILER_RUNNER_URL}/health` with the runner auth
+  setup expected in production.
+- Prefer a concrete worker private IP/DNS name when no SSH tunnel is required,
+  as `.env.deploy.worv` already does with an IP-style runner URL.
 
-### NEW (cycle-3 fallout) — SSE re-auth re-fetches an immutable row — CONFIRMED real, LOW
-`src/app/api/v1/submissions/[id]/events/route.ts:475-482` — the A6 re-auth IIFE re-fetches the submission (`userId`,`assignmentId`) every `AUTH_RECHECK_INTERVAL_MS` to pass to `canAccessSubmission`. Those two columns are **immutable after creation**, and the access decision depends on the *viewer*’s current group membership (read from `reAuthUser`), not on the submission row. The re-fetch therefore cannot change the outcome — the stream-open reader values would do. Cost: +1 DB hit per stream per re-auth tick. Drop the `findFirst` and reuse the stream-open reader. (Deletion is already handled separately at `:492-495`.) Minor, but it is new weight A6 added to every open stream.
+Confidence: Medium.
 
-### NEW (cycle-3 fallout) — Recruiting `FOR UPDATE` extends tx by one round-trip — LIKELY real, NEGLIGIBLE
-`recruiting-invitations.ts:396-434` — the metadata-edit tx now holds the row lock across SELECT + JS merge + UPDATE vs the prior single plain UPDATE. This is the correct trade for correctness (REG-A3) and the tx body is trivial (no I/O between statements). Not a perf concern; noted for completeness.
+### ARCH-5 - Medium - The deploy safety backup is DB-only, but production has a persistent app data volume for uploads
 
----
+Evidence:
+- The runtime image creates `/app/data` for uploads/logs:
+  `Dockerfile:105-106`.
+- Production compose mounts a named volume at `/app/data`:
+  `docker-compose.production.yml:99-100`, `docker-compose.production.yml:195-200`.
+- File storage resolves uploads under the app data directory:
+  `src/lib/files/storage.ts:4-12`.
+- The deploy script describes its safety net as a pre-deploy database backup and
+  runs only `pg_dump`: `deploy-docker.sh:848-865`.
+- The scheduled backup script is also database-only:
+  `scripts/backup-db.sh:1-16`, `scripts/backup-db.sh:41-48`.
+- A full app-level backup path with uploaded files exists, but only behind the
+  admin backup route when `includeFiles=true`: `src/app/api/v1/admin/backup/route.ts:1-3`,
+  `src/app/api/v1/admin/backup/route.ts:71-90`.
+- The ZIP implementation explicitly includes `database.json` plus `uploads/`:
+  `src/lib/db/export-with-files.ts:151-156`.
 
-## 3. DESIGN — deferred items re-validated, with sketches
+Risk:
+The deployment safety model treats PostgreSQL as the only durable state, while
+the runtime also stores uploaded files in `judgekit-app-data`. A DB-only dump can
+restore rows that reference files without restoring the files themselves.
 
-Each: current state (Read this cycle) · still-real? · sketch · effort · risk.
+Scenario:
+A deploy, restore, or host migration uses the automatic pre-deploy dump as the
+rollback artifact after an incident. Problems, discussions, or admin files that
+reference uploaded assets are restored in PostgreSQL, but `/app/data/uploads`
+was never captured. Pages now contain broken file links and the operator has no
+deploy-time artifact for the missing volume contents.
 
-### AGG-2 / C3-1 — Snapshot false-fidelity (HIGHEST-LEVERAGE deferred item) — CONFIRMED real, HIGH
-`src/lib/db/export.ts:104-106`: `activeRedactionMap = options.sanitize ? merged : EXPORT_ALWAYS_REDACT_COLUMNS`. So even at `sanitize:false` the always-redact set (passwordHash, sessionToken, account tokens, apiKey ciphertext, smtpPass/hcaptchaSecret — `src/lib/security/secrets.ts:36-42`) is applied. Yet `src/lib/db/pre-restore-snapshot.ts:34-38` docstring claims the snapshot “contains password hashes, encrypted column ciphertexts, and JWT secrets in their stored form.” **That claim is false** — the snapshot redacts exactly the auth columns an emergency rollback would need. Restoring from a pre-restore snapshot leaves every user without `passwordHash` (cannot log in) and drops all `sessions`. The operator’s rollback artifact does not roll back authentication.
-**Sketch (PHB-2):** add `mode:"snapshot"` alongside `"full-fidelity"|"sanitized"` (`export.ts:20`); in snapshot mode, bypass `EXPORT_ALWAYS_REDACT_COLUMNS`. Gate behind a separate capability (`system.snapshot_restore` ⊃ `system.backup`) and differentiate the audit action. **At-rest-encrypt the snapshot file** (AES-256-GCM with a snapshot-specific key or the existing `NODE_ENCRYPTION_KEY`) rather than relying on `0o600` (`pre-restore-snapshot.ts:37-39`) — a file containing live password hashes needs more than filesystem mode. Restore rejects unencrypted snapshots. Couples to DOC-2/DOC-3 (fix the false docstring when this ships, or sooner).
-**Effort:** medium. **Risk:** the exfiltration shape is the same as the feature — the capability gate + encryption + audit are load-bearing. Do not ship snapshot mode without all three.
+Fix:
+Make app data a first-class production volume:
+- Add an optional deploy-time `judgekit-app-data` tar/snapshot backup next to the
+  `pg_dump`, or call a server-side full backup flow that includes uploads.
+- Document pre-deploy dumps as "DB-only" until this exists.
+- Add a restore runbook that pairs a DB dump with the corresponding app-data
+  artifact.
+- Add retention and disk-budget controls so upload backups do not silently fill
+  the same host storage the Docker cleanup is trying to protect.
 
-### AGG-1 — Restore DB↔files atomicity — CONFIRMED real (unchanged), MED
-`src/app/api/v1/admin/restore/route.ts:163` commits `importDatabase`, then `:178-202` runs `restoreParsedBackupFiles` (`export-with-files.ts` bare `writeFile` loop). A crash mid-loop leaves DB referencing blobs that were never written. Cycle-2 added the durable failure audit + pre-restore snapshot as safety nets (correct), but the system restore is still non-atomic.
-**Sketch (PHB-1, unchanged):** stage all files into a sibling `uploads.restore-staging.${pid}.${ts}` dir, then `rename()` each into place (atomic on the same fs). A crash leaves a consistent (old-or-new) state, never a torn one. Ship staging+rename first; the optional orphan-sweep (diff old vs new `files` table) is a follow-up with a dry-run flag. Do NOT try to wrap `importDatabase` + file restore in one DB tx — the FS is not transactional.
-**Effort:** medium (one new fn + two call sites). **Risk:** staging doubles peak disk during restore — document the headroom (comparable to the snapshot’s existing headroom).
+Confidence: High.
 
-### AGG-10 — Plaintext-decryption fallback default — PARTIALLY done, MED
-Core flipped: `src/lib/security/encryption.ts:99` default is `false`. Periphery NOT: `src/lib/plugins/secrets.ts:61` still defaults `true`; `src/lib/email/providers/smtp.ts:54` and `src/lib/security/hcaptcha.ts:23` pass `{ allowPlaintextFallback: true }` explicitly. So the encryption core is safe-by-default but three production read-paths still silently accept plaintext. **Sketch:** run the warn-log audit `encryption.ts:18-21` describes (confirm every encrypted column contains only `enc:`-prefixed values), then flip `plugins/secrets.ts:61` to `false` and drop the explicit `true` at the two call sites. Pairs with NEW-B (key-versioning) — do AGG-10 + NEW-B together so the migration can re-encrypt any plaintext it finds with a versioned key.
-**Effort:** small (code) + an ops audit. **Risk:** low if the audit is real; a missed plaintext cell breaks that secret’s read.
+### ARCH-6 - Medium - Docker cleanup policy is duplicated and volume pruning is not behind a single audited boundary
 
-### NEW-B — `enc:` ciphertext has no key-version byte — CONFIRMED real, LATENT (MED once AGG-10/AGG-2 ship)
-`encryption.ts:78` format is `enc:<iv>:<ciphertext>:<authTag>`; `decrypt` uses a single process-cached key (`getKey`, `:43-60`). No version byte → rotating `NODE_ENCRYPTION_KEY` makes every existing ciphertext undecryptable with no overlap window (decrypt-all + re-encrypt-all big-bang required). This is latent today (single key) but becomes load-bearing the moment AGG-10 forces a re-encryption migration or AGG-2 ships snapshot encryption.
-**Sketch:** version the format: `enc:v1:<iv>:<ct>:<tag>`; keep a keyring `{ v1: <current key> }` (env: `NODE_ENCRYPTION_KEY_V1`, …); `encrypt` always writes the current version; `decrypt` parses the version and selects the key, accepting the legacy unversioned form as v1 during migration. Enables zero-downtime rotation (add v2, dual-read, background re-encrypt, drop v1).
-**Effort:** medium. **Risk:** low if shipped before any rotation is needed; the migration parser must treat bare `enc:` as v1.
+Evidence:
+- `deploy-docker.sh` defines its own cleanup helper and runs
+  `docker volume prune -f` when any `judgekit-db` container is running:
+  `deploy-docker.sh:399-421`.
+- The recurring cleanup script has a different invariant: it never prunes
+  volumes, explicitly because production volumes can hold PostgreSQL data:
+  `scripts/docker-disk-cleanup.sh:4-7`.
+- The deployment docs warn that `docker volume prune -f` is unsafe while the DB
+  container is stopped, but also document the deploy helper's conditional volume
+  prune: `docs/deployment.md:250-260`, `docs/deployment.md:262-277`.
+- The PG safety check detects one specific anonymous-PGDATA incident shape:
+  `scripts/pg-volume-safety-check.sh:25-39`.
+- The deploy can bypass that safety check with `SKIP_PG_VOLUME_CHECK=1`:
+  `deploy-docker.sh:888-910`.
+- Pre-build disk cleanup deliberately never touches volumes:
+  `deploy-docker.sh:512-531`.
+- Deployment automation docs describe post-deploy pruning of orphan volumes on
+  every touched host: `docs/deployment-automation.md:27-30`.
 
-### NEW-M8 — ZIP-bomb streaming decompression — CONFIRMED real, MED
-`src/lib/files/validation.ts:94-107` — the slow path (entries whose `_data.uncompressedSize` metadata is absent) does `await entry.async("uint8array")` (`:98`) which **materializes the full entry into memory before** the per-entry cap check at `:100`. The slow path is reachable on demand: an attacker crafts a ZIP with data-descriptor entries (no size metadata) to force `allMetadataAvailable=false` (`:75-77`), then a high-ratio payload to OOM the process before the accumulator trips. The fast path (`:73-88`) is safe; the slow path is the attack surface.
-**Sketch:** switch the slow path to JSZip’s streaming API (`entry.internalStream("nodebuffer”*)` piped through a counting transform) that aborts the moment the running total exceeds `MAX_SINGLE_ENTRY_DECOMPRESSED_BYTES`/`maxDecompressedSizeBytes`, before the full content is buffered. Keep the fast path as-is.
-**Effort:** medium. **Risk:** low — pure validation path; add a regression test with a data-descriptor zip-bomb.
+Risk:
+There are now multiple "safe Docker cleanup" definitions in the repo. One never
+prunes volumes; one prunes every Docker volume considered unused by the daemon
+after checking only that `judgekit-db` is currently running. That guard protects
+the current attached DB volume, but it does not express a project-level data
+allowlist/denylist for other durable volumes such as `judgekit-app-data`, old
+compose-project volumes during a rename/migration, or orphaned PG volumes outside
+the exact safety-check pattern.
 
-### AGG-43 / AGG-45 — Function-judging C++ registry breadth — CONFIRMED real, MED
-`src/lib/judge/function-judging/registry.ts:10-18` registers `cppAdapter.language` only, and `adapters/cpp.ts:181` sets `language: "cpp23"`. But the language catalog configures `cpp20`, `cpp23`, `cpp26`, and `clang_cpp23` (`src/lib/judge/languages.ts:220-241,646-652`; dashboard group `cpp` → `["cpp23","cpp20","clang_cpp23"]` at `dashboard-catalog.ts:50`). So a function-judging problem authored for `cpp20`/`cpp26`/`clang_cpp23` throws `no function-judging adapter for <lang>` (`registry.ts:28`). Only `cpp23` works.
-**Sketch:** register the C++ adapter under all configured C++ aliases — either expand `ADAPTERS` to map each of `cpp20/cpp23/cpp26/clang_cpp23` to `cppAdapter`, or derive the alias set from the language catalog so new C++ variants are picked up automatically. (Same pattern likely needed for C: `c23/c17/c99/c89/clang_c23` once a C function-judging adapter exists.)
-**Effort:** small. **Risk:** low; guard with a test per alias.
+Scenario:
+A host migration or compose project-name change creates a new
+`judgekit-app-data` volume while the old upload volume is no longer attached to a
+running container. The deploy reaches post-deploy cleanup, sees `judgekit-db`
+running, and `docker volume prune -f` deletes the old upload volume before the
+operator has copied its contents. The recurring cleanup script would not have
+done this, but the deploy helper has a broader policy.
 
-### AGG-54 / AGG-55 — Migration journal / orphaned `min_password_length` — CONFIRMED real, LOW
-- **AGG-55:** `src/lib/db/schema.pg.ts:591` still defines `minPasswordLength: integer("min_password_length")`, but cycle-3 commit `475b931d` removed it from configurable settings and a repo-wide grep finds **no writer** (only the schema declaration). The column is fully orphaned — dead schema. Drop it in a dedicated migration (additive-then-drop; verify no row-level dependency first). **Effort:** small. **Risk:** low.
-- **AGG-54:** Drizzle journal regeneration can emit duplicate-prefix codenames across `drizzle/pg/*.sql` (the codename journal). Ops-tooling hygiene only; no runtime impact. Defer; revisit if regeneration is automated.
+Fix:
+Centralize Docker cleanup into one audited script/library with explicit modes:
+`pre-build`, `post-deploy`, and `recurring`.
+- Default all modes to no volume pruning.
+- If volume pruning remains necessary, use a dry-run listing plus explicit
+  allowlist/denylist rules that preserve `*pgdata*`, `*app-data*`, and any
+  labelled JudgeKit data volumes.
+- Make `deploy-docker.sh` call the shared cleanup entrypoint instead of embedding
+  another policy.
+- Add tests around cleanup command generation for app host, worker host, DB down,
+  app-only target, and compose-project rename cases.
 
-### N2 — Wall-clock total-judging cap — CONFIRMED NOT STARTED, MED
-No `judgeClaimStartedAt`/`claim_started_at` column exists in the schema (grep: none). `staleClaimTimeoutMs` (claim-route `:218`) bounds a *single claim* from the claim side, but there is no wall-clock cap on total judging time across re-claims/retries — a submission that repeatedly re-claims (worker crash + reclaim loop) can run unbounded. The plan’s `judgeClaimStartedAt` (immutable first-claim timestamp) is not present.
-**Sketch:** add an immutable `judgeFirstClaimedAt timestampt` set once on first successful claim (`claim/route.ts`), and reject re-claims (or force-terminalize as `runtime_error`) when `NOW() - judgeFirstClaimedAt > totalJudgingCapMs`. The cap is a new system setting.
-**Effort:** medium (schema migration + claim-route + reaper). **Risk:** low; choose a generous default cap to avoid false kills.
+Confidence: Medium.
 
----
+## Cross-cutting recommendation
 
-## 4. NET-NEW architectural risks
+The recurring pattern is that deployment knowledge is spread across shell flags,
+hidden target env files, compose comments, app-side static capabilities, worker
+HTTP routes, and operator docs. The safest next architectural step is not a full
+rewrite; it is a typed deployment contract layer:
 
-### ARCH-1 (HEADLINE) — A8 reconfirm gate is on the wrong write path; the UI server action bypasses it (HIGH, CONFIRMED)
-**Files:** gated path `src/app/api/v1/admin/settings/route.ts:89-110`; **ungated primary path** `src/lib/actions/system-settings.ts:63-82` (`updateSystemSettings`); UI callers `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:53`, `config-settings-form.tsx:70`, `system-settings-form.tsx:166`, `footer-content-form.tsx:105`.
+1. Resolve a `DeployPlan` before doing work: target, app/worker mode, platform,
+   language image policy, worker hosts, runner URL, cleanup mode, backup mode.
+2. Print and optionally test that plan with no remote side effects.
+3. Hard-fail when known production targets violate their contract.
+4. Drive compose overrides, worker image builds, language image builds, Docker
+   management capabilities, and cleanup from that same plan.
 
-The A8 commit message names the threat explicitly: *“A stolen session cookie could silently disable hCaptcha, raise rate limits, or widen allowedHosts.”* The fix puts `verifyAndRehashPassword` on the **API route** PUT. But **no UI client PUTs to that route** — a grep for `/api/v1/admin/settings` finds only nav-link strings (`admin-nav.ts:67`, `admin-dashboard.tsx:32`), not a fetch. The actual UI calls the **server action** `updateSystemSettings`, whose gate is only `isTrustedServerActionOrigin()` + `auth()` session + `system.settings` capability + rate limit (`actions/system-settings.ts:65-82`) — **no password reconfirm at all**. The action writes every sensitive key A8 meant to protect: `platformMode`, `publicSignupEnabled`, `emailVerificationRequired`, `communityUpvote/DownvoteEnabled`, `signupHcaptchaEnabled`, `hcaptchaSecret`, `smtpPass`, `allowedHosts`, and the rate-limit/queue `CONFIG_KEYS` (`:156-189` + configValues).
-
-Concretely, `allowed-hosts-form.tsx:53` calls `updateSystemSettings({ allowedHosts: hosts })` with no password — so the exact “silently widen allowedHosts” scenario A8 documented is still live on the real UI path. The reconfirm gate is correct code on a route the UI does not use; the threat it was written for is unbypassed on the path the UI does use. This is the canonical “two write paths to the same privileged state, only one gated” drift.
-**Fix:** extract the reconfirm into a shared helper (`requireReconfirmIfSensitive(body, SENSITIVE_SETTINGS_KEYS, user)` returning a `NextResponse | null`) and call it at the top of `updateSystemSettings` too (server actions can read `currentPassword` from the form input the same way). Gate the same key set in both. Alternatively consolidate to one writer, but the helper is the smaller change.
-**Severity:** HIGH on the cycle-3 control’s intent (stolen-session posture), tempered by the residual `system.settings` capability + trusted-origin + rate-limit gates (not unauthenticated). Still the item most worth scheduling next cycle. **CONFIRMED.**
-
-### ARCH-2 — Worker↔app report contract: panic-recovery may emit spurious dead-letters (LOW, LIKELY)
-Consequence of REG-A4. If `executor::execute` panics after the submission was already stale-reaped and reclaimed (new `judgeClaimToken`), or after it already reported a terminal verdict, `report_panic` → `report_with_retry` hits `invalidJudgeClaim` 403 (`poll/route.ts:93/164` guards on `judgeClaimToken`) on all 3 attempts and writes a dead-letter file (`executor.rs:1009-1062`) for a submission that is either already judged or being judged elsewhere. No data corruption (the claim-token guard makes the second report idempotent-safe), but operators reviewing `dead_letter_dir` will see “executor panicked” entries that do not correspond to any actually-lost verdict. Worth a one-line note in the dead-letter handling runbook, or having `report_panic` suppress the dead-letter write on `invalidJudgeClaim`. **LIKELY.**
-
-### ARCH-3 — `_sys.*` metadata namespace is a soft contract shared across two write mechanisms (LOW, CONFIRMED)
-`recruiting-invitations.ts` now writes the `metadata` JSONB two ways: atomic `jsonb_set(_sys.failedRedeemAttempts)` (`:105,134,215`) and the FOR UPDATE read-modify-write merge (`:407-412`). Both honor the `INTERNAL_KEY_PREFIX` (`_sys`) convention; `findInternalKeyViolation` (`:166-169,381-385`) blocks admin-supplied `_sys.*` keys at the API boundary. The contract is enforced, but it lives in three places (two write paths + one validator). A fourth writer added without the validator would clobber `_sys.*`. Defensive note: centralize the `_sys.*` merge into one helper used by every `metadata` writer (the A3 merge already encapsulates it for the tx path). **CONFIRMED.**
-
-### ARCH-4 — Two settings writers diverge beyond reconfirm (LOW, CONFIRMED)
-Related to ARCH-1 but broader: `admin/settings/route.ts` (API) and `actions/system-settings.ts` (server action) are two independent implementations of “persist global settings,” with different key allow-lists (`allowedConfigKeys` vs `CONFIG_KEYS`), different sensitive sets, different audit shapes, and now different reconfirm posture. They will drift further (e.g., a key added to one allow-list but not the other). The architectural fix after ARCH-1 is to collapse to a single `applySystemSettings(input, { actor, requireReconfirm })` core used by both transports. **CONFIRMED.**
-
----
-
-## Summary verdict
-
-- **Cycle-3 fixes, architectural soundness:** A3, A4, A7 are CLEAN (no coupling/layering/deadlock regression). A8’s gate is correct in isolation but **does not cover the UI write path** (ARCH-1) — the one cycle-3 fix whose protection is materially incomplete on the primary user-facing flow.
-- **PERF lane:** all items re-confirmed real by direct Read; AGG-37 CLOSED (skip reasoning correct); most others are LOW impact given their frequency. Best ROI: AGG-41 (audit IN→EXISTS) and F-1 (`canManageProblem` capability fast-path + memo). One new LOW item (SSE immutable-row re-fetch from A6).
-- **DESIGN lane:** all deferred items still real and correctly deferred. **AGG-2 (snapshot false-fidelity) is the highest-leverage** — the docstring’s full-fidelity claim is provably false and the rollback artifact cannot restore auth. NEW-B should ship with AGG-10.
-- **NET-NEW:** **ARCH-1 (settings reconfirm on wrong path) is the cycle-4 headline** — HIGH, schedule next cycle. ARCH-2/3/4 are LOW structural notes.
-
-Nothing else inflated. Findings 112→25 trajectory holds; this cycle adds one HIGH (ARCH-1) and otherwise re-closes.
+That would reduce the current "remember the right env vars" coupling without
+discarding the hardening already present in `deploy-docker.sh`.

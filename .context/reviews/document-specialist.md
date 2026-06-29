@@ -1,122 +1,143 @@
-# Cycle 5 — document-specialist
+# Cycle 1/100 - document-specialist
 
-Repo: `/Users/hletrd/flash-shared/judgekit` · Head: `7ebea50e` · Scope: (a) VERIFY every claim of the cycle-4 docs batch (commit `2c224ab0`) against current code; (b) net-new doc drift introduced by cycle-4 code changes (C4-1 snapshot, C4-2 workerId, F1 int64, ARCH-1 settings reconfirm); (c) status of deferred doc items; (d) docstring audit on changed files.
+Repo: `/Users/hletrd/flash-shared/judgekit`
+Role: document-specialist
+Scope requested: docs/code mismatches against `AGENTS.md`, `CLAUDE.md`, `docs/deployment*.md`, `.context/current-state`, and `deploy-docker.sh`, with focus on the corrected Worv target `test.worv.ai` and deploy storage cleanup policy.
 
-Read-only review. Every cited line read at HEAD `7ebea50e`.
+This is a read-only review except for writing this report. The working tree already had unrelated modified review, plan, and source files; I did not touch them.
 
----
+## Source Inventory
 
-## (a) VERIFY cycle-4 docs batch (commit `2c224ab0`) — 7 claims
+The requested `.context/current-state` path does not exist in this checkout. The repository context index maps current state to `.context/project/current-state.md`: `.context/README.md:12-15`.
 
-The commit message claims: AGG-51/52, C3-D1/D2, C4-9, C4-D5, A9, NEW-1. Reality:
+Reviewed files:
 
-| Claim | Status | Detail |
-|---|---|---|
-| **AGG-52** push-scan `die` wording | ✅ DONE & correct | `AGENTS.md:379` now says "aborts the deploy via `die`"; example block at L385 uses `[FATAL]`. Matches `deploy-docker.sh:1078-1079` `die "drizzle-kit push detected a destructive schema change…"`. |
-| **C3-D2** AGENTS.md line cite | ✅ DONE & correct | `AGENTS.md:407` now references "the `# Step 5b: Pre-drop secret_token backfill` block, near line 941" — marker-based, no brittle line range. Marker exists at `deploy-docker.sh:941`. |
-| **C3-D1** .env.example security vars | ✅ DONE (partial — see C5-DOC-8) | `.env.example:171-195` has all 6 vars with accurate `0`/unset semantics. BUT `.env.production.example` was named in the plan too and got none of the missing 5. |
-| **C4-9** CSV durable audit | ✅ DONE & correct | `contests/[assignmentId]/export/route.ts:185` uses `recordAuditEventDurable` on the CSV branch, matching the JSON branch at L117. |
-| **A9** per-target deploy env | ✅ DONE & correct | `deploy-docker.sh:127-136` sources `.env.deploy.${DEPLOY_TARGET}` with caller-override restoration after. Comment is accurate. `.env.deploy.{algo,worv,auraedu}` exist. |
-| **DOC-2/DOC-3** snapshot prose (folded into A3, commit `65ca7ef8`) | ✅ DONE & correct | `data-retention-policy.md:48` and `admin-security-operations.md:65` both reworded; `pre-restore-snapshot.ts:34-48` docstring matches the `snapshot:true` bypass reality. |
-| **AGG-51** CSRF doc | ❌ **REGRESSION — see C5-DOC-1** | Doc + docstring now make a FALSE "any one passing is sufficient" claim. |
-| **C4-D5** settings PUT `currentPassword` | ❌ **CLAIMED BUT NOT DONE — see C5-DOC-2** | The commit `2c224ab0` api.md diff contains ONLY the CSRF section. No settings PUT change landed. |
-| **NEW-1** language sizes | ❌ **HALF-DONE — see C5-DOC-5** | AGENTS.md reconciled; `docs/languages.md` left stale. |
-
----
-
-## (b) FINDINGS
-
-### C5-DOC-1 — CSRF doc claims "any one passing is sufficient"; the code makes `X-Requested-With` MANDATORY (HIGH, regression) · CONFIDENCE: High
-- **Doc:** `docs/api.md:80-82` — *"enforce **three** layered checks … (any one passing is sufficient on same-origin browsers; failures return 403)"*. Item 1 at L83-84 frames `X-Requested-With` as one of three alternatives.
-- **Docstring:** `src/lib/security/csrf.ts:20-23` repeats the same false claim — *"via THREE layered checks (any one passing is sufficient)"*.
-- **Code:** `src/lib/security/csrf.ts:42-47` — `if (xRequestedWith !== "XMLHttpRequest") return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 })`. This is an **unconditional early return**. If the header is missing or not exactly `XMLHttpRequest`, the request is rejected BEFORE the `Sec-Fetch-Site` (L49-56) and `Origin` (L58-73) checks are even evaluated. The latter two are *additional* gates that fire on top, not alternatives — and each only fires when its header is present.
-- **Mismatch:** The real boolean is AND, not OR. `X-Requested-With: XMLHttpRequest` is **required** with no fallback; `Sec-Fetch-Site` (when present) must be same-origin/same-site/none; `Origin` (when present + AUTH_URL resolvable) must match. An integrator who believed the doc and sent only a correct `Sec-Fetch-Site` (no `X-Requested-With`) would get 403 on every mutation.
-- **Severity / provenance:** **HIGH.** This mismatch was *introduced* by the cycle-4 fix batch (commit `2c224ab0`). The prior doc (`requires the custom header X-Requested-With`) was accurate about XRW being mandatory — it merely understated the other two checks. The new doc overcorrected into a false OR claim, which is worse than the original understatement because it teaches the wrong mental model.
-- **Fix (text-only):** Reword `docs/api.md:80-84` and the `csrf.ts:20-23` docstring to: *"enforce three layered checks — **all** applicable checks must pass (403 on any failure). (1) `X-Requested-With: XMLHttpRequest` is **required** (HTML forms cannot set custom headers). (2) When `Sec-Fetch-Site` is present, it must be `same-origin`, `same-site`, or `none`. (3) When `Origin` is present and `AUTH_URL` is configured, the origin host must match."*
-
-### C5-DOC-2 — `PUT /api/v1/admin/settings` doc STILL omits `currentPassword` + sensitive-key gate; commit `2c224ab0` message falsely claims C4-D5 done (MEDIUM) · CONFIDENCE: High
-- **Doc:** `docs/api.md:1380-1395` — request body lists only `siteTitle`, `siteDescription`, `timeZone`, `aiAssistantEnabled`, `allowedHosts`; no `currentPassword`, no sensitive-key note.
-- **Code:** `src/lib/security/sensitive-settings.ts:23-52` (`SENSITIVE_SETTINGS_KEYS` — 28 keys spanning platformMode, allowedHosts, hcaptcha/SMTP secrets, exam-mode toggles, upload ceilings, rate limits, session lifetime); `src/app/api/v1/admin/settings/route.ts` consumes `requireSettingsReconfirm` (shared helper); `src/lib/actions/system-settings.ts:100` also calls it (ARCH-1 — both writers gate).
-- **Mismatch:** Identical to the cycle-4 pre-fix state. C4-D5 was listed in commit `2c224ab0`'s subject (`…C4-D5…`) but the diff contains zero settings-PUT changes — only the CSRF section. The work was never done.
-- **Fix (text-only):** Document `currentPassword` (required when any of `SENSITIVE_SETTINGS_KEYS` is present; verified via `verifyAndRehashPassword`; 401 `passwordReconfirmRequired` on miss/403 `invalidPassword` on wrong value). Note cosmetic-only edits (`siteTitle`, `siteDescription`, `defaultLanguage`, branding) remain editable without reconfirm. Reference the shared-helper contract so the doc stays in sync with the single source of truth.
-
-### C5-DOC-3 — `PATCH /api/v1/admin/roles/:id` doc STILL omits `cannotEditHigherRole` gate (MEDIUM, deferred from cycle 4) · CONFIDENCE: High
-- **Doc:** `docs/api.md:1432-1434` — *"Update a role. Cannot reduce `super_admin` capabilities or change built-in role levels."*
-- **Code:** `src/app/api/v1/admin/roles/[id]/route.ts:94-95` — `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403)` (the lateral cap-stripping gate from cycle-3 A2).
-- **Mismatch:** Unchanged since cycle 4. The gate is undocumented; an integrator automating role edits as a non-super admin would hit an unexpected 403.
-- **Fix (text-only):** Add: *"Returns 403 `cannotEditHigherRole` if the role's current level exceeds the actor's (prevents lateral cap-stripping). Target `level` must also be ≤ the actor's level."*
-
-### C5-DOC-4 — `POST /api/v1/judge/claim` now REQUIRES `workerId`+`workerSecret`; docs show no request body at all (MEDIUM, net-new drift from C4-2) · CONFIDENCE: High
-- **Doc:** `docs/api.md:1287-1291` — *"Claim a pending submission for judging. Uses atomic SQL… **Response:** Full submission object…"*. No request body documented.
-- **Code:** `src/app/api/v1/judge/claim/route.ts:106-127` — `claimRequestSchema` makes `workerId` required via `superRefine` (`workerIdRequired` if absent) and `workerSecret` required when `workerId` is present. L162-165 re-rejects if either is missing. The shared `JUDGE_AUTH_TOKEN` is no longer accepted on `/claim` (bootstrap-only, `/register`-only since C4-2 Part 1).
-- **Mismatch:** The C4-2 security hardening — requiring a registered worker credential to claim work — is invisible in the API docs. A worker integrator following the docs would not know to send `workerId`/`workerSecret`.
-- **Note on siblings:** `/poll` derives `workerId` from the submission's `judgeWorkerId` and authorizes via `isJudgeAuthorizedForWorker` (`poll/route.ts:77`), so its body genuinely need not carry `workerId` — the poll doc body is technically consistent. `/heartbeat` and `/deregister` correctly document `workerId`/`workerSecret` in body. Only `/claim` is the gap.
-- **Fix (text-only):** Add a request body table for `/claim` with `workerId` (required) + `workerSecret` (required) and a note that the shared `JUDGE_AUTH_TOKEN` is registration-only.
-
-### C5-DOC-5 — `docs/languages.md` language sizes still stale (NEW-1 half-reconciled) (MEDIUM) · CONFIDENCE: High
-- **Doc A (fixed):** `AGENTS.md:375` — `core (~1.2 GB), popular (~4 GB), extended (~12 GB), all (~30 GB)` — matches `deploy-docker.sh:223-226` `--help`.
-- **Doc B (stale):** `docs/languages.md:216-218` — `core (~0.8 GB), popular (~2.5 GB), extended (~8 GB)`. Only `all (~30 GB)` at L219 was updated.
-- **Code (source of truth):** `deploy-docker.sh:223-226` — `core (~1.2 GB), popular (~4 GB), extended (~12 GB)`.
-- **Mismatch:** The cycle-4 plan scoped NEW-1 as "AGENTS.md language-preset sizes — reconcile" and only touched AGENTS.md. `docs/languages.md` was missed. The `core`/`popular`/`extended` figures there are now ~33-50% low.
-- **Fix (text-only):** Update `docs/languages.md:216-218` to the deploy-script figures. (Optional: drop the prose pointer to "empirical figures from `deploy-docker.sh --help`" that AGENTS.md:375 already carries, or mirror it.)
-
-### C5-DOC-6 — `GET /api/v1/problems/:id/export` STILL undocumented (MEDIUM, deferred twice) · CONFIDENCE: High
-- **Doc:** `docs/api.md` — grep for `problems/:id/export` / `problems/.*export` → 0 hits.
-- **Code:** `src/app/api/v1/problems/[id]/export/route.ts` exists (SELECTs `problemType`/`functionSpec`/`referenceSolution`; strict `canManageProblem` gate per cycle-1 A9).
-- **Status:** Was in cycle-4 A7 list ("NEW-2/3 docs/api.md — document…"). Not done. Second deferral.
-
-### C5-DOC-7 — `POST /api/v1/groups/:id/instructors` STILL undocumented (MEDIUM, deferred twice) · CONFIDENCE: High
-- **Doc:** `docs/api.md` — grep for `instructors` → 0 hits.
-- **Code:** `src/app/api/v1/groups/[id]/instructors/route.ts` exists.
-- **Status:** Same as C5-DOC-6. Second deferral.
-
-### C5-DOC-8 (LOW bundle) — `.env.production.example` partial + trivial prose · CONFIDENCE: High
-- **`.env.production.example`** — the cycle-4 plan A7 explicitly named *both* files: *"C3-D1 `.env.example` + `.env.production.example` — add the 6 missing security-relevant env vars."* Only `.env.example` got all 6. `.env.production.example` still has only `TRUSTED_DOCKER_REGISTRIES` (L54, commented) and is missing `TRUSTED_PROXY_HOPS`, `JUDGE_ALLOWED_IPS`, `JUDGE_STRICT_IP_ALLOWLIST`, `SANDBOX_ALLOW_UNVERIFIED_EMAIL`, `ALLOW_UNSNAPSHOTTED_RESTORE`, `JUDGE_PRODUCTION_MODE`. These are arguably *more* relevant in a production example than a dev one.
-- **`docs/api.md:1242`** — *"These endpoints are authenticated via judge authorization (not user sessions)."* Accurate but vague; does not state that `/register` takes the shared `JUDGE_AUTH_TOKEN` (Authorization header) while all other judge endpoints require the per-worker `workerSecret`. Pre-existing, LOW. (Folded here because it collides with C5-DOC-4's fix — address both in one pass.)
-
----
-
-## (c) CHANGED-FILE DOCSTRING AUDIT (cycle-4 code) — all CLEAN
-
-| File | Verdict |
+| File | Relevant evidence reviewed |
 |---|---|
-| `src/lib/judge/function-judging/serialization.ts:5-19` | ✅ Accurately describes the F1 fix: bigint/string verbatim, safe-int-only `number`, throw on unsafe. Matches `encodeIntLiteral` L21-35. |
-| `src/lib/judge/function-judging/adapters/cpp.ts:47-50` | ✅ `strtoll` over integer-only token; references F1; explains why `llround(stod(...))` was wrong. |
-| `adapters/java.ts:75-85` | ✅ `Long.parseLong(integerToken())`; F1-referenced. |
-| `adapters/csharp.ts:78-89` | ✅ `long.Parse(IntegerToken(), InvariantCulture)`; F1-referenced. |
-| `src/lib/judge/ip-allowlist.ts:6-16` | ✅ Accurately describes C4-2 Part 2: unset==allow-all preserved, `JUDGE_STRICT_IP_ALLOWLIST=1` opt-in, references the cycle-2 revert `23851d69` as the cautionary precedent. Matches `isStrictIpAllowlistOptedIn` L19. |
-| `src/lib/db/export.ts:84-92` | ✅ Accurately describes `snapshot:true` bypass of `EXPORT_ALWAYS_REDACT_COLUMNS`; distinguishes snapshot from regular exports/backup/migrate. Matches L93-97 ternary. |
-| `src/lib/db/pre-restore-snapshot.ts:34-48` | ✅ Accurately describes the snapshot as full-fidelity via `snapshot:true`, lists the retained auth columns, justifies `0o600`/`0o700` for the *correct* reason (live secrets now present). Matches the call site at L84-86. |
-| `src/lib/security/sensitive-settings.ts:23-52,62-80` | ✅ `SENSITIVE_SETTINGS_KEYS` docstring + `requireSettingsReconfirm` parity claim ("Mirrors the restore/backup/migrate `verifyAndRehashPassword` gate") — verified: restore L59, backup L63, migrate L68/L180 all call it. SINGLE-source-of-truth claim accurate (route + action both import). |
-| `src/lib/security/csrf.ts:19-31` | ❌ See C5-DOC-1 — the "any one passing is sufficient" line is false. |
+| `AGENTS.md` | Deploy hardening and cleanup policy at `AGENTS.md:423-436`; deployment shortcut/key note at `AGENTS.md:577-580`. |
+| `CLAUDE.md` | Algo deploy flags and production prune guardrails at `CLAUDE.md:7-12`. |
+| `docs/deployment.md` | Target shortcut table at `docs/deployment.md:147-153`; Docker safe/dangerous operations and automatic cleanup at `docs/deployment.md:236-286`. |
+| `docs/deployment-automation.md` | Target shortcut table and deployment baseline at `docs/deployment-automation.md:13-30`. |
+| `.context/project/current-state.md` | Current deployed cleanup and Worv status at `.context/project/current-state.md:49-59` and `.context/project/current-state.md:129-147`. |
+| `deploy-docker.sh` | Target override sourcing at `deploy-docker.sh:127-137`; cleanup helper at `deploy-docker.sh:375-421`; app-host pre-build cleanup at `deploy-docker.sh:513-541`; worker/app post-deploy cleanup calls at `deploy-docker.sh:1213-1222` and `deploy-docker.sh:1230-1237`. |
+| `.env.deploy.worv` | Supporting local target override, untracked: `.env.deploy.worv:8-11` and `.env.deploy.worv:35`. Cited only for non-secret host/key-path fields. |
+| `scripts/docker-disk-cleanup.*` | Supporting recurring cleanup implementation: `scripts/docker-disk-cleanup.sh:1-49`, `scripts/install-docker-disk-cleanup.sh:15-22`, `scripts/docker-disk-cleanup.service:1-12`, `scripts/docker-disk-cleanup.timer:1-10`. |
 
----
+## Confirmed: Worv Target Is Corrected To `test.worv.ai`
 
-## (d) EXTERNAL LIBRARY / API CURRENCY — no drift, no re-check needed this cycle
+No docs/code mismatch found for the corrected Worv app target in the reviewed surface.
 
-No dependency versions changed in cycle 4. The table from the cycle-4 review (next `^16.2.9`, react `19.2.5`, next-auth `5.0.0-beta.31`, drizzle-orm `0.45.2`, drizzle-kit `^0.31.9`, argon2 `^0.44.0`, vitest `^4.1.5`, @playwright/test `^1.59.1`, typescript `5.9.3`) remains current. No deprecated/removed SDK usage. No external-library findings.
+Evidence:
 
----
+- `docs/deployment.md:153` documents `worv` as `test.worv.ai`, SSH user `ubuntu`, key `~/.ssh/worv-judgekit.pem`, with dedicated worker `worker.test.worv.ai`.
+- `docs/deployment-automation.md:19` documents the same `worv` domain and key.
+- `AGENTS.md:577-580` says `test.worv.ai` uses `~/.ssh/worv-judgekit.pem` and must stay aligned with `docs/deployment.md`.
+- `.context/project/current-state.md:129-131` records all three deploy targets, including `test.worv.ai`, redeployed with the new prune.
+- `deploy-docker.sh:127-137` sources `.env.deploy.${DEPLOY_TARGET}`, so the actual `DEPLOY_TARGET=worv` host comes from the target override file rather than a hardcoded script table.
+- The local untracked override confirms `REMOTE_HOST=test.worv.ai` and `DOMAIN=test.worv.ai` at `.env.deploy.worv:8-10`, and `WORKER_HOSTS=worker.test.worv.ai:...:linux/arm64` at `.env.deploy.worv:35`.
+- A stale-host sweep over the requested docs/script surface found no non-`test.worv.ai` `worv.ai` deployment target.
 
-## FINAL SWEEP (clean / re-confirmed)
+Fix: none required for the Worv target. Keep `AGENTS.md`, `docs/deployment.md`, `docs/deployment-automation.md`, and `.env.deploy.worv` aligned when rotating keys or changing the host.
 
-- `docs/judge-workers.md:59`, `docs/deployment.md:48`, `docs/admin-security-operations.md:58` — every `JUDGE_AUTH_TOKEN` reference correctly states "registration/bootstrap only"; the C4-2 change brought the *code* into line with docs that had anticipated this model since 2026-05. No regression.
-- `docs/function-judging.md:35` (`±2^53−1; values outside it are rejected at authoring time`) and L95 (`byte-identical for non-double`) — both accurate post-F1.
-- `docs/privacy-retention.md` retention windows still match `src/lib/data-retention.ts` defaults.
-- `SECURITY.md` snapshot path/mode claims match `pre-restore-snapshot.ts` (0o700/0o600); does not repeat the old false "contains password hashes" claim.
-- `CLAUDE.md` deploy flags still honored by `deploy-docker.sh` + the new per-target sourcing (A9).
+## Findings
 
----
+### DS-1 - HIGH - Post-deploy volume pruning conflicts with the newer "never volumes" storage-cleanup policy
 
-## PRIORITY ORDER (doc lane — next cycle)
+Confidence: High
 
-1. **C5-DOC-1 (HIGH, regression, text-only)** — fix the false CSRF "any one passing is sufficient" in BOTH `docs/api.md:80-84` and `csrf.ts:20-23`. This is a cycle-4-introduced regression and the only HIGH item.
-2. **C5-DOC-2 (MEDIUM, text-only)** — settings PUT `currentPassword` + sensitive-key gate. Was falsely claimed done in cycle 4.
-3. **C5-DOC-4 (MEDIUM, text-only)** — `/claim` request body (`workerId`+`workerSecret`); net-new drift from C4-2.
-4. **C5-DOC-5 (MEDIUM, text-only)** — `docs/languages.md:216-218` sizes.
-5. **C5-DOC-3 (MEDIUM, text-only)** — roles PATCH `cannotEditHigherRole`.
-6. **C5-DOC-6 / C5-DOC-7 (MEDIUM, text-only)** — the two undocumented endpoints (second deferral).
-7. **C5-DOC-8 (LOW bundle, text-only)** — `.env.production.example` missing 5 vars + judge-section auth-vagueness.
+Evidence:
 
-All items are text-only. Items 1-3 are the priority and can land in a single small docs commit; the rest can ride along.
+- `CLAUDE.md:12` gives the top-level production rule: never run `docker system prune --volumes` because it destroys DB data.
+- `AGENTS.md:435` documents the newer pre-build disk guard plus recurring host cleanup as reclaiming dangling images, build cache, and BuildKit history, then states that neither path ever prunes volumes because the PostgreSQL data volume lives there.
+- `scripts/docker-disk-cleanup.sh:4-7` implements that recurring policy: no `docker volume prune` and no `docker system prune --volumes`, by design.
+- `scripts/docker-disk-cleanup.service:2` describes the timer as "images + build cache; never volumes"; `scripts/install-docker-disk-cleanup.sh:22` prints "Never prunes volumes."
+- `deploy-docker.sh:513-541` implements the app-host pre-build disk guard with `docker image prune -f`, `docker builder prune -af`, and `docker buildx history rm --all`, and explicitly says volumes are never touched at `deploy-docker.sh:518-527`.
+- But the default post-deploy helper still executes `docker volume prune -f` whenever any running container named `judgekit-db` is found: `deploy-docker.sh:407-417`.
+- The helper runs on worker hosts at `deploy-docker.sh:1213-1222` and on the app host at `deploy-docker.sh:1230-1237`.
+- The docs bless that behavior as safe: `docs/deployment.md:244-246` says `docker volume prune -f` is safe while `judgekit-db` is running, and `docs/deployment.md:275-277` lists DB-guarded volume prune as step 4 of automatic cleanup.
+- `docs/deployment-automation.md:27-30` also says the deployment baseline prunes DB-guarded orphan volumes on every touched host.
+- `.context/project/current-state.md:56-59` records the same DB-running volume-prune policy as current state.
 
+Mismatch:
+
+There are now two different storage-cleanup policies in the same operator surface:
+
+1. Pre-build and recurring cleanup: never prune volumes.
+2. Default post-deploy cleanup: prune every unattached Docker volume on the host if `judgekit-db` is running.
+
+The post-deploy docs call this broadly safe, but `docker volume prune -f` is host-wide. The `judgekit-db` running check only proves Docker will preserve volumes attached to that currently running DB container. It does not prove that every other detached named or anonymous volume on the same host is disposable.
+
+Failure scenario:
+
+A production host has `judgekit-db` running, plus a detached old compose-project volume, an emergency restore volume, an upload/data volume from another service, or a temporarily detached PostgreSQL volume from a stopped sidecar. A routine JudgeKit deploy reaches `prune_old_docker_artifacts()`, sees `judgekit-db` running, and deletes all unattached volumes on that Docker daemon. The operator followed docs that classified the command as safe.
+
+Fix:
+
+Preferred fix is code plus docs:
+
+- Remove `docker volume prune -f` from `prune_old_docker_artifacts()` in `deploy-docker.sh:414-416`.
+- Change the helper log strings and comments at `deploy-docker.sh:33-39`, `deploy-docker.sh:375-377`, `deploy-docker.sh:406`, and `deploy-docker.sh:1230-1232` to say cleanup removes stopped containers, dangling images, and BuildKit cache/history only.
+- Update `docs/deployment.md:244-246` and `docs/deployment.md:275-277` so `docker volume prune -f` is not listed as routine safe deploy cleanup. If volume cleanup remains documented at all, put it under a manual, explicitly scoped runbook with a warning that it removes all unattached volumes on the host.
+- Update `docs/deployment-automation.md:27-30`, `AGENTS.md:432`, and `.context/project/current-state.md:56-59` to match the no-volume deploy cleanup policy.
+- Keep `scripts/docker-disk-cleanup.sh` unchanged; it already implements the safer recurring policy.
+
+If the project intentionally keeps DB-guarded volume prune, the docs should at least stop calling it broadly safe and state the host-wide deletion semantics. That is weaker than the preferred fix because it leaves the data-loss class active.
+
+### DS-2 - MEDIUM - "unused images" wording contradicts the dangling-only image policy
+
+Confidence: High
+
+Evidence:
+
+- `deploy-docker.sh:379-390` explains why the script must not use `docker image prune -af`: tagged `judge-*` images are not attached to long-running containers and would be wiped as "unused".
+- The implementation correctly uses dangling-only `docker image prune -f` at `deploy-docker.sh:410-412`.
+- `docs/deployment.md:269-273` correctly says automatic cleanup removes dangling-only untagged image layers and preserves tagged judge language images.
+- `AGENTS.md:432` also correctly says dangling-only `docker image prune -f`, not `-af`.
+- But `deploy-docker.sh:33-39` describes `SKIP_POST_DEPLOY_PRUNE` as skipping cleanup of "unused images".
+- `deploy-docker.sh:1230-1232` says Step 6d removes "unused images".
+- `docs/deployment-automation.md:27-30` says the baseline prunes "unused images".
+
+Mismatch:
+
+The code and the main deployment runbook use the precise, safe term "dangling images". Some comments/docs still say "unused images", which is Docker's `-a` concept and is exactly the behavior the project warns against. This wording is easy to misread as permission to use `docker image prune -af`.
+
+Failure scenario:
+
+An operator or future patch author tries to make the cleanup match the "unused images" prose and changes `docker image prune -f` to `docker image prune -af`. Because judge language images are tagged but idle between submissions, the deploy wipes language images and breaks judging until they are rebuilt.
+
+Fix:
+
+- Replace "unused images" with "dangling images" or "untagged `<none>:<none>` images" at `deploy-docker.sh:35`, `deploy-docker.sh:1231`, and `docs/deployment-automation.md:27`.
+- Keep the existing `docker image prune -f` implementation.
+- Consider adding a short pointer in `docs/deployment-automation.md:27-30` to the detailed `docs/deployment.md:269-273` wording so the automation doc cannot be read as `docker image prune -a`.
+
+### DS-3 - LOW - `docs/deployment.md` has a broken relative link to the automation doc
+
+Confidence: High
+
+Evidence:
+
+- `docs/deployment.md:133` links to `[Deployment Automation & Reproducibility](docs/deployment-automation.md)`.
+- Because that link is inside `docs/deployment.md`, the relative target resolves as `docs/docs/deployment-automation.md`, not `docs/deployment-automation.md`.
+- The target file exists at `docs/deployment-automation.md`.
+
+Mismatch:
+
+The prose points at the right document name, but the Markdown target is wrong from its current directory.
+
+Fix:
+
+- Change `docs/deployment.md:133` to `[Deployment Automation & Reproducibility](deployment-automation.md)`.
+
+## Final Sweep
+
+- No stale non-`test.worv.ai` Worv app-host references were found in `AGENTS.md`, `CLAUDE.md`, `docs/deployment*.md`, `.context/project/current-state.md`, `deploy-docker.sh`, or the local `.env.deploy.worv` target override.
+- The app-host pre-build disk guard matches its docs: it uses dangling image prune, builder prune, and BuildKit history cleanup, and it never prunes volumes (`deploy-docker.sh:513-541`; `AGENTS.md:435`).
+- The recurring host cleanup artifacts match their docs and service descriptions: stopped containers, dangling images, build cache/history under pressure, no volume pruning (`scripts/docker-disk-cleanup.sh:1-49`; `scripts/docker-disk-cleanup.service:1-12`; `scripts/docker-disk-cleanup.timer:1-10`).
+- The remaining deploy-cleanup drift is concentrated in the default post-deploy helper and its documentation, especially the DB-guarded `docker volume prune -f` policy and "unused images" wording.
+
+## Priority Fix Order
+
+1. DS-1: remove routine post-deploy volume prune or document its host-wide deletion semantics. Preferred resolution is no routine volume prune.
+2. DS-2: replace "unused images" with "dangling images" in deployment automation prose and deploy script comments.
+3. DS-3: fix the relative link in `docs/deployment.md`.

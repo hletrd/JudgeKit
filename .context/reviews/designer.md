@@ -1,190 +1,239 @@
-# Cycle 5 — designer
+# Designer Review - Cycle 1/100
 
-**Focus:** Regression-check the three cycle-4 settings forms that gained a `currentPassword` reconfirm field (`allowed-hosts-form`, `config-settings-form`, `system-settings-form`) + their en/ko i18n strings, and re-confirm status of the deferred Designer P1/P2 batch.
-**Date:** 2026-06-27
-**HEAD reviewed:** `7ebea50e`
-**Cycle-4 UI surface:** `git diff edd45cca..7ebea50e --name-only -- 'src/**/*.tsx' 'src/**/*.css'` returns **exactly 3 files** — the three settings forms. No `.css`, no other component, no page-level change.
-**Method:** Static review of the JSX + i18n + `Label` component source. A dev-server browser pass is not feasible here (the page lives under `(dashboard)/dashboard/admin/` behind auth + a live DB; cycle-4 gate logged `test:e2e skipped (no DB/browser infra locally)`), and the delta is three ~14-line additions to a known-good form scaffold, so static review is the proportionate lens. Multimodal caveat applies: no screenshots — findings reference selectors, classes, and token math.
-**Framework (unchanged):** Next.js 16.2.9 + React 19.2 + Tailwind 4 + shadcn/Base UI + next-intl 4.9 + next-themes 0.4.
+Repo: `/Users/hletrd/flash-shared/judgekit`
+Role: DESIGNER reviewer
+Date: 2026-06-30
 
----
+## Inventory First
 
-## TL;DR (cycle 5 verdict)
+Reviewed UI/documentation surfaces before filing findings:
 
-- **Regression:** NONE. The 3 form additions are consistent, accessible (label + `type=password` + `autoComplete=current-password` + `required`), correctly placed (last field before Save), and the en/ko strings are present, sensible, and obey the CLAUDE.md Korean-letter-spacing rule.
-- **Net-new (polish tier, LOW only — do not inflate):** Two micro-nits.
-  - **UI-15 (LOW):** the new password label uses a plain `<label className="text-sm font-medium">` instead of the `<Label>` component used by every sibling field in two of the forms — small `leading-none`/`select-none` baseline drift inside the same form. Polish.
-  - **UI-16 (LOW):** the server-side `passwordReconfirmRequired` error surfaces only as a toast (sonner aria-live) with no inline `role="alert"` next to the field. Marginal because `required` makes the browser-native validation the real user path; the toast is defense-in-depth.
-- **Deferred Designer P1/P2 batch:** ALL 14 ITEMS STILL VALID. The cycle-4 .tsx diff touches NONE of the selectors cited in cycle 4 (no leaderboard, sidebar, recruit form, error.tsx, headings, tabs, card.tsx, etc.). Re-confirmed by enumeration, not assumption.
-- **Convergence:** 112 → 25 → 28 → now **14 + 2 LOW**. Do not inflate: UI-15 and UI-16 are polish-tier; both can ride along with the existing Cleanup batch.
+- App Router pages and layouts: `src/app/layout.tsx`, `src/app/page.tsx`, `src/app/(public)/**`, `src/app/(auth)/**`, `src/app/(dashboard)/**`, route-level `loading.tsx`, `error.tsx`, `not-found.tsx`.
+- Shared UI primitives: `src/components/ui/**` including button, input, checkbox, dialog, alert-dialog, select, dropdown-menu, sheet, table, tabs, tooltip, toast.
+- Layout/navigation: `src/components/layout/**`, `src/lib/navigation/public-nav.ts`, `src/lib/navigation/admin-nav.ts`, locale and theme controls.
+- Feature UI: problem creation/submission, code editor, contest creation/recruiting, groups/assignments, admin API keys/files/settings/tags/languages, rankings, submissions, discussions.
+- Styles/theme: `src/app/globals.css`, Tailwind utility usage in representative routes/components.
+- i18n/locale: `messages/en.json`, `messages/ko.json`, `src/i18n/**`, `src/lib/i18n.ts`, locale-aware labels and Korean letter-spacing rules.
+- Project docs relevant to UI: `AGENTS.md`, `CLAUDE.md`, `.context/development/problem-descriptions.md` where reachable.
 
----
+Live browser automation was attempted but blocked by local server/runtime state:
 
-## REGRESSION — cycle-4 settings password-reconfirm field
+- `npm run dev -- --hostname 127.0.0.1 --port 3100` did not bind a reachable port; `curl` failed with connection refused.
+- `npm run start -- -H 127.0.0.1 -p 3100` started Next.js 16.2.9 but timed out without returning headers. It also warned that `next start` does not work with `output: "standalone"`.
+- `node .next/standalone/server.js` failed because `.next/standalone/server.js` is absent in the current workspace artifact.
 
-### REG-6 (CLEAN ✓, HIGH confidence) — `currentPassword` field in the 3 settings forms
+Because no reliable HTTP page was reachable, this review falls back to DOM/source evidence. I did not edit product code.
 
-**Files:**
-- `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:114-128`
-- `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:117-131`
-- `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:531-545`
+## Findings
 
-**Shared shape (identical across all 3):**
-```jsx
-<div className="space-y-2">
-  <label htmlFor="<form>-current-password" className="text-sm font-medium">{t("reconfirmLabel")}</label>
-  <Input
-    id="<form>-current-password"
-    type="password"
-    value={currentPassword}
-    onChange={...}
-    placeholder="••••••••"
-    autoComplete="current-password"
-    required
-  />
-  <p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>
-</div>
-```
+### D1. Multiple visible form controls have no programmatic label
 
-**Checklist (all PASS):**
+Severity: High
+Confidence: High
 
-| Criterion | Status | Evidence |
-|---|---|---|
-| Field placement | ✓ | Last field before the submit `<Button>` in all 3 forms; sits inside the form's `space-y-4` rhythm, not after the button |
-| Label association | ✓ | Each `<label htmlFor>` matches a unique `<Input id>` (`allowed-hosts-`, `config-settings-`, `system-settings-current-password`) — no duplicate ids even though all three forms render on the same `/admin/settings` page |
-| `type="password"` | ✓ | All 3 |
-| `autoComplete` | ✓ | `current-password` — the correct semantic; browser offers the saved site password (NOT `new-password`, NOT absent) |
-| `required` | ✓ | All 3 — browser-native validation blocks empty submit |
-| Validation copy empty-submit | ✓ | `passwordReconfirmRequired` string exists in en/ko; surfaced via `toast.error(t(result.error ?? "updateError"))` if server returns it (defense-in-depth behind `required`) |
-| `state` seeding | ✓ | `useState("")` — no stale value, no uncontrolled input warning |
-| Form-layout break | ✓ None | The field is wrapped in the same `space-y-2` block pattern used by every sibling field; the parent `<form className="space-y-4">` rhythm is preserved |
-| Card composition | ✓ | Each form is hosted in its own `<Card>` (`page.tsx:186, 243, 255` + tabs variant), so the password field does not collide visually with another form's submit |
+Evidence:
 
-**Verdict:** All three forms are well-placed, accessible, validate empty submit, and do not break form layout.
+- `src/components/contest/quick-create-contest-form.tsx:105-174`
+  - title input and description textarea use placeholders only
+  - duration input has no `id`, `htmlFor`, or accessible name
+  - anti-cheat checkbox is paired with adjacent text but not a label
+  - repeated problem selects and points inputs have no accessible names
+- `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:429-453`, `461-469`, `477-523`, `632-650`
+  - exam mode, duration, visibility, scoring, freeze time, and problem-row controls are visually labelled but not reliably associated with controls
+- `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:391-429`
+  - API key name input is placeholder-only; role and expiry selects are not associated with labels
+- `src/components/contest/recruiting-invitations-panel.tsx:456-485`, `501-523`
+  - candidate name/email and metadata key/value inputs are placeholder-only; expiry select is not labelled
+- `src/app/(dashboard)/dashboard/admin/settings/home-page-content-form.tsx:128-168`
+  - locale fields and card title/description inputs have labels that are not associated or rely on placeholders
+- `src/app/(dashboard)/dashboard/admin/settings/footer-content-form.tsx:140-163`
+  - copyright and footer-link fields are not consistently associated with labels
 
-### REG-7 (CLEAN ✓, HIGH confidence) — en/ko i18n strings
+Failure scenario:
 
-**Selectors:** `messages/en.json:1621-1623`, `messages/ko.json:1621-1623` under `admin.settings`.
+A screen-reader user opens the quick contest creator and tabs through the form. The assistive technology announces generic controls such as "edit text blank", "spin button 60", "checkbox checked", and "button" without the visible purpose. A speech-input user also cannot target controls by their visible names because the accessible names are missing.
 
-| key | en | ko |
-|---|---|---|
-| `reconfirmLabel` | Confirm with your password | 비밀번호 확인 |
-| `reconfirmHint` | Required to save security-sensitive changes. | 보안 관련 설정을 저장하려면 필요해요. |
-| `passwordReconfirmRequired` | Enter your current password to save security-sensitive changes. | 보안 관련 설정을 저장하려면 현재 비밀번호를 입력해 주세요. |
+Suggested fix:
 
-**Checks (all PASS):**
-- Both locales define all three keys at the same namespace path the forms resolve (`useTranslations("admin.settings")`). No missing keys → no fall-through to key strings.
-- Tone matches surrounding copy (the ko `…해요` / `…주세요` register is consistent with the rest of the admin/settings copy).
-- **CLAUDE.md Korean-letter-spacing rule: CLEAN.** `grep -c "tracking-" messages/ko.json` → `0`. The ko strings carry no `letter-spacing`/`tracking-*` overrides. Sibling file `home-page-content-form.tsx:49-50` correctly guards its `tracking-wide` behind `locale !== "ko"` — the codebase-wide rule is respected.
+Add stable `id` values and matching `Label htmlFor` for every input/textarea/select trigger. For custom select triggers, pass `id` to the trigger and use `aria-labelledby` when needed. Wrap checkbox text in a real `<label>` or use `id`/`htmlFor`. Label repeated row controls with indexed names such as "Problem 1", "Problem 1 points". Keep placeholders as examples only, not as labels.
 
----
+### D2. Base dialogs can trap keyboard users in off-screen content on small viewports
 
-## NEW UI/UX FINDINGS (cycle 5) — polish tier only
+Severity: Medium
+Confidence: High
 
-### UI-15 — Password field uses plain `<label>` instead of the `<Label>` component (line-height drift vs sibling labels) — NEW, LOW, MED confidence
+Evidence:
 
-**Selectors:**
-- `src/app/(dashboard)/dashboard/admin/settings/allowed-hosts-form.tsx:115`
-- `src/app/(dashboard)/dashboard/admin/settings/config-settings-form.tsx:118`
-- `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx:532`
+- `src/components/ui/dialog.tsx:56-60`
+  - `DialogContent` is fixed and centered, but the base component does not provide `max-h` or `overflow-y-auto`.
+- `src/components/ui/alert-dialog.tsx:49-53`
+  - `AlertDialogContent` has the same issue.
+- Plain call sites inherit this unsafe default, for example:
+  - `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx:384-440`
+  - `src/components/contest/recruiting-invitations-panel.tsx:449-554`
 
-**Issue:** All three password fields use `<label htmlFor="…" className="text-sm font-medium">`. In `config-settings-form.tsx` and `system-settings-form.tsx`, **every other field label uses the `<Label>` component** (`<Label htmlFor="site-title">` at `:212`, `<Label htmlFor="cfg-…">` at `:91`, etc.). The `Label` component (`components/ui/label.tsx:12`) applies:
-```
-flex items-center gap-2 text-sm leading-none font-medium select-none
-group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50
-peer-disabled:cursor-not-allowed peer-disabled:opacity-50
-```
-The plain `<label className="text-sm font-medium">` drops `leading-none` (so line-height resolves to ~1.25rem instead of 1) and `select-none`. The password label therefore sits at a slightly taller line-box than its sibling field labels in the same form — a small vertical-rhythm / baseline mismatch inside one card.
+Failure scenario:
 
-**User impact:** Cosmetic only. No functional issue; label-to-input association is correct. A reviewer with a pixel-ruler would notice the password label is ~3-4px taller than the labels above it in the same card.
+On a 320x568 mobile viewport, the API-key dialog or recruiting invitation dialog can exceed the visible height. Because the dialog focus trap keeps focus inside the modal while the base content area is not scrollable, lower fields and the footer action can become unreachable or very hard to reach by keyboard and touch.
 
-**Fix:** Replace the plain `<label>` with `<Label>` in all 3 files. `Label` is already imported in `config-settings-form.tsx:10` and `system-settings-form.tsx:11`; add `import { Label } from "@/components/ui/label";` to `allowed-hosts-form.tsx` (which currently has no `Label` import). Tag-only change, no visual delta once swapped.
+Suggested fix:
 
-**Confidence:** MED-HIGH. The `leading-none` delta is real; the magnitude is small but visible in side-by-side inspection.
+Give the base dialog content a safe default such as `max-h-[calc(100dvh-2rem)] overflow-y-auto`, with footer sections kept visible where appropriate. Keep per-dialog overrides for specialized layouts, but make the primitive safe by default. Apply the same treatment to alert dialogs.
 
-### UI-16 — `passwordReconfirmRequired` error is toast-only (no inline `role="alert"` next to the field) — NEW, LOW, LOW-MED confidence
+### D3. Lecture-mode menu toggle is an unnamed, undersized interactive control
 
-**Selectors:** Identical handler in all 3 forms — `toast.error(t(result.error ?? "updateError"))` then `return`.
-- `allowed-hosts-form.tsx:56-58`
-- `config-settings-form.tsx:73-75`
-- `system-settings-form.tsx:195-197`
+Severity: Medium
+Confidence: High
 
-**Issue:** When the server action returns `{ success: false, error: "passwordReconfirmRequired" }`, the error surfaces only via a sonner toast. There is no inline `<p role="alert">` adjacent to the password input, and the input has no `aria-describedby` linking it to either the hint or an inline error.
+Evidence:
 
-**Mitigations (why this is LOW, not MED):**
-- The `required` attribute on the input means the **browser-native "please fill in this field" tooltip on the field itself** is the path real users hit in ~all cases. The toast path is a defense-in-depth fallback for the rare case where client-side validation is bypassed (form submission via JS, an old browser, etc.).
-- Sonner toasts use `role="status"`/`aria-live="polite"` (verified in cycle-3 sweeps), so the error IS announced to SR users — just not associated with the field.
-- The static hint `<p className="text-xs text-muted-foreground">{t("reconfirmHint")}</p>` already explains *why* the field exists ("Required to save security-sensitive changes." / "보안 관련 설정을 저장하려면 필요해요.").
+- `src/components/layout/lecture-mode-toggle.tsx:68-84`
+  - the visual switch is a nested `<button>` with no `aria-label`, no visible text, no `aria-pressed`, and no `role="switch"`/`aria-checked`.
+  - the hit target is `h-5 w-9`, below the WCAG 2.2 target-size baseline unless a spacing exception clearly applies.
 
-**User impact:** Marginal. A SR user who triggers the server-side error gets a generic toast announcement without "this is about the password field you just skipped" field-level association. Sighted users see a toast near the top-right corner, not next to the field.
+Failure scenario:
 
-**Fix (optional polish, do NOT block cycle 5 on this):**
-1. Add `id="<form>-reconfirm-hint"` to the hint `<p>` and `aria-describedby="<form>-reconfirm-hint"` on the input.
-2. If a future iteration wants the inline path, render `<p role="alert" id="<form>-reconfirm-error">{t("passwordReconfirmRequired")}</p>` when a local `submitError === "passwordReconfirmRequired"` state is set, and link via `aria-describedby`. Today the forms use `toast.error` only, so this would also require capturing the error into state.
+A screen-reader user opens the lecture-mode menu and lands on an unnamed button. They cannot tell what it controls or whether it is on. A touch user on mobile has to hit a 20px-tall target inside a dropdown row, increasing miss taps.
 
-**Confidence:** MED. The accessibility gap is real but its blast radius is tiny because `required` short-circuits the user path.
+Suggested fix:
 
----
+Use the existing switch/checkbox pattern or expose the button as `role="switch" aria-checked={active}` with an accessible name such as `aria-label={t("lectureMode")}`. Add a visible or `sr-only` label for state, increase the target to at least 24px, and avoid placing an interactive button inside a non-interactive menu label container.
 
-## DEFERRED DESIGNER P1/P2 BATCH — re-confirmed on head `7ebea50e`
+### D4. Quick-create contest layout is not responsive enough for narrow screens
 
-The cycle-4 .tsx diff is exactly `{allowed-hosts,config-settings,system-settings}-form.tsx`. **None of the selectors cited in the cycle-4 review (`edd45cca`) are touched by these edits.** Therefore every item is re-confirmed by re-reading the same selector at the same (or line-shifted) location. Do NOT re-litigate; status unchanged.
+Severity: Medium
+Confidence: High
 
-| ID | Sev | Status | Cycle-5 note |
-|---|---|---|---|
-| AGG-58 | P1 | Still present | 27 `<h2>` page titles — none are in the 3 changed files |
-| AGG-59 | P1 | Still present | `leaderboard-table.tsx` `hsl(var(--border))` ×4 — not touched |
-| AGG-60 | P1 | Still present | `recruit/[token]/recruit-start-form.tsx` — not the settings forms |
-| AGG-61 | P1 | Still present | `loading.tsx`/`error.tsx` coverage — no boundary files added this cycle |
-| UI-1 | P1 | Still present | `/60` opacity contrast sites — not touched |
-| UI-2 | P1 | Still present | `sidebar.tsx` `hsl(var(--sidebar-*))` — not touched |
-| UI-3 | P1 | Still present | `tag-form-fields.tsx` inline `hsl(var(--foreground))` — not touched |
-| UI-4 | P2 | Still present | `<html nonce>` — not touched |
-| UI-5 | P2 | Still present | viewport `viewport-fit`/`themeColor` — not touched |
-| UI-6 | P2 | Still present | `api-keys`/`discussions` headings — not touched |
-| UI-7 | P2 | Still present | production `console.*` — not touched |
-| UI-8 | P2 | Still present | hardcoded status-color palettes — not touched |
-| UI-9 | P2 | Still present | `TabsContent` focus-visible — not touched |
-| UI-10 | P2 | Still present | sticky `bg-background` vs `bg-card` — not touched |
-| UI-11 | P1 | Still present | 5 `error.tsx` render `<h2>` — not touched |
-| UI-12 | P2 | Still present | `discussion-moderation-list.tsx` `text-3xl` — not touched |
-| UI-13 | P2 | Still present | `CardTitle` is `<div>` — architectural; unchanged |
-| UI-14 | P3 | Still present | 14 error `<p>` without `role="alert"` — UI-16 above extends this observation to the new reconfirm error path |
+Evidence:
 
-**Batch remediation plan (unchanged from cycle 4):** Batches 1-5 in `plan/cycle-4-2026-06-27-review-remediation.md` Phase B "Designer P1/P2 batch" still stand verbatim. **Batches 1 (drop `hsl(…)` wrappers) and 2 (`<h2>` → `<h1>` tag-only swap) remain trivially cheap and should not defer another cycle.**
+- `src/components/contest/quick-create-contest-form.tsx:124-148`
+  - the settings area is always `grid-cols-2`, with no `sm:` breakpoint.
+- `src/components/contest/quick-create-contest-form.tsx:151-179`
+  - selected problem rows use a single no-wrap flex row containing a select, points input, "pts" text, and remove button.
 
----
+Failure scenario:
 
-## SWEEPS THAT CAME BACK CLEAN (cycle 5)
+On a 320px or 360px mobile viewport inside a card, the duration and anti-cheat controls compete for half-width columns, while the problem rows squeeze a select and fixed-width points input into one line. Labels and values become cramped, and touch targets cluster tightly.
 
-- **Icon-only buttons:** No new icon-only buttons introduced. The "Add" button in `allowed-hosts-form` is text-labeled (`{tCommon("add")}`), the host-remove `<button>` wraps a `<X>` icon but is unchanged from prior cycles (cycle-3/4 sweeps confirmed equivalent patterns). No new finding.
-- **Color-only state indicators:** None added.
-- **Korean letter-spacing (CLAUDE.md rule):** CLEAN. `grep -rn 'tracking-\|letter-spacing' messages/ko.json` → 0 hits. The 3 forms render label/hint/copy via i18n without any `tracking-*` className anywhere on the input, label, or hint. ✓
-- **Form semantics:** Each form is a `<form onSubmit>` with a real submit `<Button>` (no `<div>` pseudo-forms, no `onClick`-only buttons). Keyboard "Enter in password field" submits correctly. ✓
-- **Autofill:** `autoComplete="current-password"` is the spec-correct value for "confirm with your current password." Browsers will offer the saved password for the site. ✓
-- **Focus management / modals:** No new modals. No focus traps added or removed.
-- **i18n parity:** en and ko define the same 3 keys (`reconfirmLabel`, `reconfirmHint`, `passwordReconfirmRequired`) at the same namespace; no orphan keys, no missing translations. ✓
+Suggested fix:
 
----
+Use `grid-cols-1 sm:grid-cols-2` for the settings block. For problem rows, switch to a mobile-first stacked/grid layout with a full-width problem select and separate points/remove controls, then use a denser inline layout at `sm` or `md`. This also gives room to add the missing accessible labels from D1.
 
-## CONFIDENCE SUMMARY (cycle 5)
+### D5. Public tag badges can fail color contrast when admins choose custom colors
 
-| ID | Sev | Conf | Status vs cycle 4 |
-|---|---|---|---|
-| REG-6 | — | HIGH | new — 3 password fields verified (placement, type, label, autoComplete, required) |
-| REG-7 | — | HIGH | new — en/ko strings present, sensible, letter-spacing-clean |
-| UI-15 | LOW | MED | **NEW** — plain `<label>` vs `<Label>` baseline drift |
-| UI-16 | LOW | LOW-MED | **NEW** — reconfirm error toast-only, no inline `role="alert"` |
-| AGG-58..AGG-61 | P1 | HIGH | Carry-forward verbatim (zero selector overlap with cycle-4 diff) |
-| UI-1..UI-14 | P1/P2/P3 | HIGH | Carry-forward verbatim (zero selector overlap with cycle-4 diff) |
+Severity: Medium
+Confidence: High
 
----
+Evidence:
 
-## RECOMMENDED FIX ORDER (delta vs cycle-4 plan)
+- `src/app/(public)/problems/page.tsx:710-714`
+  - tag badges set text `color` and `borderColor` directly from `tag.color`.
+- `src/app/(dashboard)/dashboard/admin/tags/tag-form-fields.tsx:37-40`
+  - admins can enter any valid hex color. The palette and custom entry path do not enforce contrast.
 
-The two new LOW findings fold into the existing **Cleanup (P2/P3, ride-along)** batch — no new batch needed:
+Failure scenario:
 
-- **Cleanup batch (add):** UI-15 — swap `<label>` → `<Label>` in the 3 settings forms (tag-only; in `allowed-hosts-form`, add the `Label` import).
-- **Cleanup batch (add, optional):** UI-16 — add `aria-describedby` on the input + `id` on the hint `<p>`. Inline `role="alert"` is a larger lift and is **not** required given the `required` attribute + sonner aria-live.
+An admin enters a light color such as `#F5F5F5` or a saturated yellow. On the public problems page the badge text uses that color directly on a light background, producing unreadable text and failing WCAG contrast. The inverse can also happen in dark mode with saturated/dim colors.
 
-**Batches 1-5 from cycle 4 remain unchanged and are still the highest-leverage work.** The 3 cycle-4 settings-form additions are production-quality; ship them.
+Suggested fix:
+
+Do not use arbitrary tag colors as text color. Render the custom color as a dot, left border, or background accent while text stays on theme tokens. If colored text is required, compute contrast against the current background and choose a compliant foreground/background pair. Add a contrast preview or validation warning to the admin tag form.
+
+### D6. Horizontal table scroll regions are not keyboard reachable or announced
+
+Severity: Medium
+Confidence: Medium-High
+
+Evidence:
+
+- `src/components/ui/table.tsx:7-18`
+  - the shared table wrapper uses `overflow-x-auto` but has no `tabIndex`, accessible name, or focus style.
+- Page-level table wrappers repeat the same pattern, for example:
+  - `src/app/(public)/problems/page.tsx:670-756`
+  - `src/app/(public)/submissions/page.tsx:460-527`
+  - `src/app/(public)/rankings/page.tsx:266-315`
+  - `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:138-230`
+
+Failure scenario:
+
+On narrow screens, right-side columns and row actions move outside the visible area. Mouse/touch users can pan the scroll container, but keyboard-only users cannot focus the horizontal scroll region to scroll it with arrow keys. Screen-reader users are also not told that the region is horizontally scrollable.
+
+Suggested fix:
+
+Make horizontal scroll wrappers focusable with `tabIndex={0}`, give them `aria-label` or `aria-labelledby`, and add a visible focus ring. For high-value tables with actions, consider a responsive card/list alternative instead of relying only on horizontal scrolling.
+
+### D7. Admin file-management row checkboxes have no accessible names
+
+Severity: Medium
+Confidence: High
+
+Evidence:
+
+- `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:142-146`
+  - select-all checkbox has no accessible label.
+- `src/app/(dashboard)/dashboard/admin/files/file-management-client.tsx:160-164`
+  - per-row checkbox has no accessible label tied to the file name.
+
+Failure scenario:
+
+A screen-reader user navigating the file table hears repeated "checkbox not checked" controls with no indication of whether the checkbox selects all files or a specific file. Because the checkbox itself is visually only `size-4`, users with motor impairments also have a small target unless the surrounding row is made label-clickable.
+
+Suggested fix:
+
+Add `aria-label={t("selectAllFiles")}` to the header checkbox. Add per-row labels such as `aria-label={t("selectFile", { name: file.originalName })}` or visually hidden labels. Consider making the file-name cell or row selection area part of the clickable label.
+
+### D8. Problem-create tag picker is not exposed as a labelled combobox/listbox
+
+Severity: Medium
+Confidence: High
+
+Evidence:
+
+- `src/app/(public)/problems/create/create-problem-form.tsx:675-704`
+  - the visible "tags" label is not associated with the tag input; the input has no `id` or accessible name.
+- `src/app/(public)/problems/create/create-problem-form.tsx:680-686`
+  - selected tag remove buttons have no `aria-label`.
+- `src/app/(public)/problems/create/create-problem-form.tsx:706-727`
+  - suggestions are rendered as a generic list of buttons, not as a combobox/listbox pattern with expanded state and active option semantics.
+
+Failure scenario:
+
+A screen-reader user reaches an unlabeled edit field, types a tag, then hears a group of generic buttons. They cannot reliably tell which tag will be removed or how suggestions relate to the input. Keyboard users may not get the expected combobox behavior of arrowing through suggestions with an announced active option.
+
+Suggested fix:
+
+Associate the input with the tags label via `id`/`htmlFor` or `aria-labelledby`. Add remove labels such as `aria-label={t("removeTag", { tag: tag.name })}`. Model suggestions as a combobox/listbox (`aria-expanded`, `aria-controls`, `role="listbox"`, `role="option"`, `aria-activedescendant`) or use an established accessible combobox primitive.
+
+### D9. Homepage first paint waits on dashboard-like metrics
+
+Severity: Low
+Confidence: Medium
+
+Evidence:
+
+- `src/app/page.tsx:49-65`
+  - the homepage awaits `getServerSession()`, `getHomepageInsights()`, and `getJudgeSystemSnapshot()` together before rendering `PublicHomePage`.
+- `src/app/(public)/_components/public-home-page.tsx:19-134`
+  - hero content and below-the-fold metrics are coupled through the same page render.
+
+Failure scenario:
+
+If the judge snapshot or database-backed insight query is slow, anonymous visitors wait for non-critical metrics before seeing the public homepage shell. This hurts perceived performance even though the hero copy and navigation can render without those metrics.
+
+Suggested fix:
+
+Render the hero and primary navigation from cached/static content first. Move insights and judge status into separate server components behind `Suspense` with skeletons or cached revalidation. Keep authenticated redirect/session logic separate from metric fetching where practical.
+
+## Coverage Notes
+
+- Information architecture: reviewed public navigation, dashboard navigation, breadcrumbs, legacy redirects, and auth-vs-public layouts. The centralized nav configuration is a strength; no IA-blocking finding was found beyond the mobile/table/dialog issues above.
+- Affordances: reviewed buttons, icons, dropdowns, destructive actions, build/remove controls, tag controls, and row actions. The strongest affordance gaps are missing labels and tiny unnamed toggles.
+- Focus and keyboard: reviewed skip links, header mobile focus trap, dialog/sheet behavior, code editor Escape handling, tab controls, table scroll, and modal overflow.
+- WCAG 2.2 accessibility: reviewed accessible names, target size, color contrast, focus visibility, reduced motion, labels/instructions, and modal reachability.
+- Responsive breakpoints: reviewed public lists, forms, dashboards, cards, tables, dialogs, and quick-create flows. D2, D4, and D6 are the main responsive risks.
+- Loading/empty/error states: reviewed route-level `loading.tsx`/`error.tsx`/`not-found.tsx`, table empty states, form errors, toasts, and skeleton usage. No broader blocker found, though some form errors should be wired to fields when D1 is fixed.
+- Dark/light mode: reviewed theme tokens in `globals.css`, `ThemeProvider`, and representative components. D5 is the main dark/light risk because custom tag colors bypass tokens.
+- i18n/RTL: compared `messages/en.json` and `messages/ko.json`; both currently have the same 2981 leaf keys. The root layout sets `lang`; no `dir` issue is user-visible for the current LTR-only locale set (`en`, `ko`). Korean letter-spacing overrides are present in `globals.css`.
+- Perceived performance: reviewed dynamic code editor loading, route loading states, and homepage data dependencies. D9 is the main perceived performance issue.
+
+Final sweep note: I inventoried and sampled all relevant UI file classes for this Next.js frontend: app-router pages/layouts, shared primitives, layout/nav, feature components, admin screens, auth forms, styles/theme, i18n messages/config, and UI-relevant docs. No relevant UI file class was skipped; live browser evidence was skipped only because the local server artifact was not runnable as documented above.

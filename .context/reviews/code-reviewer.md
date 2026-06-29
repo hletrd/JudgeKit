@@ -1,155 +1,164 @@
-# Code Review — Cycle 5
+# Code Review - Cycle 1/100
 
-**Repo:** `/Users/hletrd/flash-shared/judgekit` · **Head:** `7ebea50e` · **Cycle:** 5 (review-plan-fix loop)
-**Scope:** (a) regression-check the 9 cycle-4 fixes (commits `edd45cca..7ebea50e`) · (b) re-validate the shared `sensitive-settings.ts` module · (c) net-new hunt across the cycle-4 changed surface
-**Coverage:** direct read of every cycle-4 changed file + worker Rust (`docker.rs`, `main.rs`, `api.rs`, `config.rs`) + validator + 3 settings forms + authoring editor (`value-fields.ts`, `function-test-case-editor.tsx`) + per-worker auth helper
+Repo: `/Users/hletrd/flash-shared/judgekit`
+Reviewer: code-reviewer
+Scope: code quality, logic, SOLID, maintainability, with emphasis on `deploy-docker.sh` storage safeguards, target mapping for `algo` / `worv` / `auraedu`, safe stale Docker cleanup, and the corrected `worv` target (`test.worv.ai`, not `oj.worv.ai`).
 
-**Rigor note (per lead):** severity held tight. No CRITICAL, no HIGH. Findings trended 112→25→28→(cycle-4 MED+3 LOW)→this cycle 1 MEDIUM + 5 LOW. Every cycle-4 fix achieves its stated purpose; the net-new edges are second-order (an opt-in flag rendered moot, audit-accuracy nits, dead code from the fix itself). Nothing inflated to keep the count up.
+## Inventory
 
-### By Severity
-- CRITICAL: 0
-- HIGH: 0
-- MEDIUM: 1 (C5-N1 — `JUDGE_ALLOW_UNREGISTERED_MODE` is now a silent footgun after the shared-token removal)
-- LOW: 5 (C5-N2 audit-log default misrepresentation; C5-N3 startup sweep not shutdown-wrapped; C5-N4 dead `shareAcceptedSolutions` column fetch; C5-N5 dead `secretTokenHash` conditional + misleading comment; serialize-call-site dead-column nit folded into N4)
-- INFO: 2 (encodeIntLiteral throw correctly unreachable from the editor; DOCKER_CLEANUP_TIMEOUT_SECS=10 bounds the sweep)
+Primary deploy and storage files examined:
 
----
+- `deploy-docker.sh` - target env sourcing, app/worker/image build flow, disk preflight, post-deploy cleanup, dedicated worker host loop.
+- `.env.deploy`, `.env.deploy.algo`, `.env.deploy.worv`, `.env.deploy.auraedu` - target shortcut data and per-target safety flags.
+- `CLAUDE.md`, `AGENTS.md` - project-level deploy guardrails, especially algo app-only rules and no unsafe volume pruning.
+- `docs/deployment.md`, `docs/deployment-automation.md`, `docs/operator-incident-runbook.md` - operator-facing target mapping and cleanup/runbook semantics.
+- `docker-compose.production.yml`, `docker-compose.worker.yml` - DB/user-data volume attachment, app-only worker separation, worker host topology.
+- `scripts/docker-disk-cleanup.sh`, `scripts/install-docker-disk-cleanup.sh` - recurring safe cleanup baseline.
+- `scripts/pg-volume-safety-check.sh` - anonymous Postgres volume safety detector and its assumptions.
+- `scripts/rebuild-worker-language-images.sh`, `scripts/deploy-worker.sh` - worker-side build/deploy paths that can consume Docker storage.
+- `tests/unit/infra/deploy-security.test.ts`, `tests/unit/infra/env-generation.test.ts`, `tests/unit/infra/language-inventory.test.ts`, `package.json` - current static deploy invariants and gaps.
 
-## Stage 1 — Cycle-4 Regression Check (all 9 fixes VERIFIED, no production regression)
+Cross-file interactions examined:
 
-| Fix | File:line | Verdict |
-|---|---|---|
-| **C4-N1** settings PUT partial-wipe | `src/app/api/v1/admin/settings/route.ts:110-164` | **VERIFIED FIXED.** Every field write is now guarded by `hasOwnInput(key)`; `baseValues` starts empty (`{ updatedAt }`) and only carries supplied keys. `PUT {siteTitle:"x"}` no longer wipes `hcaptchaSecret`/`publicSignupEnabled`/`platformMode`. The reconfirm gate is no longer bypassable by a side-effect wipe. |
-| **C4-N3** accepted-solutions list filter | `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:90` | **VERIFIED FIXED.** List SELECT WHERE now carries `eq(users.shareAcceptedSolutions, true)` (L90), matching the count query (L55). The redundant JS `.filter` at the old L92 is gone. `total` is now consistent with the paged list. Residual: dead column fetch (C5-N4). |
-| **C4-2 P1** workerId required on /claim + /poll | `src/app/api/v1/judge/claim/route.ts:106-128,177-180`; `poll/route.ts:74-80` | **VERIFIED.** Shared-token fallback removed from both routes; per-worker auth (`isJudgeAuthorizedForWorker`) is the only path. Schema superRefine requires `workerId`+`workerSecret`. Poll rejects any submission lacking `judgeWorkerId` with 401. **Caveat → C5-N1:** the worker-side `JUDGE_ALLOW_UNREGISTERED_MODE` flag is now functionally dead (a worker in that mode can never clear `/claim`). |
-| **C4-2 P2** strict IP allowlist opt-in | `src/lib/judge/ip-allowlist.ts:20-22,182-210` | **VERIFIED.** Opt-in via `JUDGE_STRICT_IP_ALLOWLIST=1` fails-closed when `JUDGE_ALLOWED_IPS` unset; default preserves unset==allow-all with a one-time `logger.warn`. `resetIpAllowlistCache` also resets the warn flag, so tests are deterministic. No default flip — no repeat of `23851d69`. |
-| **C4-1** snapshot `snapshot:true` opt-out | `src/lib/db/export.ts:72,111-115`; `pre-restore-snapshot.ts:87-90` | **VERIFIED.** `snapshot:true` sets `activeRedactionMap = {}`, bypassing `EXPORT_ALWAYS_REDACT_COLUMNS`. The snapshot retains `passwordHash`/`sessionToken`/API-key ciphertext/hCaptcha+SMTP secrets. Only `takePreRestoreSnapshot` passes `snapshot:true`; regular export/backup/migrate keep the always-redact set. At-rest 0o600 file + 0o700 dir unchanged. Docstring (L34-42) matches code. |
-| **F1** int64 verbatim serialization | `serialization.ts:16-31`; `cpp.ts:42-51`; `java.ts:78-86`; `csharp.ts:78-90` | **VERIFIED.** `encodeIntLiteral` emits bigint/string verbatim, accepts safe-integer `number`, throws loudly on unsafe number/non-int. Adapters use `strtoll`/`Long.parseLong(integerToken())`/`long.Parse(IntegerToken(), InvariantCulture)` over sign+digits-only tokens (no `.`/`e`/`E`). **Edge case the lead asked about:** an unsafe `number` throws cleanly with a precise message — and the only hot caller (`function-test-case-editor.tsx:154-161`) pre-validates via `parseFieldValue`, which rejects unsafe ints BEFORE encode, so the throw is correctly unreachable from the UI (defensive guard only). **Caveat → C5-OQ2:** the editor still caps UI-authored ints at 2^53, so F1's end-to-end exit criterion is only partially met. |
-| **C4-3** sensitive-key expansion | `src/lib/security/sensitive-settings.ts:19-54` | **VERIFIED.** Shared list includes exam-mode toggles + the four `uploadMax*` DoS ceilings + rate-limit/session ceilings. Both writers gate the same set. |
-| **ARCH-1** shared reconfirm on BOTH writers | `sensitive-settings.ts:81-121`; `route.ts:72-77`; `system-settings.ts:100-103` | **VERIFIED.** Single `requireSettingsReconfirm` helper, single `SENSITIVE_SETTINGS_KEYS` source of truth. Route maps via `settingsReconfirmToResponse`; action maps via `{ success:false, error }`. Gate runs before any mutation. **Caveat → C5-OQ1:** passwordless (OAuth-only) admins are now locked out of sensitive-settings changes. |
-| **A6** worker cleanup bundle (N1+R2+R4) | `docker.rs:172-279,673-809`; `main.rs:498,515-524` | **VERIFIED.** Every cleanup `docker` Command is `tokio::time::timeout`-wrapped + `.kill_on_drop(true)` (≥5 sites). Periodic sweep uses `status=exited`; startup reap-all (`cleanup_all_oj_containers_at_startup`) removes every `oj-*` regardless of status. Periodic sweep is shutdown-select-wrapped (L515-524). **Caveat → C5-N3:** the STARTUP sweep is awaited bare (no shutdown select). |
+- `DEPLOY_TARGET` -> `.env.deploy.${DEPLOY_TARGET}` -> defaults in `deploy-docker.sh` -> actual build behavior.
+- `.env.deploy.worv` runner URL -> `ensure_env_literal` -> `docker-compose.production.yml` `COMPILER_RUNNER_URL`.
+- `deploy-docker.sh` post-deploy cleanup -> `docs/deployment.md` safe/dangerous operations -> `scripts/docker-disk-cleanup.sh` recurring cleanup -> `scripts/pg-volume-safety-check.sh` orphan-volume assumptions.
+- App-host disk preflight -> app image/language image builds -> dedicated `WORKER_HOSTS` rebuild loop.
+- Production compose named volumes -> DB backup/safety check -> cleanup behavior.
 
----
+Verified target mapping note:
 
-## Stage 2 — Shared `sensitive-settings.ts` Module Review
+- The corrected `worv` target is present in the checked shortcut files: `.env.deploy.worv:8-10`, `docs/deployment.md:151-153`, and `docs/deployment-automation.md:17-19` all point `worv` at `test.worv.ai`. I did not find an active `oj.worv.ai` mapping in the deploy shortcuts.
 
-The new module is a clean SRP extraction and the right shape:
+## Findings
 
-- **Single source of truth.** `SENSITIVE_SETTINGS_KEYS` (L19-54) is a `const ... as const` array; both writers import it. Adding a key is now a one-line change that propagates to both gates — the drift class from cycle 3 (C3-AGG-7 undermined by C4-N1) is structurally closed.
-- **Clean helper API.** `requireSettingsReconfirm(input, user)` returns a typed discriminated union (`{ok:true}` | `{ok:false, status, error}`); the route uses `settingsReconfirmToResponse` to map to `NextResponse`, the action maps via `{success, error}`. Both call sites are 3 lines. Good DRY without over-abstraction.
-- **No remaining duplication.** The two writers' field-write blocks (`route.ts:113-164` vs `system-settings.ts:152-235`) still mirror each other — but that is the partial-update shape, not the gate. Collapsing the two write blocks into one `applySystemSettings` core is the ARCH-4 carry-forward (Phase C), correctly out of scope for this cycle's security fix.
-- **Consistency check.** `touchesSensitiveSettingsKey` reads `(input as Record)[key] !== undefined` — matches `hasOwnInput` semantics (key present with any value). Both writers pass the raw input object (route: parsed `body`; action: raw `input`), so `currentPassword` is visible to the helper but filtered out before DB write by `allowedConfigKeys`/non-overlap with columns. Correct.
+### HIGH - Post-deploy `docker volume prune -f` can delete detached DB/user data volumes
 
-**One asymmetry worth noting (LOW, not blocking):** the route's `allowedConfigKeys` (L85-97) and the action's `CONFIG_KEYS` (L23-46) are duplicated arrays that must be kept in sync by hand. They currently match (both include the 4 `uploadMax*` keys + rate limits + session). This is the same hand-sync hazard that `SENSITIVE_SETTINGS_KEYS` just centralized for the gate; the config-key list is a candidate for the same treatment next cycle. Not a regression — pre-existing.
+Files/lines:
 
----
+- `deploy-docker.sh:375-417` documents and runs post-deploy cleanup; `deploy-docker.sh:414-415` invokes `docker volume prune -f` when `judgekit-db` is running.
+- `docs/deployment.md:244-246` calls `docker volume prune -f` safe while DB is running; `docs/deployment.md:274-277` documents that deploy cleanup does it.
+- `scripts/docker-disk-cleanup.sh:4-7` says the recurring cleanup never prunes volumes.
+- `scripts/pg-volume-safety-check.sh:195-199` explicitly notes orphaned real data can later be garbage-collected by `docker volume prune`.
+- `AGENTS.md:435` says the deploy preflight and recurring cleanup paths never prune volumes, which is not true for `prune_old_docker_artifacts()`.
 
-## Stage 3 — Net-New Findings
+Confidence: High.
 
-### MEDIUM
+Why this is a problem:
 
-**[MEDIUM] C5-N1 — `JUDGE_ALLOW_UNREGISTERED_MODE` is now a silent footgun: a worker that opts in can never claim work post-C4-2**
-- Files: `judge-worker-rs/src/main.rs:326-341,552`; `judge-worker-rs/src/config.rs:270-274`; claim gate `src/app/api/v1/judge/claim/route.ts:106-128`.
-- Confidence: HIGH · Status: confirmed (code path read end-to-end)
+The guard only proves the currently running `judgekit-db` container has its currently attached volume protected. It does not prove every detached Docker volume is disposable. That distinction matters in this repo because the documented April 2026 failure class involved real Postgres data sitting in an anonymous volume. If the old container is already gone, renamed, or stopped before this script can inspect it, `scripts/pg-volume-safety-check.sh` cannot identify the attachment, but `docker volume prune -f` can still delete the detached volume once the new DB container is running.
 
-**Why it's a problem.** C4-2 Part 1 removed the shared-token fallback from `/claim` (correctly). But the worker binary still honours `JUDGE_ALLOW_UNREGISTERED_MODE`: if registration fails and the flag is set, the worker continues with `worker_id = None`, `worker_secret = None` (main.rs:332) and enters the poll loop. At main.rs:552 it calls `client.poll(None, None)`, which POSTs `{worker_id:null, worker_secret:null}` to `/claim`. The new `claimRequestSchema` superRefine rejects the missing `workerId` with `workerIdRequired` → 400. The poll error path (main.rs:556-561) logs `"Poll failed"` at ERROR and treats it as "no work". The worker therefore spins forever, never claiming, while submissions pile up unjudged.
+Failure scenario:
 
-Pre-C4-2 this flag was an intentional resilience escape hatch (survive an app-server registration outage via shared-token claims). Post-C4-2 the flag no longer has any valid function — unregistered workers cannot authenticate to `/claim` under any path — but the binary still lets operators enable it, and the failure is silent at the business level (the worker is "up").
+A failed or manual recovery deploy leaves the old anonymous Postgres data volume detached but still recoverable. The next deploy starts a fresh `judgekit-db`, sees `db_running` as non-empty, then runs `docker volume prune -f`. Docker removes the detached anonymous volume containing the only recoverable copy of users/problems/submissions. The same risk applies to user-upload or app-data volumes detached by a compose/project rename.
 
-**Failure scenario:** operator sets `JUDGE_ALLOW_UNREGISTERED_MODE=true` for resilience during a flaky app-server upgrade; the worker's registration fails once; it then runs indefinitely doing no judging; the queue grows; the only signal is repeated `Poll failed: 400 ... workerIdRequired` lines in the worker log.
+Suggested fix:
 
-**Fix (pick one):**
-1. Remove the flag and its config plumbing entirely — its sole use case (shared-token claim) is gone.
-2. If the flag must remain as a build/dev escape, make the worker `std::process::exit(1)` (or refuse to enter the poll loop) when unregistered, since claiming is now impossible — fail loud, not silent.
-3. At minimum, downgrade the poll error log to a one-time fatal `error!` that says "unregistered mode is incompatible with workerId-required /claim; exiting" and break the loop.
+Remove `docker volume prune -f` from `prune_old_docker_artifacts()` entirely. Keep deploy cleanup to stopped containers, dangling images, BuildKit cache, and BuildKit history metadata. If volume cleanup is ever needed, make it a separate manual operator command with explicit volume names, dry-run output, and a backup/confirmation checklist. Update `docs/deployment.md`, `docs/deployment-automation.md`, and `AGENTS.md` to match the recurring cleanup rule: no automatic volume pruning. Add a static test that rejects `docker volume prune` and `docker system prune --volumes` in deploy/cleanup automation.
 
-**Negative test:** worker with registration failing + flag=true → no infinite poll-400 loop (exits or never claims).
+### HIGH - `worv` app-only deploy ignores its target-specific runner URL
 
----
+Files/lines:
 
-### LOW
+- `.env.deploy.worv:19-21` declares `COMPILER_RUNNER_URL=http://172.31.62.69:3001`.
+- `deploy-docker.sh:724-726` ignores that variable and always uses `http://host.docker.internal:3001` for app-only targets.
+- `deploy-docker.sh:636-647` only appends a literal if the key is missing; it does not correct an existing stale or wrong value.
+- `deploy-docker.sh:731-735` only warns for the local `http://judge-worker:3001` default, not for the wrong `host.docker.internal` value on `worv`.
+- `.env.deploy.algo:21-22` is the target where `host.docker.internal` is intentional.
 
-**[LOW] C5-N2 — settings PUT audit `details` records default values for OMITTED fields, misrepresenting the DB change**
-- File: `src/app/api/v1/admin/settings/route.ts:184-194`
-- Confidence: HIGH · Status: confirmed
+Confidence: High.
 
-After the C4-N1 `hasOwnInput` fix, omitted fields are no longer written to the DB. But the audit `details` object still records `platformMode ?? DEFAULT_PLATFORM_MODE`, `aiAssistantEnabled ?? true`, `publicSignupEnabled ?? false`, etc. — i.e. the destructured default-applied value, NOT what was actually written. So a `PUT {siteTitle:"x"}` writes only `siteTitle`, yet the audit row claims `platformMode:"homework"`, `publicSignupEnabled:false`, etc. An auditor reviewing "did this PUT change platformMode?" gets a false positive.
+Why this is a problem:
 
-**Failure scenario:** forensic review of the audit trail concludes an admin flipped `publicSignupEnabled` when in fact the field was untouched.
+The target file says the `worv` app reaches the worker over the VPC private IP, but the deploy script backfills the algo-style host bridge URL for every `INCLUDE_WORKER=false` target. On a fresh `DEPLOY_TARGET=worv` deploy, the remote `.env.production` will get the wrong runner URL unless it already had a manually corrected value. If it already has a stale wrong value, the helper will preserve it.
 
-**Fix:** record what was actually written — only include a key in `details` when `hasOwnInput(key)`, mirroring `baseValues`. Or snapshot `baseValues` (keys actually written) into the audit `details` instead of the destructured-with-defaults set.
+Failure scenario:
 
----
+An operator deploys `DEPLOY_TARGET=worv ./deploy-docker.sh` to the corrected `test.worv.ai` host. The app starts successfully, but submissions fail because the app container calls `http://host.docker.internal:3001` instead of `http://172.31.62.69:3001`. The warning does not fire because the value is not `http://judge-worker:3001`.
 
-**[LOW] C5-N3 — startup reap-all sweep is awaited bare, so it can delay graceful shutdown / risk SIGKILL during deploy**
-- File: `judge-worker-rs/src/main.rs:498`
-- Confidence: HIGH · Status: confirmed (bounded)
+Suggested fix:
 
-`docker::cleanup_all_oj_containers_at_startup().await` runs before the main loop. Unlike the periodic sweep (L515-524, which is `tokio::select!`-wrapped against `&mut shutdown`), the startup sweep is awaited directly. Each internal `docker` call is bounded by `DOCKER_CLEANUP_TIMEOUT_SECS = 10`, so worst case ≈ 20 s (ps + rm). If a deploy SIGTERM lands during the startup sweep, the worker cannot honour it until the sweep finishes; with a typical 10-30 s SIGTERM grace period the worker may be SIGKILLed mid-startup. Functionally safe (next startup re-runs the same idempotent sweep), but operationally noisy.
+Use the sourced target value: `COMPILER_RUNNER_DEFAULT="${COMPILER_RUNNER_URL:-http://host.docker.internal:3001}"`. For app-only targets, update `COMPILER_RUNNER_URL` when the target profile provides an explicit value, or at least replace known defaults (`http://judge-worker:3001`, `http://host.docker.internal:3001`) when they conflict with the target file. Consider failing closed when `INCLUDE_WORKER=false` and no explicit `COMPILER_RUNNER_URL` is present for non-algo targets. Add a test that parses `.env.deploy.worv` and asserts deploy backfill uses the private-IP value.
 
-**Failure scenario:** rolling deploy SIGTERMs the worker during its startup sweep; the sweep is mid-`docker rm -f`; shutdown is delayed past the grace period; the container is SIGKILLed and restarts, running the sweep again.
+### HIGH - Unknown or missing `DEPLOY_TARGET` can silently deploy with unsafe algo defaults
 
-**Fix:** wrap the startup sweep in the same `tokio::select! { _ = &mut shutdown => break, _ = cleanup_all_oj_containers_at_startup() => {} }` shape used for the periodic sweep. The functions are already internally timeout-bounded, so the outer select only adds shutdown responsiveness.
+Files/lines:
 
----
+- `deploy-docker.sh:119-135` sources `.env.deploy` first, then sources `.env.deploy.${DEPLOY_TARGET}` only if that file exists; there is no failure for an unknown target.
+- `.env.deploy:1-13` points at `REMOTE_HOST=algo.xylolabs.com` and `DOMAIN=oj-internal.maum.ai` but does not set `INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, or `SKIP_LANGUAGES=true`.
+- `deploy-docker.sh:196-199` defaults `SKIP_LANGUAGES=false`, `INCLUDE_WORKER=true`, and `BUILD_WORKER_IMAGE=auto`.
+- `deploy-docker.sh:758-816` builds the worker image and language images when those defaults remain active.
+- `CLAUDE.md:9-11` explicitly says `algo.xylolabs.com` must be app/DB/nginx only and must not build judge/worker images.
+- `.env.deploy.algo:15-19` has the correct algo app-only safeguards.
+- `docs/deployment.md:147-153` and `docs/deployment-automation.md:15-19` advertise target shortcuts including `oj` / AuraEdu, `algo`, and `worv`; the repository has `.env.deploy.auraedu` but no `.env.deploy.oj` alias.
 
-**[LOW] C5-N4 — accepted-solutions list SELECT still fetches `shareAcceptedSolutions` but never uses it after C4-N3**
-- File: `src/app/api/v1/problems/[id]/accepted-solutions/route.ts:80`
-- Confidence: HIGH · Status: confirmed
+Confidence: High.
 
-After the C4-N3 fix, the WHERE clause filters `shareAcceptedSolutions` in SQL and the `.map` (L96-109) no longer references `solution.shareAcceptedSolutions` — only `acceptedSolutionsAnonymous` is used. The column is still in the SELECT list (L80), so every row carries an unused field. Pure dead fetch; no behaviour impact.
+Why this is a problem:
 
-**Fix:** drop `shareAcceptedSolutions: users.shareAcceptedSolutions` from the select list (L80). (`acceptedSolutionsAnonymous` must stay — it drives the `isAnonymous`/`userId`/`username` masking.)
+The script has two footguns in the target selection path: a bare deploy uses `.env.deploy`, and an unknown `DEPLOY_TARGET` is silently ignored. Because `.env.deploy` currently points at `algo.xylolabs.com` without algo's safety flags, either mistake can run a full integrated build on the app server. That violates the architecture rule and directly risks filling target storage before the operator realizes the wrong target profile was used.
 
----
+Failure scenario:
 
-**[LOW] C5-N5 — claim route defense-in-depth `if (worker.secretTokenHash)` is now unreachable; the adjacent comment is misleading**
-- File: `src/app/api/v1/judge/claim/route.ts:198-208`
-- Confidence: HIGH · Status: confirmed
+An operator types `DEPLOY_TARGET=oj ./deploy-docker.sh` after reading the docs table, or mistypes `DEPLOY_TARGET=wrvo`. No matching `.env.deploy.<target>` file is loaded. The script falls back to `.env.deploy`, reaches `algo.xylolabs.com`, and starts building `judgekit-judge-worker` plus the all-language image set on the app host.
 
-The block at L201 (`if (worker.secretTokenHash) { … safeTokenCompare(hashToken(workerSecret), secretTokenHash) … }`) is reached only after `isJudgeAuthorizedForWorker` returned `authorized:true` at L177-180. But `isJudgeAuthorizedForWorker` (auth.ts:78-96) already rejects any worker lacking `secretTokenHash` with `workerSecretNotMigrated`. Therefore by the time control reaches L201 the worker is guaranteed to have a hash, the `if` is always-true, and the implicit else (no hash) is dead. The comment "Plaintext fallback is gone — workers registered before the hash rollout must re-register" reads as if hashless workers are handled here, but they are actually rejected one call earlier.
+Suggested fix:
 
-**Failure scenario:** none at runtime (the check is harmless redundancy). Cost is maintainability — a future reader may "fix" the dead else branch or believe the gate is the primary enforcement point.
+Make target resolution explicit and fail closed. If `DEPLOY_TARGET` is set and `.env.deploy.${DEPLOY_TARGET}` does not exist, abort before SSH. Add either `.env.deploy.oj` as an alias to AuraEdu or normalize `DEPLOY_TARGET=oj` to `auraedu`. Consider making `.env.deploy` a non-host placeholder, or require either a known `DEPLOY_TARGET` or explicit `REMOTE_HOST`/`DOMAIN` without loading live defaults. Add a host-level guard: if `REMOTE_HOST=algo.xylolabs.com`, enforce or abort unless `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, and `INCLUDE_WORKER=false`.
 
-**Fix:** either delete the now-redundant inner hash check (the primary `isJudgeAuthorizedForWorker` call already enforces it) OR rewrite the comment to say "defense-in-depth: re-confirms the body `workerSecret` against the hash that `isJudgeAuthorizedForWorker` already verified via the Bearer token" and drop the `if` so the body always reads as a flat assertion.
+### HIGH - Dedicated worker builds do not get the pre-build disk guard
 
----
+Files/lines:
 
-### INFO (no action required, recorded for completeness)
+- `deploy-docker.sh:513-541` runs the disk preflight only on the app/primary remote host.
+- `deploy-docker.sh:1156-1201` rsyncs to each `WORKER_HOSTS` entry and runs a no-cache worker image build without a prior disk check.
+- `deploy-docker.sh:1213-1222` cleans the worker only after the worker build/restart succeeds; a failed build exits before this cleanup path.
+- `scripts/rebuild-worker-language-images.sh:53` defaults to the full `all` language set; `scripts/rebuild-worker-language-images.sh:94-118` builds every language and only prunes after the loop.
 
-- **I-1** `serialization.ts:16-31` `encodeIntLiteral` throw is correctly unreachable from the authoring UI. `parseFieldValue` (`value-fields.ts:73-76`) rejects int values > 2^53 via `Number`+`isSafeInteger` BEFORE encode, so the editor call site (`function-test-case-editor.tsx:154-161`) never passes an unsafe number to `encodeArgs`/`encodeValue`. The throw remains the correct fail-loud guard for DB/API callers that bypass the editor. Good defensive design.
-- **I-2** `DOCKER_CLEANUP_TIMEOUT_SECS = 10` (`docker.rs:12`). Each docker call in the periodic and startup sweeps is individually bounded; worst-case total sweep ≈ 20 s. Acceptable for a background sweep; the only residual is C5-N3 (shutdown responsiveness of the startup sweep).
+Confidence: High.
 
----
+Why this is a problem:
 
-## Open Questions (low-confidence / surfaced, not blocking)
+The hosts most likely to run out of Docker storage are the dedicated workers, because they hold language images and receive no-cache worker rebuilds. The app host gets a pre-build cleanup and hard-stop threshold, but the worker host loop starts building first and only prunes after success. If a worker is already near full, the deploy can fill it further, fail before cleanup, and leave the worker host in a worse state.
 
-- **C5-OQ1 — Are passwordless (OAuth-only) admin accounts a supported deployment shape?** `requireSettingsReconfirm` (`sensitive-settings.ts:94-102`) returns `authenticationFailed` when `passwordHash` is null. ARCH-1 (this cycle) applied the gate to the server action AND all 3 settings forms mark `currentPassword` as an HTML `required` attribute (`allowed-hosts-form.tsx:125`, `config-settings-form.tsx`, `system-settings-form.tsx`). Net effect: an admin who authenticates solely via OAuth (no password set) can no longer change ANY sensitive setting through the dashboard — the form will not submit without a password they do not have, and even via the API the gate returns 403. This is the correct security tradeoff (reconfirm inherently requires a password; allowing passwordless skip would defeat the gate for any OAuth-account takeover), but it is a behaviour change from cycle 3 (the action had no gate) and may lock out real admins. Needs product intent + a doc note. If passwordless admins must be supported, the path is re-auth via fresh OAuth flow rather than password.
+Failure scenario:
 
-- **C5-OQ2 — Is F1's end-to-end int64 exit criterion intended to cover the authoring UI?** The plan's exit ("an int/long > 2^53 round-trips byte-identical … author enters `9223372036854775807`") is met for the encode (`encodeIntLiteral` bigint/string paths) and adapter (`strtoll`/`parseLong`/`long.Parse`) layers, and for values inserted via API/DB as string or bigint. But the authoring UI cannot INPUT such a value: `parseFieldValue` (`value-fields.ts:73-76`) parses int fields with `Number` and rejects `!isSafeInteger`, so an author typing LLONG_MAX gets a field-level `intRangeError` and can never create the test case. The BigInt rework is explicitly deferred (`value-fields.ts:27` "BigInt rework is deferred (out of v1 scope)"). If full UI-authored int64 IS in scope, the follow-up is to parse int fields to `bigint` in `parseFieldValue` (then `encodeIntLiteral`'s bigint path handles it). If it is out of scope, the F1 exit criterion should be re-worded to "encode + adapter + API/DB path" and the UI cap documented.
+`worker.test.worv.ai` is at 90 percent because language image layers and BuildKit cache accumulated. The app deploy passes its disk preflight. The `WORKER_HOSTS` step starts `docker build --no-cache` on the worker, fills `/var/lib/docker`, fails, and aborts before `prune_old_docker_artifacts "worker ..."` runs. Judging capacity is degraded and manual cleanup is required.
 
----
+Suggested fix:
 
-## Cross-Agent Overlap
+Factor the app-host disk guard into a reusable `preflight_docker_storage <host_label> <runner>` helper and call it before every worker build. It should run the same safe cleanup set (dangling images, builder cache, BuildKit history; no volumes), then abort before build if still over threshold or below required free bytes. Add a failure trap around worker builds that attempts the same safe cleanup before `die`. Apply the same guard to `scripts/rebuild-worker-language-images.sh`, where the default `all` build is much larger than a worker image rebuild.
 
-- **C5-N1** — logic/operational finding unique to code-reviewer; may overlap **security-reviewer** (silent failure mode) and **architect** (flag-removal is a small design decision). Flag for aggregation.
-- **C5-OQ1** — overlaps **security-reviewer** (auth posture) and **document-specialist** (doc note for passwordless admins). Needs product input.
-- **C5-OQ2** — overlaps **test-engineer** (UI bigint authoring test) and **feature-dev** (F1 follow-through).
-- **C5-N2..N5** — residual edges of cycle-4 fixes; no other agent expected to surface these.
-- **Deferred Phase B/C items** from cycle 4 (AGG-1, C4-4/AGG-10, NEW-M8, AGG-41, C4-N2, C4-N4, C4-6/7/8, ARCH-2/3/4) — not re-opened; no line-level change this cycle closes them. Carry forward verbatim.
+### MEDIUM - Storage guard checks root percentage only, not Docker's actual data root or required free bytes
 
----
+Files/lines:
 
-## Positive Observations
+- `deploy-docker.sh:522-536` calculates disk usage with `df --output=pcent /` only.
+- `deploy-docker.sh:777-816` can build selected or all language images, but the guard does not scale required free space to the selected build scope.
+- `scripts/docker-disk-cleanup.sh:30-49` uses the same root-only percentage check for recurring cleanup.
 
-- **`sensitive-settings.ts` is a textbook SRP extraction** — one key list, one helper, two thin adapters. The drift class that produced the C3-AGG-7 ↔ C4-N1 bypass is now structurally impossible. Cleanest fix of the cycle.
-- **`encodeIntLiteral` fail-loud design** is exactly right: bigint/string pass through, safe-integer passes, unsafe throws with a precise message. Pairing it with `parseFieldValue` pre-validation means the throw is a defense-in-depth guard, not a live crash path.
-- **Startup reap-all (`cleanup_all_oj_containers_at_startup`)** is the correct R2 shape — idempotent, force-remove every `oj-*`, no `status=exited` filter, only runs when no judgements are in flight.
-- **accepted-solutions count/list symmetry** is fully restored — both queries carry the identical `and(whereClause, eq(users.shareAcceptedSolutions, true))`.
-- **Cycle-4 produced zero production regressions** across all 9 fixes; the net-new findings are second-order consequences (an opt-in flag rendered moot by the fix, audit-accuracy nits, dead code from the fix itself). The loop is converging on the intended invariants.
+Confidence: Medium.
 
----
+Why this is a problem:
 
-## Recommendation
+Docker storage is not guaranteed to live on `/`, and percentage-only thresholds do not answer whether the selected build can fit. A 40 GB host at 84 percent has only about 6 GB free but skips cleanup because it is below the default 85 percent warning threshold. Conversely, a host can have `/` mostly empty while `/var/lib/docker` or a custom Docker root is nearly full.
 
-**COMMENT.** No CRITICAL, no HIGH at HIGH confidence. Schedule **C5-N1** (the only MEDIUM) — it is a small, mechanical fix (remove the `JUDGE_ALLOW_UNREGISTERED_MODE` flag OR make the worker exit instead of entering a dead poll loop) with a concrete silent-failure scenario for any operator that opts in. **C5-N2..N5** are cheap ride-alongs (audit accuracy, shutdown responsiveness, dead column, dead conditional). **C5-OQ1/OQ2** need product intent before they become action items. All 9 cycle-4 fixes verified with no production regression.
+Failure scenario:
+
+Docker's root dir is mounted separately at `/mnt/docker` and is 91 percent full, while `/` is 40 percent full. The deploy preflight reports OK and starts a language build, which fails mid-layer after filling Docker's data mount. Or an integrated AuraEdu all-language build starts on a small root filesystem at 84 percent and exhausts the remaining space.
+
+Suggested fix:
+
+Query Docker's root with `docker info --format '{{.DockerRootDir}}'` and run `df` against that path, plus any build workspace paths that matter (`REMOTE_DIR`, `/tmp` if BuildKit uses it). Add a minimum available-bytes check keyed to build scope: app-only, worker image, selected languages, all languages, and `everything`. The recurring cleanup script should use the Docker root filesystem for its threshold, not only `/`.
+
+## Test Gaps
+
+- No static test rejects `docker volume prune` in `deploy-docker.sh`; current tests only guard some security defaults in `tests/unit/infra/deploy-security.test.ts`.
+- No test exercises `DEPLOY_TARGET` resolution or unknown-target failure.
+- No test asserts `.env.deploy.worv`'s `COMPILER_RUNNER_URL` is propagated into remote `.env.production`.
+- No test checks that worker-host builds receive the same disk preflight as the app host.
+- No test checks DockerRootDir-aware disk accounting or free-byte thresholds.
+
+## Overall Recommendation
+
+Fix the volume-prune issue first because it is the only finding with a direct data-loss path. Then fix target resolution and target-specific runner URL propagation before the next `worv` or `algo` deploy. The worker-host and DockerRootDir storage guards should be handled in the same deploy-script pass so every build path gets the same safe cleanup and fail-closed behavior.

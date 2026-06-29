@@ -1,100 +1,159 @@
-# Cycle-4 Verifier Report — evidence-based correctness check
+# Verifier review - review-plan-fix cycle 1/100
 
-Repo: `/Users/hletrd/flash-shared/judgekit` · Cycle 4/100 · Method: read every cited line + its covering test; no assumptions.
+Scope: evidence-check deploy target resolution, storage preflight, Docker cleanup safety, and dedicated worker-host protection before builds. This is a source-only verification: I did not SSH to production hosts and did not run a deploy. Secrets in `.env.deploy*` were intentionally not copied into this report.
 
-Legend: VERIFIED (stated behavior matches code, test covers it) · PARTIAL (core holds but a real gap exists) · FAILED (stated behavior does not match code).
+Syntax gate run: `bash -n deploy-docker.sh scripts/deploy-worker.sh scripts/rebuild-worker-language-images.sh scripts/docker-disk-cleanup.sh` passed.
 
----
+## Inventory
 
-## A. Cycle-1/2/3 fixes — stated-behavior vs. actual-code
+Reviewed files and why they matter:
 
-### 1. `admin/roles/[id]/route.ts` — "no admin can edit a role whose current level exceeds their own" → **VERIFIED**
-- Gate at `src/app/api/v1/admin/roles/[id]/route.ts:94-96`: `if (role.level > creatorLevel) return apiError("cannotEditHigherRole", 403)`.
-- Uses the **current** DB level (`role.level` from the L59-63 SELECT), fires **before any mutation** — the UPDATE is at L121-124, after the super-admin (L72), builtin-level (L78), set-above-own (L84), and cap-grant (L102) gates. Ordering correct.
-- Test `tests/unit/api/admin-roles.route.test.ts:294-331` drives exactly the lateral cap-strip (`{capabilities: []}` on a level-4 role by a level-3 admin) and asserts `cannotEditHigherRole` 403. Strong coverage.
-- Nuance (not a defect): strict-`>`, so an admin can still edit a role at its **own** level — matches the stated wording ("exceeds their own"). PATCH does not lock the row (no `FOR UPDATE` like DELETE), but the only concurrent action that could raise the target's level is itself gated by `updates.level > creatorLevel`, so the TOCTOU is not privilege-escalating.
+- `deploy-docker.sh`: primary deploy path, target env sourcing, app-host pre-build disk guard, image builds, post-deploy cleanup, `WORKER_HOSTS` sync/rebuild path.
+- `.env.deploy`, `.env.deploy.algo`, `.env.deploy.worv`, `.env.deploy.auraedu`, `.env.worv`: local target shortcut data. Sensitive values were redacted during review; only safe host/domain/boolean values are cited below.
+- `CLAUDE.md`: hard guardrails for `algo.xylolabs.com` topology and destructive Docker cleanup.
+- `AGENTS.md`: project deployment hardening claims and operator-facing behavior descriptions.
+- `docs/deployment.md`, `docs/deployment-automation.md`, `docs/operator-incident-runbook.md`: docs for target matrix, safe/dangerous cleanup, automatic cleanup, and BuildKit history recovery.
+- `scripts/docker-disk-cleanup.sh`, `scripts/docker-disk-cleanup.service`, `scripts/docker-disk-cleanup.timer`, `scripts/install-docker-disk-cleanup.sh`: recurring host cleanup implementation and install path.
+- `scripts/deploy-worker.sh`, `scripts/rebuild-worker-language-images.sh`: other worker-host image transfer/build paths.
+- `docker-compose.production.yml`, `docker-compose.worker.yml`: container names, DB volume name, worker/proxy topology used by cleanup and worker deployment.
 
-### 2. `admin/settings/route.ts` — "stolen session cannot silently weaken security posture" → **PARTIAL**
-- Reconfirm gate works for the listed keys: `src/app/api/v1/admin/settings/route.ts:91-110` (password required + verified when any `SENSITIVE_SETTINGS_KEYS` key is present). Tests `tests/unit/api/admin-settings-reconfirm.test.ts:123-149` cover require / reject / bypass.
-- **Gap (the fix missed privilege-affecting keys).** The PUT accepts and persists `allowAiAssistantInRestrictedModes` and `allowStandaloneCompilerInRestrictedModes` (destructured L78-79, written to `baseValues` L143-144) but **neither is in `SENSITIVE_SETTINGS_KEYS` (L24-43)**. Both directly weaken restricted/exam-mode integrity (enable AI assistant / standalone compiler during a locked-down exam). A stolen session can flip either without reconfirm — exactly the "silent weaken" the gate exists to stop. See Net-new N1.
-- Side defect (N2): `emailVerificationRequired` IS in the sensitive list (L28) but is neither destructured nor in `allowedConfigKeys` (L118-130), so it is silently dropped from every PUT — a dead key that triggers a pointless reconfirm and is not actually settable via this route.
+## Confirmed behavior
 
-### 3. `contests/[assignmentId]/export/route.ts` — "every contest-export PII read is audited" → **VERIFIED**
-- JSON branch audits **unconditionally** via the durable path: `src/app/api/v1/contests/[assignmentId]/export/route.ts:117-127` runs for anonymized and non-anonymized alike, before the L128 return; no early return between L89 and L127. Comment explicitly calls out the prior `isDownload`-gating bug (C3-AGG-1).
-- Tests `tests/unit/api/contest-export.route.test.ts` cover all three JSON reads: background (L121-144, asserts durable fires + legacy NOT called), explicit download (L146-160), anonymized (L162-176). CSV audited via the buffered path (L182).
-- Minor inconsistency (N5): JSON uses `recordAuditEventDurable` (crash-safe) while CSV uses `recordAuditEvent` (buffered). The claim is about JSON PII reads, which holds; flagged only for durability parity.
+### 1. `DEPLOY_TARGET=algo|worv|auraedu` resolution mostly works
 
-### 4. `submissions/[id]/events/route.ts` — "revoked group access closes SSE within one re-auth tick" → **VERIFIED**
-- Re-auth IIFE re-runs the **authorization** gate, not just identity: `src/app/api/v1/submissions/[id]/events/route.ts:475-482` re-fetches the reader (`columns: { userId, assignmentId }`) then `canAccessSubmission(refreshedReader, …)`; close on missing row or denial. Identity check (L467) precedes authz (L479).
-- `AUTH_RECHECK_INTERVAL_MS = 30_000` (L33); the check rides on `onPollResult` which the shared poll timer (L214) fires every `ssePollIntervalMs` for every subscriber, so closure latency is bounded by the 30s re-auth tick.
-- Test `tests/unit/api/submission-events-reauth-authorization-implementation.test.ts` is a source-text contract (rationale: driving the long-lived loop past 30s is disproportionate). It pins the load-bearing strings and the identity-before-authz ordering. Acceptable for this wiring invariant.
+Evidence:
 
-### 5. `recruiting-invitations.ts` — "admin metadata-edit can no longer regress the brute-force counter" → **VERIFIED**
-- SELECT is `.for("update")` **inside a transaction**: `src/lib/assignments/recruiting-invitations.ts:396` `db.transaction`, L401 `.for("update")`. Merge preserves `_sys.*` keys (L407-412) and new metadata cannot contain `_sys.*` (`findInternalKeyViolation` L380-385). The status (revoke) branch reuses the same locked merge (L414-429) — consistent.
-- Serialization is real because the counter side (`incrementFailedRedeemAttempt` L96-105) is an atomic `jsonb_set` UPDATE (row-locked at statement time); under READ COMMITTED the FOR UPDATE select and the atomic increment cannot clobber each other.
-- Tests `tests/unit/assignments/recruiting-invitation-metadata-race.test.ts`: assert `for("update")` invoked (L114) and `_sys.*` keys survive the merge (L132-138). Coverage is on the changed side, which is the side that mattered.
+- `deploy-docker.sh` sources `.env.deploy` first, then sources `.env.deploy.${DEPLOY_TARGET}` when `DEPLOY_TARGET` is set and the file exists: `deploy-docker.sh:119-136`.
+- It requires `REMOTE_HOST`, `REMOTE_USER`, and `DOMAIN` after sourcing: `deploy-docker.sh:148-151`.
+- `DEPLOY_TARGET=algo` resolves to `REMOTE_HOST=algo.xylolabs.com`, `REMOTE_USER=ubuntu`, `DOMAIN=algo.xylolabs.com`, `SSH_KEY=~/.ssh/xylolabs-algo.pem`: `.env.deploy.algo:7-10`.
+- The same file sets the app-only guardrails: `INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, `SKIP_LANGUAGES=true`: `.env.deploy.algo:17-19`.
+- `DEPLOY_TARGET=worv` resolves to `REMOTE_HOST=test.worv.ai`, `REMOTE_USER=ubuntu`, `DOMAIN=test.worv.ai`, `SSH_KEY=~/.ssh/worv-judgekit.pem`: `.env.deploy.worv:8-11`.
+- The `worv` target also sets `INCLUDE_WORKER=false`, `BUILD_WORKER_IMAGE=false`, `SKIP_LANGUAGES=true`: `.env.deploy.worv:15-17`.
+- `DEPLOY_TARGET=auraedu` resolves to `REMOTE_HOST=oj.auraedu.me`, `REMOTE_USER=ubuntu`, `DOMAIN=oj.auraedu.me`, `SSH_KEY=~/.ssh/xylolabs-algo.pem`: `.env.deploy.auraedu:3-6`.
+- `auraedu` does not set the worker/language booleans, so deploy defaults apply: `SKIP_LANGUAGES=false`, `INCLUDE_WORKER=true`, `BUILD_WORKER_IMAGE=auto`: `deploy-docker.sh:195-199`, then `BUILD_WORKER_IMAGE` follows `INCLUDE_WORKER`: `deploy-docker.sh:239-240`.
+- This matches the stated `algo` rule: `CLAUDE.md:9-11` says the app server must not build judge/worker images and must use `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false`.
 
-### 6. Community threads/votes — "all four surfaces share one scope gate" → **VERIFIED**
-- Four surfaces, all routing through the centralized `PROBLEM_LINKED_SCOPES` set in `src/lib/discussions/permissions.ts:17` via the helpers (none inlines a literal scope list):
-  1. create thread — `community/threads/route.ts:29` (`canAccessProblemScopedThread`)
-  2. create post — `community/threads/[id]/posts/route.ts:41`
-  3. vote — `community/votes/route.ts:83`
-  4. page read — `community/threads/[id]/page.tsx:83-91` (`isProblemLinkedScope` + `canReadProblemDiscussion`)
-- DELETE/moderation routes (`threads/[id]/route.ts`, `posts/[id]/route.ts`) are intentionally gated by `canModerateDiscussions` (global mod cap), not scope — correct.
-- No read-side leak: `grep "export const GET" src/app/api/v1/community/` returns nothing; the only read path is the server-component page, which fail-closes via `canReadProblemDiscussion`.
+Verdict: CONFIRMED for the exact spellings `algo`, `worv`, and `auraedu`.
 
-### 7. `judge-worker-rs/src/main.rs` catch_unwind — "panicking executor reports runtime_error + dead-letter, does not leak the slot" → **VERIFIED** (with one low-sev edge)
-- Spawn body `main.rs:559-590`: `catch_unwind` wraps `executor::execute` (L570-572); on `Err(payload)` it logs and calls `executor::report_panic` (L579-587) → `report_with_retry(... "runtime_error" ...)` (`executor.rs:918-937`), whose retry-exhausted fallback writes a `DeadLetterEntry` JSON (`executor.rs:961-969`, L1027+). `active_tasks.fetch_sub(1)` at L589 runs after the `if let`, so it fires on both Ok and Err-panic. The real concurrency slot (semaphore `_permit`, L562) is released by RAII drop on every path.
-- Edge (N3, low): `fetch_sub` is statement-after-`report_panic`. If `report_panic` itself panics, the spawn task unwinds — `_permit` still drops (slot released) but `fetch_sub` is skipped, so the heartbeat `active_tasks` counter drifts +1. Requires a double-panic; cosmetic (reporting counter only).
+Confidence: High.
 
-### 8. `judge-worker-rs/src/runner.rs` — "interactive compiler runs no longer leave user source world-r/w" → **VERIFIED**
-- Workspace: chown 65534 then `workspace_mode = if chown_ok { 0o700 } else { 0o777 }` (`runner.rs:837-854`). Source file: chown 65534 then `source_mode = if source_chown_ok { 0o600 } else { 0o666 }` (L874-881). Neither is world r/w on the happy path.
-- Wording nit only: the claim says "0o700 on workspace **and source**"; source is actually **0o600** (correct for a non-executable file, and stricter than 0o700). Pinned by source-text test `runner.rs:199-213`.
+### 2. App-host storage preflight exists before app-host builds
 
-### 9. `judge-worker-rs/src/executor.rs` A10c clamp warn → **VERIFIED**
-- Warn fires exactly when the silent clamp bites: `executor.rs:533-540` warns on `submission.time_limit_ms > max_time_limit_ms()`; the actual clamp is L547-548 `MIN_TIMEOUT_MS.max(submission.time_limit_ms.min(max_time_limit_ms()))`. The warn condition == the `min()` reduction condition.
+Evidence:
 
-### 10. `problems/[id]/accepted-solutions/route.ts` A10b count filter → **VERIFIED**
-- Count now matches the rendered list: `accepted-solutions/route.ts:51-55` `from(submissions).innerJoin(users).where(and(whereClause, eq(users.shareAcceptedSolutions, true)))`; the list applies the same filter post-hoc (L92 `.filter(s => s.shareAcceptedSolutions)`). `total` no longer overcounts opted-out authors. Test updated to mock the `innerJoin` chain (`problem-accepted-solutions.route.test.ts`).
+- The script verifies SSH and Docker first: `deploy-docker.sh:506-511`.
+- It then reads root filesystem usage using `df --output=pcent /`: `deploy-docker.sh:522-525`.
+- If usage is at or above `DEPLOY_DISK_WARN_PCT` default `85`, it runs only safe cleanup: `docker image prune -f`, `docker builder prune -af`, and `docker buildx history rm --all`: `deploy-docker.sh:526-532`.
+- It aborts before build when still at or above `DEPLOY_DISK_HARD_PCT` default `92` and `SKIP_BUILD=false`: `deploy-docker.sh:535-536`.
+- App/worker/language builds begin later at `deploy-docker.sh:742-817`.
 
-### 11. Assignment routes A10a freezeLeaderboardAt strip → **VERIFIED**
-- Detail route: `groups/[id]/assignments/[assignmentId]/route.ts:57-58` strips `accessCode` + `freezeLeaderboardAt` for `!canManage`. List route: `groups/[id]/assignments/route.ts:84-85` strips both inside the `!canManage` loop. Confirmed in current tree.
+Verdict: CONFIRMED for the app/deploy target host.
 
-### 12. PB-1 A10e test rename → **VERIFIED**
-- Commit `6ec17d6e` renames the factually-wrong "records audit before deletion" title and adds a post-commit ordering test asserting no audit is written when `db.delete` rejects — protects commit `76e27d31` (post-commit audit ordering). File: `tests/unit/actions/user-management.test.ts`.
+Confidence: High.
 
----
+### 3. Cleanup is intentionally safe for judge images and DB volumes
 
-## B. Deferred items — are the deferral reasons still accurate?
+Evidence:
 
-| Item | Cited lines | Deferral reason | Still accurate? |
-|---|---|---|---|
-| **NEW-H5** ip-allowlist default-open | `src/lib/judge/ip-allowlist.ts:160-166` | default-open is intentional for worker access | **Yes.** L164 `if (!allowlist) return true`; comment L163 "allow all (temporary for worker access)". Judge routes are token-gated, so default-open is documented + bounded. |
-| **C3-1** export redaction at sanitize:false | `src/lib/db/export.ts:104-106` | always-redact set still applies when sanitize=false | **Yes.** L104-106 `sanitize ? merge(...) : EXPORT_ALWAYS_REDACT_COLUMNS` — the always-redact columns are stripped regardless of sanitize. |
-| **AGG-10** plugin-secrets plaintext fallback default | `src/lib/plugins/secrets.ts:61` | default-true during migration | **Yes (reason accurate).** L61 `options?.allowPlaintextFallback ?? true`; comment L52-56 documents the migration. **Caveat:** no mechanism forces migration to completion, so plaintext plugin secrets can persist indefinitely — the deferral is open-ended. |
-| **NEW-M8** files zip slow-path full materialization | `src/lib/files/validation.ts:96-107` | slow path fully decompresses | **Yes (reason accurate, risk persists).** L98 `entry.async("uint8array")` fully materializes each entry **before** the L100 per-entry cap check. A data-descriptor zip bomb (no size metadata → skips the fast path) can OOM the process before the cap fires. Deferral characterizes the code correctly; the underlying OOM risk is unresolved. |
+- `prune_old_docker_artifacts()` skips entirely when `SKIP_POST_DEPLOY_PRUNE` is `1` or `true`: `deploy-docker.sh:399-405`.
+- It probes whether `judgekit-db` is running before any volume prune: `deploy-docker.sh:407-408`.
+- It uses `docker image prune -f`, not `-af`, preserving tagged `judge-*` language images: `deploy-docker.sh:409-413`; the rationale is documented at `deploy-docker.sh:375-390`.
+- It runs `docker volume prune -f` only if `judgekit-db` is running, otherwise it warns and skips volume prune: `deploy-docker.sh:414-418`.
+- `docker-compose.production.yml` names the DB container `judgekit-db` and mounts named volume `judgekit-pgdata` at `/var/lib/postgresql/data`: `docker-compose.production.yml:17-19`, `docker-compose.production.yml:44-55`.
+- `docs/deployment.md` explicitly classifies `docker image prune -f` as safe, `docker image prune -af` as dangerous for judge images, and `docker volume prune -f` as safe only while `judgekit-db` is running: `docs/deployment.md:236-260`.
+- The recurring cleanup script never prunes volumes and uses `docker image prune -f`, never `-af`: `scripts/docker-disk-cleanup.sh:4-7`, `scripts/docker-disk-cleanup.sh:14-20`, `scripts/docker-disk-cleanup.sh:35-47`.
 
----
+Verdict: CONFIRMED for the code paths reviewed. The helper is safe against the known May 2026 `judge-*` image wipe and Apr 2026 DB-volume wipe classes.
 
-## C. Net-new findings (tight; evidence-cited)
+Confidence: High.
 
-- **N1 — `likely` · `medium` — Settings reconfirm misses restricted-mode bypass toggles.**
-  `src/app/api/v1/admin/settings/route.ts`: `allowAiAssistantInRestrictedModes` (L78, L143) and `allowStandaloneCompilerInRestrictedModes` (L79, L144) are writable and persisted but absent from `SENSITIVE_SETTINGS_KEYS` (L24-43). A stolen session can enable the compiler or AI assistant inside a restricted/exam-mode contest with no password reconfirm — a direct security-posture weakening that the C3-AGG-7 gate was written to prevent. `aiAssistantEnabled` is the borderline sibling (platform-wide feature toggle). Suggested fix: add the two restricted-mode keys (and consider `aiAssistantEnabled`) to the sensitive set. Test gap: `admin-settings-reconfirm.test.ts` only asserts keys already in the list, so it would not catch this.
+## Findings
 
-- **N2 — `confirmed` · `low` — Dead sensitive key.**
-  `settings/route.ts:28` lists `emailVerificationRequired` in `SENSITIVE_SETTINGS_KEYS`, but it is neither destructured (L72-87) nor in `allowedConfigKeys` (L118-130), so every PUT silently drops it. Net effect: the key triggers a needless reconfirm yet can never be changed via this route. Either wire it into the writable set or drop it from the sensitive list.
+### V1 - HIGH - Dedicated `WORKER_HOSTS` are not protected by a pre-build disk guard
 
-- **N3 — `likely` · `low` — catch_unwind double-panic leaks the `active_tasks` counter.**
-  `judge-worker-rs/src/main.rs:589` `active_tasks.fetch_sub(1)` sits after `executor::report_panic(...)`. If `report_panic` itself panics, the spawn task unwinds past `fetch_sub`, so the heartbeat counter drifts +1 per occurrence. The semaphore slot (`_permit`, L562) is still released by drop, so real concurrency is unaffected — reporting-counter drift only. A `catch_unwind` around `report_panic` (or moving `fetch_sub` into a guard/`Drop`) closes it.
+Evidence:
 
-- **N4 — `confirmed` · `low-medium` — ZIP-bomb OOM before per-entry cap (pre-existing, deferred).**
-  `src/lib/files/validation.ts:98` fully decompresses each entry before the L100 size check on the data-descriptor slow path. A crafted archive with data descriptors bypasses the fast-path header check and can force a multi-GB allocation before rejection. Matches the NEW-M8 deferral; re-flagged because it remains exploitable. Streaming-decompress with a running byte cap would close it.
+- Dedicated worker handling starts after the app is already up: `deploy-docker.sh:1126-1144`, then `deploy-docker.sh:1147-1158`.
+- For each `WORKER_HOSTS` entry, the script rsyncs source and immediately builds `judgekit-judge-worker:latest` with `docker build --no-cache`: `deploy-docker.sh:1167-1201`.
+- The worker block has BuildKit history auto-recovery via `run_remote_build`, but no equivalent of the app-host `_remote_disk_pct` preflight before the worker build: compare app-host guard at `deploy-docker.sh:522-541` with worker build block at `deploy-docker.sh:1156-1201`.
+- Worker cleanup runs only after the worker image build succeeds, compose restarts, and the worker is confirmed up: `deploy-docker.sh:1202-1222`.
+- If the worker build fails, the script exits at `deploy-docker.sh:1201`; the post-success worker cleanup at `deploy-docker.sh:1222` and app-host cleanup at `deploy-docker.sh:1237` are not reached.
+- The docs state cleanup runs on every host touched at the end of deploy: `docs/deployment.md:262-285`. That is true only after successful worker rebuild/restart, not before a risky no-cache worker build.
 
-- **N5 — `confirmed` · `low` — Contest-export CSV audit is non-durable.**
-  `contests/[assignmentId]/export/route.ts:182` uses buffered `recordAuditEvent` while the JSON branch (L117) uses `recordAuditEventDurable`. A crash between CSV generation and flush loses the PII-read audit row. Not a regression (JSON is the path C3-AGG-1 targeted); durability parity only.
+Scenario:
 
----
+A dedicated worker host is already at 92% root filesystem usage because previous language-image or worker-image builds left cache/layers behind. `DEPLOY_TARGET=algo` or `DEPLOY_TARGET=worv` has `WORKER_HOSTS` configured, so the app deploy succeeds, then Step 6c starts a no-cache worker image build on the worker. The build fails mid-layer from ENOSPC, leaves more partial BuildKit data, and exits before `prune_old_docker_artifacts` runs on that worker. The next deploy is now more likely to fail, and judging may remain on stale worker code.
 
-## D. Verdict
+Fix:
 
-No FAILED fixes. All 12 cited fixes do what their commits claim. The single PARTIAL is the settings reconfirm gate (N1): it works for the keys it lists but omits the restricted-mode bypass toggles, leaving a real exam-integrity weakening path without reconfirm. Deferred items are characterized accurately; two (AGG-10, NEW-M8) carry risks that persist open-endedly. Net-new findings are otherwise low severity.
+Factor the app-host disk guard into a reusable helper, for example `preflight_remote_disk <host_label> <runner> <skip_build_bool>`, and call it before `run_remote_build` for every `WORKER_HOSTS` entry. The helper should run the same safe cleanup (`docker image prune -f`, `docker builder prune -af`, `docker buildx history rm --all`), never volumes, and abort before a no-cache worker build if the worker remains above the hard threshold. Also apply the same pattern to `scripts/rebuild-worker-language-images.sh`, whose language loop builds before pruning: `scripts/rebuild-worker-language-images.sh:100-117`.
+
+Confidence: High.
+
+### V2 - MEDIUM - Unknown or alias `DEPLOY_TARGET` silently falls back to `.env.deploy`
+
+Evidence:
+
+- Per-target sourcing is conditional only when `.env.deploy.${DEPLOY_TARGET}` exists: `deploy-docker.sh:132-136`.
+- There is no `else` branch that fails when `DEPLOY_TARGET` is set but the matching file is absent.
+- Current files include `.env.deploy.algo`, `.env.deploy.worv`, and `.env.deploy.auraedu`, but no `.env.deploy.oj`.
+- Docs list the AuraEdu target as "`oj` / AuraEdu": `docs/deployment.md:147-153` and `docs/deployment-automation.md:13-19`.
+- `.env.deploy` itself contains default target values, so a misspelled target or `DEPLOY_TARGET=oj` does not fail early; it proceeds with the default file's values: `.env.deploy:4-7`.
+
+Scenario:
+
+An operator follows the docs table and runs `DEPLOY_TARGET=oj ./deploy-docker.sh`, expecting AuraEdu. Because `.env.deploy.oj` does not exist, the script silently uses `.env.deploy` instead. That can deploy to the wrong host/domain pair or run the wrong topology defaults.
+
+Fix:
+
+When `DEPLOY_TARGET` is non-empty and `.env.deploy.${DEPLOY_TARGET}` is missing, abort with a list of available targets. Add an explicit alias for `oj` to `auraedu` if the documented alias is intentional, either via `.env.deploy.oj` or a small case mapping before sourcing.
+
+Confidence: High.
+
+### V3 - MEDIUM - Caller env override comments are not true for build/topology flags
+
+Evidence:
+
+- The comments say explicit caller env vars still win after per-target sourcing: `deploy-docker.sh:127-131`.
+- The restoration block only restores `REMOTE_HOST`, `REMOTE_USER`, `DOMAIN`, `SSH_PASSWORD`, `SUDO_PASSWORD`, `SSH_KEY`, and `AUTH_URL_OVERRIDE`: `deploy-docker.sh:139-146`.
+- It does not restore caller-provided `SKIP_BUILD`, `SKIP_LANGUAGES`, `LANGUAGE_FILTER`, `INCLUDE_WORKER`, `BUILD_WORKER_IMAGE`, `SKIP_PREDEPLOY_BACKUP`, or `SKIP_POST_DEPLOY_PRUNE`.
+- The parser later reads whatever values survived sourcing: `deploy-docker.sh:194-208`.
+- For `algo` and `worv`, target files set `SKIP_LANGUAGES=true`, `BUILD_WORKER_IMAGE=false`, and `INCLUDE_WORKER=false`: `.env.deploy.algo:17-19`, `.env.deploy.worv:15-17`.
+
+Scenario:
+
+An operator runs `DEPLOY_TARGET=algo SKIP_LANGUAGES=false ./deploy-docker.sh` expecting the env override to win because the script comments say caller env vars take precedence. The target file has already overwritten `SKIP_LANGUAGES` to `true`, and there is no restore for that variable. This happens to protect the `algo` app host, but the code/comment contract is false and can confuse recovery operations.
+
+Fix:
+
+Choose and document one policy. If target guardrails should be non-overridable by env, update the comments and help text to say per-target topology flags are authoritative unless a dedicated CLI escape hatch is added. If caller env should truly win, snapshot and restore all documented env vars, then add explicit protection for `algo` app-server invariants so accidental language/worker builds cannot be enabled without an intentional flag.
+
+Confidence: High.
+
+### V4 - LOW - Storage preflight checks `/` only
+
+Evidence:
+
+- App preflight measures `df --output=pcent /`: `deploy-docker.sh:524`.
+- The no-cache Docker builds use Docker's daemon storage, which is usually under `/var/lib/docker` but could be on a separate filesystem.
+- Worker workspaces are mounted from `/judge-workspaces`: `docker-compose.production.yml:132-142`, `docker-compose.worker.yml:54-80`, but the deploy preflight does not check that mount.
+
+Scenario:
+
+On a host with Docker data root or `/judge-workspaces` on a separate nearly full mount, `/` can be below the warning threshold while the actual build or judge workspace storage fails from ENOSPC.
+
+Fix:
+
+In the reusable disk preflight helper, check `df` for `/`, Docker's `DockerRootDir` from `docker info`, and `/judge-workspaces` when it exists. Treat the highest usage as the gating value and print each mount in the log.
+
+Confidence: Medium.
+
+## Additional notes
+
+- `scripts/deploy-worker.sh` transfers `judgekit-judge-worker:latest` with `docker save | ssh docker load`, then prunes dangling images after the load: `scripts/deploy-worker.sh:87-93`. It is not a build path, but it can still fail on a full worker host before cleanup. Consider using the same preflight helper or at least a remote `df` guard before `docker load`.
+- `scripts/rebuild-worker-language-images.sh` explicitly says the `WORKER_HOSTS` step only rebuilds `judge-worker:latest`, not language images: `scripts/rebuild-worker-language-images.sh:5-9`. Its language image loop builds first and prunes only at the end: `scripts/rebuild-worker-language-images.sh:100-117`, so it has the same pre-build storage-risk class as V1.
+- BuildKit history recovery is correctly routed through `run_remote_build` for both app and worker hosts: `deploy-docker.sh:443-469`, `deploy-docker.sh:1193-1201`. That handles the specific `unknown blob ... in history` failure but does not replace disk preflight.
+
+## Overall verdict
+
+The stated `DEPLOY_TARGET=algo|worv|auraedu` behavior is confirmed for exact target names, and cleanup safety is well supported by code and docs. The app host has a real pre-build disk guard. Dedicated worker hosts do not: they are cleaned only after a successful rebuild/restart, which leaves the original disk-full failure mode open on the hosts that accumulate the most judge-worker and language-image artifacts.
