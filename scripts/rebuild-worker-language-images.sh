@@ -80,6 +80,42 @@ REMOTE_SCRIPT=$(cat <<REMOTE
 set -u
 cd ~/judgekit
 
+DISK_WARN_PCT="\${DEPLOY_DISK_WARN_PCT:-85}"
+DISK_HARD_PCT="\${DEPLOY_DISK_HARD_PCT:-92}"
+
+usage_report() {
+  docker_root=\$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+  for path in / "\$docker_root" /judge-workspaces; do
+    if [ -n "\$path" ] && [ -e "\$path" ]; then
+      df -P "\$path" | awk -v p="\$path" 'NR==2 {gsub("%", "", \$5); print p ":" \$5}'
+    fi
+  done
+}
+
+max_usage() {
+  usage_report | awk -F: 'BEGIN{max=0; path="/"} \$2+0 > max {max=\$2+0; path=\$1} END{print max ":" path}'
+}
+
+MAX_USAGE=\$(max_usage)
+MAX_PCT=\${MAX_USAGE%%:*}
+MAX_PATH=\${MAX_USAGE#*:}
+echo "storage preflight: max \${MAX_PCT}% used at \${MAX_PATH}"
+if [ "\${MAX_PCT:-0}" -ge "\$DISK_WARN_PCT" ]; then
+  echo "storage >= \${DISK_WARN_PCT}% — pruning stopped containers, dangling images, build cache, BuildKit history (no volumes)"
+  docker container prune -f --filter 'until=24h' 2>&1 | tail -1 || true
+  docker image prune -f 2>&1 | tail -1 || true
+  docker builder prune -af 2>&1 | tail -1 || true
+  docker buildx history rm --all >/dev/null 2>&1 || true
+  MAX_USAGE=\$(max_usage)
+  MAX_PCT=\${MAX_USAGE%%:*}
+  MAX_PATH=\${MAX_USAGE#*:}
+  echo "storage after cleanup: max \${MAX_PCT}% used at \${MAX_PATH}"
+fi
+if [ "\${MAX_PCT:-0}" -ge "\$DISK_HARD_PCT" ]; then
+  echo "storage still >= \${DISK_HARD_PCT}% after safe cleanup; refusing language image rebuild"
+  exit 2
+fi
+
 # Re-pull hello-world too: the judge worker's startup "Docker capability
 # probe" creates a hello-world container to confirm Docker access works.
 # If hello-world is missing locally, the worker can't pull through the

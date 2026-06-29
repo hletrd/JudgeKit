@@ -27,10 +27,23 @@ set -uo pipefail
 THRESHOLD="${DOCKER_CLEANUP_DISK_THRESHOLD:-80}"
 RETAIN="${DOCKER_CLEANUP_RETAIN:-24h}"
 
-usage() { df --output=pcent / | tail -1 | tr -dc '0-9'; }
+usage_report() {
+  docker_root="$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)"
+  for path in / "$docker_root" /judge-workspaces; do
+    if [ -n "$path" ] && [ -e "$path" ]; then
+      df -P "$path" | awk -v p="$path" 'NR==2 {gsub("%", "", $5); print p ":" $5}'
+    fi
+  done
+}
 
-BEFORE_PCT="$(usage)"
-echo "[docker-cleanup] start: disk ${BEFORE_PCT}% used (threshold ${THRESHOLD}%, retain ${RETAIN})"
+max_usage() {
+  usage_report | awk -F: 'BEGIN{max=0; path="/"} $2+0 > max {max=$2+0; path=$1} END{print max ":" path}'
+}
+
+BEFORE_MAX="$(max_usage)"
+BEFORE_PCT="${BEFORE_MAX%%:*}"
+BEFORE_PATH="${BEFORE_MAX#*:}"
+echo "[docker-cleanup] start: max disk ${BEFORE_PCT}% used at ${BEFORE_PATH} (threshold ${THRESHOLD}%, retain ${RETAIN})"
 
 # Stopped containers first (frees their writable layers); keep recent ones.
 docker container prune -f --filter "until=${RETAIN}" || true
@@ -46,4 +59,7 @@ else
   docker builder prune -af --filter "until=${RETAIN}" || true
 fi
 
-echo "[docker-cleanup] done: $(df -h / | awk 'NR==2{print $3" used, "$4" free ("$5")"}')"
+echo "[docker-cleanup] done:"
+usage_report | while IFS=: read -r path pct; do
+  df -h "$path" | awk -v p="$path" 'NR==2{print "  " p ": " $3 " used, " $4 " free (" $5 ")"}'
+done

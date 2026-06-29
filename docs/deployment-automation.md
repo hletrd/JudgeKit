@@ -4,10 +4,12 @@ This document records the current production-standard deployment baseline for Ju
 
 ## Current production-standard workflow
 
-JudgeKit production deploys currently run from a trusted workstation or operator-managed environment with:
+JudgeKit production deploys currently run from a trusted workstation or operator-managed environment with an explicit target profile:
 
 ```bash
-REMOTE_HOST=... REMOTE_USER=... DOMAIN=... SSH_KEY=... ./deploy-docker.sh
+DEPLOY_TARGET=algo ./deploy-docker.sh
+DEPLOY_TARGET=worv ./deploy-docker.sh
+DEPLOY_TARGET=auraedu ./deploy-docker.sh
 ```
 
 Current target-specific SSH keys in the local deploy environment:
@@ -24,10 +26,11 @@ That path is the canonical baseline because it:
 - runs the PostgreSQL volume safety check before touching containers
 - captures a pre-deploy `pg_dump`
 - applies the Docker-based production architecture described in `docs/deployment.md`
-- prunes stopped containers, unused images, BuildKit cache, and (DB-guarded)
-  orphan volumes on every host it touched (app + each `WORKER_HOSTS` entry)
-  at the end of the deploy — opt out with `SKIP_POST_DEPLOY_PRUNE=1`. See
-  `docs/deployment.md` § "Automatic post-deploy cleanup".
+- prunes stopped containers, dangling images, BuildKit cache, and BuildKit
+  history metadata on every host it touched (app + each `WORKER_HOSTS` entry)
+  at the end of the deploy. Automated cleanup never prunes Docker volumes.
+  Opt out with `SKIP_POST_DEPLOY_PRUNE=1`. See `docs/deployment.md` §
+  "Automatic post-deploy cleanup".
 
 ## Automated verification path
 

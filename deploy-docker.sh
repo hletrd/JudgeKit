@@ -32,7 +32,8 @@
 #                            (escape hatch when DB host is unreachable; use with care)
 #   SKIP_POST_DEPLOY_PRUNE — "1"/"true" to skip the default post-deploy
 #                            Docker artifact cleanup (stopped containers,
-#                            unused images, BuildKit cache, orphan volumes).
+#                            dangling images, BuildKit cache). Volumes are
+#                            never pruned by automated deploy cleanup.
 #                            Cleanup is on by default — every judge-image
 #                            rebuild leaves the prior tag dangling and the
 #                            disk fills up without it. Set this only when
@@ -115,6 +116,27 @@ _CALLER_SSH_PASSWORD="${SSH_PASSWORD:-}"
 _CALLER_SUDO_PASSWORD="${SUDO_PASSWORD:-}"
 _CALLER_SSH_KEY="${SSH_KEY:-}"
 _CALLER_AUTH_URL_OVERRIDE="${AUTH_URL_OVERRIDE:-}"
+_CALLER_SKIP_BUILD="${SKIP_BUILD:-}"
+_CALLER_SKIP_LANGUAGES="${SKIP_LANGUAGES:-}"
+_CALLER_LANGUAGE_FILTER="${LANGUAGE_FILTER:-}"
+_CALLER_INCLUDE_WORKER="${INCLUDE_WORKER:-}"
+_CALLER_BUILD_WORKER_IMAGE="${BUILD_WORKER_IMAGE:-}"
+_CALLER_WORKER_HOSTS="${WORKER_HOSTS:-}"
+_CALLER_COMPILER_RUNNER_URL="${COMPILER_RUNNER_URL:-}"
+_CALLER_E2E_HOME_HEADING="${E2E_HOME_HEADING:-}"
+
+DEPLOY_TARGET="${DEPLOY_TARGET:-}"
+if [[ "${DEPLOY_TARGET}" == "oj" ]]; then
+    DEPLOY_TARGET="auraedu"
+fi
+TARGET_ENV_FILE=""
+if [[ -n "${DEPLOY_TARGET}" ]]; then
+    TARGET_ENV_FILE="${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}"
+    if [[ ! -f "${TARGET_ENV_FILE}" ]]; then
+        echo "[FATAL] Unknown DEPLOY_TARGET='${DEPLOY_TARGET}'. Expected one of: algo, worv, auraedu (alias: oj)." >&2
+        exit 1
+    fi
+fi
 
 # Source deployment env vars from .env.deploy (defaults)
 if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
@@ -124,15 +146,16 @@ if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
     set +a
 fi
 
-# Source per-target overrides (e.g. .env.deploy.algo) so a bare
+# Source per-target overrides (e.g. .env.deploy.algo) so
 # `DEPLOY_TARGET=algo ./deploy-docker.sh` honours the CLAUDE.md app-server
-# defaults (SKIP_LANGUAGES=true, BUILD_WORKER_IMAGE=false, INCLUDE_WORKER=false)
-# without manual env vars. Explicit caller env vars still win because the
-# caller-override restoration block below re-applies them after this sourcing.
-if [[ -n "${DEPLOY_TARGET:-}" && -f "${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}" ]]; then
+# defaults (SKIP_LANGUAGES=true, BUILD_WORKER_IMAGE=false, INCLUDE_WORKER=false).
+# Explicit caller env vars still win because the caller-override restoration
+# block below re-applies them after this sourcing, then host safety assertions
+# reject unsafe production target combinations.
+if [[ -n "${TARGET_ENV_FILE}" ]]; then
     set -a
     # shellcheck disable=SC1091
-    source "${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}"
+    source "${TARGET_ENV_FILE}"
     set +a
 fi
 
@@ -144,6 +167,14 @@ fi
 [[ -n "$_CALLER_SUDO_PASSWORD" ]] && SUDO_PASSWORD="$_CALLER_SUDO_PASSWORD"
 [[ -n "$_CALLER_SSH_KEY" ]] && SSH_KEY="$_CALLER_SSH_KEY"
 [[ -n "$_CALLER_AUTH_URL_OVERRIDE" ]] && AUTH_URL_OVERRIDE="$_CALLER_AUTH_URL_OVERRIDE"
+[[ -n "$_CALLER_SKIP_BUILD" ]] && SKIP_BUILD="$_CALLER_SKIP_BUILD"
+[[ -n "$_CALLER_SKIP_LANGUAGES" ]] && SKIP_LANGUAGES="$_CALLER_SKIP_LANGUAGES"
+[[ -n "$_CALLER_LANGUAGE_FILTER" ]] && LANGUAGE_FILTER="$_CALLER_LANGUAGE_FILTER"
+[[ -n "$_CALLER_INCLUDE_WORKER" ]] && INCLUDE_WORKER="$_CALLER_INCLUDE_WORKER"
+[[ -n "$_CALLER_BUILD_WORKER_IMAGE" ]] && BUILD_WORKER_IMAGE="$_CALLER_BUILD_WORKER_IMAGE"
+[[ -n "$_CALLER_WORKER_HOSTS" ]] && WORKER_HOSTS="$_CALLER_WORKER_HOSTS"
+[[ -n "$_CALLER_COMPILER_RUNNER_URL" ]] && COMPILER_RUNNER_URL="$_CALLER_COMPILER_RUNNER_URL"
+[[ -n "$_CALLER_E2E_HOME_HEADING" ]] && E2E_HOME_HEADING="$_CALLER_E2E_HOME_HEADING"
 
 REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see .env)}"
 REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see .env)}"
@@ -264,8 +295,15 @@ warn()    { echo -e "${YELLOW}[WARN]${NC} $(_log_prefix)$*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $(_log_prefix)$*" >&2; }
 die()     { error "$*"; exit 1; }
 
+if [[ "${REMOTE_HOST}" == "algo.xylolabs.com" ]]; then
+    if [[ "${SKIP_LANGUAGES}" != "true" || "${BUILD_WORKER_IMAGE}" != "false" || "${INCLUDE_WORKER}" != "false" ]]; then
+        die "algo.xylolabs.com is the app server only. Refusing deploy unless SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false (see CLAUDE.md)."
+    fi
+fi
+
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 if [[ -n "${SSH_KEY:-}" ]]; then
+    SSH_KEY="${SSH_KEY/#\~/$HOME}"
     SSH_OPTS="$SSH_OPTS -i ${SSH_KEY}"
 fi
 
@@ -373,8 +411,8 @@ remote_rsync() {
 }
 
 # DB-safe post-deploy cleanup. Removes stopped containers, dangling
-# (untagged) images, BuildKit cache, and orphan named volumes — preserving
-# every tagged image and every volume attached to a running container.
+# (untagged) images, and BuildKit cache. Volumes are never pruned here:
+# detached Docker volumes can contain recoverable PostgreSQL or upload data.
 #
 # CRITICAL: this MUST NOT use `docker image prune -af`. Judge language
 # images (judge-cpp, judge-python, judge-mercury, ...) are tagged but are
@@ -400,22 +438,16 @@ prune_old_docker_artifacts() {
     local host_label="${1:-remote}"
     local runner="${2:-remote}"
     if [[ "${SKIP_POST_DEPLOY_PRUNE:-}" == "1" || "${SKIP_POST_DEPLOY_PRUNE:-}" == "true" ]]; then
-        info "SKIP_POST_DEPLOY_PRUNE set — leaving stale images/volumes on ${host_label} (manual cleanup required to free disk)"
+        info "SKIP_POST_DEPLOY_PRUNE set — leaving stale containers/images/build cache on ${host_label} (manual cleanup may be required to free disk)"
         return 0
     fi
-    info "Post-deploy cleanup on ${host_label}: stopped containers, dangling images, build cache, orphan volumes..."
-    local db_running
-    db_running=$("$runner" "docker ps --filter name=judgekit-db --filter status=running --format '{{.Names}}' | head -1" 2>/dev/null | tr -d '\r\n ')
+    info "Post-deploy cleanup on ${host_label}: stopped containers, dangling images, build cache..."
     "$runner" "docker container prune -f 2>&1 | tail -1" || true
     # -f (NOT -af): dangling only — preserves judge-* language images that
     # are tagged but not currently attached to any running container.
     "$runner" "docker image prune -f 2>&1 | tail -1" || true
     "$runner" "docker builder prune -af 2>&1 | tail -1" || true
-    if [[ -n "$db_running" ]]; then
-        "$runner" "docker volume prune -f 2>&1 | tail -1" || true
-    else
-        warn "judgekit-db is not running on ${host_label} — skipping volume prune as a safety guard (per CLAUDE.md). Run again manually after the DB is restored."
-    fi
+    "$runner" "docker buildx history rm --all 2>&1 | tail -1" || true
     "$runner" "df -h / | tail -1" || true
     success "Cleanup complete on ${host_label}"
 }
@@ -469,6 +501,71 @@ run_remote_build() {
     return 1
 }
 
+DISK_WARN_PCT="${DEPLOY_DISK_WARN_PCT:-85}"
+DISK_HARD_PCT="${DEPLOY_DISK_HARD_PCT:-92}"
+
+storage_usage_report() {
+    local runner="$1"
+    "$runner" "docker_root=\$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true); for p in / \"\$docker_root\" /judge-workspaces; do if [ -n \"\$p\" ] && [ -e \"\$p\" ]; then df -P \"\$p\" | awk -v p=\"\$p\" 'NR==2 {gsub(\"%\", \"\", \$5); print p \":\" \$5}'; fi; done" 2>/dev/null || true
+}
+
+safe_docker_storage_cleanup() {
+    local host_label="$1"
+    local runner="$2"
+    info "Safe Docker cleanup on ${host_label}: stopped containers, dangling images, build cache, BuildKit history (no volumes)..."
+    "$runner" "docker container prune -f --filter 'until=24h' 2>&1 | tail -1" || true
+    "$runner" "docker image prune -f 2>&1 | tail -1" || true
+    "$runner" "docker builder prune -af 2>&1 | tail -1" || true
+    "$runner" "docker buildx history rm --all 2>&1 | tail -1" || true
+}
+
+preflight_docker_storage() {
+    local host_label="$1"
+    local runner="$2"
+    local build_enabled="${3:-true}"
+    local report max_pct max_path path pct
+
+    report="$(storage_usage_report "$runner")"
+    max_pct=""
+    max_path=""
+    while IFS=: read -r path pct; do
+        [[ -n "$path" && "$pct" =~ ^[0-9]+$ ]] || continue
+        if [[ -z "$max_pct" || "$pct" -gt "$max_pct" ]]; then
+            max_pct="$pct"
+            max_path="$path"
+        fi
+    done <<< "$report"
+
+    if [[ -z "$max_pct" ]]; then
+        warn "Could not determine Docker storage usage on ${host_label}; continuing without disk percentage"
+        return 0
+    fi
+
+    if [[ "$max_pct" -ge "$DISK_WARN_PCT" ]]; then
+        warn "${host_label} storage is ${max_pct}% full at ${max_path} (>= ${DISK_WARN_PCT}%). Reclaiming safe Docker artifacts before building..."
+        safe_docker_storage_cleanup "$host_label" "$runner"
+        report="$(storage_usage_report "$runner")"
+        max_pct=""
+        max_path=""
+        while IFS=: read -r path pct; do
+            [[ -n "$path" && "$pct" =~ ^[0-9]+$ ]] || continue
+            if [[ -z "$max_pct" || "$pct" -gt "$max_pct" ]]; then
+                max_pct="$pct"
+                max_path="$path"
+            fi
+        done <<< "$report"
+        info "${host_label} storage after cleanup: ${max_pct:-unknown}% used at ${max_path:-unknown}"
+    fi
+
+    if [[ -n "$max_pct" && "$max_pct" -ge "$DISK_HARD_PCT" && "$build_enabled" == "true" ]]; then
+        die "${host_label} storage is still ${max_pct}% full at ${max_path} (>= ${DISK_HARD_PCT}%) after safe cleanup. Refusing to build. Free disk manually, but do NOT prune volumes or user-data."
+    fi
+    if [[ -n "$max_pct" && "$max_pct" -ge "$DISK_HARD_PCT" && "$build_enabled" != "true" ]]; then
+        warn "${host_label} storage is still ${max_pct}% full at ${max_path} (>= ${DISK_HARD_PCT}%), but no build is scheduled."
+    fi
+    success "Docker storage preflight OK on ${host_label} (${max_pct}% used at ${max_path})"
+}
+
 remote_sudo() {
     local cmd="$1"
     local quoted_cmd
@@ -510,35 +607,16 @@ success "SSH connection to ${REMOTE_HOST} verified"
 remote "docker info >/dev/null 2>&1" || die "docker is not available on the remote host"
 success "Remote docker verified"
 
-# Pre-build disk guard.
-# A full image build (judgekit-app + any language images) needs several GB.
-# If the remote root FS is already near-full the build dies mid-layer and
-# leaves a half-written image + build cache that fills the disk *further* —
-# the exact failure that took algo.xylolabs.com to 100% (Jun 2026) and left a
-# broken deploy. Reclaim safely first (dangling images + build cache + the
-# BuildKit history store — NEVER volumes, the PostgreSQL data lives there),
-# then abort cleanly if still critical instead of starting a doomed build.
-# Thresholds overridable via DEPLOY_DISK_WARN_PCT / DEPLOY_DISK_HARD_PCT.
-DISK_WARN_PCT="${DEPLOY_DISK_WARN_PCT:-85}"
-DISK_HARD_PCT="${DEPLOY_DISK_HARD_PCT:-92}"
-_remote_disk_pct() { remote "df --output=pcent / | tail -1 | tr -dc '0-9'" 2>/dev/null; }
-DISK_PCT="$(_remote_disk_pct)"
-if [[ -n "$DISK_PCT" && "$DISK_PCT" -ge "$DISK_WARN_PCT" ]]; then
-    warn "Remote root FS is ${DISK_PCT}% full (>= ${DISK_WARN_PCT}%). Reclaiming dangling images + build cache before building (volumes are never touched)..."
-    # -f NOT -af: dangling only, so tagged judge-* language images survive.
-    remote "docker image prune -f 2>&1 | tail -1" || true
-    remote "docker builder prune -af 2>&1 | tail -1" || true
-    remote "docker buildx history rm --all 2>&1 | tail -1" || true
-    DISK_PCT="$(_remote_disk_pct)"
-    info "Remote root FS now ${DISK_PCT:-unknown}% full after cleanup"
+# Pre-build Docker storage guard.
+# A full image build needs several GB. If Docker's data root or the shared
+# workspace mount is already near-full, builds die mid-layer and leave more
+# cache behind. Reclaim safe artifacts first (never volumes), then abort before
+# starting a doomed build when a build is scheduled.
+if [[ "$SKIP_BUILD" == false ]]; then
+    preflight_docker_storage "app ${REMOTE_HOST}" remote true
+else
+    preflight_docker_storage "app ${REMOTE_HOST}" remote false
 fi
-if [[ -n "$DISK_PCT" && "$DISK_PCT" -ge "$DISK_HARD_PCT" && "$SKIP_BUILD" == false ]]; then
-    die "Remote root FS still ${DISK_PCT}% full (>= ${DISK_HARD_PCT}%) after safe cleanup on ${REMOTE_HOST}. Refusing to build — free disk manually, but do NOT prune volumes (the PostgreSQL data lives there). See AGENTS.md 'Deploy hardening'."
-fi
-if [[ -n "$DISK_PCT" && "$DISK_PCT" -ge "$DISK_HARD_PCT" && "$SKIP_BUILD" == true ]]; then
-    warn "Remote root FS is still ${DISK_PCT}% full (>= ${DISK_HARD_PCT}%), but SKIP_BUILD=true so no no-cache Docker build will start. Continuing with non-build deploy steps."
-fi
-success "Remote disk preflight OK (${DISK_PCT:-unknown}% used)"
 
 # Detect remote architecture
 REMOTE_ARCH=$(remote "uname -m")
@@ -646,6 +724,38 @@ ensure_env_literal() {
   remote "printf '\n%s=%s\n' '${key}' '${literal_value}' >> ${REMOTE_ENV_FILE} && chmod 600 ${REMOTE_ENV_FILE}" \
     || warn "Failed to backfill ${key} — please add it manually before the app starts"
 }
+
+upsert_env_literal() {
+  local key="$1"
+  local literal_value="$2"
+  if ! remote "test -f ${REMOTE_ENV_FILE}"; then
+    return 0
+  fi
+  local q_key q_value q_file
+  printf -v q_key '%q' "$key"
+  printf -v q_value '%q' "$literal_value"
+  printf -v q_file '%q' "$REMOTE_ENV_FILE"
+  info "Ensuring ${key}=${literal_value} in ${REMOTE_ENV_FILE}"
+  remote "KEY=${q_key} VALUE=${q_value} ENV_FILE=${q_file} python3 - <<'PY'
+from pathlib import Path
+import os
+
+key = os.environ['KEY']
+value = os.environ['VALUE']
+path = Path(os.environ['ENV_FILE'])
+line = f'{key}={value}'
+lines = path.read_text().splitlines()
+for i, existing in enumerate(lines):
+    if existing.startswith(f'{key}='):
+        lines[i] = line
+        break
+else:
+    lines.append(line)
+path.write_text('\n'.join(lines) + '\n')
+PY
+chmod 600 ${REMOTE_ENV_FILE}" \
+    || warn "Failed to upsert ${key} — please update it manually before the app starts"
+}
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
 ensure_env_secret NODE_ENCRYPTION_KEY hex
 ensure_env_secret RUNNER_AUTH_TOKEN hex
@@ -722,9 +832,25 @@ fi
 # After .env.production is guaranteed to exist, backfill target-specific overrides
 # that may not be present in the repo's .env.production template.
 if [[ "${INCLUDE_WORKER}" != "true" ]]; then
-    COMPILER_RUNNER_DEFAULT="http://host.docker.internal:3001"
-    ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"
+    COMPILER_RUNNER_DEFAULT="${COMPILER_RUNNER_URL:-http://host.docker.internal:3001}"
+    if [[ -n "${COMPILER_RUNNER_URL:-}" ]]; then
+        upsert_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"
+    else
+        ensure_env_literal COMPILER_RUNNER_URL "${COMPILER_RUNNER_DEFAULT}"
+    fi
 fi
+upsert_env_literal AUTH_TRUST_HOST true
+
+# Compute AUTH_URL before the app starts so first boot uses the target domain.
+USE_TLS=false
+if remote_sudo "test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem -a -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem" 2>/dev/null; then
+    USE_TLS=true
+    info "Detected existing TLS certificate for ${DOMAIN}; AUTH_URL will use HTTPS"
+else
+    info "No TLS certificate detected for ${DOMAIN}; AUTH_URL will use HTTP until TLS is provisioned"
+fi
+AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-$([ "${USE_TLS}" = "true" ] && echo "https://${DOMAIN}" || echo "http://${DOMAIN}")}"
+upsert_env_literal AUTH_URL "${AUTH_URL_TARGET}"
 
 success "Source code synced to remote"
 
@@ -1161,9 +1287,20 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         [[ -z "$entry" ]] && continue
         IFS=':' read -r WHOST WKEY WPLATFORM <<< "$entry"
         WKEY="${WKEY:-${SSH_KEY}}"
+        WKEY="${WKEY/#\~/$HOME}"
         WPLATFORM="${WPLATFORM:-linux/amd64}"
         WUSER="${WORKER_SSH_USER:-${REMOTE_USER}}"
         info "→ ${WHOST} (key=${WKEY}, platform=${WPLATFORM})"
+        _worker_ssh() {
+            ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
+        }
+        if [[ "$SKIP_BUILD" == false ]]; then
+            preflight_docker_storage "worker ${WHOST}" _worker_ssh true
+        else
+            preflight_docker_storage "worker ${WHOST}" _worker_ssh false
+            warn "SKIP_BUILD=true — skipping worker source sync, image build, and restart on ${WHOST}"
+            continue
+        fi
         info "  rsync source"
         rsync -az --delete \
             --exclude='node_modules/' \
@@ -1193,10 +1330,7 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         # Ad-hoc runner bound to this worker's key so run_remote_build's
         # BuildKit history auto-recovery applies on worker hosts too (the
         # same corruption class can fire wherever images are built).
-        _worker_build_ssh() {
-            ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
-        }
-        run_remote_build "worker ${WHOST}" _worker_build_ssh \
+        run_remote_build "worker ${WHOST}" _worker_ssh \
             "cd /home/${WUSER}/judgekit && docker build --no-cache --platform ${WPLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ." \
             || die "Failed to build judge-worker image on ${WHOST}"
         info "  restart worker compose"
@@ -1210,15 +1344,10 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         if ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
             "docker ps --filter name=judgekit-judge-worker --format '{{.Status}}' | grep -q '^Up '"; then
             success "  worker on ${WHOST} is up"
-            # Reclaim disk on the worker host. Worker hosts accumulate the
-            # most stale images because judge-worker + every language image
-            # is rebuilt --no-cache here. Each rebuild leaves the prior
-            # :latest dangling, and a few cycles eat tens of GB. We invoke
-            # the same prune_old_docker_artifacts helper but routed through
-            # an ad-hoc ssh wrapper bound to this worker's key.
-            _worker_ssh() {
-                ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
-            }
+            # Reclaim disk on the worker host after the successful rebuild.
+            # The WORKER_HOSTS step rebuilds judge-worker:latest; language
+            # images are rebuilt through the dedicated recovery script or a
+            # future worker-language rollout policy.
             prune_old_docker_artifacts "worker ${WHOST}" _worker_ssh
         else
             die "worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
@@ -1228,11 +1357,11 @@ fi
 
 # ---------------------------------------------------------------------------
 # Step 6d: Post-deploy Docker artifact cleanup (DEFAULT — disable with
-# SKIP_POST_DEPLOY_PRUNE=1). Removes stopped containers, unused images,
-# BuildKit cache, and orphan volumes on the app host. Every judge-image
-# rebuild leaves the prior tag dangling — without periodic pruning the
-# disk fills up and the next deploy thrashes (the auraedu deploy
-# misfired exactly this way before this step existed).
+# SKIP_POST_DEPLOY_PRUNE=1). Removes stopped containers, dangling images,
+# BuildKit cache, and BuildKit history metadata on the app host. Volumes are
+# never pruned. Every judge-image rebuild leaves the prior tag dangling —
+# without periodic pruning the disk fills up and the next deploy thrashes
+# (the auraedu deploy misfired exactly this way before this step existed).
 # ---------------------------------------------------------------------------
 prune_old_docker_artifacts "app ${REMOTE_HOST}" remote
 
@@ -1240,16 +1369,11 @@ prune_old_docker_artifacts "app ${REMOTE_HOST}" remote
 # Step 7: Set up nginx reverse proxy
 # ---------------------------------------------------------------------------
 info "Configuring nginx reverse proxy for ${DOMAIN}..."
-USE_TLS=false
-if remote_sudo "test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem -a -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem" 2>/dev/null; then
-    USE_TLS=true
+if [[ "${USE_TLS}" == "true" ]]; then
     info "Detected existing TLS certificate for ${DOMAIN}; generating HTTPS nginx config"
 else
     info "No TLS certificate detected for ${DOMAIN}; generating HTTP-only nginx config"
 fi
-
-AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-$([ "${USE_TLS}" = "true" ] && echo "https://${DOMAIN}" || echo "http://${DOMAIN}")}"
-remote "sed -i 's|^AUTH_URL=.*|AUTH_URL=${AUTH_URL_TARGET}|' ${REMOTE_DIR}/.env.production" 2>/dev/null || true
 
 # Write nginx config to /tmp first (avoids heredoc + sudo + tee issues)
 if [[ "${USE_TLS}" == "true" ]]; then

@@ -130,7 +130,7 @@ sudo systemctl restart online-judge-worker-rs.service
 
 Rsyncs source to the remote server and builds Docker images there (never locally), auto-detecting architecture. Supports password (`SSH_PASSWORD`) and key (`SSH_KEY`) SSH auth.
 
-See also: [Deployment Automation & Reproducibility](docs/deployment-automation.md) for the current production-standard deploy baseline and CI/CD status.
+See also: [Deployment Automation & Reproducibility](deployment-automation.md) for the current production-standard deploy baseline and CI/CD status.
 
 For the default Docker deployment, the Next.js app does **not** talk to Docker directly. The local judge worker is the only container with Docker daemon access (via `docker-proxy`), and the app reaches the worker’s authenticated internal runner/admin endpoints instead.
 
@@ -241,9 +241,8 @@ past (see commit history for the Apr 2026 incident).
 - `docker image prune -f` — safe (only removes dangling `<none>:<none>` images
   left over from `docker build` rebuilds). Does **not** touch tagged judge
   language images.
-- `docker volume prune -f` — safe **only while `judgekit-db` is running.**
-  The DB volume is preserved because docker skips volumes attached to running
-  containers. `deploy-docker.sh` verifies the DB is up before invoking this.
+- `docker builder prune -af` — safe for reclaiming BuildKit cache. It does not
+  remove tagged runtime images or Docker volumes.
 
 ### Dangerous operations — never run on production
 
@@ -256,7 +255,9 @@ past (see commit history for the Apr 2026 incident).
   and reclaims it. Rebuilding the full language set is multi-hour. This is
   why `deploy-docker.sh` uses `-f` (dangling only), not `-af`.
 - `docker volume prune -af` — indiscriminate, can delete mounted volumes on stopped containers
-- `docker volume prune -f` **while the DB container is stopped** — same risk
+- `docker volume prune -f` — host-wide deletion of all detached volumes; never
+  use as routine deploy cleanup because detached volumes can contain recoverable
+  PostgreSQL or uploaded user data
 - `docker system prune -a --volumes` — same, destructive across the board
 
 ### Automatic post-deploy cleanup
@@ -272,9 +273,11 @@ above):
    preserved; `-af` would wipe them because the worker only attaches to
    each language image transiently per submission.
 3. `docker builder prune -af` — BuildKit cache
-4. `docker volume prune -f` — only after asserting `judgekit-db` is running
-   (skipped with a warning otherwise; rerun the deploy or invoke the helper
-   manually once the DB is back)
+4. `docker buildx history rm --all` — BuildKit history metadata only
+
+The helper does **not** prune Docker volumes. If a host needs volume cleanup,
+handle it as a manual recovery task with an explicit volume inventory and a
+fresh backup; do not run host-wide volume prune on production.
 
 This step exists because every `--no-cache` rebuild on a worker host leaves
 the prior layer set dangling, and a few cycles consume tens of gigabytes.
@@ -379,9 +382,9 @@ cannot complete. Read the script output carefully — on success it prints
 the exact paths of the `pg_dump` and tar snapshots so you can roll back.
 
 The legacy anonymous volume is **not** deleted by the migration. It stays
-on the host until `docker volume prune` or a manual `docker volume rm`
-removes it — treat it as a second safety net for at least 7 days before
-pruning.
+on the host until an operator explicitly removes that exact volume by name.
+Treat it as a second safety net for at least 7 days; do not use host-wide
+`docker volume prune` to remove it.
 
 ## CI and Backup
 
