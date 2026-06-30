@@ -62,5 +62,5 @@ Each item records file/line citation, original severity/confidence, reason, and 
 - [x] A3 workspace permission fallback removed.
 - [x] A4 storage verification preserved and checked.
 - Gates: lint, lint:bash, build, db:check, test:unit, test:security, test:integration, test:component, test:harness, test:e2e, cargo fmt, cargo clippy, and cargo test all passed.
-- Commits: pending.
+- Commits: b972dfaa, 8542f6a6, b98f2d77, eb528822, 50e442b6, cede5097.
 - Deploy: pending.
