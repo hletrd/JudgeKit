@@ -749,27 +749,18 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
     let workspace_dir = temp_dir.path();
 
-    // Harden workspace permissions to mirror the executor/compiler paths
-    // (cycle-1 hardening; runner sidecar was the missed sibling — C3-AGG-5).
-    // Try to chown to nobody (65534) so the sandbox container can access the
-    // workspace without making it world-traversable. On hosts where chown
-    // fails (e.g. rootless dev), fall back to 0o777 so the existing flow keeps
-    // working, and log the fallback so operators see it.
-    let chown_ok = match std::os::unix::fs::chown(workspace_dir, Some(65534), Some(65534)) {
-        Ok(()) => true,
-        Err(e) => {
-            tracing::warn!(
-                error = %e,
-                workspace = %workspace_dir.display(),
-                "runner: chown(workspace_dir, 65534:65534) failed; falling back to 0o777 perms",
-            );
-            false
-        }
-    };
-    let workspace_mode = if chown_ok { 0o700 } else { 0o777 };
+    // Harden workspace permissions to mirror the executor/compiler paths.
+    // Ownership transfer to the sandbox uid/gid must succeed before mounting;
+    // otherwise fail closed instead of falling back to world-writable modes.
+    std::os::unix::fs::chown(workspace_dir, Some(65534), Some(65534)).map_err(|e| {
+        format!(
+            "Failed to assign runner workspace to sandbox user ({}): {e}",
+            workspace_dir.display()
+        )
+    })?;
     tokio::fs::set_permissions(
         workspace_dir,
-        std::os::unix::fs::PermissionsExt::from_mode(workspace_mode),
+        std::os::unix::fs::PermissionsExt::from_mode(0o700),
     )
     .await
     .map_err(|e| format!("Failed to set workspace permissions: {e}"))?;
@@ -790,13 +781,16 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         .await
         .map_err(|e| format!("Failed to write source code: {e}"))?;
 
-    // Mirror the workspace hardening on the source file: chown to 65534 then
-    // 0o600 on success (0o666 fallback on chown failure).
-    let source_chown_ok = std::os::unix::fs::chown(&source_path, Some(65534), Some(65534)).is_ok();
-    let source_mode = if source_chown_ok { 0o600 } else { 0o666 };
+    // Mirror the workspace hardening on the source file.
+    std::os::unix::fs::chown(&source_path, Some(65534), Some(65534)).map_err(|e| {
+        format!(
+            "Failed to assign runner source file to sandbox user ({}): {e}",
+            source_path.display()
+        )
+    })?;
     tokio::fs::set_permissions(
         &source_path,
-        std::os::unix::fs::PermissionsExt::from_mode(source_mode),
+        std::os::unix::fs::PermissionsExt::from_mode(0o600),
     )
     .await
     .map_err(|e| format!("Failed to set source file permissions: {e}"))?;
@@ -953,24 +947,34 @@ mod tests {
         assert_eq!(MEMORY_LIMIT_MB, 2048);
     }
 
-    /// The runner sidecar workspace must mirror the executor/compiler hardening
-    /// (chown to 65534, then 0o700 on success / 0o777 fallback) rather than the
-    /// pre-cycle-1 unconditional 0o777. C3-AGG-5. A source-text contract is the
-    /// lowest-risk way to pin this — execute_run itself requires docker.
+    /// The runner sidecar workspace must mirror the executor/compiler
+    /// fail-closed hardening rather than falling back to broad host
+    /// permissions. A source-text contract is the lowest-risk way to pin this
+    /// because execute_run itself requires docker.
     #[test]
     fn workspace_is_hardened_with_chown_and_0o700() {
         let source = include_str!("runner.rs");
+        let broad_workspace_mode = concat!("0o", "777");
+        let broad_source_mode = concat!("0o", "666");
         assert!(
             source.contains("chown(workspace_dir, Some(65534), Some(65534))"),
             "runner workspace must chown to 65534 before setting perms"
         );
         assert!(
-            source.contains("let workspace_mode = if chown_ok { 0o700 } else { 0o777 }"),
-            "runner workspace must use 0o700 on chown success (not unconditional 0o777)"
+            source.contains("PermissionsExt::from_mode(0o700)"),
+            "runner workspace must use owner-only permissions"
         );
         assert!(
-            source.contains("let source_mode = if source_chown_ok { 0o600 } else { 0o666 }"),
-            "runner source file must use 0o600 on chown success"
+            source.contains("PermissionsExt::from_mode(0o600)"),
+            "runner source file must use owner-only permissions"
+        );
+        assert!(
+            !source.contains(broad_workspace_mode),
+            "runner must not use world-writable workspace fallback"
+        );
+        assert!(
+            !source.contains(broad_source_mode),
+            "runner must not use world-writable source fallback"
         );
     }
 

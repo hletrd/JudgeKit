@@ -3,16 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 describe("compiler workspace hardening (AGG-20 / DBG-4)", () => {
-  it("uses 0o700/0o600 on chown success and keeps 0o777/0o666 only as the chown-failure fallback", () => {
+  it("uses 0o700/0o600 and fails closed when chown fails", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 
-    // The chown-success branch must tighten to 0o700/0o600 (mirrors Rust executor).
     expect(source).toContain("await chmod(workspaceDir, 0o700)");
     expect(source).toContain("await chmod(sourcePath, 0o600)");
-    // The fallback (CAP_CHOWN unavailable) keeps the broad mode so the flow works.
-    expect(source).toContain("falling back to broad workspace permissions");
-    expect(source).toContain("await chmod(workspaceDir, 0o777)");
-    expect(source).toContain("await chmod(sourcePath, 0o666)");
+    expect(source).toContain("Failed to assign compiler workspace to sandbox user");
+    expect(source).not.toContain("await chmod(workspaceDir, 0o777)");
+    expect(source).not.toContain("await chmod(sourcePath, 0o666)");
   });
 });
 
@@ -24,15 +22,15 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 describe("compiler execute implementation", () => {
-  it("keeps local fallback workspaces writable for the non-root sandbox user", () => {
+  it("assigns local fallback workspaces to the non-root sandbox user", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 
     expect(source).toContain('"65534:65534"');
     expect(source).toContain("await chmod(workspaceDir, 0o700);");
     expect(source).toContain("await chown(workspaceDir, SANDBOX_UID, SANDBOX_GID);");
     expect(source).toContain("await chown(sourcePath, SANDBOX_UID, SANDBOX_GID);");
-    expect(source).toContain("await chmod(workspaceDir, 0o777);");
-    expect(source).toContain("await chmod(sourcePath, 0o666);");
+    expect(source).not.toContain("await chmod(workspaceDir, 0o777);");
+    expect(source).not.toContain("await chmod(sourcePath, 0o666);");
   });
 
   it("keeps the legacy deploy path compatible with compiler workspace creation", () => {

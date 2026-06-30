@@ -728,7 +728,9 @@ export async function executeCompilerRun(
   await chmod(workspaceDir, 0o700);
 
   try {
-    // Write source file (world-readable for sibling container access)
+    // Write source file. Access is granted by chowning to the sandbox uid/gid
+    // below; if ownership transfer fails, fail closed instead of widening host
+    // permissions.
     const sourceFileName = `solution${options.language.extension}`;
     await writeFile(join(workspaceDir, sourceFileName), options.sourceCode, {
       encoding: "utf8",
@@ -742,18 +744,15 @@ export async function executeCompilerRun(
       // chown succeeded: the workspace is now owned by the sandbox uid:gid, so
       // 0o700/0o600 is sufficient for the sandbox container to access it without
       // making every artifact world-readable. Mirrors judge-worker-rs executor
-      // (the prior 0o777 made student source world-readable to any host user).
+      // (the prior broad mode made student source readable to any host user).
       await chmod(workspaceDir, 0o700);
       await chmod(sourcePath, 0o600);
     } catch (error) {
-      logger.warn(
+      logger.error(
         { error },
-        "[compiler] Failed to chown workspace for sandbox user; falling back to broad workspace permissions"
+        "[compiler] Failed to chown workspace for sandbox user; refusing broad workspace permissions"
       );
-      // chown failed (process without CAP_CHOWN) — keep the broad mode so the
-      // existing sibling-container flow still works. Matches the Rust fallback.
-      await chmod(workspaceDir, 0o777);
-      await chmod(sourcePath, 0o666);
+      throw new Error("Failed to assign compiler workspace to sandbox user");
     }
 
     let compileOutput: string | null = null;

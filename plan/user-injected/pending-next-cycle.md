@@ -2,6 +2,7 @@
 
 ## Insecure File Permissions / Overly Permissive Workspace
 
+- **Status:** Resolved in cycle 2 plan `plan/cycle-2-2026-06-30-worker-register-remediation.md` by removing the broad workspace/source permission fallback from the Node compiler path and Rust worker paths.
 - **File:** `src/lib/compiler/execute.ts`
 - **Severity:** Medium
 - **Source:** automated security review (security-guidance@claude-code-plugins)
