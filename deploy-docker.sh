@@ -1473,8 +1473,6 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    client_max_body_size 50M;
-
     location /api/auth/ {
         limit_req zone=judgekit_login burst=10 nodelay;
         client_max_body_size 1m;
@@ -1544,8 +1542,6 @@ server {
     listen 80;
     listen [::]:80;
     server_name ${DOMAIN};
-
-    client_max_body_size 50M;
 
     location /api/auth/ {
         limit_req zone=judgekit_login burst=10 nodelay;

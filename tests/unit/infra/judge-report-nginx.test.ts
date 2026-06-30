@@ -24,6 +24,11 @@ describe("judge report nginx body-size guardrails", () => {
     const deployDocker = read("deploy-docker.sh");
     const nginxTemplate = read("scripts/online-judge.nginx.conf");
 
+    // Strip the allowed judge/poll location block(s) before checking for any
+    // other 50M directive, because the naive server-block regex would match
+    // the location block itself (it lives inside a server block).
+    const allowedBlock = /location = \/api\/v1\/judge\/poll \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/g;
+    expect(deployDocker.replace(allowedBlock, "")).not.toContain("client_max_body_size 50M;");
     expect(deployDocker).toMatch(
       /location = \/api\/v1\/judge\/poll \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/
     );
