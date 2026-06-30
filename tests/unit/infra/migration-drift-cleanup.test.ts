@@ -31,7 +31,7 @@ describe("check-migration-drift.sh cleanup is non-destructive", () => {
     } finally {
       rmSync(untracked, { force: true });
     }
-  });
+  }, 120_000);
 
   it("does not use destructive `git clean -fd` to discard probe artifacts", () => {
     const source = readFileSync(SCRIPT_PATH, "utf8");

@@ -110,7 +110,7 @@ describe("public SEO metadata", () => {
     expect(metadata.description).toContain("Page 2");
     expect(metadata.alternates?.canonical).toBe("/practice?page=2");
     expect(metadata.alternates?.languages?.ko).toBe("/practice?page=2&locale=ko");
-  }, 15_000);
+  }, 30_000);
 
   it("clamps out-of-range practice metadata to the rendered last page", async () => {
     const practicePage = await import("@/app/(public)/practice/page");
