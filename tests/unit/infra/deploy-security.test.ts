@@ -34,12 +34,12 @@ describe("deployment security defaults", () => {
     expect(deployDocker).toContain(
       'die "drizzle-kit push detected a destructive schema change but did NOT apply it',
     );
-    expect(deployDocker).toContain('die "worker on ${WHOST} is NOT running after restart');
+    expect(deployDocker).toContain('die "worker on ${WHOST} is not healthy after restart');
     expect(deployDocker).toContain('die "Nginx config test failed');
     expect(deployDocker).not.toContain(
       'warn "drizzle-kit push detected a destructive schema change but did NOT apply it',
     );
-    expect(deployDocker).not.toContain('warn "worker on ${WHOST} is NOT running after restart');
+    expect(deployDocker).not.toContain('warn "worker on ${WHOST} is not healthy after restart');
     expect(deployDocker).not.toContain('warn "Nginx config test failed');
   });
 

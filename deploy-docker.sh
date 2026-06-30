@@ -852,6 +852,19 @@ fi
 AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-$([ "${USE_TLS}" = "true" ] && echo "https://${DOMAIN}" || echo "http://${DOMAIN}")}"
 upsert_env_literal AUTH_URL "${AUTH_URL_TARGET}"
 
+WORKER_JUDGE_BASE_URL=""
+if [[ -n "${WORKER_HOSTS:-}" ]]; then
+    WORKER_JUDGE_BASE_URL="${AUTH_URL_TARGET%/}/api/v1"
+    if [[ "${WORKER_JUDGE_BASE_URL}" == http://* ]]; then
+        case "${WORKER_JUDGE_BASE_URL}" in
+            http://localhost/*|http://localhost:*|http://127.0.0.1/*|http://127.0.0.1:*|http://app/*|http://app:*) ;;
+            *)
+                die "Dedicated worker JUDGE_BASE_URL would use non-local HTTP (${WORKER_JUDGE_BASE_URL}). Provision TLS for ${DOMAIN} or set AUTH_URL_OVERRIDE=https://...; do not use JUDGE_ALLOW_INSECURE_HTTP on production workers."
+                ;;
+        esac
+    fi
+fi
+
 success "Source code synced to remote"
 
 if [[ "${INCLUDE_WORKER}" != "true" ]]; then
@@ -1294,6 +1307,33 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         _worker_ssh() {
             ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" "$@"
         }
+        _worker_upsert_env_literal() {
+            local key="$1"
+            local literal_value="$2"
+            local worker_env_file="/home/${WUSER}/judgekit/.env"
+            local q_key q_value q_file
+            printf -v q_key '%q' "$key"
+            printf -v q_value '%q' "$literal_value"
+            printf -v q_file '%q' "$worker_env_file"
+            _worker_ssh "mkdir -p /home/${WUSER}/judgekit && touch ${q_file} && chmod 600 ${q_file} && KEY=${q_key} VALUE=${q_value} ENV_FILE=${q_file} python3 - <<'PY'
+from pathlib import Path
+import os
+
+key = os.environ['KEY']
+value = os.environ['VALUE']
+path = Path(os.environ['ENV_FILE'])
+line = f'{key}={value}'
+lines = path.read_text().splitlines() if path.exists() else []
+for i, existing in enumerate(lines):
+    if existing.startswith(f'{key}='):
+        lines[i] = line
+        break
+else:
+    lines.append(line)
+path.write_text('\n'.join(lines) + '\n')
+PY
+chmod 600 ${q_file}"
+        }
         if [[ "$SKIP_BUILD" == false ]]; then
             preflight_docker_storage "worker ${WHOST}" _worker_ssh true
         else
@@ -1333,16 +1373,26 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
         run_remote_build "worker ${WHOST}" _worker_ssh \
             "cd /home/${WUSER}/judgekit && docker build --no-cache --platform ${WPLATFORM} -t judgekit-judge-worker:latest -f Dockerfile.judge-worker ." \
             || die "Failed to build judge-worker image on ${WHOST}"
+        info "  ensure JUDGE_BASE_URL=${WORKER_JUDGE_BASE_URL}"
+        _worker_upsert_env_literal JUDGE_BASE_URL "${WORKER_JUDGE_BASE_URL}" \
+            || die "Failed to upsert JUDGE_BASE_URL in worker env on ${WHOST}"
         info "  restart worker compose"
         ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
             "cd /home/${WUSER}/judgekit && docker compose -f docker-compose.worker.yml --env-file .env up -d" \
             || die "Failed to restart worker compose on ${WHOST}"
-        # The worker's startup docker-capability probe will exit(1) if
-        # docker-socket-proxy is misconfigured. Give it a moment to
-        # settle, then verify it's still running.
-        sleep 5
-        if ssh -i "${WKEY}" ${SSH_OPTS} "${WUSER}@${WHOST}" \
-            "docker ps --filter name=judgekit-judge-worker --format '{{.Status}}' | grep -q '^Up '"; then
+        # The worker's startup config, registration, and docker-capability
+        # probes all happen before the runner health endpoint is useful. Poll
+        # the Docker health status instead of a fixed sleep so registration /
+        # HTTPS / token errors are caught with their real logs.
+        WORKER_READY=0
+        for _ in $(seq 1 60); do
+            if _worker_ssh "status=\$(docker inspect --format='{{.State.Status}}' judgekit-judge-worker 2>/dev/null || true); health=\$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}healthy{{end}}' judgekit-judge-worker 2>/dev/null || true); [ \"\$status\" = running ] && [ \"\$health\" = healthy ]"; then
+                WORKER_READY=1
+                break
+            fi
+            sleep 1
+        done
+        if [[ "${WORKER_READY}" == "1" ]]; then
             success "  worker on ${WHOST} is up"
             # Reclaim disk on the worker host after the successful rebuild.
             # The WORKER_HOSTS step rebuilds judge-worker:latest; language
@@ -1350,7 +1400,9 @@ if [[ -n "${WORKER_HOSTS:-}" ]]; then
             # future worker-language rollout policy.
             prune_old_docker_artifacts "worker ${WHOST}" _worker_ssh
         else
-            die "worker on ${WHOST} is NOT running after restart — check the docker-capability probe log"
+            warn "  worker on ${WHOST} did not become healthy after restart; last sanitized logs follow"
+            _worker_ssh "docker logs --tail 80 judgekit-judge-worker 2>&1 | sed -E 's/(Bearer )[A-Za-z0-9._~+\/-]+/\1<redacted>/g; s/(workerSecret[^A-Za-z0-9._~+\/-]*).*/\1<redacted>/g; s/(JUDGE_AUTH_TOKEN=).*/\1<redacted>/g; s/(RUNNER_AUTH_TOKEN=).*/\1<redacted>/g'" || true
+            die "worker on ${WHOST} is not healthy after restart — inspect the sanitized logs above"
         fi
     done
 fi

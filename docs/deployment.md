@@ -152,6 +152,12 @@ Current production target shortcuts used by the local deploy environment:
 | `algo` | `algo.xylolabs.com` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | App host + dedicated `worker-0.algo.xylolabs.com` |
 | `worv` | `test.worv.ai` | `ubuntu` | `~/.ssh/worv-judgekit.pem` | App host + dedicated `worker.test.worv.ai` |
 
+For split-host targets (`algo`, `worv`), `deploy-docker.sh` computes the app
+`AUTH_URL` before startup and upserts `JUDGE_BASE_URL=<AUTH_URL>/api/v1` into
+each configured `WORKER_HOSTS` machine before restarting `docker-compose.worker.yml`.
+Non-local HTTP worker URLs are rejected; do not recover production workers with
+`JUDGE_ALLOW_INSECURE_HTTP=1`.
+
 ## Dedicated Judge Workers
 
 Add judging capacity by deploying workers on separate machines. Each worker connects to the app server via HTTP(S), registers on startup, and sends periodic heartbeats.

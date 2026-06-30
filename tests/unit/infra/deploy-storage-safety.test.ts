@@ -92,6 +92,32 @@ describe("deploy storage and target safety contracts", () => {
     expect(deployDocker).not.toContain("sed -i 's|^AUTH_URL=.*|AUTH_URL=");
   });
 
+  it("repairs dedicated worker judge URLs with HTTPS before restart", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    expect(deployDocker).toContain('WORKER_JUDGE_BASE_URL="${AUTH_URL_TARGET%/}/api/v1"');
+    expect(deployDocker).toContain("Dedicated worker JUDGE_BASE_URL would use non-local HTTP");
+    expect(deployDocker).toContain("do not use JUDGE_ALLOW_INSECURE_HTTP on production workers");
+    expect(deployDocker).toContain("_worker_upsert_env_literal JUDGE_BASE_URL");
+
+    const upsertIndex = deployDocker.indexOf("_worker_upsert_env_literal JUDGE_BASE_URL");
+    const restartIndex = deployDocker.indexOf("docker compose -f docker-compose.worker.yml --env-file .env up -d");
+    expect(upsertIndex).toBeGreaterThanOrEqual(0);
+    expect(restartIndex).toBeGreaterThanOrEqual(0);
+    expect(upsertIndex).toBeLessThan(restartIndex);
+  });
+
+  it("waits for worker health and prints sanitized logs on restart failure", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    expect(deployDocker).toContain("WORKER_READY=0");
+    expect(deployDocker).toContain(".State.Health");
+    expect(deployDocker).toContain("last sanitized logs follow");
+    expect(deployDocker).toContain("<redacted>");
+    expect(deployDocker).toContain("worker on ${WHOST} is not healthy after restart");
+    expect(deployDocker).not.toContain("check the docker-capability probe log");
+  });
+
   it("checks Docker storage roots before app and worker builds", () => {
     const deployDocker = read("deploy-docker.sh");
     const cleanupScript = read("scripts/docker-disk-cleanup.sh");
