@@ -195,7 +195,7 @@ export async function POST(request: NextRequest) {
           details: {
             preRestoreSnapshotPath: preSnapshotPath,
             error: err instanceof Error ? err.message : String(err),
-            missingFiles,
+            missingFiles: missingFiles ?? null,
           },
           request,
         });
