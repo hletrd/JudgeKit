@@ -48,6 +48,13 @@ describe("deployment security defaults", () => {
     expect(deployDocker).not.toContain('source "${TARGET_ENV_FILE}"');
   });
 
+  it("keeps static-site directory listings disabled", () => {
+    const staticSiteNginx = read("static-site/nginx.conf");
+
+    expect(staticSiteNginx).toContain("autoindex off;");
+    expect(staticSiteNginx).not.toContain("autoindex on;");
+  });
+
   it("fails closed on deployment recovery paths that need operator action", () => {
     const deployDocker = read("deploy-docker.sh");
 
