@@ -1,0 +1,61 @@
+# TA/Assistant Workflow Review
+
+Date: 2026-06-30
+Scope: entire repository, with focus on TA role pages/APIs, group/class scopes, submission review, and feedback tools
+Summary: The scoped-access architecture for TAs is internally consistent and safe, but the current role boundary leaves TAs without several tools they need during live exams and grading: score/exam overrides, announcements/clarifications, similarity triage, and workload visibility. Most issues are workflow gaps rather than security defects, though the mismatch between the documented assistant persona and the implemented permission boundary is a product-risk worth resolving.
+Findings count: 7
+
+## MEDIUM: TA cannot override scores or extend exam sessions despite the assistant persona expecting limited override authority (confidence: High)
+- **File**: `src/lib/assignments/management.ts` (line 73-87)
+- **Problem**: `canManageGroupResourcesAsync` returns `true` only for the group owner, users with `groups.view_all`, or `co_instructor` rows. It explicitly excludes `ta` rows. This gates the score-override API (`src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts`) and the exam-extension API (`src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route.ts`). The assistant persona describes TAs as able to "override scores within limits" and handle "regrades / late-add exceptions," but the current code gives them zero override capability.
+- **Failure scenario**: A TA proctoring a windowed exam notices a student with a documented disability needs a 10-minute extension, or spots an obviously misgraded submission that needs a manual score adjustment. The TA must escalate to the primary instructor or a co-instructor, adding latency during a time-critical live exam. In practice this either delays remediation or forces sites to promote every TA to `co_instructor`, which then grants broader resource-management powers than intended.
+- **Suggested fix**: Introduce a narrower "TA override" capability and scope it to the group TA role. For example, add `submissions.override_limited` and `exams.extend_limited` capabilities to the built-in assistant role, and create `canTAManageOverridesAsync` helpers that allow `ta`-role group instructors to perform bounded overrides (e.g., score override within assignment limits, exam extension up to a configured max). Keep `canManageGroupResourcesAsync` strict for structural changes.
+- **Cross-references**: `src/app/(public)/groups/[id]/assignments/[assignmentId]/score-override-dialog.tsx`, `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx` (conditionally renders override dialog only when `canManageOverrides` is true), `src/app/(public)/groups/[id]/assignments/[assignmentId]/page.tsx` (line 162-168 computes `canManage` via `canManageGroupResourcesAsync`), `tests/unit/assignments/management.test.ts` (line 113-119 codifies the denial).
+
+## MEDIUM: TAs cannot post announcements or answer clarifications during live exams (confidence: High)
+- **File**: `src/app/api/v1/contests/[assignmentId]/announcements/route.ts` (line 58-85)
+- **Problem**: Both the announcements POST/PATCH/DELETE and the clarifications PATCH/DELETE require `canManageContest`, which delegates to `canManageGroupResourcesAsync`. TAs therefore cannot broadcast errata, pin corrections, or answer student questions during a contest they are assigned to proctor. The UI (`src/components/contest/contest-announcements.tsx`, `src/components/contest/contest-clarifications.tsx`) correctly mirrors this by hiding the manage controls when `canManage` is false.
+- **Failure scenario**: During a live exam, students submit a clarification pointing out an ambiguous problem statement. The instructor is offline; the TA is present in the proctoring view but can only watch anti-cheat events and cannot answer the clarification or post an announcement. Confusion propagates, submissions are wasted, and the TA has no in-product escalation path other than finding an instructor.
+- **Suggested fix**: Add a scoped "contest communications" capability (e.g., `contests.manage_communications`) and allow group TAs to answer clarifications and post announcements for contests in their assigned groups. Announcement edits/deletes could still require full `canManageContest`, but creation and clarification responses should be available to TAs.
+- **Cross-references**: `src/app/api/v1/contests/[assignmentId]/clarifications/route.ts` (line 62-99 lets anyone with access ask questions, but `src/app/api/v1/contests/[assignmentId]/clarifications/[clarificationId]/route.ts` line 23-69 requires `canManageContest` to answer), `src/app/(public)/contests/manage/[assignmentId]/page.tsx` (passes `canManage` to announcement/clarification components).
+
+## MEDIUM: Similarity check output is not reviewable — no diff, triage state, or boilerplate exclusion (confidence: High)
+- **File**: `src/components/contest/anti-cheat-dashboard.tsx` (line 62-104, 260-320 region)
+- **Problem**: The dashboard can run a similarity scan and shows a table of pairs with percentage badges, but it offers no side-by-side diff, no "mark as reviewed / dismissed / confirmed" state, no boilerplate exclusion, and no cross-assignment chaining. A TA who receives a 92% similarity alert cannot inspect the two submissions without opening each in a separate tab and manually comparing them.
+- **Failure scenario**: Two students submit solutions that both contain the assignment-provided helper function and input-parsing scaffold. The similarity scanner flags them at 85%. The TA has no way to mark the shared scaffold as boilerplate, so the same false-positive pair reappears on every re-run. Real plagiarism gets buried under noise, and the TA ends up ignoring the tool.
+- **Suggested fix**: Add a similarity-review sub-view with (1) a side-by-side code diff, (2) per-pair triage actions (confirmed / dismissed / needs review) persisted in the database, (3) a boilerplate exclusion list per assignment, and (4) links from each pair directly to the two submissions and to a "add comment / open case" action.
+- **Cross-references**: `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts`, `src/lib/assignments/code-similarity.ts`, `src/lib/assignments/code-similarity-client.ts`.
+
+## LOW/MEDIUM: Admin submissions page is a flat list, not a TA grading queue (confidence: High)
+- **File**: `src/app/(dashboard)/dashboard/admin/submissions/page.tsx` (line 74-520)
+- **Problem**: The scoped admin-submissions view lets TAs see submissions from their assigned groups, but it is a paginated, filterable list rather than a grading queue. There is no concept of "claimed for review," "reviewed by me," "needs feedback," or per-TA workload assignment. The bulk-rejudge button appears for anyone with `submissions.rejudge`, but there is no bulk-comment or bulk-feedback tool.
+- **Failure scenario**: A course with 200 students and 4 TAs has no mechanism to divide the grading workload. Multiple TAs may redundantly review the same submission, while others receive no attention. A student who has been waiting for human feedback cannot see whether their submission is queued, because the system has no queue state.
+- **Suggested fix**: Add a lightweight assignment queue: allow TAs to claim submissions for review (optimistic lock), filter by "unreviewed," "claimed by me," and "needs comment," and expose a "next unreviewed" button. This can be implemented with new fields on `submissionComments` or a small `submission_reviews` table without changing the core submission model.
+- **Cross-references**: `src/components/submissions/submission-detail-client.tsx` (line 71-72 derives `canComment`/`canRejudge` from capabilities), `src/app/api/v1/submissions/[id]/comments/route.ts`.
+
+## LOW: No "view as student" preview for TAs preparing assignments (confidence: Medium)
+- **File**: `src/app/(public)/groups/[id]/assignments/[assignmentId]/page.tsx` (line 159-213)
+- **Problem**: The assignment detail page branches into a student redirect or an instructor/admin view. There is no preview mode that lets a TA (or instructor) see exactly what a student will see before the assignment opens. The TA persona explicitly mentions wanting to "preview how the assignment appears to students."
+- **Failure scenario**: A TA configures a problem set, sets visibility options, and later discovers that candidates cannot see the sample I/O or that the deadline countdown is wrong — but only after students report it. This erodes trust in the platform and increases support load during exams.
+- **Suggested fix**: Add a `?previewAs=student` query parameter to the assignment page and problem page that bypasses the instructor UI and renders the student view using the same data paths, while still requiring the staff member's auth session.
+- **Cross-references**: `src/app/(public)/practice/problems/[id]/page.tsx`, `src/components/assignment/assignment-overview.tsx`.
+
+## LOW: Anti-cheat event review lacks contextual actions for TAs (confidence: High)
+- **File**: `src/components/contest/participant-anti-cheat-timeline.tsx` (line 219-406) and `src/components/contest/anti-cheat-dashboard.tsx`
+- **Problem**: Both the per-participant timeline and the dashboard event table list events with expandable details, but there are no direct action links from an event to (a) the related submission, (b) the student's other submissions, (c) a comment on the submission, or (d) a note on the case. TAs must manually cross-reference user IDs and submission IDs.
+- **Failure scenario**: A TA sees a `submission_stale_heartbeat` event followed by a rapid sequence of submissions from the same student. To investigate, the TA copies the user ID, navigates to the submissions tab, filters, opens each submission, and adds comments separately. The friction discourages proactive monitoring.
+- **Suggested fix**: Enrich event rows with context-aware links: "View submission," "View all submissions by user," "Add comment," and "Mark reviewed." Where the event stores a `submissionId` in details, deserialize it and render a link.
+- **Cross-references**: `src/lib/anti-cheat/client-events.ts` (event payload shapes), `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts`.
+
+## LOW: Positive — UI/API permission boundaries are aligned for TA-scoped access (confidence: High)
+- **File**: `src/lib/assignments/submissions.ts` (line 432-461), `src/lib/capabilities/defaults.ts` (ASSISTANT_CAPABILITIES), `src/app/(dashboard)/dashboard/admin/submissions/page.tsx` (line 81-84)
+- **Observation**: The scoped access model is consistent: TAs gain submission visibility through `assignments.view_status` plus a group-instructor role (`hasGroupInstructorRole`), not through `submissions.view_all`. The UI (status board, admin submissions page) and API both use the same helpers, so there are no obvious client-side-only hiding attacks. Source-code visibility is correctly gated by `submissions.view_source`, which is granted to the assistant role, while `submissions.view_all` is intentionally omitted. The test suite (`tests/unit/assignments/management.test.ts`, `tests/unit/capabilities/defaults.test.ts`) reinforces this design.
+- **Cross-references**: `src/lib/auth/permissions.ts` (`canAccessSubmission`), `src/lib/submissions/visibility.ts` (`sanitizeSubmissionForViewer`), `src/app/api/v1/submissions/[id]/route.ts`.
+
+## Final sweep
+- **Skipped areas**: Runtime verification of the similarity-check timeout and anti-cheat event polling was not performed against a live server; only static code paths were reviewed. The Rust judge worker and sandbox execution are outside the TA-workflow scope and were not re-examanged here.
+- **Manual validation recommended**:
+  1. Log in as a user with the built-in `assistant` role assigned as a group `ta` and confirm that score-override UI is absent and the override API returns 403.
+  2. Confirm that the same TA can view source code, add comments, and run a similarity check for contests in their assigned group.
+  3. Verify that a TA cannot POST to `/api/v1/contests/:id/announcements` or PATCH a clarification answer.
+  4. Load a similarity-check result with 20+ pairs and assess whether the lack of diff/triage tooling materially slows review.
