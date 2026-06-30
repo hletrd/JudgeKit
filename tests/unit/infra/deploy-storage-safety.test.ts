@@ -66,8 +66,8 @@ describe("deploy storage and target safety contracts", () => {
     if (worvEnv) {
       expect(worvEnv).toContain("REMOTE_HOST=test.worv.ai");
       expect(worvEnv).toContain("DOMAIN=test.worv.ai");
+      expect(worvEnv).not.toContain("oj.worv.ai");
     }
-    expect(worvEnv).not.toContain("oj.worv.ai");
     if (auraeduEnv) {
       expect(auraeduEnv).toContain("REMOTE_HOST=oj.auraedu.me");
     }
