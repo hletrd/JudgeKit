@@ -59,14 +59,14 @@ describe("GET /api/v1/tags", () => {
   it("returns 401 when unauthenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags"), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
   });
 
   it("returns all tags when no search query is provided", async () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([TAG_ROW_1, TAG_ROW_2, TAG_ROW_3]));
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(3);
@@ -75,7 +75,7 @@ describe("GET /api/v1/tags", () => {
   it("filters tags by search query", async () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([TAG_ROW_1]));
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?q=arr"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?q=arr"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     expect(dbSelectMock).toHaveBeenCalled();
   });
@@ -83,7 +83,7 @@ describe("GET /api/v1/tags", () => {
   it("respects the limit parameter", async () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([TAG_ROW_1]));
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?limit=1"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?limit=1"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const chain = dbSelectMock.mock.results[0].value;
     expect(chain.limit).toHaveBeenCalledWith(1);
@@ -92,7 +92,7 @@ describe("GET /api/v1/tags", () => {
   it("caps limit at 100", async () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([]));
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?limit=500"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?limit=500"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const chain = dbSelectMock.mock.results[0].value;
     expect(chain.limit).toHaveBeenCalledWith(100);
@@ -101,7 +101,7 @@ describe("GET /api/v1/tags", () => {
   it("returns empty array when no tags match search", async () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([]));
     const { GET } = await import("@/app/api/v1/tags/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?q=zzz"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/tags?q=zzz"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(0);

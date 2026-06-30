@@ -107,7 +107,7 @@ describe("admin languages dockerImage allowlist (NEW-H4)", () => {
         extension: "ev",
         dockerImage: "attacker-registry/pwn:latest",
         runCommand: "./run",
-      }),
+      }), { params: Promise.resolve({}) },
     );
 
     expect(res.status).toBe(422);
@@ -132,7 +132,7 @@ describe("admin languages dockerImage allowlist (NEW-H4)", () => {
         extension: "py",
         dockerImage: "judge-python:3.12",
         runCommand: "python3 main.py",
-      }),
+      }), { params: Promise.resolve({}) },
     );
 
     expect(res.status).toBe(201);

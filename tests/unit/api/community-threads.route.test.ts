@@ -108,7 +108,7 @@ describe("POST /api/v1/community/threads", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({
       data: {
@@ -158,7 +158,7 @@ describe("POST /api/v1/community/threads", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(201);
   });
 });

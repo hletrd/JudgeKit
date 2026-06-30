@@ -92,7 +92,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: null,
         language: "python",
         sourceCode: 'print(\"hi\")',
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(403);
@@ -112,7 +112,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: null,
         language: "python",
         sourceCode: 'print(\"hi\")',
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(409);
@@ -135,7 +135,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: null,
         language: "python",
         sourceCode: 'print("hi")',
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(201);
@@ -165,7 +165,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: "assignment-1",
         language: "python",
         sourceCode: 'print(\"hi\")',
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(403);
@@ -185,7 +185,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: "assignment-1",
         language: "not-a-real-language",
         sourceCode: "x",
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(response.status).toBe(400);
@@ -200,7 +200,7 @@ describe("POST /api/v1/code-snapshots", () => {
         assignmentId: "assignment-1",
         language: "python",
         sourceCode: 'print(\"hi\")',
-      })
+      }), { params: Promise.resolve({}) }
     );
     const body = await response.json();
 

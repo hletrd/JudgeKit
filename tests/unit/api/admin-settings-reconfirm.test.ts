@@ -122,7 +122,7 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
 
   it("requires currentPassword when a sensitive key (publicSignupEnabled) is present", async () => {
     const { PUT } = await import("@/app/api/v1/admin/settings/route");
-    const res = await PUT(makePut({ publicSignupEnabled: true }));
+    const res = await PUT(makePut({ publicSignupEnabled: true }), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "passwordReconfirmRequired" });
   });
@@ -136,14 +136,14 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
     verifyAndRehashPasswordMock.mockResolvedValue({ valid: false });
 
     const { PUT } = await import("@/app/api/v1/admin/settings/route");
-    const res = await PUT(makePut({ allowedHosts: ["example.com"], currentPassword: "wrong" }));
+    const res = await PUT(makePut({ allowedHosts: ["example.com"], currentPassword: "wrong" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     expect(await res.json()).toEqual({ error: "invalidPassword" });
   });
 
   it("does NOT require reconfirm for a non-sensitive cosmetic key (siteTitle)", async () => {
     const { PUT } = await import("@/app/api/v1/admin/settings/route");
-    const res = await PUT(makePut({ siteTitle: "New Title" }));
+    const res = await PUT(makePut({ siteTitle: "New Title" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     expect(verifyAndRehashPasswordMock).not.toHaveBeenCalled();
   });
@@ -157,7 +157,7 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
     });
 
     const { PUT } = await import("@/app/api/v1/admin/settings/route");
-    const res = await PUT(makePut({ siteTitle: "New Title" }));
+    const res = await PUT(makePut({ siteTitle: "New Title" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
 
     expect(onConflictMock).toHaveBeenCalledTimes(1);
@@ -171,7 +171,7 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
 
   it("requires reconfirm for the exam-integrity toggle allowAiAssistantInRestrictedModes (C4-3)", async () => {
     const { PUT } = await import("@/app/api/v1/admin/settings/route");
-    const res = await PUT(makePut({ allowAiAssistantInRestrictedModes: true }));
+    const res = await PUT(makePut({ allowAiAssistantInRestrictedModes: true }), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "passwordReconfirmRequired" });
   });

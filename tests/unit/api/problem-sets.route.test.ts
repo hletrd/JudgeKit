@@ -180,7 +180,7 @@ describe("GET /api/v1/problem-sets", () => {
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("unauthorized");
@@ -189,14 +189,14 @@ describe("GET /api/v1/problem-sets", () => {
   it("returns 403 for a student role", async () => {
     getApiUserMock.mockResolvedValue(STUDENT_USER);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("forbidden");
   });
 
   it("returns all problem sets for admin with nested relations", async () => {
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
@@ -206,14 +206,14 @@ describe("GET /api/v1/problem-sets", () => {
   it("returns all problem sets for instructor", async () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
   });
 
   it("uses the shared visibility helper to load visible problem sets", async () => {
-    await GET(makeGetRequest());
+    await GET(makeGetRequest(), { params: Promise.resolve({}) });
 
     expect(listVisibleProblemSetsForUserMock).toHaveBeenCalledOnce();
     expect(listVisibleProblemSetsForUserMock).toHaveBeenCalledWith(
@@ -226,7 +226,7 @@ describe("GET /api/v1/problem-sets", () => {
   it("returns empty array when no problem sets exist", async () => {
     listVisibleProblemSetsForUserMock.mockResolvedValue([]);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toEqual([]);
@@ -235,7 +235,7 @@ describe("GET /api/v1/problem-sets", () => {
   it("returns 500 on unexpected error", async () => {
     listVisibleProblemSetsForUserMock.mockRejectedValue(new Error("DB error"));
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
@@ -252,7 +252,7 @@ describe("POST /api/v1/problem-sets", () => {
       NextResponse.json({ error: "forbidden" }, { status: 403 })
     );
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
   });
 
@@ -261,14 +261,14 @@ describe("POST /api/v1/problem-sets", () => {
       NextResponse.json({ error: "rateLimited" }, { status: 429 })
     );
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(429);
   });
 
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("unauthorized");
@@ -277,7 +277,7 @@ describe("POST /api/v1/problem-sets", () => {
   it("returns 403 for a student role", async () => {
     getApiUserMock.mockResolvedValue(STUDENT_USER);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("forbidden");
@@ -286,7 +286,7 @@ describe("POST /api/v1/problem-sets", () => {
   it("creates a problem set as instructor and returns 201", async () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data).toMatchObject({ id: "ps-1", name: "Exam Set 1" });
@@ -295,7 +295,7 @@ describe("POST /api/v1/problem-sets", () => {
   });
 
   it("creates a problem set as admin and returns 201", async () => {
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data.id).toBe("ps-1");
@@ -305,14 +305,14 @@ describe("POST /api/v1/problem-sets", () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
     findInaccessibleProblemIdsForProblemSetUserMock.mockResolvedValue(["p-9"]);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     expect(createProblemSetMock).not.toHaveBeenCalled();
   });
 
   it("returns 400 when name is empty", async () => {
-    const res = await POST(makePostRequest({ ...VALID_POST_BODY, name: "" }));
+    const res = await POST(makePostRequest({ ...VALID_POST_BODY, name: "" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("problemSetNameRequired");
@@ -320,7 +320,7 @@ describe("POST /api/v1/problem-sets", () => {
 
   it("returns 400 when problemIds contains duplicates", async () => {
     const res = await POST(
-      makePostRequest({ ...VALID_POST_BODY, problemIds: ["p-1", "p-1"] })
+      makePostRequest({ ...VALID_POST_BODY, problemIds: ["p-1", "p-1"] }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -330,7 +330,7 @@ describe("POST /api/v1/problem-sets", () => {
   it("records audit event with correct fields", async () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
 
-    await POST(makePostRequest(VALID_POST_BODY));
+    await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
 
     expect(recordAuditEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -347,7 +347,7 @@ describe("POST /api/v1/problem-sets", () => {
   it("does not record audit event when findFirst returns null after creation", async () => {
     problemSetsFindFirstMock.mockResolvedValue(null);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
@@ -357,7 +357,7 @@ describe("POST /api/v1/problem-sets", () => {
       throw new Error("DB write failed");
     });
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");

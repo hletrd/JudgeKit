@@ -78,7 +78,7 @@ describe("admin docker image mutation routes", () => {
     });
 
     const { GET } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await GET(new NextRequest("http://localhost:3000/api/v1/admin/docker/images"));
+    const res = await GET(new NextRequest("http://localhost:3000/api/v1/admin/docker/images"), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -105,7 +105,7 @@ describe("admin docker image mutation routes", () => {
     });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }));
+    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(409);
@@ -122,7 +122,7 @@ describe("admin docker image mutation routes", () => {
   it("rejects untrusted registry-qualified pull targets", async () => {
     const { POST } = await import("@/app/api/v1/admin/docker/images/route");
     const res = await POST(
-      makeRequest("POST", { imageTag: "evil.example.com/team/judge-python:latest" })
+      makeRequest("POST", { imageTag: "evil.example.com/team/judge-python:latest" }), { params: Promise.resolve({}) }
     );
     const body = await res.json();
 
@@ -141,7 +141,7 @@ describe("admin docker image mutation routes", () => {
     pullDockerImageMock.mockResolvedValue({ success: false, error: "registry timeout" });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }));
+    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(500);
@@ -158,7 +158,7 @@ describe("admin docker image mutation routes", () => {
     pullDockerImageMock.mockResolvedValue({ success: true });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }));
+    const res = await POST(makeRequest("POST", { imageTag: "judge-python:latest" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -174,7 +174,7 @@ describe("admin docker image mutation routes", () => {
   it("rejects untrusted registry-qualified remove targets", async () => {
     const { DELETE } = await import("@/app/api/v1/admin/docker/images/route");
     const res = await DELETE(
-      makeRequest("DELETE", { imageTag: "evil.example.com/team/judge-python:latest" })
+      makeRequest("DELETE", { imageTag: "evil.example.com/team/judge-python:latest" }), { params: Promise.resolve({}) }
     );
     const body = await res.json();
 
@@ -193,7 +193,7 @@ describe("admin docker image mutation routes", () => {
     removeDockerImageMock.mockResolvedValue({ success: false, error: "image in use" });
 
     const { DELETE } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await DELETE(makeRequest("DELETE", { imageTag: "judge-python:latest" }));
+    const res = await DELETE(makeRequest("DELETE", { imageTag: "judge-python:latest" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(500);
@@ -211,7 +211,7 @@ describe("admin docker image mutation routes", () => {
     removeDockerImageMock.mockResolvedValue({ success: true });
 
     const { DELETE } = await import("@/app/api/v1/admin/docker/images/route");
-    const res = await DELETE(makeRequest("DELETE", { imageTag: "judge-python:latest" }));
+    const res = await DELETE(makeRequest("DELETE", { imageTag: "judge-python:latest" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);

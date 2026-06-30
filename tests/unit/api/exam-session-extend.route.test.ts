@@ -106,7 +106,7 @@ describe("PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]",
     const { PATCH } = await import(
       "@/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route"
     );
-    const res = await PATCH(makeRequest({ extendMinutes: 15 }));
+    const res = await PATCH(makeRequest({ extendMinutes: 15 }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -130,7 +130,7 @@ describe("PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]",
     const { PATCH } = await import(
       "@/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route"
     );
-    const res = await PATCH(makeRequest({ extendMinutes: 15 }));
+    const res = await PATCH(makeRequest({ extendMinutes: 15 }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     expect(extendExamSessionMock).not.toHaveBeenCalled();
@@ -147,7 +147,7 @@ describe("PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]",
     const { PATCH } = await import(
       "@/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route"
     );
-    const res = await PATCH(makeRequest({ extendMinutes: 15 }));
+    const res = await PATCH(makeRequest({ extendMinutes: 15 }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(400);
     expect(extendExamSessionMock).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe("PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]",
     const { PATCH } = await import(
       "@/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route"
     );
-    const res = await PATCH(makeRequest({ extendMinutes: 15 }));
+    const res = await PATCH(makeRequest({ extendMinutes: 15 }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(404);
     expect(recordAuditEventDurableMock).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe("PATCH /groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]",
       "@/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route"
     );
     for (const bad of [0, -5, 601, 2.5, "15"]) {
-      const res = await PATCH(makeRequest({ extendMinutes: bad }));
+      const res = await PATCH(makeRequest({ extendMinutes: bad }), { params: Promise.resolve({}) });
       expect(res.status, `extendMinutes=${String(bad)} must be rejected`).toBe(400);
     }
     expect(extendExamSessionMock).not.toHaveBeenCalled();

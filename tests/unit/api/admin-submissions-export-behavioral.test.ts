@@ -106,7 +106,7 @@ describe("GET /api/v1/admin/submissions/export", () => {
     selectMock.mockReturnValue(chain);
 
     const { GET } = await import("@/app/api/v1/admin/submissions/export/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"), { params: Promise.resolve({}) });
     const text = await res.text();
 
     expect(res.status).toBe(200);
@@ -133,7 +133,7 @@ describe("GET /api/v1/admin/submissions/export", () => {
     selectMock.mockReturnValue(chain);
 
     const { GET } = await import("@/app/api/v1/admin/submissions/export/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"), { params: Promise.resolve({}) });
     const text = await res.text();
 
     // escapeCsvField prefixes dangerous leading chars with tab
@@ -147,7 +147,7 @@ describe("GET /api/v1/admin/submissions/export", () => {
     selectMock.mockReturnValue(chain);
 
     const { GET } = await import("@/app/api/v1/admin/submissions/export/route");
-    await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"));
+    await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"), { params: Promise.resolve({}) });
 
     expect(chain.limit).toHaveBeenCalledWith(10_000);
   });
@@ -157,7 +157,7 @@ describe("GET /api/v1/admin/submissions/export", () => {
     selectMock.mockReturnValue(chain);
 
     const { GET } = await import("@/app/api/v1/admin/submissions/export/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/submissions/export"), { params: Promise.resolve({}) });
 
     const disposition = res.headers.get("Content-Disposition");
     expect(disposition).toContain("attachment");

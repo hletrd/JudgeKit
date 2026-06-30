@@ -184,7 +184,7 @@ describe("admin workers routes", () => {
       ];
       selectMock.mockReturnValueOnce(makeSelectChain(workers));
 
-      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"));
+      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"), { params: Promise.resolve({}) });
       const payload = await response.json();
 
       expect(response.status).toBe(200);
@@ -193,13 +193,13 @@ describe("admin workers routes", () => {
 
     it("returns 401 when not authenticated", async () => {
       getApiUserMock.mockResolvedValue(null);
-      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"));
+      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"), { params: Promise.resolve({}) });
       expect(response.status).toBe(401);
     });
 
     it("returns 403 when lacking system.settings capability", async () => {
       resolveCapabilitiesMock.mockResolvedValue(new Set());
-      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"));
+      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"), { params: Promise.resolve({}) });
       expect(response.status).toBe(403);
     });
 
@@ -207,7 +207,7 @@ describe("admin workers routes", () => {
       selectMock.mockImplementation(() => {
         throw new Error("DB error");
       });
-      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"));
+      const response = await GET(makeRequest("http://localhost/api/v1/admin/workers"), { params: Promise.resolve({}) });
       expect(response.status).toBe(500);
     });
   });
@@ -223,7 +223,7 @@ describe("admin workers routes", () => {
         .mockReturnValueOnce(makeSelectChain([{ count: 2 }]))
         .mockReturnValueOnce(makeSelectChain([{ total: 12 }]));
 
-      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"));
+      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"), { params: Promise.resolve({}) });
       const payload = await response.json();
 
       expect(response.status).toBe(200);
@@ -236,7 +236,7 @@ describe("admin workers routes", () => {
 
     it("returns 401 when not authenticated", async () => {
       getApiUserMock.mockResolvedValue(null);
-      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"));
+      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"), { params: Promise.resolve({}) });
       expect(response.status).toBe(401);
     });
 
@@ -244,7 +244,7 @@ describe("admin workers routes", () => {
       selectMock.mockImplementation(() => {
         throw new Error("DB error");
       });
-      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"));
+      const response = await GET_STATS(makeRequest("http://localhost/api/v1/admin/workers/stats"), { params: Promise.resolve({}) });
       expect(response.status).toBe(500);
     });
   });

@@ -110,7 +110,7 @@ describe("GET /api/v1/admin/chat-logs", () => {
     ]);
 
     const { GET } = await import("@/app/api/v1/admin/chat-logs/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs?page=1"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs?page=1"), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -138,7 +138,7 @@ describe("GET /api/v1/admin/chat-logs", () => {
     ]);
 
     const { GET } = await import("@/app/api/v1/admin/chat-logs/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs?sessionId=session-1"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs?sessionId=session-1"), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -156,7 +156,7 @@ describe("GET /api/v1/admin/chat-logs", () => {
     resolveCapabilitiesMock.mockResolvedValueOnce(makeCapabilities(false));
 
     const { GET } = await import("@/app/api/v1/admin/chat-logs/route");
-    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs"));
+    const res = await GET(new NextRequest("http://localhost/api/v1/admin/chat-logs"), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     expect(recordAuditEventMock).not.toHaveBeenCalled();

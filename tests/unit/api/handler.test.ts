@@ -112,7 +112,7 @@ describe("createApiHandler", () => {
           NextResponse.json({ id: user.id }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(res.status).toBe(200);
@@ -142,7 +142,7 @@ describe("createApiHandler", () => {
           NextResponse.json({ params }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(json.params).toEqual({});
@@ -160,7 +160,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(401);
       expect(unauthorizedMock).toHaveBeenCalledOnce();
@@ -174,7 +174,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(401);
     });
@@ -186,7 +186,7 @@ describe("createApiHandler", () => {
           NextResponse.json({ user: user ?? "none" }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(res.status).toBe(200);
@@ -208,7 +208,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
       expect(forbiddenMock).toHaveBeenCalledOnce();
@@ -220,7 +220,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
     });
@@ -231,7 +231,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
     });
@@ -242,7 +242,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
       expect(forbiddenMock).toHaveBeenCalledOnce();
@@ -256,7 +256,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
     });
@@ -270,7 +270,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
     });
@@ -284,7 +284,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
     });
@@ -297,7 +297,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
       expect(resolveCapabilitiesMock).toHaveBeenCalledWith(fakeUser.role);
@@ -311,7 +311,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
       expect(forbiddenMock).toHaveBeenCalledOnce();
@@ -328,7 +328,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(200);
     });
@@ -343,7 +343,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("POST", {}));
+      await handler(makeRequest("POST", {}), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).toHaveBeenCalledOnce();
     });
@@ -353,7 +353,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("PATCH", {}));
+      await handler(makeRequest("PATCH", {}), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).toHaveBeenCalledOnce();
     });
@@ -363,7 +363,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("DELETE"));
+      await handler(makeRequest("DELETE"), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).toHaveBeenCalledOnce();
     });
@@ -373,7 +373,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("PUT", {}));
+      await handler(makeRequest("PUT", {}), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).toHaveBeenCalledOnce();
     });
@@ -383,7 +383,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).not.toHaveBeenCalled();
     });
@@ -399,7 +399,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("POST", {}));
+      const res = await handler(makeRequest("POST", {}), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
       const json = await res.json();
@@ -412,7 +412,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("POST", {}));
+      await handler(makeRequest("POST", {}), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).not.toHaveBeenCalled();
     });
@@ -423,7 +423,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(csrfForbiddenMock).toHaveBeenCalledOnce();
     });
@@ -439,7 +439,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(consumeApiRateLimitMock).toHaveBeenCalledOnce();
       expect(consumeApiRateLimitMock).toHaveBeenCalledWith(
@@ -461,7 +461,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(429);
       const json = await res.json();
@@ -473,7 +473,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(consumeApiRateLimitMock).not.toHaveBeenCalled();
     });
@@ -495,7 +495,7 @@ describe("createApiHandler", () => {
           NextResponse.json({ body }),
       });
 
-      const res = await handler(makeRequest("POST", { name: "Alice", age: 30 }));
+      const res = await handler(makeRequest("POST", { name: "Alice", age: 30 }), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(res.status).toBe(200);
@@ -515,7 +515,7 @@ describe("createApiHandler", () => {
       });
 
       // Need to bypass CSRF for this test
-      const res = await handler(req);
+      const res = await handler(req, { params: Promise.resolve({}) });
 
       expect(res.status).toBe(400);
       const json = await res.json();
@@ -529,7 +529,7 @@ describe("createApiHandler", () => {
       });
 
       const res = await handler(
-        makeRequest("POST", { name: "", age: -5 })
+        makeRequest("POST", { name: "", age: -5 }), { params: Promise.resolve({}) }
       );
 
       expect(res.status).toBe(400);
@@ -547,7 +547,7 @@ describe("createApiHandler", () => {
         handler: handlerFn,
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(res.status).toBe(200);
@@ -566,7 +566,7 @@ describe("createApiHandler", () => {
         },
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
       const json = await res.json();
 
       expect(res.status).toBe(500);
@@ -582,7 +582,7 @@ describe("createApiHandler", () => {
         },
       });
 
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(loggerErrorMock).toHaveBeenCalledOnce();
       expect(loggerErrorMock).toHaveBeenCalledWith(
@@ -602,7 +602,7 @@ describe("createApiHandler", () => {
         },
       });
 
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(500);
     });
@@ -624,7 +624,7 @@ describe("createApiHandler", () => {
         handler: async () => NextResponse.json({ ok: true }),
       });
 
-      await handler(makeRequest("POST", {}));
+      await handler(makeRequest("POST", {}), { params: Promise.resolve({}) });
 
       expect(getApiUserMock).toHaveBeenCalledOnce();
       expect(csrfForbiddenMock).not.toHaveBeenCalled();
@@ -641,7 +641,7 @@ describe("createApiHandler", () => {
       });
 
       // Use GET to skip CSRF
-      await handler(makeRequest("GET"));
+      await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(consumeApiRateLimitMock).toHaveBeenCalledOnce();
       expect(getApiUserMock).not.toHaveBeenCalled();
@@ -657,7 +657,7 @@ describe("createApiHandler", () => {
       });
 
       // Send GET (no CSRF) with body that would fail parsing
-      const res = await handler(makeRequest("GET"));
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(401);
       // Handler never called, body never parsed

@@ -201,7 +201,7 @@ describe("POST /api/v1/submissions", () => {
 
   it("creates a submission successfully and returns 201", async () => {
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(201);
@@ -224,7 +224,7 @@ describe("POST /api/v1/submissions", () => {
         ...VALID_BODY,
         language,
         sourceCode: "output only",
-      }));
+      }), { params: Promise.resolve({}) });
 
       expect(response.status).toBe(201);
       expect(dbInsertMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -237,7 +237,7 @@ describe("POST /api/v1/submissions", () => {
     getApiUserMock.mockResolvedValue(null);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     expect(response.status).toBe(401);
   });
 
@@ -245,13 +245,13 @@ describe("POST /api/v1/submissions", () => {
     csrfForbiddenMock.mockReturnValue(NextResponse.json({ error: "forbidden" }, { status: 403 }));
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     expect(response.status).toBe(403);
   });
 
   it("returns 400 when problemId is empty", async () => {
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest({ problemId: "", language: "python", sourceCode: "x=1" }));
+    const response = await POST(makeRequest({ problemId: "", language: "python", sourceCode: "x=1" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -260,7 +260,7 @@ describe("POST /api/v1/submissions", () => {
 
   it("returns 400 when language is empty", async () => {
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest({ problemId: "p-1", language: "", sourceCode: "x=1" }));
+    const response = await POST(makeRequest({ problemId: "p-1", language: "", sourceCode: "x=1" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -269,7 +269,7 @@ describe("POST /api/v1/submissions", () => {
 
   it("returns 400 when sourceCode is empty", async () => {
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest({ problemId: "p-1", language: "python", sourceCode: "" }));
+    const response = await POST(makeRequest({ problemId: "p-1", language: "python", sourceCode: "" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -278,7 +278,7 @@ describe("POST /api/v1/submissions", () => {
 
   it("returns 400 for an unsupported/unknown language", async () => {
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest({ ...VALID_BODY, language: "nonexistent_lang" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "nonexistent_lang" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -288,7 +288,7 @@ describe("POST /api/v1/submissions", () => {
   it("returns 413 when source code exceeds the byte limit", async () => {
     const hugeSource = "x".repeat(262145);
     const { POST } = await import("@/app/api/v1/submissions/route");
-    const response = await POST(makeRequest({ ...VALID_BODY, sourceCode: hugeSource }));
+    const response = await POST(makeRequest({ ...VALID_BODY, sourceCode: hugeSource }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect([400, 413]).toContain(response.status);
@@ -302,7 +302,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(404);
@@ -316,7 +316,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -342,7 +342,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -370,7 +370,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, language: "rust" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "rust" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(400);
@@ -426,7 +426,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, language: "python" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "python" }), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
     expect(dbInsertMock).toHaveBeenCalled();
@@ -470,7 +470,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, language: "java" }), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
   });
@@ -479,7 +479,7 @@ describe("POST /api/v1/submissions", () => {
     canAccessProblemMock.mockResolvedValue(false);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(403);
@@ -494,7 +494,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(429);
@@ -510,7 +510,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(429);
@@ -527,7 +527,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(503);
@@ -542,7 +542,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(409);
@@ -594,7 +594,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
     expect(validateAssignmentSubmissionMock).toHaveBeenCalledWith(
@@ -650,7 +650,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(201);
@@ -698,7 +698,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
     // Two inserts: the submission (inside the tx) then the flag (after it).
@@ -731,7 +731,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(429);
@@ -772,7 +772,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
   });
@@ -806,7 +806,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-1" }), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
     // Only the submission insert — no flag.
@@ -821,7 +821,7 @@ describe("POST /api/v1/submissions", () => {
     });
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-expired" }));
+    const response = await POST(makeRequest({ ...VALID_BODY, assignmentId: "assign-expired" }), { params: Promise.resolve({}) });
     const payload = await response.json();
 
     expect(response.status).toBe(403);
@@ -840,7 +840,7 @@ describe("POST /api/v1/submissions", () => {
     });
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(201);
     expect(getRequiredAssignmentContextsForProblemMock).toHaveBeenCalledWith(
@@ -860,7 +860,7 @@ describe("POST /api/v1/submissions", () => {
     ]);
     const { POST } = await import("@/app/api/v1/submissions/route");
 
-    const response = await POST(makeRequest(VALID_BODY));
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
     expect(response.status).toBe(201);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
@@ -908,7 +908,7 @@ describe("GET /api/v1/submissions", () => {
     dbSelectMock.mockImplementation(() => chain);
 
     const { GET } = await import("@/app/api/v1/submissions/route");
-    const response = await GET(makeGetRequest());
+    const response = await GET(makeGetRequest(), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(200);
     // Two sort keys: submittedAt DESC + the id DESC tiebreak — same total
@@ -920,7 +920,7 @@ describe("GET /api/v1/submissions", () => {
 
   it("filters to the current user when they lack submissions.view_all", async () => {
     const { GET } = await import("@/app/api/v1/submissions/route");
-    const response = await GET(makeGetRequest());
+    const response = await GET(makeGetRequest(), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(200);
     // The code now uses db.select() with .where() — verify it was called
@@ -957,7 +957,7 @@ describe("GET /api/v1/submissions", () => {
     ]);
 
     const { GET } = await import("@/app/api/v1/submissions/route");
-    const response = await GET(makeGetRequest());
+    const response = await GET(makeGetRequest(), { params: Promise.resolve({}) });
 
     expect(response.status).toBe(200);
     // The code now uses db.select() — verify the select was called

@@ -271,21 +271,21 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("returns 401 when there is no session", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
   });
 
   it("returns 401 when session has no user", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
   });
 
   it("returns 404 when chat-widget plugin is not enabled", async () => {
     isPluginEnabledMock.mockResolvedValue(false);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe("notConfigured");
@@ -294,7 +294,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("returns 404 when plugin state is null", async () => {
     getPluginStateMock.mockResolvedValue(null);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body.error).toBe("notConfigured");
@@ -303,14 +303,14 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("returns 429 when rate limit is exceeded", async () => {
     checkServerActionRateLimitMock.mockReturnValue(true); // rate limited
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(429);
     const body = await res.json();
     expect(body.error).toBe("rateLimit");
   });
 
   it("returns 400 when request body is invalid (empty messages)", async () => {
-    const res = await chatPOST(makeChatRequest({ messages: [] }));
+    const res = await chatPOST(makeChatRequest({ messages: [] }), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalidRequest");
@@ -318,7 +318,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
 
   it("returns 400 when message content is empty string", async () => {
     const res = await chatPOST(
-      makeChatRequest({ messages: [{ role: "user", content: "" }] })
+      makeChatRequest({ messages: [{ role: "user", content: "" }] }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -328,7 +328,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("returns 403 when global AI assistant is disabled", async () => {
     isAiAssistantEnabledForContextMock.mockResolvedValue(false);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("aiDisabled");
@@ -356,7 +356,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       makeChatRequest({
         messages: [{ role: "user", content: "Help!" }],
         context: { problemId: "prob-1", assignmentId: "assignment-1" },
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(res.status).toBe(400);
@@ -381,7 +381,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { problemId: "prob-1" },
     };
 
-    const res = await chatPOST(makeChatRequest(bodyWithProblem));
+    const res = await chatPOST(makeChatRequest(bodyWithProblem), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("aiDisabledForProblem");
@@ -393,14 +393,14 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
     });
     pluginsSelectMock.mockResolvedValue([{ config: { ...PLUGIN_CONFIG, openaiApiKey: "" } }]);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("notConfigured");
   });
 
   it("streams a response for a simple message (no problem context)", async () => {
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/plain");
     expect(res.headers.get("X-Chat-Session-Id")).toBeTruthy();
@@ -425,7 +425,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
     };
     getProviderMock.mockReturnValue(provider);
 
-    await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
 
     expect(getProviderMock).toHaveBeenCalledWith("claude");
     expect(provider.stream).toHaveBeenCalledWith(
@@ -452,7 +452,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
     };
     getProviderMock.mockReturnValue(provider);
 
-    await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
 
     expect(getProviderMock).toHaveBeenCalledWith("gemini");
     expect(provider.stream).toHaveBeenCalledWith(
@@ -477,7 +477,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { problemId: "prob-1" },
     };
 
-    const res = await chatPOST(makeChatRequest(bodyWithProblem));
+    const res = await chatPOST(makeChatRequest(bodyWithProblem), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     expect(provider.chatWithTools).toHaveBeenCalledOnce();
     expect(provider.stream).not.toHaveBeenCalled();
@@ -501,7 +501,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { problemId: null },
     };
 
-    await chatPOST(makeChatRequest(injectionBody));
+    await chatPOST(makeChatRequest(injectionBody), { params: Promise.resolve({}) });
 
     expect(provider.stream).toHaveBeenCalledTimes(1);
     const passedMessages = provider.stream.mock.calls[0][0].messages as Array<{
@@ -533,7 +533,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { problemId: "prob-1" },
     };
 
-    await chatPOST(makeChatRequest(injectionBody));
+    await chatPOST(makeChatRequest(injectionBody), { params: Promise.resolve({}) });
 
     expect(provider.chatWithTools).toHaveBeenCalledTimes(1);
     const passedMessages = provider.chatWithTools.mock.calls[0][0].messages as Array<{
@@ -575,7 +575,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { problemId: "prob-1" },
     };
 
-    const res = await chatPOST(makeChatRequest(bodyWithProblem));
+    const res = await chatPOST(makeChatRequest(bodyWithProblem), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
 
     expect(provider.formatToolResult).toHaveBeenCalledWith(
@@ -588,7 +588,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   });
 
   it("persists the latest user message and the streamed assistant response", async () => {
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     await res.text();
 
     expect(dbInsertMock).toHaveBeenNthCalledWith(
@@ -617,7 +617,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       context: { ...VALID_CHAT_BODY.context, skipLog: true },
     };
 
-    const res = await chatPOST(makeChatRequest(body));
+    const res = await chatPOST(makeChatRequest(body), { params: Promise.resolve({}) });
     await res.text();
 
     expect(dbInsertMock).toHaveBeenNthCalledWith(
@@ -645,7 +645,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("does not persist denied requests when the AI assistant is globally disabled", async () => {
     isAiAssistantEnabledForContextMock.mockResolvedValue(false);
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     expect(dbInsertMock).not.toHaveBeenCalled();
@@ -658,7 +658,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
       makeChatRequest({
         messages: [{ role: "user", content: "Help me!" }],
         context: { problemId: "prob-1" },
-      })
+      }), { params: Promise.resolve({}) }
     );
 
     expect(res.status).toBe(403);
@@ -668,7 +668,7 @@ describe("POST /api/v1/plugins/chat-widget/chat", () => {
   it("returns 500 on unexpected error", async () => {
     isPluginEnabledMock.mockRejectedValue(new Error("DB crash"));
 
-    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY));
+    const res = await chatPOST(makeChatRequest(VALID_CHAT_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
@@ -685,7 +685,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     getApiUserMock.mockResolvedValue(null);
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(401);
     const body = await res.json();
@@ -696,7 +696,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     getApiUserMock.mockResolvedValue({ id: "student-1", role: "student", username: "student" });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(403);
     const body = await res.json();
@@ -707,7 +707,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     getApiUserMock.mockResolvedValue({ id: "admin-1", role: "admin", username: "admin" });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "unknown", model: "" })
+      makeTestConnectionRequest({ provider: "unknown", model: "" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -720,7 +720,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     getPluginStateMock.mockResolvedValue(null);
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -734,7 +734,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -747,7 +747,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -771,7 +771,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
       makeTestConnectionRequest({
         provider: "claude",
         model: "claude-3-opus",
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -795,7 +795,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
       makeTestConnectionRequest({
         provider: "gemini",
         model: "gemini-pro",
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -816,7 +816,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -830,7 +830,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     fetchMock.mockRejectedValue(new Error("Network error"));
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(500);
     const body = await res.json();
@@ -846,7 +846,7 @@ describe("POST /api/v1/plugins/chat-widget/test-connection", () => {
     fetchMock.mockResolvedValue({ ok: true, text: vi.fn().mockResolvedValue("") });
 
     const res = await testConnectionPOST(
-      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" })
+      makeTestConnectionRequest({ provider: "openai", model: "gpt-4o" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(200);
     const body = await res.json();

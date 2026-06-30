@@ -221,7 +221,7 @@ describe("POST /api/v1/problems — function spec", () => {
         problemType: "function",
         functionSpec: VALID_SPEC,
         referenceSolution: { language: "python", source: "def twoSum(): pass" },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(201);
     expect(createProblemWithTestCasesMock).toHaveBeenCalledOnce();
@@ -237,7 +237,7 @@ describe("POST /api/v1/problems — function spec", () => {
         ...BASE_BODY,
         problemType: "function",
         functionSpec: { ...VALID_SPEC, params: [] },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     expect(createProblemWithTestCasesMock).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe("POST /api/v1/problems — function spec", () => {
         ...BASE_BODY,
         problemType: "function",
         functionSpec: { ...VALID_SPEC, returnType: "bogus" },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     expect(createProblemWithTestCasesMock).not.toHaveBeenCalled();
@@ -262,7 +262,7 @@ describe("POST /api/v1/problems — function spec", () => {
         problemType: "function",
         functionSpec: VALID_SPEC,
         referenceSolution: { language: "rust", source: "fn twoSum() {}" },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     expect(createProblemWithTestCasesMock).not.toHaveBeenCalled();
@@ -275,7 +275,7 @@ describe("POST /api/v1/problems — function spec", () => {
         problemType: "function",
         functionSpec: VALID_SPEC,
         referenceSolution: { language: "python", source: "def twoSum(): pass" },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(201);
     expect(createProblemWithTestCasesMock).toHaveBeenCalledOnce();
@@ -283,7 +283,7 @@ describe("POST /api/v1/problems — function spec", () => {
 
   it("returns 400 when problemType is function but functionSpec missing", async () => {
     const res = await POST(
-      makePostRequest({ ...BASE_BODY, problemType: "function" })
+      makePostRequest({ ...BASE_BODY, problemType: "function" }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(400);
     const body = await res.json();
@@ -298,7 +298,7 @@ describe("POST /api/v1/problems — function spec", () => {
         problemType: "auto",
         functionSpec: VALID_SPEC,
         referenceSolution: { language: "python", source: "x" },
-      })
+      }), { params: Promise.resolve({}) }
     );
     expect(res.status).toBe(201);
     const arg = createProblemWithTestCasesMock.mock.calls[0][0];

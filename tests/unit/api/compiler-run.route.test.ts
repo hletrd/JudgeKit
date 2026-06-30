@@ -134,7 +134,7 @@ describe("POST /api/v1/compiler/run", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "compilerDisabledInCurrentMode" });
     expect(getEffectivePlatformModeMock).toHaveBeenCalledWith({
@@ -169,7 +169,7 @@ describe("POST /api/v1/compiler/run", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toEqual({ error: "compilerDisabledInCurrentMode" });
     expect(resolvePlatformModeAssignmentContextDetailsMock).toHaveBeenCalledWith({

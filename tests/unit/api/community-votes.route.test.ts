@@ -176,7 +176,7 @@ describe("POST /api/v1/community/votes", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       data: {

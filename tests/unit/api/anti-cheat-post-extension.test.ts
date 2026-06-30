@@ -96,7 +96,7 @@ async function postEvent(eventType = "tab_switch") {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ eventType }),
   });
-  return POST(req);
+  return POST(req, { params: Promise.resolve({}) });
 }
 
 describe("POST anti-cheat — extended personal deadline (AGG3-1)", () => {

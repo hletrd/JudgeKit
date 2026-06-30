@@ -108,7 +108,7 @@ describe("POST /api/v1/users/bulk", () => {
     const { POST } = await import("@/app/api/v1/users/bulk/route");
     const res = await POST(makeRequest({
       users: [{ username: "student1", name: "Student One" }],
-    }));
+    }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -119,7 +119,7 @@ describe("POST /api/v1/users/bulk", () => {
     const { POST } = await import("@/app/api/v1/users/bulk/route");
     const res = await POST(makeRequest({
       users: [{ username: "student1", name: "Student One", password: "StrongPass123!" }],
-    }));
+    }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(201);
@@ -142,7 +142,7 @@ describe("POST /api/v1/users/bulk", () => {
     const { POST } = await import("@/app/api/v1/users/bulk/route");
     const res = await POST(makeRequest({
       users: [{ username: "student2", name: "Student Two", password: "StrongPass123!" }],
-    }));
+    }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(201);
   });
@@ -162,7 +162,7 @@ describe("POST /api/v1/users/bulk", () => {
     const { POST } = await import("@/app/api/v1/users/bulk/route");
     const res = await POST(makeRequest({
       users: [{ username: "student2", name: "Student Two", password: "StrongPass123!" }],
-    }));
+    }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     await expect(res.json()).resolves.toEqual({ error: "forbidden" });
@@ -189,7 +189,7 @@ describe("POST /api/v1/users/bulk", () => {
     const { POST } = await import("@/app/api/v1/users/bulk/route");
     const res = await POST(makeRequest({
       users: [{ username: "reviewer1", name: "Reviewer One", password: "StrongPass123!", role: "custom_reviewer" }],
-    }));
+    }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(201);
@@ -208,7 +208,7 @@ describe("POST /api/v1/users/bulk", () => {
         { username: "student-ok", name: "Student Ok", password: "StrongPass123!", role: "student" },
         { username: "student-bad", name: "Student Bad", password: "StrongPass123!", role: "super_admin" },
       ],
-    }));
+    }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(201);

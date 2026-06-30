@@ -88,7 +88,7 @@ async function getSession(query = "") {
   const req = new NextRequest(
     `http://localhost/api/v1/groups/${GROUP_ID}/assignments/${ASSIGNMENT_ID}/exam-session${query}`
   );
-  return GET(req);
+  return GET(req, { params: Promise.resolve({}) });
 }
 
 describe("GET exam-session — lazy staff-visibility resolution (AGG3-4)", () => {

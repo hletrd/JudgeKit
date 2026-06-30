@@ -99,7 +99,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(409);
@@ -126,7 +126,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -153,7 +153,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -181,7 +181,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     accessMock.mockRejectedValue(new Error("missing"));
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(404);
     expect(recordAuditEventMock).toHaveBeenCalledWith(
@@ -207,7 +207,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     buildDockerImageMock.mockResolvedValue({ success: false, error: "build exploded" });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(500);
@@ -235,7 +235,7 @@ describe("POST /api/v1/admin/docker/images/build", () => {
     buildDockerImageMock.mockResolvedValue({ success: true, logs: "built" });
 
     const { POST } = await import("@/app/api/v1/admin/docker/images/build/route");
-    const res = await POST(makeRequest({ language: "python" }));
+    const res = await POST(makeRequest({ language: "python" }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);

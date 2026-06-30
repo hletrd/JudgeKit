@@ -161,7 +161,7 @@ describe("admin api keys routes", () => {
     );
 
     const { GET } = await import("@/app/api/v1/admin/api-keys/route");
-    const res = await GET(makeRequest("http://localhost:3000/api/v1/admin/api-keys"));
+    const res = await GET(makeRequest("http://localhost:3000/api/v1/admin/api-keys"), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -185,7 +185,7 @@ describe("admin api keys routes", () => {
       makeRequest("http://localhost:3000/api/v1/admin/api-keys", {
         method: "POST",
         body: { name: "Deploy Key", role: "admin", expiryDays: null },
-      })
+      }), { params: Promise.resolve({}) }
     );
     const body = await res.json();
 

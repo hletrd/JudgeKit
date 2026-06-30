@@ -224,7 +224,10 @@ function makeRequest(
 // ── Tests: GET /api/v1/users ───────────────────────────────────────────────────
 
 describe("GET /api/v1/users", () => {
-  let GET: (req: NextRequest) => Promise<Response>;
+  let GET: (
+    req: NextRequest,
+    ctx: { params: Promise<Record<string, string>> }
+  ) => Promise<Response>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -244,7 +247,7 @@ describe("GET /api/v1/users", () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([{ ...safeUser, _total: 2 }]));
 
     const req = makeRequest("http://localhost:3000/api/v1/users");
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -261,7 +264,7 @@ describe("GET /api/v1/users", () => {
     getApiUserMock.mockResolvedValue(studentUser);
 
     const req = makeRequest("http://localhost:3000/api/v1/users");
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
   });
@@ -270,7 +273,7 @@ describe("GET /api/v1/users", () => {
     getApiUserMock.mockResolvedValue(null);
 
     const req = makeRequest("http://localhost:3000/api/v1/users");
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res.status).toBe(401);
   });
@@ -285,7 +288,7 @@ describe("GET /api/v1/users", () => {
     const req = makeRequest(
       "http://localhost:3000/api/v1/users?page=3&limit=10"
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -304,7 +307,7 @@ describe("GET /api/v1/users", () => {
     const req = makeRequest(
       "http://localhost:3000/api/v1/users?role=hacker"
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -315,7 +318,10 @@ describe("GET /api/v1/users", () => {
 // ── Tests: POST /api/v1/users ──────────────────────────────────────────────────
 
 describe("POST /api/v1/users", () => {
-  let POST: (req: NextRequest) => Promise<Response>;
+  let POST: (
+    req: NextRequest,
+    ctx: { params: Promise<Record<string, string>> }
+  ) => Promise<Response>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -355,7 +361,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(201);
@@ -384,7 +390,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(409);
@@ -410,7 +416,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(409);
@@ -444,7 +450,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(409);
@@ -459,7 +465,7 @@ describe("POST /api/v1/users", () => {
       body: { username: "newuser", name: "New", role: "student" },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
   });
 
@@ -496,7 +502,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
 
     expect(res.status).toBe(201);
   });
@@ -526,7 +532,7 @@ describe("POST /api/v1/users", () => {
       },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(201);
@@ -543,7 +549,7 @@ describe("POST /api/v1/users", () => {
       body: { username: "newuser", name: "New", role: "student" },
     });
 
-    const res = await POST(req);
+    const res = await POST(req, { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
   });
 });

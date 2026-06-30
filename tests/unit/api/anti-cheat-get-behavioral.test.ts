@@ -140,7 +140,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?limit=50&offset=0`
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(body.data.events).toHaveLength(1);
@@ -155,7 +155,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat`
     );
-    await GET(req);
+    await GET(req, { params: Promise.resolve({}) });
 
     // parsePositiveInt(null, 100) returns 100
     expect(eventsChain.limit).toHaveBeenCalledWith(100);
@@ -168,7 +168,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat`
     );
-    await GET(req);
+    await GET(req, { params: Promise.resolve({}) });
 
     // Two sort keys: createdAt DESC + the id DESC tiebreak, so same-timestamp
     // evidence rows cannot shuffle across offset page boundaries.
@@ -183,7 +183,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?limit=9999`
     );
-    await GET(req);
+    await GET(req, { params: Promise.resolve({}) });
 
     // Math.min(parsePositiveInt("9999", 100), 500) = 500
     expect(eventsChain.limit).toHaveBeenCalledWith(500);
@@ -198,7 +198,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat`
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(403);
@@ -212,7 +212,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/nonexistent/anti-cheat`
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(404);
@@ -232,7 +232,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?report=ipOverlap`
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(200);
@@ -256,7 +256,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?report=ipOverlap`
     );
-    const res = await GET(req);
+    const res = await GET(req, { params: Promise.resolve({}) });
 
     expect(res.status).toBe(403);
     expect(rawQueryAllMock).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
     const req = new NextRequest(
       `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?limit=abc&offset=xyz`
     );
-    await GET(req);
+    await GET(req, { params: Promise.resolve({}) });
 
     // parsePositiveInt("abc") returns default 100, parseInt("xyz") returns NaN → offset 0
     expect(eventsChain.limit).toHaveBeenCalledWith(100);
@@ -316,7 +316,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
       const req = new NextRequest(
         `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1`
       );
-      const res = await GET(req);
+      const res = await GET(req, { params: Promise.resolve({}) });
       const body = await res.json();
 
       expect(body.data.heartbeatGaps).toBeUndefined();
@@ -337,7 +337,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
       const req = new NextRequest(
         `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1&includeGaps=1`
       );
-      const res = await GET(req);
+      const res = await GET(req, { params: Promise.resolve({}) });
       const body = await res.json();
 
       expect(body.data.heartbeatGaps).toEqual([
@@ -367,7 +367,7 @@ describe("GET /api/v1/contests/[assignmentId]/anti-cheat", () => {
       const req = new NextRequest(
         `http://localhost/api/v1/contests/${ASSIGNMENT_ID}/anti-cheat?userId=user-1&includeGaps=1`
       );
-      const res = await GET(req);
+      const res = await GET(req, { params: Promise.resolve({}) });
       const body = await res.json();
 
       expect(body.data.heartbeatGaps).toBeUndefined();

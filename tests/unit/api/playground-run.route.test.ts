@@ -154,7 +154,7 @@ describe("POST /api/v1/playground/run", () => {
       }),
     });
 
-    const response = await POST(request);
+    const response = await POST(request, { params: Promise.resolve({}) });
     expect(response.status).toBe(401);
   });
 });

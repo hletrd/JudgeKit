@@ -116,7 +116,7 @@ describe("POST /api/v1/contests/quick-create", () => {
       problemIds: ["problem-1"],
       startsAt: "2026-04-08T12:00:00.000Z",
       deadline: "2026-04-08T11:00:00.000Z",
-    }));
+    }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toMatchObject({ error: "assignmentScheduleInvalid" });

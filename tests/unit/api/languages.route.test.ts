@@ -125,7 +125,7 @@ beforeEach(() => {
 
 describe("GET /api/v1/languages", () => {
   it("returns 200 with a list of enabled languages", async () => {
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(2);
@@ -150,7 +150,7 @@ describe("GET /api/v1/languages", () => {
       return null;
     });
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toHaveLength(1);
@@ -160,7 +160,7 @@ describe("GET /api/v1/languages", () => {
   it("returns empty list when no languages are enabled", async () => {
     languageConfigsSelectMock.mockResolvedValue([]);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toEqual([]);
@@ -169,14 +169,14 @@ describe("GET /api/v1/languages", () => {
   it("returns empty list when all enabled languages lack definitions", async () => {
     getJudgeLanguageDefinitionMock.mockReturnValue(null);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toEqual([]);
   });
 
   it("sets Cache-Control header to public, max-age=300", async () => {
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("public, max-age=300");
   });
@@ -185,21 +185,21 @@ describe("GET /api/v1/languages", () => {
     // Even with no user set, GET should succeed because auth is false
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
   });
 
   it("returns 500 on unexpected DB error", async () => {
     languageConfigsSelectMock.mockRejectedValue(new Error("DB connection failed"));
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
   });
 
   it("returns only the shape fields from the definition (not raw DB row fields)", async () => {
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     const body = await res.json();
     const first = body.data[0];
 

@@ -199,7 +199,7 @@ describe("GET /api/v1/problems", () => {
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("unauthorized");
@@ -209,7 +209,7 @@ describe("GET /api/v1/problems", () => {
     const problems = [{ id: "p-1", title: "Problem 1" }];
     mockSelectChain(problems, { count: 1 });
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toEqual(problems);
@@ -231,14 +231,14 @@ describe("GET /api/v1/problems", () => {
     const fromFn = vi.fn(() => ({ where: whereFn }));
     dbSelectMock.mockReturnValue({ from: fromFn });
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toEqual(problems);
   });
 
   it("returns 400 for invalid visibility parameter", async () => {
-    const res = await GET(makeGetRequest("?visibility=invalid"));
+    const res = await GET(makeGetRequest("?visibility=invalid"), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalidVisibility");
@@ -246,26 +246,26 @@ describe("GET /api/v1/problems", () => {
 
   it("accepts valid visibility parameter 'public'", async () => {
     mockSelectChain([]);
-    const res = await GET(makeGetRequest("?visibility=public"));
+    const res = await GET(makeGetRequest("?visibility=public"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
   });
 
   it("accepts valid visibility parameter 'private'", async () => {
     mockSelectChain([]);
-    const res = await GET(makeGetRequest("?visibility=private"));
+    const res = await GET(makeGetRequest("?visibility=private"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
   });
 
   it("accepts valid visibility parameter 'hidden'", async () => {
     mockSelectChain([]);
-    const res = await GET(makeGetRequest("?visibility=hidden"));
+    const res = await GET(makeGetRequest("?visibility=hidden"), { params: Promise.resolve({}) });
     expect(res.status).toBe(200);
   });
 
   it("returns 500 on unexpected error", async () => {
     getApiUserMock.mockRejectedValue(new Error("DB error"));
 
-    const res = await GET(makeGetRequest());
+    const res = await GET(makeGetRequest(), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
@@ -283,7 +283,7 @@ describe("POST /api/v1/problems", () => {
       NextResponse.json({ error: "forbidden" }, { status: 403 })
     );
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
   });
 
@@ -292,14 +292,14 @@ describe("POST /api/v1/problems", () => {
       NextResponse.json({ error: "rateLimited" }, { status: 429 })
     );
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(429);
   });
 
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("unauthorized");
@@ -308,7 +308,7 @@ describe("POST /api/v1/problems", () => {
   it("returns 403 when user is a student", async () => {
     getApiUserMock.mockResolvedValue(STUDENT_USER);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.error).toBe("forbidden");
@@ -317,7 +317,7 @@ describe("POST /api/v1/problems", () => {
   it("creates a problem successfully as instructor and returns 201", async () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data).toMatchObject({ id: "prob-1", title: "My Problem" });
@@ -326,28 +326,28 @@ describe("POST /api/v1/problems", () => {
   });
 
   it("creates a problem successfully as admin and returns 201", async () => {
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.data).toMatchObject({ id: "prob-1" });
   });
 
   it("returns 400 when title is missing", async () => {
-    const res = await POST(makePostRequest({ ...VALID_POST_BODY, title: "" }));
+    const res = await POST(makePostRequest({ ...VALID_POST_BODY, title: "" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("titleRequired");
   });
 
   it("returns 400 when timeLimitMs is below minimum", async () => {
-    const res = await POST(makePostRequest({ ...VALID_POST_BODY, timeLimitMs: 50 }));
+    const res = await POST(makePostRequest({ ...VALID_POST_BODY, timeLimitMs: 50 }), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalidTimeLimit");
   });
 
   it("returns 400 when memoryLimitMb is above maximum", async () => {
-    const res = await POST(makePostRequest({ ...VALID_POST_BODY, memoryLimitMb: 9999 }));
+    const res = await POST(makePostRequest({ ...VALID_POST_BODY, memoryLimitMb: 9999 }), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
     const body = await res.json();
     expect(body.error).toBe("invalidMemoryLimit");
@@ -356,7 +356,7 @@ describe("POST /api/v1/problems", () => {
   it("does not record audit event when problem findFirst returns null", async () => {
     problemsFindFirstMock.mockResolvedValue(null);
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(201);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
   });
@@ -364,7 +364,7 @@ describe("POST /api/v1/problems", () => {
   it("records audit event with correct fields", async () => {
     getApiUserMock.mockResolvedValue(INSTRUCTOR_USER);
 
-    await POST(makePostRequest(VALID_POST_BODY));
+    await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
 
     expect(recordAuditEventMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -383,7 +383,7 @@ describe("POST /api/v1/problems", () => {
       throw new Error("DB write failed");
     });
 
-    const res = await POST(makePostRequest(VALID_POST_BODY));
+    const res = await POST(makePostRequest(VALID_POST_BODY), { params: Promise.resolve({}) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error).toBe("internalServerError");
