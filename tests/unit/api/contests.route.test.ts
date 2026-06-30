@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 const {
   getApiUserMock,
   consumeApiRateLimitMock,
+  consumeUserApiRateLimitMock,
   redeemAccessCodeMock,
   setAccessCodeMock,
   revokeAccessCodeMock,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
+  consumeUserApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
   redeemAccessCodeMock: vi.fn(),
   setAccessCodeMock: vi.fn(),
   revokeAccessCodeMock: vi.fn(),
@@ -52,6 +54,7 @@ vi.mock("@/lib/api/auth", () => ({
 
 vi.mock("@/lib/security/api-rate-limit", () => ({
   consumeApiRateLimit: consumeApiRateLimitMock,
+  consumeUserApiRateLimit: consumeUserApiRateLimitMock,
 }));
 
 vi.mock("@/lib/api/responses", () => ({
@@ -222,6 +225,7 @@ describe("POST /api/v1/contests/join", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     consumeApiRateLimitMock.mockReturnValue(null);
+    consumeUserApiRateLimitMock.mockReturnValue(null);
     getApiUserMock.mockResolvedValue(ADMIN_USER);
     getRecruitingAccessContextMock.mockResolvedValue({
       assignmentIds: [],
@@ -244,30 +248,30 @@ describe("POST /api/v1/contests/join", () => {
 
   it("returns 429 when rate limited", async () => {
     consumeApiRateLimitMock.mockReturnValue(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
-    const res = await joinPOST(makeJoinRequest({ code: "ABC" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(429);
   });
 
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
-    const res = await joinPOST(makeJoinRequest({ code: "ABC" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(401);
   });
 
   it("returns 400 when code is missing", async () => {
-    const res = await joinPOST(makeJoinRequest({}));
+    const res = await joinPOST(makeJoinRequest({}), { params: Promise.resolve({}) });
     expect(res.status).toBe(400);
   });
 
   it("returns 400 when code is empty string", async () => {
-    const res = await joinPOST(makeJoinRequest({ code: "" }));
+    const res = await joinPOST(makeJoinRequest({ code: "" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.error).toBe("accessCodeRequired");
   });
 
   it("successfully joins a contest and returns assignment info", async () => {
-    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data).toMatchObject({
@@ -284,7 +288,7 @@ describe("POST /api/v1/contests/join", () => {
       groupId: "group-1",
       alreadyEnrolled: true,
     });
-    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data.alreadyEnrolled).toBe(true);
@@ -292,10 +296,32 @@ describe("POST /api/v1/contests/join", () => {
 
   it("returns 400 when redemption fails with an error", async () => {
     redeemAccessCodeMock.mockResolvedValue({ ok: false, error: "invalidAccessCode" });
-    const res = await joinPOST(makeJoinRequest({ code: "WRONG" }));
+    const res = await joinPOST(makeJoinRequest({ code: "WRONG" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.error).toBe("invalidAccessCode");
+    expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      ADMIN_USER.id,
+      "contest:join:invalid",
+    );
+    expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      expect.stringMatching(/^code:[a-f0-9]{32}$/),
+      "contest:join:invalid-code",
+    );
+  });
+
+  it("returns 429 when invalid access-code attempts hit the scoped limiter", async () => {
+    redeemAccessCodeMock.mockResolvedValue({ ok: false, error: "invalidAccessCode" });
+    consumeUserApiRateLimitMock.mockReturnValueOnce(
+      NextResponse.json({ error: "rateLimited" }, { status: 429 }),
+    );
+
+    const res = await joinPOST(makeJoinRequest({ code: "WRONG" }), { params: Promise.resolve({}) });
+    const body = await res.json();
+    expect(res.status).toBe(429);
+    expect(body.error).toBe("rateLimited");
   });
 
   it("returns 403 when a recruiting candidate tries to join by access code", async () => {
@@ -305,7 +331,7 @@ describe("POST /api/v1/contests/join", () => {
       isRecruitingCandidate: true,
       effectivePlatformMode: "recruiting",
     });
-    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(403);
     expect(body.error).toBe("forbidden");
@@ -314,7 +340,7 @@ describe("POST /api/v1/contests/join", () => {
 
   it("returns 500 on unexpected error", async () => {
     redeemAccessCodeMock.mockRejectedValue(new Error("Unexpected DB error"));
-    const res = await joinPOST(makeJoinRequest({ code: "ABC" }));
+    const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
     const body = await res.json();
     expect(res.status).toBe(500);
     expect(body.error).toBe("internalServerError");
@@ -341,7 +367,7 @@ describe("POST /api/v1/contests/quick-create", () => {
       problemIds: ["problem-1"],
       startsAt: "2026-04-08T12:00:00.000Z",
       deadline: "2026-04-08T12:00:00.000Z",
-    }));
+    }), { params: Promise.resolve({}) });
     const body = await res.json();
 
     expect(res.status).toBe(400);
@@ -356,7 +382,7 @@ describe("POST /api/v1/contests/quick-create", () => {
       problemIds: ["problem-1"],
       startsAt: "2026-04-08T12:00:00.000Z",
       deadline: "2026-04-08T13:00:00.000Z",
-    }));
+    }), { params: Promise.resolve({}) });
 
     expect(res.status).toBe(201);
     expect(dbTransactionMock).toHaveBeenCalledOnce();
