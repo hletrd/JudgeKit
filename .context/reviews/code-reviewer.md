@@ -1,17 +1,27 @@
-# Code Reviewer - Cycle 2/100 (2026-06-30)
+# Code Reviewer - Cycle 3/100 (2026-06-30)
 
-Scope: deployment loop continuation after cycle 1 stopped on `algo-worker-register`, plus the queued workspace-permission TODO.
+Inventory reviewed: `deploy-docker.sh`, `scripts/online-judge.nginx.conf`, `static-site/static.nginx.conf`, `tests/unit/infra/*`, `docker-compose.production.yml`, `src/app/api/v1/**/route.ts`, `src/lib/security/**`, `judge-worker-rs/src/**`, `docs/deployment.md`, prior cycle aggregate/plan.
+
+Agent availability: no callable Agent tool is exposed in this environment, so this review was performed in-session from the code-review perspective.
 
 ## Findings
 
-### C2-1 - High - Dedicated worker deploy does not repair stale `JUDGE_BASE_URL`
-- Evidence: `deploy-docker.sh:1282-1345` rebuilds and restarts each `WORKER_HOSTS` target with `docker compose -f docker-compose.worker.yml --env-file .env up -d`, but never writes the target app URL into the worker host's `.env`. Read-only inspection of `worker-0.algo.xylolabs.com` showed `JUDGE_BASE_URL=http://algo.xylolabs.com/api/v1`, which the worker rejects before registration.
-- Failure scenario: a worker host keeps an old HTTP base URL while the app is TLS-only; every deploy rebuilds the image, then the worker exits in a restart loop before `/judge/register`.
-- Fix: upsert `JUDGE_BASE_URL=${AUTH_URL_TARGET}/api/v1` in each worker host `.env` before compose restart, and reject non-local HTTP URLs for dedicated workers.
-- Confidence: High.
+### CR-C3-1 - Deprecated nginx HTTP/2 listen syntax remains in generated and checked-in configs
+- Severity: Low/Medium
+- Confidence: High
+- Evidence: `deploy-docker.sh:1452-1453`, `scripts/online-judge.nginx.conf:27-40`, `static-site/static.nginx.conf:10-11`.
+- Problem: the configs use `listen ... ssl http2`, which current nginx versions warn is deprecated. The cycle-2 deploy plan already recorded this as an observed deploy warning.
+- Failure scenario: a future nginx package tightens this from warning to invalid config, causing `nginx -t` to fail during the per-cycle deploy after the app/worker build work completed.
+- Suggested fix: switch to `listen 443 ssl;` plus a separate `http2 on;` directive per TLS server block, and add a static test that rejects `listen ... http2`.
 
-### C2-2 - Medium - Worker restart failure does not surface the relevant logs
-- Evidence: `deploy-docker.sh:1342-1357` checks only whether the container is `Up` after a fixed 5 seconds, then emits a generic docker-capability probe message.
-- Failure scenario: registration or HTTPS config failures are misdiagnosed as docker-proxy problems, slowing recovery.
-- Fix: wait for the worker healthcheck and tail sanitized worker logs on failure.
-- Confidence: High.
+### CR-C3-2 - Deploy profile files are sourced before local permission hardening
+- Severity: Medium
+- Confidence: High
+- Evidence: `deploy-docker.sh:141-158` sources `.env.deploy` and `.env.deploy.<target>` directly; `AGENTS.md:427` says all `.env*` including `.env.deploy*` are expected to be `0600`.
+- Problem: target profiles often carry SSH keys, passwords, runner URLs, or other deploy secrets. If a profile is created under a permissive umask, the script consumes it without correcting or warning.
+- Failure scenario: an operator adds `SSH_PASSWORD` or a private key path/token to `.env.deploy.<target>` and leaves it `0644`; the deploy succeeds while local users can read the credentials.
+- Suggested fix: add a small helper that `chmod 600`s each local deploy profile before sourcing it, preserving caller overrides.
+
+## Final Sweep
+
+No additional confirmed code-quality findings were found in the inspected API, worker, security, and deploy paths. The Compose `POSTGRES_PASSWORD` warning from cycle 2 remains a broader follow-up because the production startup paths already pass `--env-file .env.production` and the down path copies `.env.production` to `.env`.

@@ -1,70 +1,43 @@
-# Review Aggregate - Cycle 2/100 (2026-06-30)
+# Review Aggregate - Cycle 3/100 (2026-06-30)
 
-Scope: continuation after cycle 1 deploy stopped on `algo-worker-register`; includes the user's corrected target set (`algo.xylolabs.com`, `test.worv.ai`, `oj.auraedu.me`) and storage-safety requirement.
+Scope: continuation after cycle 2 reported `DEPLOY: per-cycle-success`; preserve production deployment health for `algo.xylolabs.com`, `test.worv.ai`, and `oj.auraedu.me`; verify storage-safe cleanup constraints before any deploy/build.
 
-Agent note: no separate Agent tool is registered in this environment, so the reviewer roles were executed in-session and written to the required per-role files.
+Agent note: no callable Agent tool is registered in this environment, so the mandatory reviewer roles and project-specific reviewer personas were executed in-session and written to `.context/reviews/<agent-name>.md`. UI review was included because the repo contains a Next.js frontend. `agent-browser` was available, but local `/` and `/login` requests hung under the local runtime environment, so no DOM/screenshot product finding is claimed.
 
 ## Merged Findings
 
-### C2-1 - High - Dedicated worker deploy does not repair stale `JUDGE_BASE_URL`
-Agreement: code-reviewer, verifier, tracer, architect.
+### C3-1 - Low/Medium - Generated and checked-in nginx configs use deprecated HTTP/2 listen syntax
+Agreement: code-reviewer, perf-reviewer, security-reviewer, critic, verifier, test-engineer, tracer, architect, debugger, document-specialist, admin-reviewer, security-analyzer.
 
-Evidence: `deploy-docker.sh:1282-1345` rebuilds/restarts `WORKER_HOSTS` but does not write `JUDGE_BASE_URL` to each worker host `.env`. Read-only inspection of `worker-0.algo.xylolabs.com` showed `JUDGE_BASE_URL=http://algo.xylolabs.com/api/v1` and logs rejected it as non-local HTTP.
+Evidence: `deploy-docker.sh:1452-1453`, `scripts/online-judge.nginx.conf:27-40`, `static-site/static.nginx.conf:10-11`, and the cycle-2 warning register at `plan/cycle-2-2026-06-30-worker-register-remediation.md:64`.
 
-Failure scenario: the algo worker restarts forever before `/judge/register`; per-cycle deploy remains blocked even though disk is healthy.
+Why it matters: nginx currently accepts `listen ... ssl http2` with a deprecation warning, but every known warning reduces deploy-log signal and future nginx versions may reject the syntax. In per-cycle deploy mode this can fail the deploy after build/migration work has already run.
 
-Fix: derive `${AUTH_URL_TARGET%/}/api/v1`, require HTTPS for dedicated workers, and upsert it into each worker host `.env` before restart.
+Failure scenario: `nginx -t` on one of the three production targets fails or emits mixed output during deploy; operators must triage known HTTP/2 deprecation noise while preserving worker/app health.
 
-### C2-2 - Medium - Worker restart verification hides registration/config failures
-Agreement: code-reviewer, debugger, critic, designer, perf-reviewer.
+Fix: replace `listen 443 ssl http2` and `listen [::]:443 ssl http2` with `listen 443 ssl`, `listen [::]:443 ssl`, and a separate `http2 on;` directive in generated and checked-in nginx configs. Add a static regression test that rejects `listen ... http2`.
 
-Evidence: `deploy-docker.sh:1342-1357` sleeps 5 seconds and checks only `docker ps` `Up`, then points at the docker-capability probe regardless of the real failure.
+Confidence: High.
 
-Failure scenario: HTTPS, token, or registration failures are misdiagnosed as docker-proxy issues.
+### C3-2 - Medium - Local deploy profiles are sourced before `.env.deploy*` permission hardening
+Agreement: code-reviewer, security-reviewer, critic, verifier, test-engineer, tracer, architect, debugger, document-specialist, admin-reviewer, security-analyzer.
 
-Fix: poll running + health status and emit sanitized worker logs on failure.
+Evidence: `deploy-docker.sh:141-158` sources `.env.deploy` and `.env.deploy.<target>` directly. `AGENTS.md:427` says the cycle-2 hardening extended to all `.env*` files including `.env.deploy*` at `0600`.
 
-### C2-3 - Medium - Compiler and worker workspace fallbacks still allow broad host permissions
-Agreement: security-reviewer, test-engineer, feature-dev-code-reviewer.
+Why it matters: target deploy profiles can contain SSH/deploy credentials or secret-bearing runner settings. If a file is created with default `umask 0022`, deployment succeeds while credentials remain readable by group/other users.
 
-Evidence: `src/lib/compiler/execute.ts:740-756`, `judge-worker-rs/src/executor.rs:321-395`, and `judge-worker-rs/src/runner.rs:754-796` preserve `0o777`/`0o666` fallbacks when `chown` fails. This also matches the queued `plan/user-injected/pending-next-cycle.md` TODO.
+Failure scenario: an operator adds `SSH_PASSWORD`, `SSH_KEY`, or token material to `.env.deploy.<target>` and leaves it `0644`; the script sources it silently and leaves the exposure in place.
 
-Failure scenario: if ownership assignment fails on a shared host, in-flight source and artifacts can become world-readable or writable.
+Fix: add a helper that enforces `chmod 600` on local deploy profiles before sourcing them, preserving caller overrides. Add a static test for chmod-before-source ordering.
 
-Fix: fail closed on ownership failure; update source-contract tests to reject the broad fallback.
+Confidence: High.
 
-### C2-4 - High - Insecure HTTP is not an acceptable production worker recovery
-Agreement: security-reviewer, critic.
+## Non-Findings / Verified Constraints
 
-Evidence: `judge-worker-rs/src/config.rs:343-382` rejects non-local HTTP unless `JUDGE_ALLOW_INSECURE_HTTP=1`, and the observed algo env used HTTP.
+- Correct deploy targets remain `algo.xylolabs.com`, `test.worv.ai`, and `oj.auraedu.me`; no production `oj.worv.ai` path was found.
+- Automated storage cleanup still avoids Docker volumes and `docker image prune -af`.
+- Cycle-2 dedicated worker URL reconciliation and HTTPS fail-closed behavior remain present.
 
-Failure scenario: enabling the insecure override to recover production would expose judge tokens and submission data in transit.
+## AGENT FAILURES
 
-Fix: deploy automation must write HTTPS worker URLs and fail closed for non-local HTTP.
-
-### C2-5 - Medium - Deploy tests do not pin worker-host URL repair
-Agreement: test-engineer.
-
-Evidence: `tests/unit/infra/deploy-storage-safety.test.ts` covers target selection, runner URL upserts, storage roots, and safe prune commands, but not worker `JUDGE_BASE_URL` reconciliation.
-
-Fix: add static test coverage for the new worker env upsert and HTTPS fail-closed guard.
-
-### C2-6 - Low/Medium - Worker host secret rotation remains manual
-Agreement: architect.
-
-Evidence: routine `WORKER_HOSTS` deploy updates source/images/env URL, but secret rotation for `JUDGE_AUTH_TOKEN` and `RUNNER_AUTH_TOKEN` is not automated.
-
-Deferral reason: routine deploys should not silently copy or rotate secrets across hosts without an explicit operator-approved secret-sync mode. This is a follow-up observability/operations item, not the root cause of the current outage.
-
-Exit criterion: add an explicit worker secret sync/rotation command with audit logging and tests.
-
-### C2-7 - Low/Medium - Docs should describe dedicated worker URL reconciliation
-Agreement: document-specialist.
-
-Evidence: `docs/deployment.md` documents worker env requirements but not that deploys keep `JUDGE_BASE_URL` aligned for `WORKER_HOSTS`.
-
-Fix: update deployment docs after the script behavior is implemented.
-
-## Storage Verification
-
-Read-only inspection of `worker-0.algo.xylolabs.com` showed `/`, DockerRootDir, and `/judge-workspaces` at 40% used. Existing deploy cleanup uses stopped-container prune, dangling-only `docker image prune -f`, builder prune, and BuildKit history cleanup; no automated volume prune path was found in the inspected deploy automation.
+- No reviewer agent was retried via the Agent tool because no Agent tool is exposed in this environment. The role outputs were produced in-session as a fallback.

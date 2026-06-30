@@ -1,15 +1,27 @@
-# Critic - Cycle 2/100 (2026-06-30)
+# Critic - Cycle 3/100 (2026-06-30)
+
+Inventory reviewed: recent cycle plans, aggregate findings, deployment scripts, target docs, nginx configs, Docker compose runtime, test coverage, and UI/browser feasibility.
+
+Agent availability: no callable Agent tool is exposed in this environment, so this review was performed in-session from the critic perspective.
 
 ## Findings
 
-### C2-4 - High - Insecure HTTP is the wrong recovery path for algo
-- Evidence: the worker's error text offers `JUDGE_ALLOW_INSECURE_HTTP=1`, but this is only safe for controlled development networks. Production deploy automation should never normalize that bypass.
-- Failure scenario: incident recovery restores uptime at the cost of transmitting judge secrets and submissions over cleartext.
-- Fix: deploy should enforce HTTPS worker URLs for `WORKER_HOSTS`.
-- Confidence: High.
+### CRIT-C3-1 - The deploy loop still tolerates known warning noise
+- Severity: Low/Medium
+- Confidence: High
+- Evidence: cycle-2 plan warning at `plan/cycle-2-2026-06-30-worker-register-remediation.md:64`; live source at `deploy-docker.sh:1452-1453`, `scripts/online-judge.nginx.conf:27-40`, and `static-site/static.nginx.conf:10-11`.
+- Problem: after cycle 2 restored production health, preserving that health means removing known warning sources before they become accepted background noise.
+- Failure scenario: a per-cycle deploy fails on a real nginx issue, but the log already contains expected HTTP/2 deprecation warnings, slowing triage.
+- Suggested fix: update syntax and add a static guard.
 
-### C2-2 - Medium - Error wording points operators at the wrong subsystem
-- Evidence: the deploy failure text says to check the docker-capability probe log for any non-running worker.
-- Failure scenario: registration failures, TLS failures, or env failures are mistaken for docker-proxy failures.
-- Fix: include sanitized logs and use neutral wording.
-- Confidence: High.
+### CRIT-C3-2 - Env profile hardening is documented more strongly than it is enforced
+- Severity: Medium
+- Confidence: High
+- Evidence: `AGENTS.md:427` vs. `deploy-docker.sh:141-158`.
+- Problem: the docs say all `.env*` profiles are protected, but the script only hardens generated/remote `.env.production` and worker `.env` paths. The local deploy profiles are consumed as-is.
+- Failure scenario: future target credential drift creates a readable `.env.deploy.<target>`; the deploy succeeds, leaving the exposure latent.
+- Suggested fix: chmod local deploy profiles before sourcing them and test the contract.
+
+## Final Sweep
+
+The corrected deploy target set is represented in docs/tests: `algo.xylolabs.com`, `test.worv.ai`, and `oj.auraedu.me`; no `oj.worv.ai` production path was found.
