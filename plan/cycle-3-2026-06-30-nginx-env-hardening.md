@@ -58,5 +58,5 @@ Carry-forward warnings from the archived cycle-2 plan remain recorded there:
 - [x] A2 local deploy profile permission hardening implemented.
 - [ ] A3 storage verification and no-volume-prune contract checked before deploy.
 - Gates: [ ] Focused checks passed: `npm run test:unit -- tests/unit/infra/judge-report-nginx.test.ts tests/unit/infra/deploy-security.test.ts tests/unit/infra/deploy-storage-safety.test.ts`; `npm run lint:bash`.
-- Commits: [ ] pending.
+- Commits: [x] 429f27af (`docs(review): 📝 record cycle 3 remediation plan`), b2edee07 (`fix(deploy): 🛡️ harden nginx and env profiles`).
 - Deploy: [ ] pending.
