@@ -47,6 +47,32 @@ vi.mock("@/lib/auth", () => ({
   auth: vi.fn(async () => null),
 }));
 
+// Mock heavy UI components so importing the submission detail page stays cheap;
+// generateMetadata does not depend on them.
+vi.mock("@/components/submissions/submission-detail-client", () => ({
+  SubmissionDetailClient: () => null,
+}));
+vi.mock("@/components/submission-status-badge", () => ({
+  SubmissionStatusBadge: () => null,
+}));
+vi.mock("@/components/ui/card", () => ({
+  Card: () => null,
+  CardContent: () => null,
+  CardHeader: () => null,
+  CardTitle: () => null,
+}));
+vi.mock("@/components/ui/table", () => ({
+  Table: () => null,
+  TableBody: () => null,
+  TableCell: () => null,
+  TableHead: () => null,
+  TableHeader: () => null,
+  TableRow: () => null,
+}));
+vi.mock("@/components/ui/button", () => ({
+  Button: () => null,
+}));
+
 vi.mock("drizzle-orm", async () => {
   const actual = await vi.importActual<typeof import("drizzle-orm")>("drizzle-orm");
   return {
