@@ -74,9 +74,9 @@ Each records: file+line · original severity · reason · exit criterion. Securi
 ---
 
 ## Phase C — Progress Tracking (updated end-of-cycle)
-- [ ] A1a C4-4 plugin default flip
-- [ ] A1b NEW-B main-path enc:v1 versioning + keyring
-- [ ] A2 F-1 canManageProblem fast-path + ALS memoize
-- [ ] A3 AGG-1 post-write consistency verification (partial)
-- Gates: (pending)
-- DEPLOY: (pending)
+- [x] A1a C4-4 plugin default flip — commit a085490a
+- [x] A1b NEW-B main-path enc:v1 versioning + keyring — commit 58580a79
+- [x] A2 F-1 canManageProblem fast-path + ALS memoize — commit 9152c999
+- [x] A3 AGG-1 post-write consistency verification (partial) — commit c8f8aa46
+- Gates: lint ✓, lint:bash ✓, db:check ✓, test:unit ✓ (3009 pass, 379 files), cargo test ✓ (80). build: type error in AGG-1 audit `details` (`missingFiles: string[] \| undefined` not JsonValue) caught and fixed (`?? null`); re-running. (NFT tracer warning on `next.config.ts → env.ts → proxy.ts` is pre-existing/unrelated.)
+- DEPLOY: (pending build confirmation)
