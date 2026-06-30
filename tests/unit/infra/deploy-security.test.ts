@@ -28,6 +28,26 @@ describe("deployment security defaults", () => {
     expect(deployDocker).toContain("Database did not become healthy in 30s — aborting deploy before migrations");
   });
 
+  it("hardens local deploy profiles before sourcing them", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    expect(deployDocker).toContain("secure_local_env_profile()");
+    expect(deployDocker).toContain('chmod 600 "${env_file}"');
+    expect(deployDocker).toContain("source_local_env_profile");
+
+    const chmodHelperIndex = deployDocker.indexOf("secure_local_env_profile()");
+    const defaultSourceIndex = deployDocker.indexOf('source_local_env_profile "${SCRIPT_DIR}/.env.deploy"');
+    const targetSourceIndex = deployDocker.indexOf('source_local_env_profile "${TARGET_ENV_FILE}"');
+
+    expect(chmodHelperIndex).toBeGreaterThanOrEqual(0);
+    expect(defaultSourceIndex).toBeGreaterThanOrEqual(0);
+    expect(targetSourceIndex).toBeGreaterThanOrEqual(0);
+    expect(chmodHelperIndex).toBeLessThan(defaultSourceIndex);
+    expect(chmodHelperIndex).toBeLessThan(targetSourceIndex);
+    expect(deployDocker).not.toContain('source "${SCRIPT_DIR}/.env.deploy"');
+    expect(deployDocker).not.toContain('source "${TARGET_ENV_FILE}"');
+  });
+
   it("fails closed on deployment recovery paths that need operator action", () => {
     const deployDocker = read("deploy-docker.sh");
 

@@ -138,12 +138,29 @@ if [[ -n "${DEPLOY_TARGET}" ]]; then
     fi
 fi
 
+secure_local_env_profile() {
+    local env_file="$1"
+    if [[ ! -f "${env_file}" ]]; then
+        return 0
+    fi
+    if ! chmod 600 "${env_file}" 2>/dev/null; then
+        echo "[FATAL] Could not chmod 600 ${env_file}; refusing to source deploy credentials." >&2
+        exit 1
+    fi
+}
+
+source_local_env_profile() {
+    local env_file="$1"
+    secure_local_env_profile "${env_file}"
+    set -a
+    # shellcheck disable=SC1090
+    source "${env_file}"
+    set +a
+}
+
 # Source deployment env vars from .env.deploy (defaults)
 if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "${SCRIPT_DIR}/.env.deploy"
-    set +a
+    source_local_env_profile "${SCRIPT_DIR}/.env.deploy"
 fi
 
 # Source per-target overrides (e.g. .env.deploy.algo) so
@@ -153,10 +170,7 @@ fi
 # block below re-applies them after this sourcing, then host safety assertions
 # reject unsafe production target combinations.
 if [[ -n "${TARGET_ENV_FILE}" ]]; then
-    set -a
-    # shellcheck disable=SC1091
-    source "${TARGET_ENV_FILE}"
-    set +a
+    source_local_env_profile "${TARGET_ENV_FILE}"
 fi
 
 # Restore caller overrides (explicit env vars take precedence)
@@ -1449,8 +1463,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name ${DOMAIN};
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;

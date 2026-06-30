@@ -7,6 +7,19 @@ function read(relativePath: string) {
 }
 
 describe("judge report nginx body-size guardrails", () => {
+  it("uses non-deprecated HTTP/2 syntax in nginx configs", () => {
+    const sources = [
+      ["deploy-docker.sh", read("deploy-docker.sh")],
+      ["scripts/online-judge.nginx.conf", read("scripts/online-judge.nginx.conf")],
+      ["static-site/static.nginx.conf", read("static-site/static.nginx.conf")],
+    ] as const;
+
+    for (const [path, source] of sources) {
+      expect(source, path).not.toMatch(/listen\s+\[?::?\]?:?443[^;\n]*\bhttp2\b/);
+      expect(source, path).toContain("http2 on;");
+    }
+  });
+
   it("keeps a larger body limit only on the final judge result report endpoint", () => {
     const deployDocker = read("deploy-docker.sh");
     const nginxTemplate = read("scripts/online-judge.nginx.conf");
