@@ -55,6 +55,15 @@ Each item records file/line citation, original severity/confidence, reason, and 
 
 - C2-6 worker host secret rotation remains manual - Low/Medium, `.context/reviews/_aggregate.md:52`, `deploy-docker.sh:1295-1405`. Reason: routine deploys should not silently copy or rotate `JUDGE_AUTH_TOKEN` / `RUNNER_AUTH_TOKEN` across hosts without an explicit operator-approved secret-sync mode; changing secret propagation during an outage recovery risks locking out working targets. Exit criterion: add a separate worker secret sync/rotation command or deploy mode with audit logging, redacted logs, and tests.
 
+## Deferred Build/Deploy Warnings
+
+Warnings observed during the full quality-gate and deploy run are tracked here per the cycle warning policy.
+
+- BuildKit secret-in-env warning - Warning/Medium, `Dockerfile:34-36` and `Dockerfile:57`. Reason: the current Next.js build needs placeholder auth env values to satisfy build-time imports, and changing this to Docker secret mounts or build-time env isolation is broader than the worker-registration blocker. Exit criterion: refactor the build so Auth.js config does not require secret-like `ENV` instructions, or pass placeholders through a non-persisted build secret path with tests.
+- Compose `POSTGRES_PASSWORD` interpolation warning - Warning/Medium, `docker-compose.production.yml:49` and `docker-compose.production.yml:103`. Reason: production deploy uses `.env.production`, but Docker Compose still emits interpolation warnings during some helper invocations; changing env-file loading semantics during a deploy recovery risks touching database startup behavior. Exit criterion: make every compose/config helper pass the production env file before interpolation, with a regression test that no blank-password warning appears.
+- Nginx deprecated HTTP/2 listen directive warning - Warning/Low, `deploy-docker.sh:1452-1453`. Reason: nginx accepted and reloaded the config; replacing `listen ... http2` with the newer separate `http2` directive is a compatibility cleanup across target nginx versions. Exit criterion: update the generated HTTPS config and verify `nginx -t` on all three deploy targets.
+- Third-party judge image compiler/build warnings - Warning/Low to Medium, `docker/Dockerfile.judge-apl:9-20`, `docker/Dockerfile.judge-b:20-25`, `docker/Dockerfile.judge-bqn:3-9`, `docker/Dockerfile.judge-picat:8-13`, `docker/Dockerfile.judge-shakespeare:3`, `docker/Dockerfile.judge-snobol4:3-10`, `docker/Dockerfile.judge-odin:8-28`, `docker/Dockerfile.judge-squirrel:2-6`, `docker/Dockerfile.judge-hy:2`, and `docker/Dockerfile.judge-c3:13-19`. Reason: warnings originate from upstream language toolchain builds or package-manager notices on arm64; all images completed and the deploy smoke passed. Exit criterion: pin or patch upstream builds to warning-clean output where practical, and document intentionally tolerated upstream warnings per image.
+
 ## Phase B - Progress Tracking
 
 - [x] A1 worker URL repair implemented.
@@ -62,5 +71,6 @@ Each item records file/line citation, original severity/confidence, reason, and 
 - [x] A3 workspace permission fallback removed.
 - [x] A4 storage verification preserved and checked.
 - Gates: lint, lint:bash, build, db:check, test:unit, test:security, test:integration, test:component, test:harness, test:e2e, cargo fmt, cargo clippy, and cargo test all passed.
-- Commits: b972dfaa, 8542f6a6, b98f2d77, eb528822, 50e442b6, cede5097.
-- Deploy: pending.
+- Commits before this final status update: b972dfaa, 8542f6a6, b98f2d77, eb528822, 50e442b6, cede5097, 94bdb4b3.
+- Storage verification: completed before deploy/build on `algo.xylolabs.com`, `worker-0.algo.xylolabs.com`, `test.worv.ai`, `worker.test.worv.ai`, and `oj.auraedu.me`; no target was near the hard threshold and no volume pruning or user-data/database cleanup was performed.
+- Deploy: per-cycle success after one focused `algo` recovery. The exact deploy loop completed `test.worv.ai` and `oj.auraedu.me`; `algo` initially left the dedicated worker restart-looping because nginx still served an unrelated HTTP-only config on port 80. Recovery replaced the nginx site with the generated TLS config for `algo.xylolabs.com`, reloaded nginx, verified HTTPS from the app and worker hosts, restarted the worker, and confirmed `judgekit-judge-worker` reached `running/healthy`.
