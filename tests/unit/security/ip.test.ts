@@ -78,16 +78,29 @@ describe("extractClientIp", () => {
     expect(result).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
-  it("falls back to X-Real-IP when TRUSTED_PROXY_HOPS=0 and XFF is spoofed", async () => {
-    // With no trusted proxies, X-Real-IP (set by the local socket layer) is a
-    // safer signal than a client-supplied XFF chain.
+  it("does not fall back to X-Real-IP when TRUSTED_PROXY_HOPS=0 and XFF is spoofed", async () => {
+    // Once XFF is present but untrusted, do not let another request header
+    // bypass the hop-validation failure.
     const { extractClientIp } = await importIpModule("0");
 
     expect(
       extractClientIp(
         createHeaders({ "x-forwarded-for": "1.2.3.4", "x-real-ip": "198.51.100.20" })
       )
-    ).toBe("198.51.100.20");
+    ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
+  });
+
+  it("does not fall back to X-Real-IP when XFF has fewer hops than configured", async () => {
+    const { extractClientIp } = await importIpModule("3");
+
+    expect(
+      extractClientIp(
+        createHeaders({
+          "x-forwarded-for": "198.51.100.8, 203.0.113.10",
+          "x-real-ip": "198.51.100.20",
+        })
+      )
+    ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
   it("unwraps an IPv4-mapped IPv6 client hop to its dotted IPv4 (dual-stack proxy)", async () => {

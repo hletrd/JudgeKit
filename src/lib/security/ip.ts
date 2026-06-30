@@ -93,7 +93,9 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     // entry is client-controlled, so we must not trust any of them. Without
     // this guard, `parts.length >= 0 + 1` is true for any XFF and
     // `clientIndex = parts.length - 1` selects the last (spoofable) entry.
-    // Skip the XFF path entirely and fall through to the socket/X-Real-IP.
+    // Because X-Real-IP is also header-provided in this abstraction, a present
+    // but untrusted XFF chain must return unknown rather than falling through
+    // to another spoofable header.
     if (trustedHops > 0 && parts.length >= trustedHops + 1) {
       const clientIndex = parts.length - (trustedHops + 1);
       const candidate = parts[clientIndex];
@@ -110,9 +112,9 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
     }
   }
 
-  // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation)
+  // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation).
   const realIp = headers.get("x-real-ip")?.trim();
-  if (realIp && isValidIp(realIp)) {
+  if (!forwardedFor && realIp && isValidIp(realIp)) {
     return unwrapMappedIpv4(realIp) ?? realIp;
   }
 
