@@ -635,7 +635,59 @@ export async function executeCompilerRun(
     };
   }
 
-  // Try Rust runner first
+  // Validate Docker image before either the Rust runner path or local fallback.
+  if (!isAllowedJudgeDockerImage(options.language.dockerImage)) {
+    return {
+      stdout: "",
+      stderr: "Invalid Docker image reference",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: null,
+    };
+  }
+
+  // Validate source code size before delegating to the Rust runner.
+  if (Buffer.byteLength(options.sourceCode, "utf8") > MAX_SOURCE_CODE_BYTES) {
+    return {
+      stdout: "",
+      stderr: "Source code exceeds maximum size limit (64KB)",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: null,
+    };
+  }
+
+  // Validate shell commands before either execution path. The Rust runner has
+  // its own validator, but doing this here keeps the API contract identical
+  // between runner and local fallback modes.
+  if (options.language.compileCommand && !validateShellCommandStrict(options.language.compileCommand)) {
+    return {
+      stdout: "",
+      stderr: "Invalid compile command",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: null,
+    };
+  }
+  if (!validateShellCommandStrict(options.language.runCommand)) {
+    return {
+      stdout: "",
+      stderr: "Invalid run command",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: null,
+    };
+  }
+
+  // Try Rust runner first after request validation.
   const rustResult = await tryRustRunner(options);
   if (rustResult !== null) return rustResult;
   if (COMPILER_RUNNER_CONFIG_ERROR && !SHOULD_ALLOW_LOCAL_FALLBACK) {
@@ -664,56 +716,6 @@ export async function executeCompilerRun(
   const settings = getConfiguredSettings();
   const rawTimeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
   const timeLimitMs = Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0 ? rawTimeLimitMs : 5000;
-
-  // Validate Docker image
-  if (!isAllowedJudgeDockerImage(options.language.dockerImage)) {
-    return {
-      stdout: "",
-      stderr: "Invalid Docker image reference",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
-  }
-
-  // Validate source code size
-  if (Buffer.byteLength(options.sourceCode, "utf8") > MAX_SOURCE_CODE_BYTES) {
-    return {
-      stdout: "",
-      stderr: "Source code exceeds maximum size limit (64KB)",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
-  }
-
-  // Validate shell commands (basic sanity check)
-  if (options.language.compileCommand && !validateShellCommandStrict(options.language.compileCommand)) {
-    return {
-      stdout: "",
-      stderr: "Invalid compile command",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
-  }
-  if (!validateShellCommandStrict(options.language.runCommand)) {
-    return {
-      stdout: "",
-      stderr: "Invalid run command",
-      exitCode: null,
-      executionTimeMs: 0,
-      timedOut: false,
-      oomKilled: false,
-      compileOutput: null,
-    };
-  }
 
   // Create temp workspace. Compiler containers now run as uid/gid 65534 for
   // defense-in-depth, so the workspace must remain writable/traversable by that

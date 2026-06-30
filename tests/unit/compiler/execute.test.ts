@@ -108,6 +108,29 @@ describe("executeCompilerRun", () => {
     });
   });
 
+  it("rejects invalid shell commands before delegating to the Rust runner", async () => {
+    process.env.COMPILER_RUNNER_URL = "http://judge-worker:3001";
+    process.env.RUNNER_AUTH_TOKEN = "y".repeat(32);
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { executeCompilerRun } = await import("@/lib/compiler/execute");
+
+    await expect(
+      executeCompilerRun({
+        ...VALID_OPTIONS,
+        language: {
+          ...VALID_OPTIONS.language,
+          runCommand: "python3 /workspace/solution.py || echo hi",
+        },
+      })
+    ).resolves.toMatchObject({
+      stderr: "Invalid run command",
+      exitCode: null,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("rejects positional parameter expansion ($0-$9) in local fallback commands", async () => {
     const { executeCompilerRun } = await import("@/lib/compiler/execute");
 
