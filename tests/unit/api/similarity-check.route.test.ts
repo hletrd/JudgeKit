@@ -1,9 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
 
-const { getContestAssignmentMock, runAndStoreSimilarityCheckMock, mockUser } = vi.hoisted(() => ({
+const {
+  getContestAssignmentMock,
+  runAndStoreSimilarityCheckMock,
+  canManageContestMock,
+  resolveCapabilitiesMock,
+  isGroupTAMock,
+  getAssignedTeachingGroupIdsMock,
+  mockUser,
+} = vi.hoisted(() => ({
   getContestAssignmentMock: vi.fn(),
   runAndStoreSimilarityCheckMock: vi.fn(),
+  canManageContestMock: vi.fn(() => true),
+  resolveCapabilitiesMock: vi.fn(),
+  isGroupTAMock: vi.fn(),
+  getAssignedTeachingGroupIdsMock: vi.fn(),
   mockUser: {
     id: "admin-1",
     role: "admin",
@@ -41,7 +53,16 @@ vi.mock("@/lib/api/responses", () => ({
 
 vi.mock("@/lib/assignments/contests", () => ({
   getContestAssignment: getContestAssignmentMock,
-  canManageContest: vi.fn(() => true),
+  canManageContest: canManageContestMock,
+}));
+
+vi.mock("@/lib/assignments/management", () => ({
+  getAssignedTeachingGroupIds: getAssignedTeachingGroupIdsMock,
+  isGroupTA: isGroupTAMock,
+}));
+
+vi.mock("@/lib/capabilities/cache", () => ({
+  resolveCapabilities: resolveCapabilitiesMock,
 }));
 
 vi.mock("@/lib/assignments/code-similarity", () => ({
@@ -68,8 +89,13 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
     getContestAssignmentMock.mockResolvedValue({
       id: "assignment-1",
       examMode: "scheduled",
+      groupId: "group-1",
       instructorId: "admin-1",
     });
+    canManageContestMock.mockResolvedValue(true);
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+    isGroupTAMock.mockResolvedValue(false);
+    getAssignedTeachingGroupIdsMock.mockResolvedValue([]);
     dbWhereMock.mockResolvedValue([]);
     dbFromMock.mockReturnValue({ where: dbWhereMock });
     dbSelectMock.mockReturnValue({ from: dbFromMock });
@@ -140,4 +166,28 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
       reason: "timeout",
     });
   }, 35000);
+
+  it("allows assigned assistants with anti_cheat.run_similarity to run the scan", async () => {
+    canManageContestMock.mockResolvedValue(false);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["anti_cheat.run_similarity"]));
+    getAssignedTeachingGroupIdsMock.mockResolvedValue(["group-1"]);
+    runAndStoreSimilarityCheckMock.mockResolvedValue({
+      status: "completed",
+      reason: null,
+      flaggedPairs: 0,
+      submissionCount: 2,
+      maxSupportedSubmissions: 500,
+      pairs: [],
+    });
+
+    const { POST } = await import("@/app/api/v1/contests/[assignmentId]/similarity-check/route");
+    const req = new NextRequest("http://localhost:3000/api/v1/contests/assignment-1/similarity-check", {
+      method: "POST",
+      headers: { "X-Requested-With": "XMLHttpRequest" },
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never);
+    expect(res.status).toBe(200);
+    expect(runAndStoreSimilarityCheckMock).toHaveBeenCalledWith("assignment-1", undefined, expect.any(AbortSignal));
+  });
 });

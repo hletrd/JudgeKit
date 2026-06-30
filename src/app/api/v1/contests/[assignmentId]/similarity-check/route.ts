@@ -6,6 +6,22 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { runAndStoreSimilarityCheck } from "@/lib/assignments/code-similarity";
 import { getContestAssignment, canManageContest } from "@/lib/assignments/contests";
+import { getAssignedTeachingGroupIds, isGroupTA } from "@/lib/assignments/management";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
+
+async function canRunSimilarityCheck(
+  user: { id: string; role: string },
+  assignment: { groupId: string; instructorId: string | null },
+) {
+  if (await canManageContest(user, assignment)) return true;
+
+  const caps = await resolveCapabilities(user.role);
+  if (!caps.has("anti_cheat.run_similarity")) return false;
+  if (await isGroupTA(assignment.groupId, user.id)) return true;
+
+  const assignedGroupIds = await getAssignedTeachingGroupIds(user.id);
+  return assignedGroupIds.includes(assignment.groupId);
+}
 
 export const POST = createApiHandler({
   rateLimit: "similarity-check",
@@ -18,7 +34,7 @@ export const POST = createApiHandler({
       return apiError("notFound", 404);
     }
 
-    const canManage = await canManageContest(user, assignment);
+    const canManage = await canRunSimilarityCheck(user, assignment);
 
     if (!canManage) {
       return apiError("forbidden", 403);
