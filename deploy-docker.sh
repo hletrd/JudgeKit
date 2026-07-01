@@ -621,7 +621,7 @@ detect_nginx_http2_mode() {
     local nginx_version_line
     nginx_version_line="$(remote "nginx -v 2>&1" | head -n1 || true)"
     local nginx_version
-    nginx_version="$(printf '%s\n' "$nginx_version_line" | sed -n 's/^nginx\/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+    nginx_version="$(printf '%s\n' "$nginx_version_line" | sed -n 's/.*nginx\/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
 
     if [[ -z "$nginx_version" ]]; then
         warn "Could not detect remote nginx version; falling back to legacy listen ... http2 syntax"

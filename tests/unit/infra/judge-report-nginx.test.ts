@@ -70,6 +70,30 @@ describe("judge report nginx body-size guardrails", () => {
     expect(supportsHttp2On("2.0.0"), "2.0.0 should support http2 on;").toBe(true);
   });
 
+  it("parses real nginx -v output formats", () => {
+    const deployDocker = read("deploy-docker.sh");
+    expect(deployDocker).toContain(
+      "sed -n 's/.*nginx\\/\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p'"
+    );
+
+    function parseNginxVersion(line: string): string {
+      return execFileSync("bash", [
+        "-c",
+        `line=$1; printf '%s\\n' "$line" | sed -n 's/.*nginx\\/\\([0-9][0-9]*\\.[0-9][0-9]*\\.[0-9][0-9]*\\).*/\\1/p'`,
+        "bash",
+        line,
+      ])
+        .toString()
+        .trim();
+    }
+
+    expect(parseNginxVersion("nginx version: nginx/1.24.0 (Ubuntu)")).toBe("1.24.0");
+    expect(parseNginxVersion("nginx/1.25.1")).toBe("1.25.1");
+    expect(parseNginxVersion("nginx version: nginx/1.26.0-2ubuntu7.13")).toBe("1.26.0");
+    expect(parseNginxVersion("nginx version: nginx/2.0.0 (foo)")).toBe("2.0.0");
+    expect(parseNginxVersion("not nginx output")).toBe("");
+  });
+
   it("keeps a larger body limit only on the final judge result report endpoint", () => {
     const deployDocker = read("deploy-docker.sh");
     const nginxTemplate = read("scripts/online-judge.nginx.conf");
