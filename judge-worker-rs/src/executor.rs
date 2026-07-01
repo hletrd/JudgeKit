@@ -141,14 +141,17 @@ struct VerdictInputs {
 /// misclassified as TLE due to container startup overhead.
 fn classify_test_case_verdict(inputs: VerdictInputs) -> Verdict {
     let exceeded_problem_limit = inputs.duration_ms > inputs.effective_time_limit_ms;
-    if inputs.timed_out && exceeded_problem_limit {
+    // OOM takes precedence over time-limit classification: a container that the
+    // kernel OOM-killer terminated must not be reported as `TimeLimit` even if
+    // its measured duration crossed the problem limit.
+    if inputs.oom_killed || inputs.exit_code == Some(137) {
+        Verdict::MemoryLimit
+    } else if inputs.timed_out && exceeded_problem_limit {
         Verdict::TimeLimit
     } else if inputs.timed_out {
         Verdict::RuntimeError
     } else if exceeded_problem_limit {
         Verdict::TimeLimit
-    } else if inputs.oom_killed || inputs.exit_code == Some(137) {
-        Verdict::MemoryLimit
     } else if inputs.output_limit_exceeded {
         Verdict::OutputLimitExceeded
     } else if inputs.exit_code.unwrap_or(1) != 0 {
@@ -771,6 +774,17 @@ mod tests {
         inputs.oom_killed = true;
         inputs.exit_code = None;
         assert_eq!(classify_test_case_verdict(inputs), Verdict::MemoryLimit);
+    }
+
+    #[test]
+    fn oom_killed_takes_precedence_over_time_limit() {
+        let mut inputs = base_inputs();
+        inputs.oom_killed = true;
+        inputs.duration_ms = 1_500;
+        inputs.effective_time_limit_ms = 1_000;
+        let verdict = classify_test_case_verdict(inputs);
+        assert_ne!(verdict, Verdict::TimeLimit);
+        assert_eq!(verdict, Verdict::MemoryLimit);
     }
 
     #[test]
