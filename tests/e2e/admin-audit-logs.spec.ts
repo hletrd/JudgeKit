@@ -79,7 +79,21 @@ test("admin audit logs render server-action and route mutation events", async ({
 
       await expect(page).toHaveURL(/\/groups\//);
       await expect(page.getByRole("heading", { name: groupName })).toBeVisible();
-      createdGroupId = page.url().split("/").pop() ?? null;
+      const groupId = page.url().split("/").pop();
+      if (!groupId) {
+        throw new Error("Expected created group id to be captured for audit-log verification");
+      }
+      createdGroupId = groupId;
+
+      await expect.poll(async () => {
+        const event = await db.query.auditEvents.findFirst({
+          where: and(
+            eq(auditEvents.action, "group.created"),
+            eq(auditEvents.resourceId, groupId),
+          ),
+        });
+        return Boolean(event);
+      }).toBe(true);
     });
 
     await test.step("record profile and password audit events", async () => {
