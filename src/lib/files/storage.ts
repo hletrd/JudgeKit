@@ -26,7 +26,7 @@ export function resolveStoredPath(storedName: string): string {
 
 export async function writeUploadedFile(storedName: string, data: Buffer): Promise<void> {
   await ensureUploadsDir();
-  await writeFile(resolveStoredPath(storedName), data, { mode: 0o644 });
+  await writeFile(resolveStoredPath(storedName), data, { mode: 0o600 });
 }
 
 export async function deleteUploadedFile(storedName: string): Promise<void> {
