@@ -92,6 +92,14 @@ if [ -n "$AGE_RECIPIENT" ] && command -v age >/dev/null 2>&1; then
     age -r "$AGE_RECIPIENT" -o "${BACKUP_PATH}.age" "$BACKUP_PATH"
     rm -f "$BACKUP_PATH"
     echo "Encrypted backup: ${BACKUP_PATH}.age"
+    BACKUP_PATH="${BACKUP_PATH}.age"
+fi
+
+# Optional off-host sync (3-2-1 rule)
+BACKUP_REMOTE="${BACKUP_REMOTE:-}"
+if [ -n "$BACKUP_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
+    rclone copy "$BACKUP_PATH" "${BACKUP_REMOTE}/$(hostname)/"
+    echo "Synced backup to remote: ${BACKUP_REMOTE}/$(hostname)/"
 fi
 
 # Retention policy: remove backups older than 30 days

@@ -12,6 +12,8 @@ describe("runtime-truth implementation guards", () => {
     const monitorScript = read("scripts/monitor-health.sh");
 
     expect(backupScript).toContain('DB_DIALECT="${DB_DIALECT:-postgresql}"');
+    expect(backupScript).toContain("BACKUP_REMOTE");
+    expect(backupScript).toContain("rclone copy");
     expect(monitorScript).toContain('DB_DIALECT="${DB_DIALECT:-postgresql}"');
     expect(monitorScript).toContain("judge_workers");
     expect(monitorScript).toContain("submissions WHERE status IN ('pending', 'queued', 'judging')");
