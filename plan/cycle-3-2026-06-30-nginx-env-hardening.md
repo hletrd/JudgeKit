@@ -157,6 +157,12 @@ Deferred items below are non-security/non-correctness product, performance, acce
 - [x] A9 TA/instructor capability claims validated (similarity-check aligned; announcements/clarifications/exam-extension remain instructor/co-instructor gated by design).
 - [x] A10 storage/no-volume-prune contract verified before deploy.
 - [x] A11 CI E2E SQLite reset step removed.
-- Gates: [x] lint, lint:bash, tsc, test:unit, cargo test, db:check passed; build/e2e/deploy pending.
-- Commits: [x] existing cycle-3 commits `429f27af`, `b2edee07`, `20c9e3c4`; [ ] new commits pending build/e2e result.
+- Gates: [x] lint, lint:bash, tsc, test:unit, cargo test, db:check passed; [x] build passed after host load dropped and `.next` was cleared; [x] e2e passed (332 passed, 136 skipped); [ ] deploy pending.
+- Commits: [x] existing cycle-3 commits `429f27af`, `b2edee07`, `20c9e3c4`, `00ac107c`, `de694d45`, `f1dcefd8`, `10fd3420`, `323a231b`; [ ] gate-status commit pending.
 - Deploy: [ ] pending.
+
+### Build/e2e retry note
+The first `npm run test:e2e` invocation failed because the Playwright webServer tried to build the app from scratch and exceeded the 600 s timeout. Since the gates already require `npm run build`, the fix is to run a clean production build first (`.next` removed to avoid lock corruption), then rerun `npm run test:e2e` so the webServer reuses the standalone output.
+
+### Build recovery note (2026-07-01)
+The initial retried build after clearing `.next` hung for hours under heavy host load (runaway `xylolabs-api` esbuild, `spotlightknowledged` indexing, Virtualization.framework VM, Docker Desktop, multiple long-running agents). After those cleared, a fresh build completed successfully: compiled in 47s, TypeScript in 14.6s, static pages generated in 250ms, and build traces collected. One intermediate attempt failed with `EIO: i/o error, write` after ~2 hours; this was transient and the subsequent retry succeeded.
