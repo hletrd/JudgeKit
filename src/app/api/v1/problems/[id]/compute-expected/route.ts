@@ -163,9 +163,9 @@ export const POST = createApiHandler({
           results.push({
             testCaseIndex: index,
             input: testCase.input ?? "",
-            expectedOutput: run.stdout,
+            expectedOutput: "",
             ok: false,
-            error: run.stderr || `exitCode ${run.exitCode ?? "null"}`,
+            error: run.stderr || run.stdout || `exitCode ${run.exitCode ?? "null"}`,
           });
           continue;
         }

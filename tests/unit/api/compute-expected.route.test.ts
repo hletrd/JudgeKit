@@ -185,6 +185,7 @@ describe("POST /api/v1/problems/[id]/compute-expected", () => {
     const body = await res.json();
     expect(body.data.results[0].ok).toBe(true);
     expect(body.data.results[1].ok).toBe(false);
+    expect(body.data.results[1].expectedOutput).toBe("");
     expect(body.data.results[1].error).toBeTruthy();
   });
 
