@@ -1,1450 +1,1613 @@
-# Cycle 1 Multi-Agent Review Aggregate
-
-**Date:** 2026-06-30
-
-## Agent Participation
-
-- **admin-reviewer**: 30 findings
-- **applicant-reviewer**: 31 findings
-- **architect**: 13 findings
-- **assistant-reviewer**: 23 findings
-- **code-reviewer**: 2 findings
-- **debugger**: 3 findings
-- **designer**: 19 findings
-- **document-specialist**: 10 findings
-- **instructor-reviewer**: 35 findings
-- **perf-reviewer**: 16 findings
-- **qa-tester**: 16 findings
-- **security-analyzer**: 7 findings
-- **security-reviewer**: 10 findings
-- **student-reviewer**: 8 findings
-- **test-engineer**: 16 findings
-- **tracer**: 13 findings
-- **verifier**: 2 findings
-
-## Summary
-
-This aggregate merges 252 unique findings from 17 reviewers. Critical and High issues concentrate on deployment safety (nginx/env-profile/migration fragility), judge/auth trust boundaries (open IP allowlist, AUTH_TRUST_HOST, command validation), and instructor/TA workflow gaps (announcements, similarity, extensions, exports). Medium and Low items are dominated by test coverage holes, documentation drift, performance hotspots, accessibility polish, and administrative operability gaps. No confirmed remotely exploitable RCE or auth bypass was reported, but several configuration defaults and latent race conditions require manual validation before the next production deploy.
-
-## Cross-Agent Themes
-
-- **nginx HTTP/2 & static-site hardening** — flagged by: code-reviewer, security-reviewer, tracer, verifier
-- **deploy env-profile permissions / `.env.deploy*` hardening** — flagged by: admin-reviewer, code-reviewer, tracer
-- **deploy migration / schema repair fragility** — flagged by: admin-reviewer, architect, tracer
-- **judge IP allowlist & worker trust boundary** — flagged by: security-analyzer, security-reviewer
-- **shell-command validation / Rust runner safety** — flagged by: security-analyzer, security-reviewer
-- **AUTH_TRUST_HOST / auth URL trust** — flagged by: security-reviewer
-- **contest join auth & access-code brute-force** — flagged by: instructor-reviewer, security-reviewer
-- **similarity-check guards / anti-cheat** — flagged by: assistant-reviewer, instructor-reviewer, security-analyzer
-- **TA/instructor role capability matrix** — flagged by: assistant-reviewer, document-specialist, instructor-reviewer
-- **process-local caches / settings staleness** — flagged by: architect, perf-reviewer, tracer
-- **SSE / realtime locking & polling** — flagged by: perf-reviewer, tracer
-- **leaderboard / homepage performance** — flagged by: perf-reviewer, tracer
-- **test quality & coverage gaps** — flagged by: qa-tester, test-engineer
-- **E2E fixture cleanup & flaky tests** — flagged by: qa-tester
-- **accessibility / UI affordances** — flagged by: designer, student-reviewer
-- **language/docs source-of-truth drift** — flagged by: document-specialist, instructor-reviewer
-- **admin restore/import info disclosure** — flagged by: admin-reviewer, security-reviewer
-- **Docker compose network segmentation / sandbox hardening** — flagged by: security-analyzer, security-reviewer
-- **recruiting / applicant experience** — flagged by: applicant-reviewer, student-reviewer
-
-## Findings
-
-### CRITICAL: All critical alerts dead-end in systemd journal — no human notification path.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `scripts/monitor-health.sh:16`, `scripts/notify-failure@.service:6-8`
-- **Details:** `scripts/monitor-health.sh:16`: ```bash log() {   echo "..." | systemd-cat -t judgekit-monitor -p "$3" } ``` CRITICAL and WARNING events go here and only here. `scripts/notify-failure@.service:6-8`: ``` ExecStart=/bin/sh -c 'echo "Service %i failed …" | systemd-cat -t service-failure -p crit'
-
-### CRITICAL: Bulk rejudge leaks `activeTasks` permanently for in-flight workers
-
-- **Flagged by:** tracer
-- **Location(s):** `src/app/api/v1/admin/submissions/rejudge/route.ts:53-66`
-- **Details:** **Severity: CRITICAL** **Confidence: HIGH**  **Location:** `src/app/api/v1/admin/submissions/rejudge/route.ts:53-66`  **Causal chain:**  1. Worker W claims submission S → `judgeWorkers.activeTasks` incremented atomically in claim CTE. 2. Admin fires bulk rejudge containing S while S has status `judging`. 3. Bulk rejudge transaction (line 53-66) sets `judgeWorkerId: null, judgeClaimToken: null` and resets status to `pending` — but **never decrements `activeTasks` on worker W**. 4. Worker W's s...
-
-### CRITICAL: Inline SQL patches bypass both schema and migration journal
-
-- **Flagged by:** architect
-- **Location(s):** `deploy-docker.sh:1261-1262`, `src/lib/db/migrate.ts:1-7`, `scripts/check-migration-drift.sh:1-28`
-- **Details:** **File:** `deploy-docker.sh:1261-1262`   **Also:** `src/lib/db/migrate.ts:1-7`, `scripts/check-migration-drift.sh:1-28`  **Observation:**   The deploy script applies two schema mutations via raw `psql` after `drizzle-kit push` completes:  ```bash ALTER TABLE problems ADD COLUMN IF NOT EXISTS default_language text; ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS default_language text; ```  These columns exist in `src/lib/db/schema.pg.ts` (as `defaultLanguage`) and are therefore handled by...
-
-### CRITICAL: No off-host backup — 3-2-1 rule violated.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `deploy-docker.sh:1013-1020`
-- **Details:** `scripts/backup-db.sh` and `deploy-docker.sh:1013-1020` both write backups to `~/backups/` on the same host. A disk failure, host loss, or accidental `rm -rf ~/backups` destroys the database and every backup simultaneously. There is no rclone/S3/NAS copy anywhere in the backup path. - Fix: add at the end of `backup-db.sh`:   ```bash   if command -v rclone >/dev/null 2>&1 && [[ -n "${BACKUP_REMOTE:-}" ]]; then     rclone copy "$BACKUP_PATH" "${BACKUP_REMOTE}/$(hostname)/"   fi   ```   Document...
-
-### CRITICAL: Smoke profile omits all critical submission, judging, and creation flows
-
-- **Flagged by:** qa-tester
-- **Location(s):** `playwright.config.ts:26–47`
-- **Details:** **Severity:** High | **Confidence:** CONFIRMED  **File:** `playwright.config.ts:26–47` (`remoteSafeSpecsWithAuth` array)   **Failure scenario:** A deploy to `algo.xylolabs.com` triggers the smoke profile. The smoke suite runs only 12 specs covering locale, auth, public pages, health, rankings, and admin workers/languages. The following critical flows are NOT included in the smoke: - Problem creation and editing (`problem-management.spec.ts`) - Student submission and judge verdict (`student-su...
-
-### CRITICAL: `sandbox-gate.ts`: Critical security gate has zero unit tests
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/sandbox-gate.ts:37-84`, `src/app/api/v1/compiler/run/route.ts:77`, `src/app/api/v1/playground/run/route.ts:54`, `sandbox-gate.ts:17-21`, `sandbox-gate.ts:44-49`
-- **Details:** **File:** `src/lib/security/sandbox-gate.ts:37-84` **Confidence:** CONFIRMED  `gateSandboxEndpoint()` is the sole gate protecting Docker-spawning endpoints (compiler run at `src/app/api/v1/compiler/run/route.ts:77` and playground run at `src/app/api/v1/playground/run/route.ts:54`). It enforces email verification and per-user daily quota. Every test that exercises those routes mocks it away entirely:  ```typescript // tests/unit/api/playground-run.route.test.ts vi.mock("@/lib/security/sandbox-...
-
-### HIGH: Additive schema repairs in `deploy-docker.sh` bypass Drizzle schema tracking
-
-- **Flagged by:** tracer
-- **Location(s):** `deploy-docker.sh:1251-1263`
-- **Details:** **Severity: HIGH** **Confidence: HIGH**  **Location:** `deploy-docker.sh:1251-1263` (additive repair block)  **Causal chain:**  1. Deploy script applies DDL directly via `psql` (e.g., `ALTER TABLE … ADD COLUMN IF NOT EXISTS default_language …`) before `drizzle-kit push`. 2. `drizzle-kit push` computes a diff between `schema.pg.ts` and the live DB schema. 3. Because the `psql` repair already added the column, `drizzle-kit push` sees no diff for that column and produces no migration statement f...
-
-### HIGH: Announcements are contest-only. `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16`: `canAccessContestAnnouncements` returns `hasAccess: false` when `assignment.examMode === "none"`. A regular timed homework assignment has zero announcement infrastructure. If I discover a typo in a test case or a clarification question during a live homework period, I cannot broadcast a correction in-system.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16–32`
-- **Details:** - **File:** `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16–32` - **Failure scenario:** I realize problem 2 has an ambiguous constraint 45 minutes into a 3-hour homework window. I have no in-platform way to notify students. Some students notice the Slack update; others miss it and solve the wrong version. - **Suggested fix:** Remove the `examMode === "none"` guard from the announcements API. Group-member enrollment check is sufficient — announcements should be available for ...
-
-### HIGH: Anti-cheat privacy notice dialog appears after the timer starts.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `src/components/exam/anti-cheat-monitor.tsx:42-48`, `src/components/exam/anti-cheat-monitor.tsx:373-412`
-- **Details:** 1. I click "Start Assessment" → `signIn("credentials", {recruitToken})` → redirects to `/contests/${assignmentId}`. 2. Exam page mounts, timer is live, `personalDeadline` clock is ticking. 3. `AntiCheatMonitor` initializes: `showPrivacyNotice = sessionStorage.getItem(...) !== "accepted"` → true on first visit. 4. A blocking modal appears: "Tab-switch events, copy/paste actions, IP-address changes, and periodic code snapshots" (lines 386-392). 5. I lose 20-60 seconds reading and processing thi...
-
-### HIGH: Browser crash or accidental close loses in-progress code.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** *Concrete failure:* Candidate is 45 minutes into a hard problem, their laptop battery dies. They restart and return to the contest page. The editor is blank. Their last snapshot may be from 2 minutes before the crash. Candidate cannot recover mental state quickly under time pressure.   *Fix:* Persist editor draft to `localStorage[assignmentId:problemId:draft]` on every keystroke (debounced). Restore on mount. Show "Draft restored" toast.
-
-### HIGH: CSV export lacks per-problem breakdown. `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61`:
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61–76`
-- **Details:** ```ts const header = ["Student Name", "Username", "Class", "Status", "Score", "Submitted At"] ``` The export contains only the total score. There are no per-problem columns, no override indicator, no adjusted-vs-raw late-penalty split. My university LMS (Canvas) expects one column per scored item for item analysis and grade passback. I must manually re-enter per-problem scores for 120 students. - **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61–76` - **Failu...
-
-### HIGH: Container logs unbounded — disk fill confirmed risk.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `docker-compose.production.yml`: no `logging:` section on any service (grep confirms zero occurrences of `logging:`, `max-size`, `max-file`). All services use docker's default json-file driver with unlimited accumulation. Services with `RUST_LOG: info` (`:165`, `:183`) plus verbose Next.js output accumulate without bound. algo was at 67% disk as of 5/21. - Fix: add to every service in `docker-compose.production.yml`:   ```yaml   logging:     driver: json-file     options:       max-size: "50m...
-
-### HIGH: Deadline display timezone mismatch risk. `formatDateTimeInput` in `assignment-form-dialog.tsx:73–82` converts stored UTC timestamps to the browser's local timezone offset (`date.getTimezoneOffset()`). The system displays deadlines to students in the server's system timezone (read from `getResolvedSystemTimeZone()`). An instructor working from a different timezone than the server will see a different local time in the form than what students see on the deadline.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:73–82`
-- **Details:** - **File:** `src/app/(public)/groups/[id]/assignment-form-dialog.tsx:73–82` - **Failure scenario:** Instructor is in GMT+9 (Korea), server timezone is UTC. Instructor sets "deadline 11:59 PM" — the form shows and stores 23:59 KST = 14:59 UTC. Students see "deadline 14:59 UTC" (2:59 PM), not 11:59 PM. Late submissions in the evening are judged as on-time from the student's perspective but the instructor considers them late. - **Suggested fix:** Display the system timezone next to each datetime...
-
-### HIGH: E2E `contest-participant-audit.spec.ts`: All assertion paths use `test.skip(true, ...)` — permanently dead
-
-- **Flagged by:** test-engineer
-- **Location(s):** `tests/e2e/contest-participant-audit.spec.ts:52,65,79,111,123,136,177,190,203`, `contest-full-lifecycle.spec.ts:65+`
-- **Details:** **File:** `tests/e2e/contest-participant-audit.spec.ts:52,65,79,111,123,136,177,190,203` **Confidence:** CONFIRMED  Every assertion branch in this spec ends in `test.skip(true, "...")`. These are unconditional — `test.skip(true)` always skips regardless of what precedes it:  ```typescript if (!isVisible) {   test.skip(true, "No contests available to test");   return; } ```  After `test.skip(true)` the test body is abandoned. The spec emits 0 failures but exercises 0 assertions about participa...
-
-### HIGH: HIGH | OOM-killed container misclassified as `TimeLimit` when `duration_ms > time_limit`
-
-- **Flagged by:** debugger
-- **Location(s):** `judge-worker-rs/src/executor.rs:142–155`
-- **Details:** **File:** `judge-worker-rs/src/executor.rs:142–155`  **Root cause:** `classify_test_case_verdict` evaluates `exceeded_problem_limit` **before** `oom_killed`. The `exceeded_problem_limit` branch (line 148) fires when `duration_ms > effective_time_limit_ms`, regardless of whether the kill was caused by OOM.  ```rust fn classify_test_case_verdict(inputs: VerdictInputs) -> Verdict {     let exceeded_problem_limit = inputs.duration_ms > inputs.effective_time_limit_ms;     if inputs.timed_out && ex...
-
-### HIGH: Hamburger toggle 32px — fails WCAG 2.5.5 minimum touch target
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/layout/public-header.tsx:259`
-- **Details:** **File:** `src/components/layout/public-header.tsx:259` **Failure scenario:** On a mobile device a user taps the hamburger to open navigation. The button is `size-8` = 32×32px, below the WCAG 2.5.5 / iOS HIG / Material 44×44px minimum. The ThemeToggle and LocaleSwitcher siblings both correctly use `size-11` on mobile — making this inconsistency visible side-by-side. ```tsx // Current — FAILS (32px) className="inline-flex size-8 items-center justify-center rounded-md …" ``` **Fix:** ```tsx cla...
-
-### HIGH: Leaderboard staleness check uses `Date.now()` but cache-write timestamps use `getDbNowMs()` — clock skew causes permanent stale loop
-
-- **Flagged by:** tracer
-- **Location(s):** `src/lib/assignments/contest-scoring.ts:139-189`
-- **Details:** **Severity: HIGH** **Confidence: HIGH**  **Location:** `src/lib/assignments/contest-scoring.ts:139-189`  **Causal chain:**  1. Cache entry is written at line 189: `createdAt: await getDbNowMs()` — this is the **DB server clock**. 2. Staleness check at line 145: `const nowMs = Date.now()` — this is the **app server clock**. 3. The difference `age = nowMs - entry.createdAt` is the difference between two clocks on two machines. 4. If the DB clock leads the app server clock by `D` milliseconds:  ...
-
-### HIGH: Monitoring starts during privacy notice (gap in heartbeat).
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `anti-cheat-monitor.tsx:237-239`, `anti-cheat-monitor.tsx:244-246`
-- **Details:** *Files:* `anti-cheat-monitor.tsx:237-239`, `anti-cheat-monitor.tsx:244-246`   *Concrete failure:* Candidate reads privacy notice carefully (60 s), accepts, begins coding. Recruiter anti-cheat timeline shows 60 s absence at exam start. "Candidate appeared to be on another device at the start." Platform fault, not candidate fault.   *Fix:* Either log a synthetic `heartbeat` on privacy notice acceptance, or move consent pre-start so monitors start immediately.
-
-### HIGH: No "test your editor" before start.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** *Concrete failure scenario:* Candidate's corporate proxy blocks CDN for Monaco editor assets. Editor shows blank area. Candidate loses 5-10 minutes troubleshooting. Timer doesn't pause.
-
-### HIGH: No TA workload metrics anywhere.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - No surface shows: submissions in my groups awaiting first comment, comments I've posted this week, median time-to-first-comment, students per TA split. - Admin metrics (`src/lib/ops/admin-metrics.ts`) expose queue depth to admins only. - Scenario: Instructor asks in the TA meeting "what's your grading load this week?" No answer available from the platform. - Fix: Add `/api/v1/ta/workload` endpoint: count of submissions in assigned groups with zero comments, count of comments posted by the c...
-
-### HIGH: No automated restore drill.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `verify-db-backup.sh:13-27`, `postgres:18-alpine`
-- **Details:** `verify-db-backup.sh:13-27`: the default path (no `RESTORE_DATABASE_URL`) checks gzip validity and counts 100 lines — it does NOT call `pg_restore`. A custom-format pg_dump with a corrupted TOC passes the gzip check. No scheduled restore drill exists. The first live restore attempt may be during an actual disaster. - Fix: monthly systemd timer (`scripts/online-judge-backup-drill.timer`) firing on the 1st at   03:30. Script: spin up `postgres:18-alpine` container; `pg_restore` into it; `SELECT...
-
-### HIGH: No boilerplate/template exclusion. If I distribute starter code to 120 students (a common practice for scaffolded assignments), the similarity detector flags all pairs that kept the boilerplate. With n-gram size 3 and threshold 0.85, a 100-line scaffold shared by 120 students produces up to 7 140 flagged pairs, drowning out genuine cheating signals.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/lib/assignments/code-similarity.ts:259–309`
-- **Details:** - **File:** `src/lib/assignments/code-similarity.ts:259–309` (no exclusion mechanism) - **Failure scenario:** I give students a linked-list skeleton for a DS assignment. Similarity check returns every student pair as >0.9 similar. I spend 4 hours triaging false positives before finding the 3 actual cheating pairs. - **Suggested fix:** Allow the instructor to upload "boilerplate" source that is subtracted from the n-gram sets before comparison; expose a textarea or file upload in the similarit...
-
-### HIGH: No contest-mode preflight checklist or script.
-
-- **Flagged by:** admin-reviewer
-- **Details:** Before an exam or contest, there is no operator-executable preflight. Operators make manual judgement calls with no structured verification. The 5/21 review proposed `scripts/contest-preflight.sh`; it does not exist. - Fix: `scripts/contest-preflight.sh` (exits 0 = all clear, non-zero = blocked):   - `SELECT count(*) FROM judge_workers WHERE status='online'` > 0   - Worker health endpoint returns 200   - `docker exec judgekit-worker-docker-proxy printenv POST` == 1   - Pre-deploy backup age <...
-
-### HIGH: No documented secret rotation procedure for any of the 7 key types.
-
-- **Flagged by:** admin-reviewer
-- **Details:** | Secret | Rotation impact | Downtime? | Documented? | |---|---|---|---| | `POSTGRES_PASSWORD` | DB + all app containers must be updated atomically | Seconds | No | | `AUTH_SECRET` (NextAuth) | Invalidates all active sessions | Cannot rotate mid-exam | No | | `JUDGE_AUTH_TOKEN` | Worker + app must restart atomically | Seconds | No | | `CODE_SIMILARITY_AUTH_TOKEN` | Sidecar + app must restart | Seconds | No | | `RATE_LIMITER_AUTH_TOKEN` | Sidecar + app must restart | Seconds | No | | `PLUGIN_C...
-
-### HIGH: No explicit "you are done, you may close the tab" end screen.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `countdown-timer.tsx:227-233`
-- **Details:** *Files:* `messages/en.json` — no "all done" ceremony key under `recruit`; `countdown-timer.tsx:227-233`   *Fix:* When `onExpired` fires on the recruit contest context, show a dedicated modal: "Your assessment time has ended. Your best submission per problem has been recorded. You may close this tab. Results will be available at [link] after the assessment closes."
-
-### HIGH: No in-platform DM system.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - No `messages` table, no direct-message route, no messaging UI. Every student-TA conversation outside of submission comments goes to email.
-
-### HIGH: No per-student deadline extension for non-windowed assignments. Extending a student's window only works for `examMode === "windowed"` via `PATCH /exam-sessions/[userId]` (`exam-sessions/[userId]/route.ts:53`). Regular homework (`examMode === "none"`) has no per-student extension mechanism. Instructors routinely grant extensions to students with documented accommodations or illness.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route.ts:53`
-- **Details:** - **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route.ts:53` - **Failure scenario:** A student gets sick the day before a homework deadline. I cannot extend just their deadline. The only options are: extend the deadline for the whole class, or manually override their score after the fact (losing the auto-judging window). - **Suggested fix:** Add a `studentDeadlineOverrides` table supporting optional per-enrollment deadline extension for any `examMode`...
-
-### HIGH: No problem statement version history. As an instructor I cannot see what a problem said before I edited it, and students in a live homework window see the new text with no change notice. If I find a typo mid-deadline and fix it, there is no audit of what changed.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **File:** `src/app/(public)/problems/[id]/edit/page.tsx` (no version/history endpoint exists) - **Failure scenario:** I fix a confusing constraint at T+30 min into a 3-hour homework. Students who read the problem before the fix are competing on different specs. I have no record of what I changed. - **Suggested fix:** Record problem description edits with timestamp and actor in a `problem_history` table; surface a "history" tab on the problem editor. Minimum: show `updatedAt` prominently in ...
-
-### HIGH: No regrade request model, API route, or UI.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - Checked: `src/lib/db/schema.ts` (no `regrade_requests` table), all API routes (no `/regrade` path), all page components (no intake form). - Scenario: A student emails "I think my recursive solution was correct, the judge timed out unfairly." I handle it via email threads with no platform record. An instructor asking "how many regrades did you resolve this semester and what were the outcomes?" gets no answer from the system. - Fix: Add `regrade_requests` table (`submissionId`, `requesterId`,...
-
-### HIGH: No self-service data export for candidates or students.
-
-- **Flagged by:** admin-reviewer
-- **Details:** There is no GDPR/PIPA "right to access" endpoint. A candidate who sat a recruiting test must be served manually by an admin. Korean PIPA requires a data export response within 30 days of request. - Fix: `GET /api/v1/user/my-data` returning the requesting user's submissions, login events,   anti-cheat events, and profile data as JSON. Rate-limited (one request per 24 h), audit-logged.
-
-### HIGH: No side-by-side code diff for similarity hits.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - The pairs table shows `(student1, student2, language, similarity%)` but there is no drill-through to aligned code. I cannot distinguish "shared boilerplate" from "copy-paste" from this view alone. - Scenario: 80% Jaccard between two students on a Python string-reversal problem. Could be the universal `[::-1]` slice. I have to manually open both submissions in separate tabs and eyeball them. - Fix: Add a detail modal that fetches both submissions' source (TAs have `submissions.view_source`) ...
-
-### HIGH: No special judge / checker support. The system offers only `exact` and `float` comparison modes (`create-problem-form.tsx:804–843`). There is no mechanism for a custom comparator binary. I cannot grade "output any valid topological order," "find any shortest path," or "output any permutation with score ≥ K" problems.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/(public)/problems/create/create-problem-form.tsx:803`
-- **Details:** - **File:** `src/lib/validators/problem-management.ts` (comparisonMode enum), `src/app/(public)/problems/create/create-problem-form.tsx:803` - **Failure scenario:** I assign a problem where multiple outputs are valid. Students with correct but non-canonical answers all receive WA. I spend Sunday night manually regrading 40 submissions. - **Suggested fix:** Add a `checker` problem type that accepts a checker script (Python or compiled binary) evaluated inside the judge sandbox; expose an uploa...
-
-### HIGH: No student notification when a TA comments on a submission.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/api/v1/submissions/[id]/comments/route.ts:81-114`
-- **Details:** - File: `src/app/api/v1/submissions/[id]/comments/route.ts:81-114` - The POST handler inserts the comment, fires an audit event, and returns. No email or in-app notification is sent. The `src/lib/email/index.ts` module handles email but is not wired here. - Scenario: I leave a comment on a compile error at 11 PM. The student submits again the next morning with the same mistake because they never saw my note. - Fix: After `db.insert(submissionComments)`, call the email/notification utility add...
-
-### HIGH: No visible "your code is being autosaved" indicator.
-
-- **Flagged by:** applicant-reviewer
-
-### HIGH: No workload counter or grading triage view.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - No UI surface shows a TA "7 submissions in your groups have no feedback yet." The assistant dashboard component (`src/app/(public)/dashboard/_components/student-dashboard.tsx`) is shared with students and shows no pending-review count. There is no TA-specific dashboard component. - Scenario: End of week, instructor asks how many submissions still need review. I have to manually scroll through the status board and count. - Fix: Add a per-TA workload card on the dashboard. A `LEFT JOIN submis...
-
-### HIGH: Per-problem score columns absent from export (see also INS-GRADE-1). LMS integrations are broken. Canvas, Blackboard, and Moodle CSV imports require one column per assignment item. The current single `Score` column requires manual pivot-table work for every class, every week.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61`
-- **Details:** - **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61` - **Severity:** HIGH | **Confidence:** HIGH
+# Aggregate Multi-Agent Review — JudgeKit Cycle 3 / 2026-07-01
+
+Scope: entire repository (`/tmp/judgekit-local`).
+Agents contributing: code-reviewer, security-reviewer, perf-reviewer, critic, verifier, test-engineer, tracer, architect, debugger, document-specialist, designer.
+
+This document merges overlapping findings across the 11 per-agent reviews. Within each theme, distinct issues are listed once with the highest severity/confidence of any duplicate and the set of agents who flagged it.
+
+---
+
+## Theme: Security / IP Trust / Reverse Proxy
+
+### HIGH: Generated nginx overwrites `X-Forwarded-For`, collapsing IP-derived controls
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer, critic, tracer, debugger, code-reviewer
+- **Files / Lines:**
+  - `deploy-docker.sh` lines 1483, 1498, 1510, 1522, 1553, 1568, 1580, 1592
+  - `scripts/online-judge.nginx.conf` lines 62-63, 76-77, 87-88, 99-100
+  - `scripts/online-judge.nginx-http.conf` line 33, 44
+  - `deploy.sh` line 257
+  - Downstream consumers: `src/lib/security/ip.ts:68-131`, `src/lib/security/rate-limit.ts:45-47`, `src/lib/judge/ip-allowlist.ts:182-210`
+- **Problem:** Every generated `location` block uses `proxy_set_header X-Forwarded-For $remote_addr;`, replacing any existing forwarded-for chain with a single entry. `extractClientIp` with default `TRUSTED_PROXY_HOPS=1` requires `parts.length >= trustedHops + 1`, so it returns `null` in production.
+- **Failure scenario:** Rate limiting collapses to a single global bucket (`api:<endpoint>:unknown`); one attacker can exhaust per-endpoint limits for all users. If `JUDGE_ALLOWED_IPS` is configured, `isJudgeIpAllowed` receives `null` and denies every legitimate worker. Audit logs lose client attribution.
+- **Suggested fix:** Change every application nginx `X-Forwarded-For` line to `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. Update both HTTPS and HTTP blocks, plus `scripts/online-judge.nginx.conf`. Add a deploy-time/integration assertion that the live XFF chain length matches `TRUSTED_PROXY_HOPS`.
+
+### HIGH: `AUTH_TRUST_HOST` defaults to true in production
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer, critic, tracer, architect
+- **Files / Lines:** `deploy-docker.sh:662` (`.env.production` generation), `docker-compose.production.yml:106`, `src/lib/security/env.ts:260-266`, `src/lib/auth/config.ts:321`, `deploy-docker.sh:856`
+- **Problem:** Fresh `.env.production` files set `AUTH_TRUST_HOST=true`. `shouldTrustAuthHost()` returns `true` in production whenever the env var is not explicitly `"false". With NextAuth `trustHost` enabled, Auth.js derives canonical URLs from `Host` / `X-Forwarded-Host` headers. The generated nginx config sets `Host $host` but does not strip a client-supplied `X-Forwarded-Host`.
+- **Failure scenario:** An attacker sending direct HTTPS requests with `Host: attacker.com` or `X-Forwarded-Host: attacker.com` can cause Auth.js to generate session state, callback URLs, or password-reset links bound to an attacker-controlled domain.
+- **Suggested fix:** Default `AUTH_TRUST_HOST=false` in production when `AUTH_URL` is set; have nginx explicitly overwrite or remove `X-Forwarded-Host` before proxying; rely on `AUTH_URL` and DB `allowedHosts` as the trusted-host set.
+
+### HIGH: Judge API IP allowlist defaults to allow-all
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer, critic, tracer, architect
+- **Files / Lines:** `src/lib/judge/ip-allowlist.ts:17-25,182-210`; `docker-compose.production.yml`; generated `.env.production` in `deploy-docker.sh:658-682`
+- **Problem:** When `JUDGE_ALLOWED_IPS` is unset and `JUDGE_STRICT_IP_ALLOWLIST` is not `1`, `isJudgeIpAllowed()` returns `true` for every IP. The production compose file sets neither variable.
+- **Failure scenario:** A leaked `JUDGE_AUTH_TOKEN` lets any internet host register fake workers, claim submissions (reading `sourceCode` and hidden `testCases`), and inject arbitrary judge verdicts.
+- **Suggested fix:** Generate `.env.production` with `JUDGE_ALLOWED_IPS` restricted to the worker subnet(s), or set `JUDGE_STRICT_IP_ALLOWLIST=1` and require operators to configure an explicit allowlist before workers can register.
+
+### MEDIUM: Inconsistent fail-open/fail-closed posture for missing client IP
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Likely
+- **Agents:** tracer, critic
+- **Files / Lines:** `src/lib/security/rate-limit.ts:45-47`; `src/lib/judge/ip-allowlist.ts:204-207`
+- **Problem:** The same `extractClientIp` return value (`null` in production) is treated differently: rate limiting coalesces missing IPs into a shared `unknown` bucket, while the judge allowlist denies unknown IPs when an allowlist exists.
+- **Failure scenario:** An attacker who can trigger the `unknown` bucket (e.g., by omitting XFF) gets a shared global quota rather than being blocked, making per-IP rate limits ineffective for that vector.
+- **Suggested fix:** Audit all endpoints that rely on `consumeApiRateLimit` and decide whether the `unknown` bucket should be separately bounded or rejected.
+
+### MEDIUM: Dev-only IP sentinel `0.0.0.0` collapses rate limits in non-production
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** architect
+- **Files / Lines:** `src/lib/security/ip.ts:130`; `src/lib/security/rate-limit.ts`; `src/lib/security/api-rate-limit.ts:160`
+- **Problem:** In non-production environments, `extractClientIp` returns `"0.0.0.0"` when no proxy headers are present. All IP-derived rate-limit keys collapse to the same value.
+- **Failure scenario:** Multiple developers on the same network running E2E tests against staging share one bucket and accidentally trigger 429s.
+- **Suggested fix:** In non-production, derive a more granular fallback from the request socket's `remoteAddress` when available, or document the sentinel behavior and require staging deployments to set `X-Forwarded-For`.
+
+### LOW/MEDIUM: `isValidIpv4` accepts leading-zero octets, breaking canonicalization
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer
+- **Files / Lines:** `src/lib/security/ip.ts:18-24`; cross-reference `src/lib/judge/ip-allowlist.ts`
+- **Problem:** `isValidIpv4` validates each octet with `Number(...)` after a regex that permits one-to-three-digit octets. `Number("01")` evaluates to `1`, so addresses like `192.168.01.001` pass validation. Downstream consumers may treat the same client as multiple distinct keys.
+- **Failure scenario:** A determined client can bypass per-IP rate limits or allowlist entries by submitting syntactically different but semantically identical IPv4 strings in `X-Forwarded-For`.
+- **Suggested fix:** Reject octets with leading zeros (except the single digit `0`) in `isValidIpv4`, or normalize octets to decimal before returning. Align with `src/lib/judge/ip-allowlist.ts`.
+
+---
+
+## Theme: Deployment / Docker / Infrastructure
+
+### CRITICAL: Removing global nginx `client_max_body_size` breaks file uploads
+- **Severity:** CRITICAL
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect, security-reviewer
+- **Files / Lines:** `deploy-docker.sh:1473,1543` (removed lines); `src/app/api/v1/files/route.ts:35`; `src/lib/system-settings-config.ts:61`; `deploy-docker.sh` nginx template lines 1476-1597
+- **Problem:** The hardened nginx config sets `client_max_body_size` only on `/api/auth/` (1m) and `/api/v1/judge/poll` (50M). The catch-all `location /` has no explicit limit, so it falls back to the nginx default of 1 MiB. The application defaults `uploadMaxFileSizeBytes` to 50 MiB.
+- **Failure scenario:** Instructors uploading 10 MiB PDFs or ZIP archives of test data receive `413 Request Entity Too Large` before the application can validate the upload. Admin restore/import also fails for backup ZIPs/JSON exports >1 MiB.
+- **Suggested fix:** Add `client_max_body_size 50M;` to the `location /` block (or scoped to `/api/v1/files/` and `/api/v1/admin/*`) and keep it aligned with `MAX_IMPORT_BYTES`. Add a deployment test asserting `/api/v1/files/` has a body limit matching the configured upload maximum.
+
+### HIGH: Inline SQL patches bypass the Drizzle migration journal
+- **Severity:** HIGH
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `deploy-docker.sh:1250-1262`; `src/lib/db/migrate.ts:1-7`; `scripts/check-migration-drift.sh:1-28`; `src/lib/db/schema.pg.ts:275,606`
+- **Problem:** `deploy-docker.sh` applies additive schema changes via raw `psql` after `drizzle-kit push` (`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`). Because the column is already present, `drizzle-kit push` does not generate a journal entry. The drift guard compares schema to journal snapshots, so it cannot detect the bypass.
+- **Failure scenario:** A disaster-recovery replay from the journal produces a schema missing `problems.default_language` and `system_settings.default_language`; queries fail at runtime.
+- **Suggested fix:** Eliminate the raw `psql` pre-patches. Add columns only through `drizzle-kit generate` so the journal stays the single source of truth. If a zero-downtime additive change must happen outside `push`, wrap it in a committed journal migration.
+
+### HIGH: Docker socket proxy grants broad container lifecycle privileges
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `docker-compose.production.yml:64-86`; `docker-compose.worker.yml:18-46`
+- **Problem:** `tecnativa/docker-socket-proxy` is configured with `POST=1 DELETE=1 ALLOW_START=1 ALLOW_STOP=1 IMAGES=1`. The worker can create, start, stop, delete arbitrary containers, and list images on the host Docker daemon.
+- **Failure scenario:** A compromised judge worker sends Docker API requests through the proxy and spawns a privileged container with `--pid=host` or volume mounts, escaping to the host.
+- **Suggested fix:** Restrict the proxy to the exact endpoints required. Run Docker rootless, add AppArmor/SELinux profiles to the worker, and drop all capabilities. Split image management into a separate admin service.
+
+### MEDIUM: Docker Compose lacks internal network segmentation
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer
+- **Files / Lines:** `docker-compose.production.yml` (no `networks:` block, services defined at lines 13-180)
+- **Problem:** All services (`db`, `app`, `judge-worker`, `docker-proxy`, `code-similarity`, `rate-limiter`) share the default bridge network.
+- **Failure scenario:** A compromised sidecar or auxiliary container can reach `db:5432`, `app:3000`, and `judge-worker:3001`, enabling lateral movement.
+- **Suggested fix:** Define isolated networks (`frontend`, `backend`, `judge`, `db`) and attach each service only to the networks it needs.
+
+### MEDIUM: Judge worker container runs as root
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer
+- **Files / Lines:** `Dockerfile.judge-worker` lines 27-42 (no `USER` directive)
+- **Problem:** The final `runner` stage does not drop to a non-root user.
+- **Failure scenario:** A sandbox escape, supply-chain compromise, or bug in the worker gives root privileges inside the container, making host compromise easier.
+- **Suggested fix:** Add a non-root user/group in the final stage, `chown` the binary and `/judge-workspaces`, and end with `USER <uid>:<gid>`. Ensure the user can still reach `docker-proxy:2375` and write to `/judge-workspaces`.
+
+### MEDIUM: Internal worker-to-app traffic is unencrypted HTTP
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `docker-compose.production.yml:138`; `src/lib/compiler/execute.ts` (local fallback default URL); `judge-worker-rs/src/config.rs:validate_secure_judge_urls`
+- **Problem:** The production compose sets `JUDGE_BASE_URL=http://app:3000/api/v1` and `COMPILER_RUNNER_URL=http://judge-worker:3001`. The Rust worker treats internal hostnames as local and accepts plain HTTP.
+- **Failure scenario:** A compromised sidecar container on the default bridge can sniff worker registration, claim responses containing hidden test cases, or capture bearer tokens.
+- **Suggested fix:** Terminate TLS at an internal reverse proxy or enable mTLS between app and worker; at minimum, place app and worker on an isolated backend network.
+
+### MEDIUM: Static-site and generated app nginx missing HSTS/CSP/security headers
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** security-reviewer, code-reviewer
+- **Files / Lines:** `static-site/nginx.conf:1-23`; generated app nginx in `deploy-docker.sh` lines 1446-1598; `src/lib/api/handler.ts:199-207`
+- **Problem:** Neither the static site nor the generated app-server nginx config sets `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, `Referrer-Policy`, or `Strict-Transport-Security`. The app-level handler only adds `Cache-Control` and `X-Content-Type-Options`.
+- **Failure scenario:** Clickjacking, MIME-sniffing attacks, referrer leakage, and downgrade attacks become possible, especially if the static site serves user-contributed HTML or polyglot files.
+- **Suggested fix:** Add `add_header` directives in both nginx configs. Set `server_tokens off;` in `static-site/nginx.conf`.
+
+### MEDIUM: `deploy-docker.sh` exceeds modularization threshold
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `deploy-docker.sh:1-1704`
+- **Problem:** The deploy script is over 1,700 lines and mixes Docker builds, BuildKit recovery, DB migration, raw SQL patches, nginx generation, health checks, and env validation. A failure in any concern aborts the whole deploy with no per-phase rollback.
+- **Failure scenario:** A typo in nginx config generation causes the script to fail after migrations have already run and new containers have started, leaving the operator to manually determine rollback state.
+- **Suggested fix:** Extract phase scripts (`scripts/deploy/01-build.sh`, `02-migrate.sh`, `03-up.sh`, `04-healthcheck.sh`) and make `deploy-docker.sh` a thin sequencer.
+
+### MEDIUM: Static site nginx serves only HTTP with no redirect or HSTS
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `static-site/nginx.conf:1-23`
+- **Problem:** The static-site config listens only on port 80, has no HTTPS server, no HSTS, and no redirect to HTTPS.
+- **Failure scenario:** If used in production, users connect over plaintext, exposing cookies and static assets to interception and downgrade.
+- **Suggested fix:** Serve static assets behind the same TLS-terminated reverse proxy as the app, or add a TLS server block, redirect HTTP to HTTPS, set HSTS, and add security headers.
+
+### LOW/MEDIUM: Deploy script sources per-target env files without validation
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `deploy-docker.sh` (per-target `source .env.deploy.<target>` logic)
+- **Problem:** `deploy-docker.sh` sources `.env.deploy.*` files through the shell. These files can contain arbitrary shell commands, not just variable assignments.
+- **Failure scenario:** A compromised operator account or attacker with write access to the deployment host can execute attacker-controlled commands with the deploy user's privileges.
+- **Suggested fix:** Parse env files with a restricted parser (e.g., `grep '^[A-Z_][A-Z0-9_]*='`) instead of `source`, and reject lines containing command substitution, backticks, or semicolons.
+
+### LOW: Unfiltered `docker container prune -f` on app host
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `deploy-docker.sh:459`; `deploy-docker.sh:530` (worker variant uses `--filter 'until=24h'`)
+- **Problem:** `prune_old_docker_artifacts` runs `docker container prune -f` without `--filter` on the app host.
+- **Failure scenario:** If the host is ever shared or an operator runs a one-off stopped container, the deploy silently deletes it, potentially destroying forensic evidence.
+- **Suggested fix:** Apply the same `--filter until=24h` guard to the app-host prune for defense in depth.
+
+### LOW: Aggressive build-cache purge under disk pressure
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `deploy-docker.sh:532`
+- **Problem:** `safe_docker_storage_cleanup` runs `docker builder prune -af` when disk usage exceeds the warning threshold.
+- **Failure scenario:** A concurrent build on the same Docker daemon could lose its cache mid-build, causing flakiness or longer build times.
+- **Suggested fix:** Measure build-time impact after a cache purge and consider whether `--filter until=24h` is sufficient.
+
+### LOW: Worker-host restart lacks the `docker-compose` fallback used for the app host
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Confirmed
+- **Agents:** verifier
+- **Files / Lines:** `deploy-docker.sh:1285` (app fallback); `deploy-docker.sh:1393-1396` (worker no fallback)
+- **Problem:** When starting containers on the app host, the script uses `docker compose ... || docker-compose ...`. When restarting the worker compose on a dedicated worker host, it uses only `docker compose`.
+- **Failure scenario:** A worker host running an older Docker version with only `docker-compose` fails at the worker restart step.
+- **Suggested fix:** Apply the same fallback pattern on the worker host.
+
+---
+
+## Theme: Compiler / Execution
+
+### HIGH: Compiler local-fallback workspace cannot be cleaned up after chown to sandbox uid
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer, debugger, tracer, architect
+- **Files / Lines:** `src/lib/compiler/execute.ts:724-758,842-848`; `Dockerfile:108`
+- **Problem:** The local fallback creates a temp workspace, writes the source file, then `chown`s the directory and source file to `SANDBOX_UID`/`SANDBOX_GID` (65534/nobody) with modes `0o700`/`0o600`. The `finally` block then tries `rm(workspaceDir, { recursive: true, force: true })`. The production Dockerfile runs the Next.js app as the `nextjs` user (uid 1001), so a directory owned by uid 65534 with mode `0o700` is not traversable or removable by uid 1001.
+- **Failure scenario:** Every compile request in local-fallback mode leaves a `compiler-*` directory under `/tmp`/`$COMPILER_WORKSPACE_DIR`. Over time this fills the root or workspace filesystem. The caught warning masks the leak.
+- **Suggested fix:** Before attempting `rm`, re-chown the workspace back to the process uid inside the `finally` block, or spawn a short-lived privileged cleanup container. Alternatively, run `chmod -R 777` on the workspace before `rm` (transient permission widening only for cleanup), or gate local fallback behind a loud runtime warning.
+
+### HIGH: Rust judge-worker temp workspace also cannot be removed after chown to sandbox uid
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** debugger
+- **Files / Lines:** `judge-worker-rs/src/executor.rs:301-316,324-358`
+- **Problem:** The Rust executor creates a `tempfile::TempDir`, then `chown`s it to `65534:65534` with mode `0o700`. `TempDir::drop` silently ignores cleanup failures. If the worker process is not running as root, it cannot delete the directory.
+- **Failure scenario:** A dedicated worker judging thousands of submissions per day leaves thousands of `/tmp/.tmp*` directories; disk exhaustion eventually alerts operators, but no operator-visible error is emitted.
+- **Suggested fix:** Explicitly `chown` the workspace back to the worker process uid/gid before the `TempDir` goes out of scope, or run cleanup through a root-privileged container. Log and surface cleanup failures.
+
+### MEDIUM: `validateShellCommandStrict` rejects legitimate environment-variable prefixes
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer, debugger, tracer, critic
+- **Files / Lines:** `src/lib/compiler/execute.ts:189-251`; `execute.ts:764-767` (comment claims env-var prefixes are supported)
+- **Problem:** The stricter validator splits a command on `&&` or `;` and requires each segment's first token to match an allowed compiler prefix. If a segment begins with an environment assignment such as `CC=gcc gcc ...` or `LANG=C ./a.out`, the first token `CC=gcc` does not match any prefix and the whole command is rejected.
+- **Failure scenario:** An admin who legitimately configures a language with an env-var prefix will see submissions failing with `"Invalid compile command"` even though `validateShellCommand` regex would have accepted it. The Rust runner uses its own validator, so the same command may succeed via the runner but fail in local fallback.
+- **Suggested fix:** Strip leading `KEY=VALUE` assignments before checking the command prefix, or move the prefix check into the Rust runner and keep local fallback validation aligned with it. At minimum update the comment.
+
+### MEDIUM: Shell-command whitelist permits shell interpreters, undermining the denylist
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic, tracer
+- **Files / Lines:** `src/lib/compiler/execute.ts:189-218,243-251`
+- **Problem:** `validateShellCommandStrict` accepts `bash`, `sh`, `powershell`, `pwsh` as command prefixes. A compromised `language_configs` row can set `runCommand` to `bash -c '...'` and the denylist is bypassed because the payload lives inside the `-c` argument.
+- **Failure scenario:** An attacker who can modify a language config runs arbitrary code inside the judged container.
+- **Suggested fix:** Remove shell interpreters from `ALLOWED_COMMAND_PREFIXES`, or add an explicit rule that rejects `-c`/`-Command` interpreter invocations. Treat commands as direct binary invocations only.
+
+### MEDIUM: Rust runner `/run` endpoint accepts nested shells through single-quote gaps
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/runner.rs:124-176,813-825,887-900`
+- **Problem:** `validate_shell_command` blocks a short denylist but permits `&&`, `;`, environment prefixes, and does not reject single quotes or the tokens `bash`/`sh`. Because the runner wraps the supplied command in `sh -c`, a caller can smuggle arbitrary commands inside quotes.
+- **Failure scenario:** A leaked `RUNNER_AUTH_TOKEN` lets an attacker execute arbitrary code inside the judged container to probe syscalls or wage a noisy DoS.
+- **Suggested fix:** Do not accept raw shell strings from the HTTP API. Accept an argv array, reject shell metacharacters/quotes entirely, and execute with `execvp`-style semantics; or store approved commands server-side and reference them by language ID.
+
+### MEDIUM: Local compiler fallback runs with default seccomp if custom profile is missing
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `src/lib/compiler/execute.ts:379-388`
+- **Problem:** When `SECCOMP_PROFILE_PATH` is missing, the local Docker fallback logs a one-time warning and proceeds with Docker's default seccomp policy instead of the project-specific restricted profile.
+- **Failure scenario:** A mis-packaged deployment silently weakens the sandbox for local fallback compilations, potentially exposing syscalls that the custom profile blocks.
+- **Suggested fix:** Fail closed when the configured custom seccomp profile is missing, or require an explicit opt-out environment variable before falling back to the default policy.
+
+### MEDIUM: `parseTimestampEpochMs` does not handle Docker's nanosecond timestamps
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** code-reviewer
+- **Files / Lines:** `src/lib/compiler/execute.ts:254-266,277-301`
+- **Problem:** The JSDoc states the helper handles `"2024-01-15T10:30:45.123456789Z"`, but it delegates to `Date.parse`, which only supports millisecond precision and may return `NaN` for nine-digit fractional seconds depending on the JS engine.
+- **Failure scenario:** On Node.js versions where `Date.parse` rejects nanosecond timestamps, container inspection loses accurate execution duration and falls back to wall-clock duration, skewing execution-time reporting.
+- **Suggested fix:** Truncate the fractional seconds to three digits before calling `Date.parse`, or use a small regex/parser that explicitly handles nanoseconds.
+
+### MEDIUM: Node fallback run timeout counts container startup against the user budget
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/compiler/execute.ts:468-473,828`
+- **Problem:** The run phase uses the raw `timeLimitMs` as the wall-clock kill timeout, unlike the Rust worker which adds `DOCKER_RUN_OVERHEAD_BUDGET_MS` (2 s).
+- **Failure scenario:** Near-limit legitimate submissions receive spurious timeouts because Docker container startup overhead is counted against the user's time budget.
+- **Suggested fix:** Add the same startup-overhead buffer to the Node fallback kill timeout.
+
+### MEDIUM: Compile tmpfs is smaller than the compile memory limit
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/compiler/execute.ts` lines 20, 357-366; `judge-worker-rs/src/docker.rs` line 17
+- **Problem:** The compile phase is granted 2048 MB of memory but only a 1024 MB `/tmp` tmpfs.
+- **Failure scenario:** Compilers that write large intermediate files to `/tmp` hit `ENOSPC` on tmpfs while the container memory limit still shows headroom.
+- **Suggested fix:** Make the compile tmpfs size configurable and at least as large as the compile memory limit, or default both to the same value.
+
+### LOW: Validation failures return `exitCode: null`
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `src/lib/compiler/execute.ts:667-687`
+- **Problem:** When `validateShellCommandStrict` rejects a command, `executeCompilerRun` returns `{ ..., exitCode: null, stderr: "Invalid compile command" | "Invalid run command" }`.
+- **Failure scenario:** A downstream component that assumes `exitCode` is always a number may misclassify `null` as a system error.
+- **Suggested fix:** Audit all consumers of `CompilerRunResult.exitCode` for null handling and document the contract.
+
+### LOW: `execute.ts` `child.stdin.write` may not handle backpressure
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `src/lib/compiler/execute.ts:442-444`
+- **Problem:** `child.stdin.write(opts.stdin)` is called once without checking the return value or waiting for the `drain` event.
+- **Failure scenario:** For very large stdin this can fail with `EAGAIN` or partial writes.
+- **Suggested fix:** Use `child.stdin.end(opts.stdin)` or a small writable-stream helper that handles backpressure.
+
+---
+
+## Theme: Similarity Check
+
+### HIGH: Concurrent similarity checks can delete each other's anti-cheat events
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic, tracer
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:441-454`; `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:43-65`
+- **Problem:** Two concurrent similarity runs for the same assignment each read the same submission set, compute independently, then run `db.transaction(delete old events → insert new events)`. PostgreSQL serializes the write transactions, so the later transaction deletes the events the earlier one just inserted.
+- **Failure scenario:** Two TAs click "Run similarity check" at the same time. The final state contains only one run's flagged pairs; the other is silently lost.
+- **Suggested fix:** Serialize similarity runs per assignment with `pg_advisory_xact_lock(hashtextextended(assignmentId, 1)::bigint)` around the compute-and-store path, or add an assignment-level version/timestamp guard that aborts stale writers.
+
+### HIGH: Similarity-check Rust sidecar ignores the route's AbortSignal and swallows abort errors
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer, critic, verifier, tracer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:44-64`; `src/lib/assignments/code-similarity.ts:319-399`; `src/lib/assignments/code-similarity-client.ts:35-62`
+- **Problem:** The route creates a 30-second `AbortController` and passes the signal into `runAndStoreSimilarityCheck`. That signal is forwarded only to the TypeScript fallback path. The Rust sidecar call in `computeSimilarityRust` uses its own hard-coded `AbortSignal.timeout(25_000)` and does not accept, compose, or propagate the caller's signal. It catches all exceptions and returns `null`.
+- **Failure scenario:** If the Rust sidecar is slow but not quite 25 seconds, or if the caller wants to abort earlier, the route cannot cancel the sidecar request. A Rust-sidecar timeout returns `null`, falls through to the TS fallback, and may consume the full 30 seconds without returning the explicit `timed_out` status the test expects.
+- **Suggested fix:** Add an optional `signal?: AbortSignal` parameter to `computeSimilarityRust` and compose it with the internal timeout via `AbortSignal.any` (or a manual `AbortController` that listens to both). Re-throw `AbortError` instead of returning `null` so callers can distinguish cancellation/timeouts from sidecar unavailability.
+
+### MEDIUM: `MAX_SUBMISSIONS_FOR_SIMILARITY` limit enforced only on TypeScript fallback
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** verifier
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:236,354-367,379-388`
+- **Problem:** `runSimilarityCheck` first attempts the Rust sidecar and only applies the 500-submission guard when falling back to the TypeScript implementation. The constant name and response field `maxSupportedSubmissions` advertise it as a general ceiling.
+- **Failure scenario:** On a deployment where the Rust sidecar is running, a contest with 700+ best submissions is sent to the sidecar without any cap. If the sidecar is not bounded internally, this causes excessive CPU/memory usage and route timeout.
+- **Suggested fix:** Move the `rows.length > MAX_SUBMISSIONS_FOR_SIMILARITY` check before the Rust sidecar attempt, or add an equivalent limit inside `computeSimilarityRust`/the sidecar. If the sidecar is intentionally allowed to handle larger contests, update the constant name and response semantics.
+
+### MEDIUM: Similarity-check timeout starts before the expensive work
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** architect
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:44-65`; `src/lib/assignments/code-similarity.ts:319-390`
+- **Problem:** The route arms a 30-second `AbortController` timeout, then awaits `getContestAssignment`, authorization checks, and the database query before starting `runAndStoreSimilarityCheck`. The raw SQL query that fetches the best submission per user/problem/language does not observe the abort signal.
+- **Failure scenario:** On a large assignment, the CTE query takes 20 s due to lock contention or missing indexes. The route aborts the similarity computation shortly after it begins, returning `timed_out` even though the expensive query—not the computation—caused the timeout.
+- **Suggested fix:** Start the abort timer immediately before `runSimilarityCheck`. Pass the abort signal into the raw query path via `Promise.race`, or add a separate query timeout and return a distinct error so operators can distinguish query slowness from computation slowness.
+
+### MEDIUM: Similarity-check authorization duplicates the handler's authz model
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24,37`
+- **Problem:** The route uses `auth: true` in `createApiHandler` and then performs its own authorization inside the handler via `canRunSimilarityCheck`, layering `canManageContest`, capability resolution, group-TA check, and assigned-group check. This bypasses the handler's built-in `{ capabilities: [...] }` authz and scatters access-control semantics across route files.
+- **Failure scenario:** A new admin route with the same intent uses `createApiHandler({ auth: { capabilities: ["anti_cheat.run_similarity"] }})`, which does not include the TA/assigned-group exceptions, creating inconsistent authorization rules.
+- **Suggested fix:** Move `canRunSimilarityCheck` into a shared helper (e.g., `src/lib/assignments/contests.ts`) and make `createApiHandler` capable of accepting it, or standardize on capability checks for the API surface and keep TA/assignment checks as an explicit secondary gate.
+
+### MEDIUM: Capability check runs before group-TA check, leaving pure-TA path possibly dead
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24`
+- **Problem:** `canRunSimilarityCheck` returns early for managers, then rejects non-managers who lack `anti_cheat.run_similarity`, and only afterward checks group TA / assigned instructor status. A pure group TA whose role does not carry the capability is denied.
+- **Failure scenario:** A custom role named "ta" or a future capability edit that removes `anti_cheat.run_similarity` from the TA role silently denies group TAs, while the UI may still show the affordance based on group membership.
+- **Suggested fix:** Add a route test for a pure group TA without `anti_cheat.run_similarity`; confirm whether denial is intended policy or dead code.
+
+### LOW: Similarity-check timeout handler treats any "timed out" message as a timeout
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:51-62`
+- **Problem:** The catch block returns the `timed_out` envelope if `error.name === "AbortError"` OR `error.message.includes("timed out")`. The string match is broad.
+- **Failure scenario:** A database query timeout inside `runAndStoreSimilarityCheck` could be surfaced to the dashboard as `status: "timed_out"`, misleading an admin into thinking the similarity engine was slow rather than that the database is unhealthy.
+- **Suggested fix:** Only treat `AbortError` / `DOMException` with name `"AbortError"` as the scan timeout. For other errors, let them propagate to the generic `createApiHandler` error handler.
+
+### LOW: `code-similarity-client.ts` uses `console.warn` instead of the project logger
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** code-reviewer
+- **Files / Lines:** `src/lib/assignments/code-similarity-client.ts:6`
+- **Problem:** The module logs a missing-auth warning with `console.warn(...)` rather than the structured `logger` used everywhere else in `src/lib`.
+- **Failure scenario:** In production, this warning bypasses the configured logging transport and will print in a different format than other security warnings.
+- **Suggested fix:** Import `logger` from `@/lib/logger` and replace the `console.warn` call with `logger.warn(...)`.
+
+### LOW: Source-code normalizer is language-agnostic and may mis-handle whitespace-sensitive languages
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** architect
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:27-111`
+- **Problem:** `normalizeSource` collapses all whitespace (including newlines) to a single space for every language. For Python, Haskell, YAML, and other whitespace-sensitive languages, this destroys semantic structure before n-gram comparison.
+- **Failure scenario:** Two Python submissions identical except for indentation may have Jaccard similarity drop below the 0.85 threshold even though the code is semantically identical.
+- **Suggested fix:** Make the normalizer language-aware: preserve significant whitespace for whitespace-sensitive languages, or document the limitation in `docs/languages.md` and the admin anti-cheat UI.
+
+## Theme: Contest Join
+
+### MEDIUM: Access-code failure rate limits accumulate without success reset
+- **Severity:** MEDIUM
+- **Confidence:** MEDIUM
+- **Status:** Risk
+- **Agents:** architect, document-specialist
+- **Files / Lines:** `src/app/api/v1/contests/join/route.ts:29-37`; `src/lib/security/api-rate-limit.ts:198-222`
+- **Problem:** On a failed access-code redemption, the route consumes two additional rate-limit buckets: `contest:join:invalid` (per-user) and `contest:join:invalid-code` (per access-code hash). The global `contest:join` limit is already consumed by `createApiHandler`. There is no mechanism to reset these invalid-attempt counters when a user eventually redeems a valid code.
+- **Failure scenario:** A student mistypes an access code 30 times in one minute, then receives the correct code. The per-user invalid bucket is at its limit; the next redemption attempt is blocked with 429 for the remainder of the window.
+- **Suggested fix:** Treat invalid-code attempts as part of the same `contest:join` bucket, or reset the invalid-attempt counters on a successful redemption. If separate buckets are required, use a higher threshold for the invalid bucket than for the success bucket.
+
+### MEDIUM: Per-user failure limiter runs before per-code limiter, giving multi-account attackers N budgets
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `src/app/api/v1/contests/join/route.ts:28-42`
+- **Problem:** A failed redemption first consumes the per-user bucket, then the per-code bucket. If the user bucket blocks, the code bucket is never incremented.
+- **Failure scenario:** An attacker with M accounts gets M independent user budgets before the shared per-code bucket becomes the binding constraint, enabling distributed brute-force against a single access code.
+- **Suggested fix:** Consume the code-scoped bucket unconditionally so distributed attempts converge immediately.
+
+### MEDIUM: `23505` recovery in `redeemAccessCode` assumes the conflict is `(assignmentId, userId)`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `src/lib/assignments/access-codes.ts:207-221`
+- **Problem:** `redeemAccessCode` catches Postgres `23505` and returns `alreadyEnrolled: true` without inspecting the constraint name or verifying the conflicting row belongs to the calling user.
+- **Failure scenario:** A future schema change (e.g., a unique index on `accessCode`) makes the recovery branch misleading: a user could be told they are already enrolled when the conflict was actually on the code itself.
+- **Suggested fix:** In the recovery branch, assert the constraint name matches the expected `(assignmentId, userId)` index or re-run the existing-token check for the specific user.
+
+### LOW/MEDIUM: Access codes stored as plaintext in `assignments.accessCode`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed (design choice with residual risk)
+- **Agents:** tracer
+- **Files / Lines:** `src/lib/assignments/access-codes.ts:31-44,101,118`
+- **Problem:** `setAccessCode` persists the raw 8-character code; `redeemAccessCode` compares normalized user input directly against that column. No hashing, HMAC, or encryption is applied.
+- **Failure scenario:** A read-only DB breach (e.g., via SQL injection or backup leak) exposes every active contest access code, allowing mass unauthorized enrollment.
+- **Suggested fix:** This is a deliberate usability trade-off. If retained, ensure DB backups/export tooling redact this column; `EXPORT_SANITIZED_COLUMNS` does not currently include `assignments.accessCode`.
+
+---
+
+## Theme: API / Auth / Capabilities
+
+### HIGH: `/compiler/run` consumes daily sandbox quota before checking capability
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/app/api/v1/compiler/run/route.ts:38-88`; `src/app/api/v1/playground/run/route.ts` (for contrast)
+- **Problem:** The route first calls `gateSandboxEndpoint`, which deducts one invocation from the per-user daily quota, then checks `caps.has("content.submit_solutions")` and returns 403. `/playground/run` checks the capability in `auth` before the gate.
+- **Failure scenario:** A user with a custom role that has `files.upload` but lacks `content.submit_solutions` repeatedly calls `/api/v1/compiler/run`. Each call burns the legitimate daily budget before the 403 is returned.
+- **Suggested fix:** Move the `content.submit_solutions` capability check before `gateSandboxEndpoint`, matching `/playground/run`.
+
+### HIGH: `createApiHandler` rejects custom roles in `auth.roles`
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/lib/api/handler.ts:131-132`
+- **Problem:** The role check calls `isUserRole(user.role)`, which only returns `true` for the five built-in role names. A route configured with `auth: { roles: ["custom_instructor"] }` rejects users whose role is exactly `custom_instructor`.
+- **Failure scenario:** A deployment introduces a custom role and restricts an admin route to it. The route is unreachable for that role, making the `roles` auth config unusable for custom roles.
+- **Suggested fix:** Remove the `isUserRole` guard from the role check, or change it to allow any string present in `auth.roles`.
+
+### MEDIUM: File download endpoint has no rate limiting
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/app/api/v1/files/[id]/route.ts:62-140`
+- **Problem:** The GET handler performs auth and access checks but never calls `consumeApiRateLimit`. Upload and delete are rate-limited; download is not.
+- **Failure scenario:** An authenticated user enumerates `/api/v1/files/{id}` and repeatedly downloads large files, abusing bandwidth and probing file IDs that may belong to others.
+- **Suggested fix:** Add `rateLimit: "files:download"` in `createApiHandler` for the GET handler.
+
+### MEDIUM: `sandbox-gate.ts` env bypass fails on common whitespace
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/lib/security/sandbox-gate.ts:13-14`
+- **Problem:** `ALLOW_UNVERIFIED_EMAIL_ENV` does `raw === "1" || raw.toLowerCase() === "true"` without trimming. A value of `"true\n"` or `" true "` fails the literal comparison.
+- **Failure scenario:** An operator sets `SANDBOX_ALLOW_UNVERIFIED_EMAIL=true` in an `.env` file ending with a newline. The gate remains enforced even though the operator intended to bypass it.
+- **Suggested fix:** Trim and normalize: `return raw.trim() === "1" || raw.trim().toLowerCase() === "true";`.
+
+### MEDIUM: In-progress judge reports can indefinitely refresh a stale claim
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `src/app/api/v1/judge/poll/route.ts:82-145`
+- **Problem:** A worker POSTing `status: "judging"` with a valid `claimToken` resets `judgeClaimedAt` to `dbNow` each time. There is no maximum-judging-time guard independent of heartbeats.
+- **Failure scenario:** A buggy or malicious worker repeatedly reports "judging" for a submission. The stale-claim sweep never reclaims it, and the submission remains stuck in `judging` forever.
+- **Suggested fix:** Reject in-progress updates when `judgeClaimedAt` is older than the configured claim TTL, or add a `maxJudgingDurationMs` guard that forces the submission back to `pending`/`queued` regardless of worker heartbeats.
+
+### MEDIUM: Session `maxAge` is captured at module-load time
+- **Severity:** HIGH (downgraded to MEDIUM because architectural scope)
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `src/lib/auth/config.ts:325`
+- **Problem:** `session: { strategy: "jwt", maxAge: getSessionMaxAgeSeconds() }` evaluates once when the module is first loaded. The value is frozen for the process lifetime.
+- **Failure scenario:** During a security incident, an operator reduces session lifetime from 30 days to 1 hour. Existing sessions expire as expected, but newly issued sessions still receive a 30-day `exp` until process restart.
+- **Suggested fix:** Move enforcement to the `jwt` callback: read the current `sessionMaxAgeSeconds` on each validation and return `null` if `now - iat` exceeds the configured lifetime. Alternatively, add a prominent admin UI notice that changes require a restart.
+
+### MEDIUM: `submissions.judgeWorkerId` lacks a foreign key constraint
+- **Severity:** HIGH (downgraded to MEDIUM in aggregate because not an immediate exploit)
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `src/lib/db/schema.pg.ts:487,507`
+- **Problem:** `submissions.judgeWorkerId` is declared as plain `text` with no `.references(() => judgeWorkers.id)`. When a worker row is deleted, historical submissions retain the old string with no cascade behavior or referential integrity.
+- **Failure scenario:** Operations decommissions a worker by deleting its `judgeWorkers` row. Later, an audit query joins `submissions` to `judgeWorkers`; all historical submissions from that worker disappear from the join.
+- **Suggested fix:** Add `references(() => judgeWorkers.id, { onDelete: "set null" })` to preserve the historical row while nullifying the worker reference. Generate a migration with `drizzle-kit generate`.
+
+### MEDIUM: Contest access-token expiry boundary is inconsistent between SQL and Drizzle
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/lib/assignments/contest-access-tokens.ts:24,57-58`; `src/lib/assignments/contests.ts:185`
+- **Problem:** The raw-SQL catalog query treats a token as valid when `cat.expires_at > NOW()`, while `findValidContestAccessToken` treats it as expired when `token.expiresAt.valueOf() <= nowMs`.
+- **Failure scenario:** At the exact instant `expires_at == NOW()`, a participant sees the contest in "My Contests" but receives `assignmentEnrollmentRequired` when trying to submit.
+- **Suggested fix:** Align the two predicates. Either use `expires_at >= NOW()` in SQL or strict `<` in Drizzle, and document the chosen boundary.
+
+### MEDIUM: Assignment status aggregate has no deterministic tie-break for same-timestamp submissions
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `src/lib/assignments/submissions.ts:764-772`
+- **Problem:** The aggregate CTE orders only the inner window by `submitted_at DESC, id DESC`; the outer `GROUP BY` has no `ORDER BY`. The JavaScript loop sees rows in undefined order.
+- **Failure scenario:** A student submits to two problems at the exact same DB timestamp. The UI may show a different `latestSubmissionId`/`latestStatus` on each page load for the same student.
+- **Suggested fix:** Add `ORDER BY MAX(submitted_at) DESC, MAX(id) DESC` or tie-break by `id` in the JS reducer.
+
+### LOW: Dummy password hash uses a static, identifiable salt
+- **Severity:** LOW
+- **Confidence:** Low
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `src/lib/auth/config.ts:51-52`
+- **Problem:** The `DUMMY_PASSWORD_HASH` constant embeds the salt `Y2xhdWRlZHVtbXloYXNo`, which base64-decodes to `claudedummyhash`.
+- **Failure scenario:** The sentinel hash is immediately recognizable in a source leak or DB dump.
+- **Suggested fix:** Replace the constant with a random Argon2id hash generated offline, or generate a per-process dummy hash at startup.
+
+---
+
+## Theme: Database / Performance / Caching
 
 ### HIGH: Process-local caches have no cross-instance invalidation
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/system-settings-config.ts:84`, `src/lib/capabilities/cache.ts:17`, `src/lib/assignments/contest-analytics-cache.ts:27`
-- **Details:** **Files:**   - `src/lib/system-settings-config.ts:84` — settings cache (15s TTL)   - `src/lib/capabilities/cache.ts:17` — role→capabilities cache (60s TTL)   - `src/lib/assignments/contest-analytics-cache.ts:27` — LRU analytics cache (60s TTL, no explicit invalidation API)  **Observation:**   All three caches are module-level in-process singletons. Invalidation functions (`invalidateSettingsCache()`, `invalidateRoleCache()`) zero a process-local timestamp or clear a process-local Map. In a ho...
-
-### HIGH: Results sign-in is confusing without a known username.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `results/page.tsx:104-117`, `recruiting-invitations.ts:725`
-- **Details:** *File:* `results/page.tsx:104-117`, `recruiting-invitations.ts:725`   *Concrete failure:* Candidate returns 3 days later to see their score. They navigate to `/recruit/{token}/results`. It says "sign in." They go to the normal login page, don't know their username, try their email → fails if email wasn't set. They're locked out of their own results with no recovery path shown.   *Fix:* On the "Sign in required" card, tell the candidate explicitly: "Go back to the assessment start page and ent...
-
-### HIGH: Session `maxAge` is captured once at NextAuth module initialization
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/auth/config.ts:325`
-- **Details:** **File:** `src/lib/auth/config.ts:325`  ```typescript session: { strategy: "jwt", maxAge: getSessionMaxAgeSeconds() }, ```  **Observation:**   `getSessionMaxAgeSeconds()` is called *once* when the NextAuth configuration object is evaluated during module load (Node.js module system caches the result). The function reads from the `systemSettings` cache (itself reading from DB on first miss). After the module is loaded, subsequent admin changes to `sessionMaxAgeSeconds` in the settings table hav...
-
-### HIGH: Similarity check is contest-only (confirmed code bug). `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:18`:
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:18`
-- **Details:** ```ts if (!assignment || assignment.examMode === "none") {   return apiError("notFound", 404); } ``` Regular homework assignments (`examMode === "none"`) get a 404 when similarity is triggered. The UI anti-cheat dashboard becomes a dead end for the course workflow where cheating is most common: take-home assignments. - **File:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:18` - **Failure scenario:** I suspect two students of sharing code on a take-home homework. I click ...
-
-### HIGH: Similarity check is hardcoded contest-only and returns 404 for regular homework. `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:18`:
-
-- **Flagged by:** instructor-reviewer
-- **Details:** ```ts if (!assignment || assignment.examMode === "none") {   return apiError("notFound", 404); } ``` Homework assignments (`examMode === "none"`) get a 404 when similarity is triggered. Homework is where I see the most copying. - **Failure scenario:** I run similarity check on a homework assignment. The UI returns a 404. I have no way to detect copying on 3-week take-home assignments. - **Suggested fix:** Remove the `examMode === "none"` guard. Similarity check is equally valid for assignment...
-
-### HIGH: Similarity results are ephemeral client-side state only.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/components/contest/anti-cheat-dashboard.tsx:103`
-- **Details:** - File: `src/components/contest/anti-cheat-dashboard.tsx:103` - Code: `const [similarityPairs, setSimilarityPairs] = useState<SimilarityPairView[]>([])` - Scenario: I run similarity, see 6 flagged pairs, open a student's timeline in a new tab. Return to the dashboard — pairs are gone. Re-run: 30-second blocking operation. During a live exam this adds load at peak time. - Fix: Persist similarity results server-side. The `code_similarity` event type already writes individual pair flags to `anti...
-
-### HIGH: TAs cannot grant time extensions during a live exam.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route.ts:39-45`, `src/lib/assignments/management.ts:73-87`, `status-board.tsx:219`
-- **Details:** - File: `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]/route.ts:39-45` - Code: `const canManage = await canManageGroupResourcesAsync(group.instructorId, user.id, user.role, id); if (!canManage) return forbidden();` - `canManageGroupResourcesAsync` at `src/lib/assignments/management.ts:73-87` returns true for group owner, `co_instructor` role, or `groups.view_all` capability — NOT for group TAs (`role = 'ta'` in `group_instructors`). - Consequence: `canManageOver...
-
-### HIGH: TAs cannot post contest announcements or respond to clarifications.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:19`, `clarifications/route.ts:19`
-- **Details:** - Files: `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:19`, `clarifications/route.ts:19` - Both use `canManageContest` which resolves to `canManageGroupResourcesAsync` — excludes group TAs. - Scenario: At minute 30, problem C has a typo in the sample. The instructor is unreachable. I cannot post a correction. Students stall. - Fix: Either use `canMonitorContest` for announcement/clarification write (TAs already pass it) or add a dedicated `canCommunicateOnContest` helper that...
-
-### HIGH: TAs cannot write contest clarification responses.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/clarifications/route.ts:19`
-- **Details:** - File: `src/app/api/v1/contests/[assignmentId]/clarifications/route.ts:19` - `canManageContest` excludes group TAs. The `ContestClarifications` component at the contest manage page receives `canManage={canManage}` where `canManage = canManageGroupResourcesAsync(...)` — false for TAs. TAs see the read-only list but cannot respond. - Scenario: During a live exam, a student asks "Can we use built-in sort?" I know the answer. I cannot reply without reaching the instructor (same root as Finding 3...
-
-### HIGH: Zero announcement capability for non-exam assignments. `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16–32` gates the entire announcement system on `assignment.examMode !== "none"`. A regular homework assignment (the most common type in a course) has no errata broadcast mechanism. This is the single highest-friction gap for course instructors.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16`
-- **Details:** - **File:** `src/app/api/v1/contests/[assignmentId]/announcements/route.ts:16` - **Failure scenario:** A student posts in the course Slack that problem 3 input format is ambiguous. I fix the problem statement. The other 119 students who didn't check Slack still have the old interpretation. Some get WA on what would be a correct solution for the clarified version. - **Suggested fix:** Remove `examMode === "none"` guard; make announcements available for all assignments. It is a simple enrollmen...
-
-### HIGH: `/api/v1/judge/poll` route path is permanently frozen by Rust worker binary
-
-- **Flagged by:** architect
-- **Location(s):** `src/app/api/v1/judge/poll/route.ts:1-5`
-- **Details:** **File:** `src/app/api/v1/judge/poll/route.ts:1-5`  ``` // The path /api/v1/judge/poll is baked into the deployed worker binary, // so renaming the directory would break production without a coordinated redeploy. ```  **Observation:**   The route name "poll" is semantically wrong — the endpoint *receives* POST results from workers, it does not serve poll responses. The comment documents that this misnaming is permanent because renaming requires rebuilding and redeploying the Rust binary on `w...
-
-### HIGH: `audit_events` pruned at 90 days with no cold storage.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `src/lib/data-retention.ts:1-7`
-- **Details:** `src/lib/data-retention.ts:1-7` defaults: `auditEvents: 90` days. After pruning, the record is permanently gone. Academic integrity disputes or labour disputes filed > 90 days after an event have no log trail. - Fix: before the prune cron removes `audit_events` older than the threshold, write them to a   compressed NDJSON file: `audit-archive/audit-YYYYMM.ndjson.gz` on the host. Push to off-host   storage (same destination as database backups). Or raise the default to 365 days and document   ...
-
-### HIGH: `derive-key.ts`: HKDF key derivation has zero unit tests
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/derive-key.ts:1-36`
-- **Details:** **File:** `src/lib/security/derive-key.ts:1-36` **Confidence:** CONFIRMED  `deriveEncryptionKey(domain)` and `legacyEncryptionKey()` are never imported by any test file. The HKDF approach uses domain separation so each plugin-config domain gets a cryptographically independent key. None of these properties are verified:  - Two different `domain` strings must produce different 32-byte keys. - The same `domain` string must be deterministic (same input → same key). - `legacyEncryptionKey()` must ...
-
-### HIGH: `flix` Docker image documented as `judge-jvm`; actual image is `judge-flix`
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `AGENTS.md` line 113: `| 88 | flix | Flix (JVM) | judge-jvm |` - `docs/languages.md` line 73: `| 67 | flix | Flix (JVM) | judge-jvm | ✅ | ✅ | ✅ | ✅ |` - `src/lib/judge/languages.ts` line 1197: `dockerImage: "judge-flix:latest"` - `docker/Dockerfile.judge-flix` line 1: `FROM judge-jvm:latest` (extends jvm; distinct image)  **Failure scenario:** A developer or agent consulting either AGENTS.md or docs/languages.md to understand which Docker image backs `flix` submissions believes t...
-
-### HIGH: `hcaptcha.ts`: `verifyHcaptchaToken` and configuration helpers have zero unit tests
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/hcaptcha.ts:1-83`, `src/lib/security/hcaptcha.ts:63-68`
-- **Details:** **File:** `src/lib/security/hcaptcha.ts:1-83` **Confidence:** CONFIRMED  `isHcaptchaConfigured`, `getHcaptchaSecret`, `getHcaptchaSiteKey`, and `verifyHcaptchaToken` are all mocked at every call site and never executed in tests. Grep across all test directories confirms no file imports these from the actual module.  Untested behaviors:  - **DB vs. env precedence**: `getHcaptchaSiteKey()` returns `db.siteKey || envSiteKey()`. If the DB setting is an empty string, it falls back to env because `...
-
-### HIGH: `j` and `malbolge` appear in README Docker image size table but have no language config anywhere
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `README.md` lines 87 (`judge-malbolge`, 114 MB / 136 MB arm64) and 93 (`judge-j`, 150 MB / 507 MB arm64) - `src/types/index.ts`: neither `j` nor `malbolge` present in `Language` union - `src/lib/judge/languages.ts`: no entries for `j` or `malbolge` - `AGENTS.md` language table: neither listed - `docs/languages.md` table: neither listed - `docker/Dockerfile.judge-j`, `docker/Dockerfile.judge-malbolge`: both exist and are functional Dockerfiles  **Failure scenario:** A user or agen...
-
-### HIGH: `judgekit-app-data` and `judgekit-dead-letter` volumes not backed up.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `docker-compose.production.yml:195-201`
-- **Details:** `docker-compose.production.yml:195-201` declares `judgekit-app-data` (mounted at `/app/data`) and `judgekit-dead-letter` (at `/app/dead-letter`). Neither appears in `backup-db.sh` or the pre-deploy backup step. Dead-letter entries for failed judgments are silently pruned at 1000 items (per `executor.rs`) with no prior export. - Fix: add volume backup to the daily timer:   ```bash   docker run --rm \     -v judgekit-dead-letter:/dlq \     -v /home/${USER}/backups:/backups \     alpine tar czf ...
-
-### HIGH: `production-config.ts`: `assertProductionConfig` process.exit(1) path never tested
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/production-config.ts:61-93`
-- **Details:** **File:** `src/lib/security/production-config.ts:61-93` **Confidence:** CONFIRMED  `assertProductionConfig()` is called from `src/instrumentation.ts` at Next.js boot. When `NODE_ENV=production` and any of `CRON_SECRET`, `CODE_SIMILARITY_AUTH_TOKEN`, `RATE_LIMITER_AUTH_TOKEN`, or `NODE_ENCRYPTION_KEY` is missing, it calls `process.exit(1)`. No test exercises this module at all:  ```bash grep -r "production-config\|assertProductionConfig" tests/
-
-### HIGH: `roc` in AGENTS.md language table (row 94) but absent from the `Language` type union
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `AGENTS.md` line 119: `| 94 | roc | Roc alpha4 | judge-roc |` - `src/types/index.ts`: `roc` is **not** present in the `Language` union (confirmed exhaustive read of lines 31–165) - `docs/languages.md` "Disabled Languages" section: correctly lists `roc` as disabled (upstream compiler panic)  **Failure scenario:** AGENTS.md's "Adding a New Language" checklist (step 1) directs agents to `src/types/index.ts` as the first step. An agent scanning AGENTS.md to audit which languages are ...
-
-### HIGH: `sensitive-settings.ts`: `SENSITIVE_SETTINGS_KEYS` list completeness never behavior-tested
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/sensitive-settings.ts:18-48`
-- **Details:** **File:** `src/lib/security/sensitive-settings.ts:18-48` **Confidence:** CONFIRMED  `touchesSensitiveSettingsKey()` and `requireSettingsReconfirm()` are mocked in every caller test. The actual key list in `SENSITIVE_SETTINGS_KEYS` is the canonical security boundary — if any key that affects security posture is omitted from the list, password reconfirmation is silently skipped.  ```typescript // tests/unit/actions/system-settings.test.ts — only usage vi.mock("@/lib/security/sensitive-settings"...
-
-### HIGH: `stop_grace_period` not set in `docker-compose.production.yml`.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `judge-worker-rs/src/main.rs` implements graceful drain but `docker-compose.production.yml` has no `stop_grace_period:` on `judge-worker`. Docker's default is 10 seconds before SIGKILL. A Java or Scala compilation that takes 12 seconds is killed mid-run; the submission stays `judging` indefinitely. - Fix: add `stop_grace_period: 120s` to the `judge-worker` service. - Failure scenario: rolling deploy issues `docker stop judgekit-judge-worker`; 10 s later SIGKILL   arrives mid Java compilation;...
-
-### HIGH: `submissions.judgeWorkerId` lacks a foreign key constraint
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/db/schema.pg.ts:487, 507`
-- **Details:** **File:** `src/lib/db/schema.pg.ts:487, 507`  ```typescript judgeWorkerId: text("judge_worker_id"),           // line 487 — no .references() // ... index("submissions_judge_worker_idx").on(table.judgeWorkerId), // line 507 ```  **Observation:**   The column is plain `text` with no `references(() => judgeWorkers.id)`. When a worker is decommissioned and deleted from `judgeWorkers`, all its historical submissions retain the old `judgeWorkerId` string with no DB-level integrity protection. No ca...
-
-### HIGH: src/app/(public)/dashboard/_components/student-dashboard.tsx:100–102
-
-- **Flagged by:** student-reviewer
-- **Suggested fix:** change the filter to `(assignment.lateDeadline ?? assignment.deadline) && (assignment.lateDeadline ?? assignment.deadline)! > now`, and add a "Late" badge when only `lateDeadline` is still open.
-
-### HIGH: src/app/(public)/practice/problems/[id]/page.tsx:636
-
-- **Flagged by:** student-reviewer
-- **Suggested fix:** thread `isSubmissionBlocked` into `PublicQuickSubmit`/`ProblemSubmissionForm` as a prop. When `true`, replace the submit button with a disabled state and a "Deadline has passed" message.
-
-### HIGH: src/hooks/use-unsaved-changes-guard.ts:5
-
-- **Flagged by:** student-reviewer
-- **Location(s):** `src/components/problem/problem-submission-form.tsx:103`
-- **Suggested fix:** add a `warningMessage` i18n key in the `problems` namespace and pass it: `useUnsavedChangesGuard({ isDirty, warningMessage: t("unsavedChangesWarning") })`.
-
-### MEDIUM: AGENTS.md describes Docker build/delete API auth as "Admin/super_admin only"; code gates on `system.settings` capability
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `AGENTS.md` lines 261–262:   - `POST /api/v1/admin/docker/images/build` — "Admin/super_admin only. Audit logged."   - `DELETE /api/v1/admin/docker/images` — "Admin/super_admin only. Audit logged." - `src/app/api/v1/admin/docker/images/build/route.ts` line 19: `auth: { capabilities: ["system.settings"] }` - `src/app/api/v1/admin/docker/images/route.ts` line 93 (POST) and line 165 (DELETE): `auth: { capabilities: ["system.settings"] }` - `docs/api.md` (correct): "Requires `system.s...
-
-### MEDIUM: ANALYZE failure silently swallowed and reported as success.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `deploy-docker.sh:1276`
-- **Details:** `deploy-docker.sh:1276`: ```bash psql -h db -U judgekit -d judgekit -c 'ANALYZE;' 2>&1 || true success "Database statistics updated" ``` `|| true` means a timed-out or permission-failed ANALYZE prints a green success line and the deploy continues. The planner operates on stale statistics until the next successful ANALYZE. Under exam-day concurrent load this can produce 10–30× query plan regressions. - Fix: `|| { warn "ANALYZE failed — query planner statistics may be stale"; }`. Remove the   u...
-
-### MEDIUM: Analytics cache stale check uses `Date.now()` vs DB-clock `createdAt`
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/assignments/contest-analytics-cache.ts:47, 62`
-- **Details:** **File:** `src/lib/assignments/contest-analytics-cache.ts:47, 62`  ```typescript // line 47 (cache write): analyticsCache.set(cacheKey, { data: analytics, createdAt: await getDbNowMs() });  // line 62 (stale check): const age = nowMs - cached.createdAt;  // nowMs = Date.now() ```  **Observation:**   Cache entries are timestamped with `getDbNowMs()` (DB server clock). The freshness check computes `age = Date.now() - cached.createdAt` using the Node.js process wall clock (`Date.now()`). If the ...
-
-### MEDIUM: Backup encryption opt-in, plaintext default.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `backup-db.sh:90-91`
-- **Details:** `backup-db.sh:90-91`: AGE encryption only activates when `AGE_RECIPIENT` is non-empty. On all three production targets, this must be manually configured; `.env.production.example` does not mention it. Backups stored in `~/backups/` are unencrypted pg_dump files readable by anyone with host filesystem access. - Fix: document `AGE_RECIPIENT` in `.env.production.example` as a recommended field. Add a   deploy-time `warn` (not `die`) when `AGE_RECIPIENT` is unset.  ---
-
-### MEDIUM: Backups are unencrypted by default.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `backup-db.sh:90`
-- **Details:** `backup-db.sh:90`: `AGE_RECIPIENT` defaults to empty. On all three production hosts, daily pg_dump files in `~/backups/` are plaintext. Anyone with read access to the host filesystem can read the full database. - Fix: document `AGE_RECIPIENT` in `.env.production.example`. Emit a deploy-time `warn` when   unset.  ---
-
-### MEDIUM: Claim CTE deadlock risk documented but unmitigated at the architecture level
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/judge/claim-query.ts:97-99`
-- **Details:** **File:** `src/lib/judge/claim-query.ts:97-99`  ``` // Two workers simultaneously reclaiming each other's stale rows can trigger // Postgres transaction abort. Self-recovering via retry. ```  **Observation:**   The 5-CTE claim query uses `FOR UPDATE SKIP LOCKED` to achieve race-free claim. However, the documented scenario at lines 97-99 — two workers concurrently reclaiming each other's previously-stale rows — creates a deadlock that Postgres resolves by aborting one transaction. The abort ca...
-
-### MEDIUM: Clarifications are contest-only (same namespace as announcements). Students cannot submit clarification requests on regular homework assignments.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: Compile-phase DoS ceiling (10 min × 2 GiB)
-
-- **Flagged by:** security-analyzer
-
-### MEDIUM: Confirm dialog mentions "the timer" but not the exact duration in all cases.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: Dead-letter volume contains student code with no retention policy.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `judgekit-dead-letter` holds submission source files for failed judgments. These are PII in the university context (student code). The volume is not backed up (D3) and is silently pruned at 1000 items. There is no documented retention policy. - Fix: document retention in the privacy page. Include dead-letter data in the self-service   export (P1) and in the GDPR deletion workflow.
-
-### MEDIUM: Deploy profile files are sourced before local permission hardening
-
-- **Flagged by:** code-reviewer
-- **Location(s):** `deploy-docker.sh:141-158`, `AGENTS.md:427`
-- **Details:** - Severity: Medium - Confidence: High - Evidence: `deploy-docker.sh:141-158` sources `.env.deploy` and `.env.deploy.<target>` directly; `AGENTS.md:427` says all `.env*` including `.env.deploy*` are expected to be `0600`. - Problem: target profiles often carry SSH keys, passwords, runner URLs, or other deploy secrets. If a profile is created under a permissive umask, the script consumes it without correcting or warning. - Failure scenario: an operator adds `SSH_PASSWORD` or a private key path/...
-
-### MEDIUM: Heartbeat gap at privacy notice acceptance will appear suspicious.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: Judge IP allowlist allow-all default
-
-- **Flagged by:** security-analyzer
-
-### MEDIUM: Late penalty not broken out in export or UI. The adjusted score is stored and displayed correctly, but neither the status board nor the CSV export shows the raw pre-penalty score alongside the adjusted score. A student disputing a late penalty cannot verify the calculation from the grade report.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH  ---
-
-### MEDIUM: MEDIUM | Backup retention loop never prunes encrypted backups
-
-- **Flagged by:** debugger
-- **Location(s):** `scripts/backup-db.sh:100–106`
-- **Details:** **File:** `scripts/backup-db.sh:100–106`  **Root cause:** The outer `find` at line 100 iterates all four backup patterns (`.db`, `.db.age`, `.sql.gz`, `.sql.gz.age`). But `NEWER_COUNT` at line 102 only counts `.db` and `.sql.gz`:  ```bash
-
-### MEDIUM: MEDIUM — Server-level `client_max_body_size 50M` contradicts "scoped to report endpoint" comment and test name
-
-- **Flagged by:** verifier
-- **Location(s):** `deploy-docker.sh:1476`, `deploy-docker.sh:1548`, `tests/unit/infra/judge-report-nginx.test.ts:23`
-- **Details:** **File:** `deploy-docker.sh:1476` (TLS block) and `deploy-docker.sh:1548` (HTTP block)   **Introduced:** pre-cycle-3 (body size structure predates the cycle-3 commit; the HTTP/2 fix landed on top of it)   **Confidence:** HIGH — confirmed by direct code read and cross-reference with `scripts/online-judge.nginx.conf`  **Description:**   The generated nginx config written by `deploy-docker.sh` places `client_max_body_size 50M;` at the **server block level** (lines 1476 and 1548), before any loca...
-
-### MEDIUM: No "final submission accepted" ceremony with timestamp.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: No "rejudge this assignment" action from the gradebook. After fixing a buggy test case I must navigate to Admin → Submissions, apply group + assignment filters, and trigger bulk rejudge. The assignment status board has no rejudge button.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add a "Rejudge All" button on the assignment status board visible only to instructors; call the existing bulk rejudge route with this assignment's filter pre-applied. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No "reviewed / cleared" flag for similarity hits. The anti-cheat dashboard shows flagged pairs but provides no way to mark a pair as "reviewed — not a violation." Re-running the check resets all events. Unreviewed and cleared pairs look identical.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add a `reviewedAt` / `reviewOutcome` field to `antiCheatEvents`; surface a dropdown (pending / cleared / escalated) on each pair row. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No clarifications for non-exam assignments. The clarification endpoint is in the `contests` namespace and gated identically (`src/app/api/v1/contests/[assignmentId]/clarifications/route.ts`). Students cannot ask formalized questions for homework assignments.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No cross-assignment serial-cheater pattern detection.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - The similarity check (`runAndStoreSimilarityCheck`) operates per-assignment only. There is no UI or API to chain a student's code across multiple assignments.
-
-### MEDIUM: No editorial model, route, or UI.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - Checked: `src/lib/db/schema.ts` (problem record has `title`, `description`, `statement`, test cases, function spec — no `editorial` or `solutionCode` field). - Scenario: I authored problem C for the semester contest. After the deadline I want to publish my editorial with annotated code. My only option is posting to the course forum with no platform-level link to the problem and no release-timing control.  ---
-
-### MEDIUM: No evidence export for academic integrity hearings. I cannot download a PDF or formatted report of the similarity finding for submission to the academic integrity office.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add a "Export evidence PDF/CSV" action from the anti-cheat dashboard that packages the pair comparison, code diff, timestamps, and submission metadata. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No explicit "what happens if time expires while my submission is in transit" message.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: No explicit "you may use language stdlib docs" statement.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### MEDIUM: No explicit usage-policy for external resources.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `messages/en.json:2867-2871`, `src/app/(auth)/recruit/[token]/page.tsx:300-309`
-- **Details:** *File:* `messages/en.json:2867-2871`, `src/app/(auth)/recruit/[token]/page.tsx:300-309`   *Fix:* Add a bullet under "Before you start": "You may reference language documentation in another tab. Brief tab-switches are expected and noted, not disqualifying on their own."
-
-### MEDIUM: No global or group-level banner announcements. An admin-level notice (e.g., "Judge queue degraded — submissions may be delayed") cannot be displayed as a banner. Instructors cannot post group-level announcements outside of an active assignment context.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No import from Codeforces/BOJ/Polygon. The `/api/v1/problems/import` route (`src/app/api/v1/problems/import/route.ts:8`) only accepts the JudgeKit JSON schema (`problemImportSchema`). There is no URL-based import or adapter for Polygon packages or BOJ problem packs.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Failure scenario:** I want to reuse a problem from a prior Codeforces round for a practice assignment. I must manually re-type the statement, recreate test cases, and set limits — wasting an hour. - **Suggested fix:** Add a `source` field to the import schema accepting a Polygon-compatible ZIP, or implement a URL-fetch adapter for known archives. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No per-problem language restriction. The exam form supports `enableAntiCheat` but no allowed-language list per problem. I cannot enforce "problem 1: C++ only" or "exam: no Python, only C++/Java" to test language-specific skills.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add `allowedLanguages: string[]` to `assignmentProblems` schema; enforce at the submission creation route by comparing language against the per-problem list. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No per-problem per-language time limit override for instructors. Time limits are a single global `timeLimitMs` per problem; per-language adjustment is a global admin-controlled multiplier (`src/lib/db/schema.pg.ts:544 timeLimitMultiplier`). Instructors cannot set "Python 5 s / C++ 1 s" per problem without asking the admin to change a global system setting.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Failure scenario:** I set a 2 s limit for a graph problem. Java and Python students fail every test on time even with correct solutions. The admin's global multiplier is set to 1.0 because it suits the competitive elective. My intro course students are penalized. - **Suggested fix:** Add optional `perLanguageTimeLimitMs: Record<string, number>` to the problem schema; surface it in the form under advanced settings. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No per-problem statistics in the analytics page. The group analytics page (`src/app/(public)/groups/[id]/analytics/page.tsx`) shows per-assignment aggregate stats (member count, submission counts) but not per-problem solve rates, time-to-first-solve histograms, or attempt-count distributions. I cannot quickly identify which problem stumped the class without manual DB queries.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add a per-problem breakdown section to the analytics page: solve rate, median solve time, attempt-count histogram. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No per-student progress view. There is no page showing a single student's assignment completion trajectory across all assignments in a group (score trend, late submissions, attempt history). If a student asks why they are failing I cannot show them a progress dashboard.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No post-assessment feedback form.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: No push or email notification when TA posts submission comment.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - Same root as Finding 2-B. Once I leave feedback, there is no mechanism to alert the student to check it.  ---
-
-### MEDIUM: No rollback procedure documented or scripted.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `:latest` is the only image tag. After a broken deploy is detected, recovery requires `git revert` + full rebuild — 15–30 minutes of downtime during an exam. - Fix: tag current `:latest` as `:previous` before each build. Add `scripts/rollback-deploy.sh`   that retags `:previous` → `:latest`, runs `docker compose up -d`, and runs the smoke check.
-
-### MEDIUM: No submission attempt limit per student. Students can submit unlimited times; in a 120-student course this degrades queue performance during the deadline rush and rewards trial-and-error over understanding.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add optional `maxAttemptsPerStudent` to the assignment schema; enforce at the submission creation route. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No test case generator support. I cannot define a generator script + validator. Large hidden test suites must be uploaded manually or via ZIP.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: No verdict distribution metric — compile_error sweep still invisible after deploy.
-
-- **Flagged by:** admin-reviewer
-- **Details:** Neither `/api/metrics` nor `src/lib/ops/admin-health.ts` exposes `judgekit_verdict_total{verdict="…"}`. The health probe detects docker-proxy misconfig at startup but not a mid-run proxy ACL change, sidecar crash, or other partial failure that causes only some submissions to fail. - Fix: add `judgekit_verdict_total{verdict="accepted|wrong_answer|compile_error|…"}` counter to   `src/lib/ops/admin-metrics.ts`. Add a 5-minute windowed `compile_error_ratio` check to   `admin-health.ts`. Return de...
-
-### MEDIUM: No webhook when audit write fails.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `src/lib/audit/events.ts` exposes `judgekit_audit_failed_writes` gauge. No alert path fires when `failed_writes > 0`. Operator discovers silently failed auditing only by watching Prometheus — if a scraper is even configured. - Fix: surface `judgekit_audit_failed_writes > 0` as a degraded signal in   `src/lib/ops/admin-health.ts` and in the monitor webhook (see O1 below).
-
-### MEDIUM: Override audit trail not visible in gradebook UI. The audit log records who overrode a score and when (`overrides/route.ts:130–146`), but the status board only shows an italic score and a pencil icon. I cannot see "Overridden by TA Kim on 2026-06-28 14:30" without navigating to the admin audit log.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:246–279`
-- **Details:** - **File:** `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:246–279` - **Failure scenario:** A student disputes their grade. I open the status board and see an italic score. I cannot tell which TA changed it, when, or why without exporting the audit log and filtering manually. - **Suggested fix:** Surface the `createdBy` name and `createdAt` from the overrides table in a tooltip on the pencil icon. - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: Privacy Policy link opens in a new tab without explanation.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: Recruiter-visible "best score" vs. candidate-visible "best score" may diverge.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: Rust sidecars have no `/metrics` endpoint.
-
-- **Flagged by:** admin-reviewer
-- **Details:** `code-similarity-rs` and `rate-limiter-rs` expose `/health` only. No Prometheus metrics (request count, auth failures, latency percentiles). These are on every submission's hot path. A broken rate-limiter that silently drops requests produces no observable signal except downstream 500s. - Fix: add `axum-prometheus` to both crates. Expose `/metrics` with at minimum:   `rate_limiter_check_total{outcome="allow|deny"}`, `rate_limiter_check_duration_seconds`,   `rate_limiter_auth_fail_total`.
-
-### MEDIUM: SSE shared poll timer interval is fixed at timer creation; runtime config changes are ignored for active connections
-
-- **Flagged by:** tracer
-- **Details:** **Severity: MEDIUM** **Confidence: HIGH**  **Location:** `src/app/api/v1/submissions/[id]/events/route.ts` — shared poll timer setup  **Causal chain:**  1. A shared `setInterval` is created once per process (or once per "first subscriber") with the `ssePollIntervalMs` value read at that moment. 2. If `system_settings.ssePollIntervalMs` is changed at runtime, the in-flight `setInterval` is not recreated. 3. Active SSE clients continue to receive updates at the old interval. 4. The new interval...
-
-### MEDIUM: Score override reason field is optional — audit trail is hollow.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/(public)/groups/[id]/assignments/[assignmentId]/score-override-dialog.tsx:91`, `overrides/route.ts:131`, `overrides/route.ts:15`
-- **Details:** - File: `src/app/(public)/groups/[id]/assignments/[assignmentId]/score-override-dialog.tsx:91` - Code: `reason: reason.trim() || undefined` - Scenario: TA overrides a score by 1 point for "missing newline" and leaves reason blank. Audit log at `overrides/route.ts:131` records `reason: null`. Six weeks later a student disputes the grade; there is no reconstructible justification. - Fix: Make `reason` required both on the frontend (add validation in `handleSave`, add `required` to the Textarea)...
-
-### MEDIUM: Similarity Check button active for TAs but API returns 403 — silent failure with generic toast.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/components/contest/anti-cheat-dashboard.tsx:282-327`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21`
-- **Details:** - Files: `src/components/contest/anti-cheat-dashboard.tsx:282-327` (button always rendered); `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21` (guards on `canManageContest`) - No disabled state, no tooltip explaining the restriction, no conditional render. Generic error toast fired (`tCommon("error")` at line 323). - This is the TA-visible face of the `anti_cheat.run_similarity` dead capability (Finding 3-D). The button should either be hidden or disabled with a tooltip wh...
-
-### MEDIUM: Similarity Check button shown to TAs but API returns 403 — no affordance.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/components/contest/anti-cheat-dashboard.tsx:282-327`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21`
-- **Details:** - Files: `src/components/contest/anti-cheat-dashboard.tsx:282-327` (button always rendered inside the dashboard); `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21` (uses `canManageContest`) - The anti-cheat tab is gated only on `assignment.enableAntiCheat` — no `canManage` check on the tab or on the dashboard component. TAs reach `AntiCheatDashboard`, the similarity button renders unconditionally. - Scenario: Post-exam I click "Run Similarity Check." Generic `tCommon("erro...
-
-### MEDIUM: Student lookup limited to name, username, className — no student ID or email.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/lib/assignments/submissions.ts:44-53`
-- **Details:** - File: `src/lib/assignments/submissions.ts:44-53` (`matchesStudentQuery`) - Code: `[row.name, row.username, row.className ?? ""].join(" ").toLocaleLowerCase().includes(normalizedQuery)` - Scenario: A student emails "hi, it's Lee, student ID 2024-1234, my submission exploded." There is no way to type "2024-1234" in the filter box. With 60 students named "Lee" in a university, this is a real lookup failure. - Fix: Add `studentId` to the user lookup in `getAssignmentStatusRows` (the `users` tab...
-
-### MEDIUM: Tab-switch grace period is undisclosed.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `anti-cheat-monitor.tsx:53`, `anti-cheat-monitor.tsx:280-289`
-- **Details:** *Files:* `anti-cheat-monitor.tsx:53`, `anti-cheat-monitor.tsx:280-289`   *Fix:* Disclose in the pre-start notice: "Brief tab switches (under 3 seconds) are not flagged."
-
-### MEDIUM: Token in URL with no guidance.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** *File:* `page.tsx` — no warning text   *Fix:* Add a short paragraph: "This link is unique to you. Do not share it."
-
-### MEDIUM: WA diff not accessible from the gradebook. To see actual vs. expected output on a wrong answer I must navigate from the status board → student → problem → submission → submission detail. There is no inline diff expansion in the gradebook.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** MEDIUM | **Confidence:** HIGH
-
-### MEDIUM: `.context/development/conventions.md` references a missing `ENV.md`
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `.context/development/conventions.md` line 22: "See `ENV.md` for credentials and deployment commands." - `ENV.md`: **does not exist** anywhere in the project root or `.context/`.  **Failure scenario:** An agent following the conventions doc to find deployment credentials looks for `ENV.md` and finds nothing. The actual credential/credential-placeholder file is `.env.example` (documented in AGENTS.md and README). An agent may stall or fall back to guessing credentials.  **Suggeste...
-
-### MEDIUM: `JUDGE_ALLOWED_IPS` is cached at module level and never reloads without a restart
-
-- **Flagged by:** tracer
-- **Location(s):** `src/lib/judge/ip-allowlist.ts:26-49`
-- **Details:** **Severity: MEDIUM** **Confidence: HIGH**  **Location:** `src/lib/judge/ip-allowlist.ts:26-49`  ```ts let cachedAllowlist: string[] | null = null;  function getAllowlist(): string[] | null {   if (cachedAllowlist !== null) return cachedAllowlist;   // reads process.env once, then caches   ...   cachedAllowlist = entries;   return cachedAllowlist; } ```  **Causal chain:**  1. `JUDGE_ALLOWED_IPS` is read from `process.env` once and stored in `cachedAllowlist`. 2. If a new judge worker is provis...
-
-### MEDIUM: `anti_cheat.run_similarity` capability declared in assistant defaults but never enforced by the API.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/lib/capabilities/defaults.ts:29`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21`
-- **Details:** - Files: `src/lib/capabilities/defaults.ts:29` (ASSISTANT_CAPABILITIES includes `anti_cheat.run_similarity`), `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:21` (uses `canManageContest`, ignores capabilities entirely) - The capability shows in the role editor's capability matrix, giving admins the impression that granting it enables similarity for a role. It does nothing. - Fix: In `similarity-check/route.ts`, replace `canManageContest` with a check: `caps.has("anti_cheat.r...
-
-### MEDIUM: `app:` does not depend_on code-similarity or rate-limiter.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `docker-compose.production.yml:110-112`
-- **Details:** `docker-compose.production.yml:110-112`: ```yaml app:   depends_on:     db:       condition: service_healthy ``` On deploy, `docker compose up -d` starts `app` once `db` is healthy, without waiting for `code-similarity` or `rate-limiter`. First requests arriving before the sidecars are healthy get 500 errors from the app. - Fix:   ```yaml   app:     depends_on:       db:         condition: service_healthy       code-similarity:         condition: service_healthy       rate-limiter:         co...
-
-### MEDIUM: `blur` event fires with no grace period.
-
-- **Flagged by:** applicant-reviewer
-
-### MEDIUM: `blur` signal is noisy on Mac.
-
-- **Flagged by:** applicant-reviewer
-- **Location(s):** `anti-cheat-monitor.tsx:296-299`
-- **Details:** *File:* `anti-cheat-monitor.tsx:296-299`
-
-### MEDIUM: `deploy-docker.sh` exceeds modularization threshold at 1704 lines
-
-- **Flagged by:** architect
-- **Location(s):** `deploy-docker.sh:1-1704`
-- **Details:** **File:** `deploy-docker.sh:1-1704`  **Observation:**   The script has crossed 1700 lines and mixes at least six distinct concerns: Docker build orchestration, BuildKit cache recovery, DB migration, Nginx config generation, health checking, and environment validation. A single bash failure anywhere aborts the entire deploy with no partial-state recovery. The inline SQL patches (F-1) are a direct symptom of this accumulation pattern.  **Current pain points already visible in the code:**   - Bu...
-
-### MEDIUM: `env.deploy.<target>` profile file not hardened at creation; credentials are world-readable under default `umask 0022`
-
-- **Flagged by:** tracer
-- **Location(s):** `deploy-docker.sh:141-158`, `AGENTS.md:427`
-- **Details:** **Severity: MEDIUM** **Confidence: HIGH**  **Location:** `deploy-docker.sh:141-158` (profile creation section); `AGENTS.md:427`  **Causal chain:**  1. When no `env.deploy.<target>` file exists, the script creates one from `env.deploy.example`. 2. The `cp` command inherits the shell's `umask` — typically `0022` on Linux, leaving the file `0644` (world-readable on a multi-user machine). 3. The operator then fills in real credentials (`JUDGE_AUTH_TOKEN`, `DB_PASSWORD`, etc.). 4. The credentials ...
-
-### MEDIUM: `ip.ts`: `unwrapMappedIpv4()` not directly tested as exported function
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/ip.ts:33-44`, `unwrapMappedIpv4("::FFFF:192.0.2.1")`, `unwrapMappedIpv4("::ffff:1.2.3.4:extra")`, `unwrapMappedIpv4("::ffff:999.1.1.1")`, `ip.test.ts:118`
-- **Details:** **File:** `src/lib/security/ip.ts:33-44` **Confidence:** CONFIRMED  `unwrapMappedIpv4` is exported but only exercised indirectly via `extractClientIp`. The following edge cases have no direct test:  - `unwrapMappedIpv4("::FFFF:192.0.2.1")` — uppercase `FFFF` (regex is `/i` so it matches, but untested) - `unwrapMappedIpv4("")` — empty string (regex won't match, returns `null`, untested) - `unwrapMappedIpv4("::ffff:1.2.3.4:extra")` — trailing garbage after the IPv4 portion - `unwrapMappedIpv4("...
-
-### MEDIUM: `judge-haskell` base image: AGENTS.md says `ghc:9.4-alpine`; Dockerfile uses `alpine:3.21`; `languages.ts` says `Debian Bookworm`
-
-- **Flagged by:** document-specialist
-- **Location(s):** `| judge-haskell | 1.81 GB | ghc:9.4-alpine | **-2.16 GB (54%)** |`, `FROM alpine:3.21`, `ghc:9.4-alpine`, `alpine:3.21`
-- **Details:** **Files:** - `AGENTS.md` line 216 (Docker image size table): `| judge-haskell | 1.81 GB | ghc:9.4-alpine | **-2.16 GB (54%)** |` - `docker/Dockerfile.judge-haskell` line 1: `FROM alpine:3.21` - `src/lib/judge/languages.ts` `DOCKER_IMAGE_RUNTIME_INFO`: `"judge-haskell:latest": "Debian Bookworm / GHC 9.4"`  **Failure scenario:** All three sources disagree. The AGENTS.md size table references the old `ghc:9.4-alpine` pre-optimization base. The Dockerfile correctly uses `alpine:3.21`. But `langua...
-
-### MEDIUM: `judge-worker-rs/src/runner.rs`: No Rust unit tests for HTTP handler validation logic
-
-- **Flagged by:** test-engineer
-- **Details:** **File:** `judge-worker-rs/src/runner.rs` **Confidence:** CONFIRMED  `runner.rs` (~350 lines) contains the judge-worker's HTTP API including source-code size enforcement (`MAX_SOURCE_CODE_BYTES = 64*1024`), stdin size enforcement (`MAX_STDIN_BYTES = 64*1024`), Docker image validation on incoming `docker_image` fields, semaphore capacity enforcement, and the `docker_capability_ok` AtomicBool gate. There are zero `#[cfg(test)]` blocks in this file.  The `validation.rs` module is well-tested; bu...
-
-### MEDIUM: `minPasswordLength` system setting is dead code — not enforced
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/db/schema.pg.ts:591`
-- **Details:** **File:** `src/lib/db/schema.pg.ts:591`  ```typescript minPasswordLength: integer("min_password_length"), ```  **Observation:**   `minPasswordLength` exists in the `systemSettings` table and is (presumably) configurable via the admin UI. However, `grep` across all `src/` files finds zero references to `minPasswordLength` or `min_password_length` in any validator, middleware, or registration handler. Password validation in user-facing routes does not consult this setting.  **Failure scenario:*...
-
-### MEDIUM: `proxy.test.ts`: 18 live `Date.now()` calls without fake timers — potential clock flake
-
-- **Flagged by:** test-engineer
-- **Location(s):** `tests/unit/proxy.test.ts:113,336,347,358,386,397,408,451,464,477`, `vi.setSystemTime(new Date("2026-01-01T00:00:00Z"))`
-- **Details:** **File:** `tests/unit/proxy.test.ts:113,336,347,358,386,397,408,451,464,477` **Confidence:** CONFIRMED  The proxy test creates token fixtures with `authenticatedAt: Math.trunc(Date.now() / 1000)` to represent a "just logged in" session. The middleware compares this against a mocked `tokenInvalidatedAt` to decide if the session is revoked. Tests run under real wall-clock time with no `vi.useFakeTimers()`.  If a test machine's `Date.now()` ticks across a second boundary between fixture creation...
-
-### MEDIUM: `rate-limit-core.ts`: ON CONFLICT first-insert race path not directly tested
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/security/rate-limit-core.ts:75-121`, `tests/unit/security/api-rate-limit.test.ts:458`, `rate-limit-core.ts:98`
-- **Details:** **File:** `src/lib/security/rate-limit-core.ts:75-121` **Confidence:** CONFIRMED  `insertRateLimitEntryIfAbsent()` returns `true` when it wins the insert race, `false` when a concurrent transaction already inserted. On `false`, callers fall through to UPDATE. This is the AGG2-3 fix — without it, concurrent first-hits throw a unique-violation 500.  Tests in `tests/unit/security/api-rate-limit.test.ts:458` cover "first-insert race" conceptually, but the DB mock always returns as if the insert s...
-
-### MEDIUM: `rate-limiter-rs/src/main.rs`: `constant_time_eq`, bearer middleware, and backoff cap untested
-
-- **Flagged by:** test-engineer
-- **Location(s):** `rate-limiter-rs/src/main.rs:51-57,62-89,196-213`
-- **Details:** **File:** `rate-limiter-rs/src/main.rs:51-57,62-89,196-213` **Confidence:** CONFIRMED  The rate-limiter Rust sidecar has only two integration-style tests: `check_increments_and_blocks_at_limit` and `record_failure_blocks_and_reset_clears_entry`. Missing coverage:  1. **`constant_time_eq` (lines 51–57)**: The constant-time comparison used for bearer auth is never directly tested. Equal-length different-content inputs returning `false` is unverified.  2. **`require_bearer` middleware (lines 62–...
-
-### MEDIUM: `revokeContestAccessTokensForGroup()`: Only asserted via source-scan, not behavior-tested
-
-- **Flagged by:** test-engineer
-- **Location(s):** `src/lib/assignments/contest-access-tokens.ts:60-82`
-- **Details:** **File:** `src/lib/assignments/contest-access-tokens.ts:60-82` **Confidence:** CONFIRMED  The group-member-delete test verifies the function is *called* by scanning the route's source file:  ```typescript // tests/unit/api/group-member-delete-implementation.test.ts:28 expect(source).toContain("revokeContestAccessTokensForGroup(tx, id, userId)"); ```  This verifies the function name appears in the source — not that it executes, uses the correct arguments, runs inside the transaction, or return...
-
-### MEDIUM: `session.maxAge` evaluated once at module load; runtime changes have no effect
-
-- **Flagged by:** tracer
-- **Details:** **Severity: MEDIUM** **Confidence: HIGH**  **Location:** `src/lib/auth/config.ts` — `session.maxAge` field  **Causal chain:**  1. NextAuth config object is constructed at module initialization time. 2. `session.maxAge` is set from a call to `getConfiguredSettings()` (or a constant) at that moment. 3. If an admin changes `system_settings.sessionMaxAgeSec` at runtime, the in-process NextAuth config is not updated. 4. New sessions issued after the change still use the old `maxAge` until the serv...
-
-### MEDIUM: `tags.updatedAt` is nullable — no `.notNull()` unlike all other tables
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/db/schema.pg.ts:1161-1162`
-- **Details:** **File:** `src/lib/db/schema.pg.ts:1161-1162`  ```typescript // tags table (line 1161): updatedAt: timestamp("updated_at", { withTimezone: true })   .$defaultFn(() => new Date()),    // no .notNull()  // All other tables (e.g., line 963-964): updatedAt: timestamp("updated_at", { withTimezone: true })   .notNull()   .$defaultFn(() => new Date()), ```  **Observation:**   Every other table with `updatedAt` (checked at lines 963, 989, 1025, 1083, 1137) has `.notNull()`. The `tags` table is the so...
-
-### MEDIUM: assistant/TA API scope not independently verified.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `src/lib/capabilities/defaults.ts:20`
-- **Details:** `src/lib/capabilities/defaults.ts:20` notes assistant is "restricted to assigned teaching groups." No verification in this review that every high-privilege admin route (`migrate/export/`, `users/`, `submissions/export/`) actually enforces group scope for assistant callers. Deferred as C2-F11 but the blast radius of mistaken assistant promotion includes data export. - Fix: add integration tests asserting assistant-role sessions receive 403 on   `GET /api/v1/admin/users` and `GET /api/v1/admin/...
-
-### MEDIUM: docker-socket-proxy full-create + no userns
-
-- **Flagged by:** security-analyzer
-
-### MEDIUM: docs/api.md `GET /api/v1/admin/docker/images` says "Admin or Super Admin"; code uses `system.settings` capability
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `docs/api.md` line 1668: "List Docker images. **Admin or Super Admin.**" - `src/app/api/v1/admin/docker/images/route.ts` line 56: `auth: { capabilities: ["system.settings"] }`  **Failure scenario:** Same class as Finding 4 — any role granted `system.settings` (custom roles are supported per `docs/api.md` Admin Roles section) can list Docker images, but docs/api.md implies only built-in admin/super_admin can. Developers writing permission documentation or integration tests would a...
-
-### MEDIUM: src/app/(public)/practice/page.tsx:459
-
-- **Flagged by:** student-reviewer
-- **Suggested fix:** add a fourth `"untried"` option to `PROGRESS_FILTER_VALUES` mapping to `progress === "untried"`, and relabel the current "unsolved" to "Not Solved" so it's clear it spans both attempted and untried.
-
-### MEDIUM: src/components/code/code-editor.tsx:139
-
-- **Flagged by:** student-reviewer
-- **Suggested fix:** either add a `keydown` listener mapping `F` → `toggleFullscreen` when focus is outside the editor content, or remove the `<span>F</span>` label entirely.
-
-### LOW: "May be recorded" ambiguity.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: AGENTS.md language table row count (126 entries) does not match claimed "125 language variants"
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `AGENTS.md` line 20: "JudgeKit currently defines 125 language variants." - `AGENTS.md` language table: rows 1–6, 6b, 7–8, 8b, 9–124 = **126 rows** (6b and 8b are additional entries for cpp26 and clang_cpp26) - Row 94 (`roc`) is one of those rows but `roc` is not an active language (see Finding 2) - Actual active languages: 125 (confirmed from `src/types/index.ts`)  **Failure scenario:** Low-impact — AGENTS.md itself acknowledges this table can drift ("Treat `src/lib/judge/languag...
-
-### LOW: Admin password transmitted in JSON body on deprecated migrate/import path
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `src/app/api/v1/admin/migrate/import/route.ts:145-160`
-- **Details:** **Severity:** MEDIUM   **Category:** A02 Cryptographic Failures   **Location:** `src/app/api/v1/admin/migrate/import/route.ts:145-160`   **Exploitability:** Requires middleware/reverse-proxy access-logging to be enabled; admin-level credential   **Blast Radius:** Admin password captured in access logs if body logging is enabled anywhere in the proxy/middleware chain  **Issue:**   The deprecated JSON body path accepts `{ password, data }` where the admin password is embedded in the request bod...
-
-### LOW: Admin skeleton content shape doesn't communicate table structure
-
-- **Flagged by:** designer
-- **Details:** **Files:** `src/app/(dashboard)/dashboard/admin/loading.tsx` (and `users/`, `submissions/` variants) **Failure scenario:** Skeleton uses `h-8 w-48` title + 5× `h-10 w-full` rows. The actual pages have filter rows, multi-column tables, and action buttons above the table. Shape mismatch during hydration causes visible reflow and does not communicate to users what they are waiting for. **Fix:** Model skeletons after real page layout — narrow cells at expected column proportions, with a filter ba...
-
-### LOW: Admin skeleton loading pages lack accessible busy announcement
-
-- **Flagged by:** designer
-- **Details:** **Files:** - `src/app/(dashboard)/dashboard/admin/loading.tsx` - `src/app/(dashboard)/dashboard/admin/users/loading.tsx` - `src/app/(dashboard)/dashboard/admin/submissions/loading.tsx` - `src/app/(public)/groups/loading.tsx` - `src/app/(public)/problems/loading.tsx`  **Failure scenario:** Screen reader users navigating to admin pages during load encounter bare `<Skeleton>` elements with no announcement. The root `src/app/(dashboard)/loading.tsx` correctly uses `role="status" aria-label={t("lo...
-
-### LOW: Advisory lock hash collisions can serialize unrelated users' submissions
-
-- **Flagged by:** architect
-- **Location(s):** `src/app/api/v1/submissions/route.ts:349`
-- **Details:** **File:** `src/app/api/v1/submissions/route.ts:349`  ```typescript pg_advisory_xact_lock(hashtextextended(userId, 0)::bigint) ```  **Observation:**   `hashtextextended(userId, 0)` maps arbitrary-length UUIDs to a 64-bit bigint. With a birthday paradox probability, collisions between distinct user IDs are expected at scale. A collision causes two unrelated users' submission inserts to serialize behind a single advisory lock, blocking one while the other's transaction completes. At low user cou...
-
-### LOW: Anti-cheat heartbeat best-effort
-
-- **Flagged by:** security-analyzer
-
-### LOW: Anti-cheat heartbeat flag written outside the submission INSERT transaction
-
-- **Flagged by:** tracer
-- **Details:** **Severity: LOW** **Confidence: MEDIUM**  **Location:** `src/app/api/v1/submissions/route.ts` — stale-heartbeat audit write after `tx.commit()`  **Causal chain:**  1. Submission INSERT, advisory lock, rate-limit checks, and exam-window validation all execute inside a single `db.transaction`. 2. After the transaction commits, the code records the stale-heartbeat flag (when the student's last CLIENT_EVENT heartbeat is >90s stale) in a separate write outside the transaction. 3. If the process cr...
-
-### LOW: Assistant self-rejudge
-
-- **Flagged by:** security-analyzer
-
-### LOW: CSV column headers are hardcoded English strings regardless of locale.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61`
-- **Details:** - **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:61` - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: Code similarity is intra-platform only.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: Contest card links produce excessively verbose accessible names
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(public)/_components/public-contest-list.tsx:68,114`
-- **Details:** **File:** `src/app/(public)/_components/public-contest-list.tsx:68,114` **Failure scenario:** A screen reader user navigating the contest list hears the entire card's text as one link label: title + group name + problem count + public problem count + start date + deadline + all badge text. This produces multi-second announcements per item and makes list scanning with SR impractical. ```tsx // Current — no aria-label; accessible name = all card text <Link key={contest.id} href={contest.href} c...
-
-### LOW: Countdown timer urgency relies solely on color + animation
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/exam/countdown-timer.tsx:27`
-- **Details:** **File:** `src/components/exam/countdown-timer.tsx:27` **Failure scenario:** When exam time < 1 minute, `animate-pulse` and `text-destructive` fire. Users with `prefers-reduced-motion` lose the pulse (correctly suppressed by `globals.css`). Users with red-green color blindness lose the color cue. Screen readers receive no announcement when the timer enters the critical zone — only a visual-only urgency signal exists. ```tsx if (ms < 1 * 60 * 1000) return "text-destructive animate-pulse"; ``` ...
-
-### LOW: Coverage threshold (40% functions) too permissive; unimported security modules escape reporting entirely
-
-- **Flagged by:** test-engineer
-- **Location(s):** `vitest.config.ts:30`
-- **Details:** **File:** `vitest.config.ts:30` **Confidence:** CONFIRMED  The unit coverage config sets `functions: 40` globally and 90% per-module for `src/lib/security/**` and `src/lib/auth/**`. However, v8 coverage only reports on files *actually imported* during the test run. The four modules with zero tests (F-01 through F-05: `sandbox-gate.ts`, `hcaptcha.ts`, `production-config.ts`, `derive-key.ts`) are **never imported**, so they do not appear in coverage output and contribute 0% to the threshold den...
-
-### LOW: DELETE inside serializing advisory lock in SSE slot acquire
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/realtime/realtime-coordination.ts:93`
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/lib/realtime/realtime-coordination.ts:93`  ```ts return withPgAdvisoryLock("realtime:sse:acquire", async (tx) => {   await tx.delete(realtimeCoordination).where(     and(sql`key LIKE ${getSsePrefixPattern()}`, lt(realtimeCoordination.expiresAt, nowMs))   );   // ... count, insert ... }); ```  The expired-entry DELETE runs under the global advisory lock (see F1). In pathological cases (e.g., after a server restart where hundreds o...
-
-### LOW: Data table `<th>` elements missing `scope="col"`
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(public)/_components/public-problem-list.tsx:120-128`
-- **Details:** **Files:** `src/components/ui/table.tsx` (base); `src/app/(public)/_components/public-problem-list.tsx:120-128` and all admin table pages **Failure scenario:** Screen reader users navigating the problem list or admin tables (users, submissions, audit logs) by cell cannot determine column/row header relationships without `scope`. WCAG 1.3.1 (Info and Relationships) requires programmatic association for data tables. **Fix:** Set `scope="col"` as the default in the base `TableHead` component: ``...
-
-### LOW: Data tables missing `<caption>` for screen reader orientation
-
-- **Flagged by:** designer
-- **Details:** **Files:** `src/app/(public)/_components/public-problem-list.tsx`, admin table pages (users, submissions, audit-logs) **Failure scenario:** Screen reader users Tab into a data table. Without a `<caption>`, the table has no accessible name. The user must explore headers and rows to understand what the table contains — a poor first-contact experience especially in admin pages with multiple adjacent tables. **Fix:** Add a visually hidden caption to each table: ```tsx <Table>   <caption className...
-
-### LOW: Dead-letter queue silent prune with no admin UI.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `executor.rs:1002`
-- **Details:** Per prior review (`executor.rs:1002`): dead-letter entries are silently deleted beyond 1000 items. No admin page exposes DLQ count or lets the operator requeue a failed submission. No Prometheus gauge for DLQ depth. - Fix: `GET /api/v1/admin/workers/dead-letter` returning count + metadata. Surface in the admin   workers dashboard. Emit `judgekit_dead_letter_count` gauge. Alert when count exceeds a   configurable threshold.
-
-### LOW: Deprecated nginx HTTP/2 listen syntax remains in generated and checked-in configs
-
-- **Flagged by:** code-reviewer
-- **Location(s):** `deploy-docker.sh:1452-1453`, `scripts/online-judge.nginx.conf:27-40`, `static-site/static.nginx.conf:10-11`
-- **Details:** - Severity: Low/Medium - Confidence: High - Evidence: `deploy-docker.sh:1452-1453`, `scripts/online-judge.nginx.conf:27-40`, `static-site/static.nginx.conf:10-11`. - Problem: the configs use `listen ... ssl http2`, which current nginx versions warn is deprecated. The cycle-2 deploy plan already recorded this as an observed deploy warning. - Failure scenario: a future nginx package tightens this from warning to invalid config, causing `nginx -t` to fail during the per-cycle deploy after the ap...
-
-### LOW: Docker Compose has no explicit network segmentation
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `db:5432`, `judge-worker:3001`, `app:3000`
-- **Details:** **Severity:** MEDIUM   **Category:** A04 Insecure Design   **Location:** `docker-compose.production.yml` (no `networks:` block)   **Exploitability:** Requires compromise of any container on the default bridge network   **Blast Radius:** A compromised `code-similarity` or `rate-limiter` container can reach `db:5432` (PostgreSQL), `judge-worker:3001` (runner), and `app:3000` — all services on the default bridge  **Issue:**   No explicit Docker networks are defined. All services (`db`, `app`, `j...
-
-### LOW: Dummy password hash encodes identifiable string
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `src/lib/auth/config.ts:52`
-- **Details:** **Severity:** LOW   **Category:** A02 Cryptographic Failures (hygiene)   **Location:** `src/lib/auth/config.ts:52`    **Issue:**   ```typescript const DUMMY_PASSWORD_HASH =   "$argon2id$v=19$m=19456,t=2,p=1$Y2xhdWRlZHVtbXloYXNo$KQH6bMKH3t2fGK8qMJzrOGmG5bNRVZ0bQfO7aDVz0Zk"; ```  The salt `Y2xhdWRlZHVtbXloYXNo` base64-decodes to `claudedummyhash`. This makes the dummy hash trivially identifiable by anyone with access to source code or a cracking database. While the dummy hash is used only for t...
-
-### LOW: E2E data-dependent `test.skip(true)` pattern hides absent data as passing
-
-- **Flagged by:** test-engineer
-- **Location(s):** `tests/e2e/contest-participant-audit.spec.ts:50-140`, `tests/e2e/student-submission-flow.spec.ts:183`, `tests/e2e/contest-full-lifecycle.spec.ts:297,319,378,399`
-- **Details:** **File:** `tests/e2e/contest-participant-audit.spec.ts:50-140` (extends F-06) **Confidence:** CONFIRMED  Beyond the always-skip issue in F-06, the broader pattern of discovering data at runtime and conditionally skipping is fragile across multiple specs. When run against a freshly deployed server with no seeded contests, all three `describe` blocks in `contest-participant-audit.spec.ts` skip silently. The `npm run test:e2e` gate passes. No one notices the feature was never verified.  The same...
-
-### LOW: Error boundary pages lack live-region announcement
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(dashboard)/error.tsx:17-39`
-- **Details:** **Files:** `src/app/(dashboard)/error.tsx:17-39`, `src/app/(dashboard)/dashboard/admin/error.tsx`, `src/app/(public)/problems/error.tsx` **Failure scenario:** A Next.js client-side navigation error replaces the page content with the error boundary. There is no `role="alert"` or `aria-live` on the error container, so screen readers operating the virtual cursor may not announce the error occurred — the user must manually discover the message. ```tsx // Current — no alert role <div className="fl...
-
-### LOW: Exam session start is idempotent (good), but not communicated.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: Extra SELECT after final verdict update (could use RETURNING)
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** LOW | **Confidence:** CONFIRMED **File:** `src/app/api/v1/judge/poll/route.ts:~156`  ```ts // ...transaction commits the UPDATE... const updated = await db.query.submissions.findFirst({   where: eq(submissions.id, submissionId),   columns: { sourceCode: false }, }); return apiSuccess(updated); ```  After the final-verdict transaction commits, a separate `findFirst` query fetches the updated row for the response. The same pattern appears in the in-progress branch (`updatedInProgr...
-
-### LOW: Extra SELECT after submission insert
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** LOW | **Confidence:** CONFIRMED **File:** `src/app/api/v1/submissions/route.ts:~280`  ```ts await tx.insert(submissions).values({ id, userId, ..., submittedAt: dbNow }); // ... const [submission] = await db.select({ id, userId, ... }).from(submissions).where(eq(submissions.id, id)).limit(1); ```  All field values are known at insert time. The post-insert SELECT only exists to return a typed response object.  **Suggested fix:** Use `.returning()` on the insert, or construct the r...
-
-### LOW: Filesystem path disclosed in admin restore/import API responses
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `src/app/api/v1/admin/restore/route.ts:233-240`, `src/app/api/v1/admin/migrate/import/route.ts:135,246`
-- **Details:** **Severity:** MEDIUM   **Category:** A09 Security Logging and Monitoring Failures (information disclosure)   **Location:** `src/app/api/v1/admin/restore/route.ts:233-240`, `src/app/api/v1/admin/migrate/import/route.ts:135,246`   **Exploitability:** Requires `system.backup` capability; authenticated admin only   **Blast Radius:** Leaks server-side filesystem path structure (e.g. `/home/deployer/data/pre-restore-snapshots/...`) useful for lateral movement after initial access  **Issue:**   The ...
-
-### LOW: Global serializing advisory lock on every SSE connection
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/realtime/realtime-coordination.ts:75`
-- **Details:** **Severity:** HIGH | **Confidence:** CONFIRMED **File:** `src/lib/realtime/realtime-coordination.ts:75`  ```ts return withPgAdvisoryLock("realtime:sse:acquire", async (tx) => {   // DELETE expired, COUNT connections, INSERT new slot — all under one lock }); ```  `withPgAdvisoryLock("realtime:sse:acquire", ...)` translates to `SELECT pg_advisory_xact_lock(hash("realtime:sse:acquire"))` inside a transaction — a **single global serializing lock** shared by every SSE connection attempt from every...
-
-### LOW: Group-level export vs. contest export use different permission guards for the same assignment data.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `groups/[id]/assignments/[assignmentId]/export/route.ts:28`, `contests/[assignmentId]/export/route.ts:50`
-- **Details:** - Group export (`groups/[id]/assignments/[assignmentId]/export/route.ts:28`): `canManageGroupResourcesAsync` — TAs blocked. - Contest export (`contests/[assignmentId]/export/route.ts:50`): `canViewAssignmentSubmissions` — TAs pass. - Same underlying data, different TA access depending on which URL they navigate to. Not a security issue (both paths are read-only) but creates inconsistent mental model. Recommend aligning to `canViewAssignmentSubmissions` for both.  ---
-
-### LOW: Hard cap of 100 test cases per problem (`src/lib/validators/problem-import.ts:35`: `.max(100, "tooManyTestCases")`). Competitive problems commonly need 200–300 test cases. The UI's per-case textarea is impractical for large suites anyway (use ZIP), but the import route enforces the same cap.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Raise the cap or make it operator-configurable; ZIP imports already bypass the textarea bottleneck. - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: ICPC score overrides not applied in leaderboard rankings
-
-- **Flagged by:** tracer
-- **Details:** **Severity: INFO (documented deferral)** **Confidence: HIGH**  **Location:** `src/lib/assignments/contest-scoring.ts` — `computeContestRanking`  **Causal chain:**  ICPC penalty-time and rank overrides are not applied in `computeContestRanking`. This is acknowledged in code comments as a deliberate deferral. The impact is that admin-issued ICPC score adjustments do not appear in the leaderboard until the feature is implemented.  **No action required** until the ICPC override implementation lan...
-
-### LOW: IOI score override replaces the late-penalty-adjusted score, but the override value is treated as a raw score
-
-- **Flagged by:** tracer
-- **Details:** **Severity: LOW** **Confidence: MEDIUM**  **Location:** `src/lib/assignments/scoring.ts` — `buildIoiLatePenaltyCaseExpr`; `src/lib/assignments/contest-scoring.ts` — override overlay  **Causal chain:**  1. For a late submission, `buildIoiLatePenaltyCaseExpr` returns `bestScore * (1 - latePenalty)` as the adjusted score. 2. The score override overlay (in `getAssignmentStatusRows`) replaces the adjusted score column with the `overrides.score` value. 3. The override is intended to represent the f...
-
-### LOW: Judge API endpoints accessible from any IP by default
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `src/lib/judge/ip-allowlist.ts:182-210`
-- **Details:** **Severity:** HIGH   **Category:** A01 Broken Access Control / A05 Security Misconfiguration   **Location:** `src/lib/judge/ip-allowlist.ts:182-210`   **Exploitability:** Remote, requires knowledge of `JUDGE_AUTH_TOKEN`   **Blast Radius:** Leaked `JUDGE_AUTH_TOKEN` allows any host to register fake workers, claim submissions (reads `sourceCode` + all hidden `testCases`), and inject arbitrary judge verdicts  **Issue:**   When `JUDGE_ALLOWED_IPS` is unset (the documented default), `isJudgeIpAllo...
-
-### LOW: Judge worker: 3 subprocess spawns per test case (run + inspect + rm)
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `judge-worker-rs/src/docker.rs:run_docker_once`  For every test case the executor calls: 1. `docker run ...` — spawns container, waits for exit 2. `docker inspect ...` — reads OOM status, StartedAt/FinishedAt, container ID 3. `docker rm -f ...` — removes the container  Three separate `tokio::process::Command` forks per test case. For a problem with 50 test cases, this is 150 `docker` CLI invocations per submission.  **Failure scenario...
-
-### LOW: Judge workspaces on host disk rather than tmpfs
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `docker-compose.production.yml` (judge-worker service)  ```yaml volumes:   - /judge-workspaces:/judge-workspaces environment:   - TMPDIR=/judge-workspaces ```  `tempfile::TempDir::new()` in `executor.rs` respects `TMPDIR=/judge-workspaces`, so all compile workspaces land on the host filesystem. Compile operations (especially C++/Rust) produce many small intermediate files. The container's internal `/tmp` is correctly mounted as tmpfs,...
-
-### LOW: LOW | Double DB fetch in `/api/v1/judge/heartbeat`
-
-- **Flagged by:** debugger
-- **Details:** **File:** `src/app/api/v1/judge/heartbeat/route.ts` (~line 58)  **Root cause:** `isJudgeAuthorizedForWorker` (in `src/lib/judge/auth.ts`) executes a `SELECT` to fetch `secretTokenHash` and validate it. The heartbeat handler then issues a second `SELECT` to fetch additional worker fields (last seen, hostname, etc.) from the same `judgeWorkers` row. One round-trip is redundant.  **Failure scenario:** Not a correctness bug. Under sustained high heartbeat frequency this doubles DB reads for every...
-
-### LOW: LOW — `expect(worvEnv).not.toContain("oj.worv.ai")` has no existence guard — trivially passes when file is absent
-
-- **Flagged by:** verifier
-- **Location(s):** `tests/unit/infra/deploy-storage-safety.test.ts:70`
-- **Details:** **File:** `tests/unit/infra/deploy-storage-safety.test.ts:70`   **Confidence:** HIGH — confirmed by reading `readIfExists` implementation and the assertion without guard  **Description:**   At line 70, `expect(worvEnv).not.toContain("oj.worv.ai")` is executed unconditionally regardless of whether `.env.deploy.worv` exists. `readIfExists` returns `""` (empty string) when the file is absent. `"".includes("oj.worv.ai")` is `false`, so `not.toContain` always passes. In contrast, lines 66-70 wrap ...
-
-### LOW: Locale switch triggers hard `window.location.reload()` destroying page state
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/layout/locale-switcher.tsx:50`
-- **Details:** **File:** `src/components/layout/locale-switcher.tsx:50` **Failure scenario:** A user in the middle of composing a problem submission selects a different locale from the dropdown. `window.location.reload()` instantly destroys all editor state, localStorage draft (before it can be saved), scroll position, and focus location. During exam sessions this is catastrophic — code in progress is lost with no warning. ```tsx function setLocale(locale: string) {   // cookie set …   window.location.reloa...
-
-### LOW: Login recruiting-candidate hint fires on ALL errors
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(auth)/login/login-form.tsx:98-115`
-- **Details:** **File:** `src/app/(auth)/login/login-form.tsx:98-115` **Failure scenario:** A regular user mistypes their password. They see two messages: (1) "Invalid credentials" and (2) the recruiting hint ("Are you a recruiting candidate? Check your invitation link"). This hint is irrelevant and confusing for non-recruiting users. For server errors or quota-exceeded errors it is actively misleading. Both messages share the same `error` state with no differentiation. ```tsx // Current — hint fires on ANY...
-
-### LOW: Missing compound index for anti-cheat heartbeat gap detection
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/db/schema.pg.ts:1207`
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/lib/db/schema.pg.ts:1207`, anti-cheat route heartbeat query  Existing indexes on `anti_cheat_events`: ``` ace_assignment_user_idx    ON (assignment_id, user_id) ace_assignment_type_idx    ON (assignment_id, event_type) ace_assignment_created_idx ON (assignment_id, created_at) ```  The heartbeat gap detection query (anti-cheat GET with `includeGaps=1`) is: ```sql WHERE assignment_id = $1 AND user_id = $2 AND event_type = 'heartbea...
-
-### LOW: Mobile nav panel missing `aria-modal`
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/layout/public-header.tsx:273-285`
-- **Details:** **File:** `src/components/layout/public-header.tsx:273-285` **Failure scenario:** VoiceOver / NVDA users in virtual cursor (browse) mode can navigate past the focus trap into background content when the mobile menu is open. The Tab focus trap correctly contains keyboard users, but `role="region"` does not declare a modal boundary — AT virtual cursor remains free to roam. ```tsx // Current <div ref={panelRef} id={menuId} role="region" aria-label={…} data-state="open" …> ``` **Fix:** ```tsx <di...
-
-### LOW: Module-level mutable `adminPassword` in `function-judging-responsive.spec.ts` is a flakiness vector
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/function-judging-responsive.spec.ts:52`
-- **Details:** **Severity:** Low | **Confidence:** PLAUSIBLE  **File:** `tests/e2e/function-judging-responsive.spec.ts:52`   **Failure scenario:** `let adminPassword = DEFAULT_CREDENTIALS.password` is declared at module scope and mutated when a forced-change flow occurs. Because `workers: 1` is set globally, parallel execution is currently prevented. But if parallelism is ever enabled (or if a future refactor removes `test.use`-level constraints), two test workers sharing this module could race on `adminPas...
-
-### LOW: No "mark as boilerplate / investigate further" action on similarity pairs.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - The pairs table is read-only. I cannot annotate "this pair is clearly boilerplate, skip" or "escalate to instructor." Any investigation notes live outside the platform.  ---
-
-### LOW: No "view as student" read-only mode.
-
-- **Flagged by:** assistant-reviewer
-- **Details:** - To investigate a "my code passed locally but got WA," I open the submission page directly. There is no toggle to see what the student-facing error message looks like. `submissions.view_source` changes what the detail view shows, so I cannot verify the student experience without separate testing.  ---
-
-### LOW: No GDPR/PIPA data deletion playbook.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `scripts/check-high-stakes-runtime.sh:22-27`, `src/lib/realtime/realtime-coordination.ts:238-279`
-- **Details:** When a candidate requests data deletion, there is no documented procedure for identifying all records, removing them from the live DB, preventing backups from re-introducing them, and issuing a deletion confirmation. Required within 30 days under Korean PIPA.  **I4 (LOW) — `check-high-stakes-runtime.sh` requires `REALTIME_COORDINATION_BACKEND=postgresql` for multi-instance, but that backend is declared-not-implemented.** `scripts/check-high-stakes-runtime.sh:22-27`: multi-instance (APP_INSTAN...
-
-### LOW: No SSL cert expiry monitoring.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `scripts/bootstrap-instance.sh:273`
-- **Details:** `scripts/bootstrap-instance.sh:273` enables `certbot.timer` but renewal failures produce no alert. `monitor-health.sh` does not check cert expiry. - Fix: add to `monitor-health.sh`:   ```bash   check_ssl_expiry() {     local domain="${DOMAIN:-}"     [[ -z "$domain" ]] && return 0     local expiry days     expiry=$(echo | openssl s_client -connect "${domain}:443" \       -servername "${domain}" 2>/dev/null \       | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 || true)     [[ -z "$ex...
-
-### LOW: No bulk role audit report.
-
-- **Flagged by:** admin-reviewer
-- **Details:** No operator-accessible "current role matrix" export for end-of-term compliance review. - Fix: `GET /api/v1/admin/users/export?format=csv` returning `id,username,email,role,lastLogin`,   gated to admin/super_admin.  ---
-
-### LOW: No capacity planning document.
-
-- **Flagged by:** admin-reviewer
-- **Details:** There is no recorded measurement of how many concurrent submissions a single worker handles at `JUDGE_CONCURRENCY=4` (the worker-compose default). For a 120-student exam where everyone submits in the last 5 minutes, there is no baseline to determine whether the fleet can keep up. - Fix: run `stress-tests.mjs` (already in repo) against staging; record results in   `docs/ops/capacity.md` with host spec and concurrency settings.  ---
-
-### LOW: No drop-lowest-assignment policy across a group. Grading "best N of M assignments" must be done manually in a spreadsheet after export.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: No e2e coverage for password reset / forgot-password flow
-
-- **Flagged by:** qa-tester
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/auth-flow.spec.ts` (coverage gap)   **Failure scenario:** `auth-flow.spec.ts` covers login, logout, invalid credentials, and unauthenticated redirect. The routes `/forgot-password`, `/reset-password`, `/verify-email`, and `/api/v1/auth/forgot-password` have zero e2e coverage. A regression in any step of the password reset flow (token generation, email template rendering, token validation, new-password submission) would be ...
-
-### LOW: No grace period / late-submission buffer. Many instructors allow a 5-minute submission buffer for students with slow upload speeds. There is no grace-period field; submissions after the deadline are immediately flagged late.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** LOW | **Confidence:** MEDIUM  ---
-
-### LOW: No image rollback mechanism.
-
-- **Flagged by:** admin-reviewer
-- **Details:** Only `:latest` tag is produced. A regression found 10 minutes post-deploy requires git-revert + full rebuild (15–30 min downtime). No `:previous` tag is created. - Fix: before each `docker build`, `docker tag judgekit-app:latest judgekit-app:previous 2>/dev/null || true`. Add `scripts/rollback-deploy.sh`.  ---
-
-### LOW: No notification to students when assignment description is edited. A silent description edit mid-assignment is invisible to students already viewing the problem.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: No npm script for the post-deploy smoke profile
-
-- **Flagged by:** qa-tester
-- **Details:** **Severity:** Low | **Confidence:** CONFIRMED  **File:** `package.json` (`scripts` section)   **Failure scenario:** Post-deploy verification requires `PLAYWRIGHT_PROFILE=smoke PLAYWRIGHT_BASE_URL=https://algo.xylolabs.com npx playwright test`, but there is no dedicated `test:e2e:smoke` script. Developers running the default `npm run test:e2e` locally do not get smoke-profile behavior. The distinction between "full local regression" and "remote smoke" is only documented in the playwright confi...
-
-### LOW: No per-problem "run before submit" reminder.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: No pre-test editor sanity check.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: No side-by-side live preview. The write/preview toggle (`create-problem-form.tsx:595–670`) requires a full tab switch to check KaTeX. For long problem statements with 10+ equations this is painful.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Add a split-view toggle that renders `ProblemDescription` inline at 50 % width while the textarea occupies the other half. - **Severity:** LOW | **Confidence:** HIGH
-
-### LOW: Password match/mismatch indicator not announced to screen readers
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(auth)/signup/signup-form.tsx:210-223`
-- **Details:** **File:** `src/app/(auth)/signup/signup-form.tsx:210-223` **Failure scenario:** A blind user fills in "Confirm Password". The `<p>` elements for "passwords match" / "do not match" have no `role="alert"` or `aria-live`. Nothing is announced on state change. The user must submit to discover a mismatch via the form error, which is a much harsher failure mode. ```tsx // Current — silent state change, no announcement {passwordsMatch && (   <p className="flex items-center gap-1 text-sm text-green-6...
-
-### LOW: Phone-first scenario not handled.
-
-- **Flagged by:** applicant-reviewer
-
-### LOW: Poll in-progress path reads submission back outside the transaction
-
-- **Flagged by:** tracer
-- **Location(s):** `src/app/api/v1/judge/poll/route.ts:120-129`
-- **Details:** **Severity: LOW** **Confidence: HIGH**  **Location:** `src/app/api/v1/judge/poll/route.ts:120-129`  **Causal chain:**  1. The in-progress update is committed inside `execTransaction` (lines 87-112). 2. After the transaction, the code performs `db.query.submissions.findFirst` (line 120-125) to fetch the updated state and return it to the worker. 3. Between the UPDATE commit and the SELECT, another concurrent operation (another poll for the same submission, a rejudge, a claim timeout sweep) cou...
-
-### LOW: Post-deploy smoke E2E_PASSWORD placeholder confuses signal.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `deploy-docker.sh:1665`
-- **Details:** `deploy-docker.sh:1665`: `E2E_PASSWORD="${E2E_PASSWORD:-skip-login}"`. Login specs then attempt authentication with the literal string `skip-login`. The spec fails; the operator sees "post-deploy smoke FAILED" and cannot distinguish genuine 500 regressions from missing credentials. `ALLOW_DEPLOY_WITH_FAILED_SMOKE=1` is then set to unblock, defeating the safety net. - Fix: if `E2E_PASSWORD == "skip-login"`, emit `test.skip()` for all login-dependent specs.   Or split `PLAYWRIGHT_PROFILE=smoke-...
-
-### LOW: Privacy page hardcodes retention periods.
-
-- **Flagged by:** admin-reviewer
-- **Details:** Retention periods (90, 30, 180, etc. days) are literal integers in the privacy page component, not read from `DATA_RETENTION_DAYS`. If an operator sets `AUDIT_EVENT_RETENTION_DAYS=365`, the privacy page still says "90 days." Carry-forward from C3-F8 in prior cycles.  ---
-
-### LOW: Problem success-rate uses color as the sole visual differentiator
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(public)/_components/public-problem-list.tsx:158-174`
-- **Details:** **File:** `src/app/(public)/_components/public-problem-list.tsx:158-174` **Failure scenario:** Users with protanopia/deuteranopia cannot distinguish the three success-rate tiers (green ≥60% / yellow 30-60% / red <30%). The three icons (`CircleCheck`, `CircleAlert`, `CircleX`) are `aria-hidden="true"`, providing no AT fallback either. Both color and AT meaning are lost simultaneously. ```tsx // All three icons are aria-hidden="true" — no SR fallback <CircleCheck className="size-3.5" aria-hidde...
-
-### LOW: Rate-limit check: every allowed request pays 3 DB operations
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/lib/security/api-rate-limit.ts:atomicConsumeRateLimit`  ```ts const now = await getDbNowMs();            // op 1: SELECT NOW() const limited = await execTransaction(async (tx) => {   let existing = await fetchRateLimitEntry(tx, key);  // op 2: SELECT FOR UPDATE   // ...   await tx.update(rateLimits).set(...);    // op 3: UPDATE }); ```  When the rate-limiter sidecar allows the request (or is unreachable), the DB path runs three o...
-
-### LOW: Results page gated on both `closed` AND `showResultsToCandidate`.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: Runner binds `0.0.0.0`, token-only
-
-- **Flagged by:** security-analyzer
-
-### LOW: SSE batch-poll IN clause grows up to 500 elements
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** LOW | **Confidence:** PLAUSIBLE **File:** `src/app/api/v1/submissions/[id]/events/route.ts:sharedPollTick`  ```ts const submissionIds = Array.from(submissionSubscribers.keys()); const results = await db   .select({ id: submissions.id, status: submissions.status })   .from(submissions)   .where(inArray(submissions.id, submissionIds)); ```  With MAX_GLOBAL_SSE_CONNECTIONS=500 and each connection watching a different submission, `submissionIds` can hold 500 distinct IDs. Drizzle ge...
-
-### LOW: SSE poll-timer interval is frozen at first-subscriber startup
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/app/api/v1/submissions/[id]/events/route.ts:~182`  ```ts function startSharedPollTimer(): void {   const configuredInterval = getConfiguredSettings().ssePollIntervalMs;   const pollIntervalMs = Math.max(1000, configuredInterval);   globalThis.__submissionEventsSharedPollTimer = setInterval(() => {     void sharedPollTick();   }, pollIntervalMs); ```  `ssePollIntervalMs` is read **once** when the first SSE subscriber connects and ...
-
-### LOW: Score override input has no client-side upper-bound guard.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/app/(public)/groups/[id]/assignments/[assignmentId]/score-override-dialog.tsx:159`
-- **Details:** - File: `src/app/(public)/groups/[id]/assignments/[assignmentId]/score-override-dialog.tsx:159` - Code: `<Input type="number" min={0} ...>` — no `max` attribute. - Scenario: TA types 500 for a 10-point problem, clicks Save. Server returns 400 `overrideScoreExceedsMax` but the toast fires only the generic `overrideSaveFailed` string — no hint of what went wrong. The field stays dirty. - Fix: Add `max={maxPoints}` to the Input and add `scoreNum > maxPoints` guard in `handleSave` before the API ...
-
-### LOW: Shell command validation bypassed when Rust runner is configured
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `src/lib/compiler/execute.ts:639-715`
-- **Details:** **Severity:** MEDIUM   **Category:** A03 Injection / A04 Insecure Design   **Location:** `src/lib/compiler/execute.ts:639-715`   **Exploitability:** Requires admin-level DB write access (language_configs table) or a compromised admin account   **Blast Radius:** Malicious compile/run commands execute inside the Docker sandbox; sandbox escape is bounded by seccomp + no-new-privileges + --cap-drop=ALL + --network=none  **Issue:**   `validateShellCommandStrict()` (which checks command prefixes ag...
-
-### LOW: Skeleton loading pages don't match actual content shape
-
-- **Flagged by:** designer
-- **Details:** **Files:** `src/app/(dashboard)/dashboard/admin/loading.tsx`, `src/app/(public)/problems/loading.tsx` **Failure scenario:** Both loaders show a narrow title skeleton + 5 full-width uniform rows. The actual problem list renders a heading, filter bar, and an 8-column table with varied column widths. The shape mismatch causes visible layout reflow on data arrival and fails to establish content expectations. **Fix:** Mirror the real content structure with column-proportioned skeleton cells matchi...
-
-### LOW: Static-site nginx missing security response headers
-
-- **Flagged by:** security-reviewer
-- **Details:** **Severity:** LOW   **Category:** A05 Security Misconfiguration   **Location:** `static-site/nginx.conf`    **Issue:** The static-site nginx config ships no `X-Content-Type-Options`, `X-Frame-Options`, `Content-Security-Policy`, or `Referrer-Policy` headers. While the static site serves only documentation/problem sets, missing headers increase risk if any HTML with external scripts is ever served.  **Fix:** Add to `static-site/nginx.conf`: ```nginx add_header X-Content-Type-Options "nosniff" ...
-
-### LOW: Submit button label includes keyboard shortcut text verbatim
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/problem/problem-submission-form.tsx:487`
-- **Details:** **File:** `src/components/problem/problem-submission-form.tsx:487` **Failure scenario:** Screen reader announces "Submit (⌘+Enter)" or "Submit (Ctrl+Enter)" — the parenthetical shortcut is read aloud, cluttering the accessible label. This is especially noisy in exam contexts where submission is a high-stakes interaction. ```tsx {isSubmitting ? tCommon("loading") : `${tCommon("submit")} (${submitShortcutLabel})`} ``` **Fix:** Use `aria-keyshortcuts` for machine-readable shortcut declaration an...
-
-### LOW: Threshold hardcoded at 0.85 with no instructor control. Some instructors prefer 0.75 for stricter classes or 0.90 to reduce noise. The API endpoint accepts no threshold parameter.
-
-- **Flagged by:** instructor-reviewer
-- **Location(s):** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:34`
-- **Details:** - **File:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:34` - **Suggested fix:** Accept optional `threshold` query param bounded to [0.5, 0.99]. - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: Token in candidateName exposure at re-entry.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: Uncached `count(*) FROM submissions` on every homepage render
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/homepage-insights.ts:17`
-- **Details:** **Severity:** HIGH | **Confidence:** CONFIRMED **File:** `src/lib/homepage-insights.ts:17`  ```ts export async function getHomepageInsights(): Promise<HomepageInsights> {   const [problemRows, submissionRows, languageRows] = await Promise.all([     db.select({ count: count() }).from(problems).where(eq(problems.visibility, "public")),     db.select({ count: count() }).from(submissions),   // full table COUNT, no cache     db.select({ count: count() }).from(languageConfigs).where(eq(languageCon...
-
-### LOW: Username is opaque.
-
-- **Flagged by:** applicant-reviewer
-
-### LOW: Worker staleness sweep interval is not admin-tunable
-
-- **Flagged by:** architect
-- **Location(s):** `src/lib/judge/worker-staleness-sweep.ts:99`
-- **Details:** **File:** `src/lib/judge/worker-staleness-sweep.ts:99`  **Observation:**   The staleness sweep runs every 60 seconds (hardcoded constant). This is not exposed as a system setting. Operators who want faster stale-worker detection (e.g., during a cluster upgrade) or slower sweeps (to reduce DB load) must change source code and redeploy. Other operational parameters (session lifetime, rate limits, queue capacity) are admin-settable via `systemSettings` — the sweep interval is an inconsistent exc...
-
-### LOW: `--muted-foreground` on `--muted` background fails WCAG AA (4.2:1 < 4.5:1)
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/globals.css:62-63`, `problem-submission-form.tsx:491`
-- **Details:** **File:** `src/app/globals.css:62-63` **Failure scenario:** Secondary text rendered with `text-muted-foreground` on any muted background violates WCAG 1.4.3.  Contrast calculation: - `--muted-foreground: oklch(0.48 0 0)` ≈ sRGB `#6C6C6C`, relative luminance ≈ 0.178 - `--muted: oklch(0.97 0 0)` ≈ sRGB `#F7F7F7`, relative luminance ≈ 0.909 - Ratio: (0.909 + 0.05) / (0.178 + 0.05) = **4.21:1 — fails AA (requires 4.5:1 for normal text)**  Affected surfaces: footer (`bg-muted/40`), page background...
-
-### LOW: `AUTH_TRUST_HOST=true` defaults on in production Docker Compose
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `docker-compose.production.yml:106`
-- **Details:** **Severity:** HIGH   **Category:** A02 Cryptographic Failures / A05 Security Misconfiguration   **Location:** `docker-compose.production.yml:106`   **Exploitability:** Requires ability to inject/spoof `Host` or `X-Forwarded-Host` headers reaching the app container   **Blast Radius:** Host-header injection can redirect NextAuth OAuth callbacks, forge email links, or produce JWT tokens bound to an attacker-controlled domain  **Issue:**   ```yaml
-
-### LOW: `COMPILER_RUNNER_URL` default assumes Docker Desktop host networking; breaks on Linux Docker without explicit `host-gateway` configuration
-
-- **Flagged by:** tracer
-- **Location(s):** `http://host.docker.internal:3001`
-- **Details:** **Severity: LOW** **Confidence: MEDIUM**  **Location:** `deploy-docker.sh` — `COMPILER_RUNNER_URL` default initialization  **Causal chain:**  1. The default for `COMPILER_RUNNER_URL` is `http://host.docker.internal:3001`. 2. `host.docker.internal` resolves automatically on Docker Desktop (macOS/Windows) but **does not resolve on Linux Docker Engine** without adding `--add-host=host.docker.internal:host-gateway` to the compose service or `extra_hosts` in `docker-compose.yml`. 3. The production...
-
-### LOW: `E2E_PASSWORD=skip-login` silently removes all auth-dependent specs from smoke run
-
-- **Flagged by:** qa-tester
-- **Location(s):** `playwright.config.ts:49–53`
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `playwright.config.ts:49–53`   **Failure scenario:** ```ts const hasRemoteSmokeCredentials =   !isRemoteRun || Boolean(process.env.E2E_PASSWORD && process.env.E2E_PASSWORD !== "skip-login"); ``` If a deploy pipeline passes `E2E_PASSWORD=skip-login` (perhaps as a "no auth" escape hatch), `hasRemoteSmokeCredentials` is `false`. The suite switches to `remoteSafeSpecsWithoutAuth`, dropping auth-flow, contest-nav, admin-workers, admin-lan...
-
-### LOW: `EmptyState` component missing `role="status"` for dynamic list transitions
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/empty-state.tsx:16`
-- **Details:** **File:** `src/components/empty-state.tsx:16` **Failure scenario:** When filtering produces zero results, the table is replaced with `EmptyState`. There is no live-region signal. Screen readers are not notified of the transition; users must manually navigate to discover the empty message. **Fix:** ```tsx export function EmptyState({ icon: Icon, title, description, action }: EmptyStateProps) {   return (     <div role="status" className="flex flex-col items-center gap-3 py-8">       {/* … */} ...
-
-### LOW: `SubmissionStatusBadge` tooltip wraps visible badge in invisible `<button>`
-
-- **Flagged by:** designer
-- **Location(s):** `src/components/submission-status-badge.tsx:250-252`
-- **Details:** **File:** `src/components/submission-status-badge.tsx:250-252` **Failure scenario:** Keyboard users navigating a submissions list encounter a hidden `<button type="button" className="cursor-default border-none bg-transparent p-0">` at every submission row — in addition to any link in the same row. The button is visually zero-size and transparent, yet focusable, creating a phantom Tab stop. AT announces "button" with the badge text, which is confusing when adjacent to the actual submission lin...
-
-### LOW: `all-languages-judge.spec.ts` detects ARM64 architecture by URL substring, breaking on new hosts
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/all-languages-judge.spec.ts:10–11`
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/all-languages-judge.spec.ts:10–11`   **Failure scenario:** ```ts const TARGET_IS_ARM64 = BASE_URL.includes("auraedu") || BASE_URL.includes(":arm64"); ``` If a new ARM64 deployment is added (e.g., `algo.xylolabs.com` migrates to Apple Silicon), `TARGET_IS_ARM64` is `false`. The test submits x86-64 NASM assembly (`_start` + `syscall` ABI) to an ARM64 judge, which produces a runtime error. The test then reports a false failur...
-
-### LOW: `anti_cheat.run_similarity` capability is dead weight in the role capability matrix.
-
-- **Flagged by:** assistant-reviewer
-- **Location(s):** `src/lib/capabilities/defaults.ts:29`, `similarity-check/route.ts:21`
-- **Details:** - File: `src/lib/capabilities/defaults.ts:29`; `similarity-check/route.ts:21` - Admins who grant this capability to a custom role are misled — it grants no additional power. The role editor (`admin/roles/capability-matrix.tsx`) displays it as a meaningful permission toggle.
-
-### LOW: `autoindex on` in static-site nginx enables directory listing
-
-- **Flagged by:** security-reviewer
-- **Location(s):** `static-site/nginx.conf:21`
-- **Details:** **Severity:** HIGH   **Category:** A05 Security Misconfiguration   **Location:** `static-site/nginx.conf:21`   **Exploitability:** Remote, unauthenticated   **Blast Radius:** Exposes any file placed in the static-site root (backup ZIPs, SQL dumps, tmp files) to any internet user with the URL    **Issue:**   `autoindex on` is set globally in the `location /` block. Any file the operator copies into `/usr/share/nginx/html/` becomes browseable without authentication — including accidental copies...
-
-### LOW: `buildClaimSql(false)` no-worker code path is dead in production
-
-- **Flagged by:** tracer
-- **Details:** **Severity: INFO** **Confidence: MEDIUM**  **Location:** `src/lib/judge/claim-query.ts` — `buildClaimSql` function signature and branch  **Causal chain:**  The function accepts a boolean `withWorker` parameter to generate two variants of the claim CTE (with or without a specific worker). In production, the claim route always provides a `workerId`, so the `false` path is unreachable. The dead code branch is not harmful but adds maintenance surface.  **Suggested fix (optional):** Remove the `wi...
-
-### LOW: `computeContestAnalytics` re-fetches assignment metadata already in ranking cache
-
-- **Flagged by:** perf-reviewer
-- **Details:** **Severity:** LOW | **Confidence:** PLAUSIBLE **File:** `src/lib/assignments/contest-analytics.ts:~90`  ```ts const [allAcSubs, contestMeta, cheatRows] = await Promise.all([   rawQueryAll<...>(`SELECT DISTINCT ON (s.user_id, s.problem_id) ...`),   rawQueryOne<...>(`SELECT starts_at, deadline, late_penalty, exam_mode FROM assignments ...`),   rawQueryAll<...>(`SELECT ... FROM anti_cheat_events ...`), ]); ```  `contestMeta` re-fetches `starts_at`, `deadline`, `late_penalty`, `exam_mode` — the s...
-
-### LOW: `computeSingleUserLiveRank` runs a full CTE scan on every frozen leaderboard page
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/assignments/leaderboard.ts:74`
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/lib/assignments/leaderboard.ts:74`  ```sql -- ICPC live rank path (cross-join all participants against target): FROM user_totals ut, target t WHERE ut.solved_count > t.solved_count OR ... ```  For every student fetching a **frozen** leaderboard, `computeSingleUserLiveRank` is called to show the student their own live rank. The ICPC variant is a Cartesian product (`user_totals × target`) over all submission data — equivalent to a ...
-
-### LOW: `confirmPassword` field not linked to match-state indicator via `aria-describedby`
-
-- **Flagged by:** designer
-- **Location(s):** `src/app/(auth)/signup/signup-form.tsx:205-223`
-- **Details:** **File:** `src/app/(auth)/signup/signup-form.tsx:205-223` **Failure scenario:** Even after H3 is fixed (live region added), the `confirmPassword` `<Input>` has no `aria-describedby` pointing to the match container. Screen reader users in forms mode will not encounter the match status when the field is focused; they must Tab away to discover the live-region update. **Fix:** ```tsx <Input   id="confirmPassword"   name="confirmPassword"   type="password"   autoComplete="new-password"   required ...
-
-### LOW: `contest-full-lifecycle.spec.ts` leaves all DB records behind on every run
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/contest-full-lifecycle.spec.ts:297–302`
-- **Details:** **Severity:** High | **Confidence:** CONFIRMED  **File:** `tests/e2e/contest-full-lifecycle.spec.ts:297–302`   **Failure scenario:** Step 36 (cleanup) executes `await adminPage?.close()` only. It does not delete the student user (`student-{suffix}`), group, IOI assignment, ICPC assignment, two problems, enrollments, submissions, exam sessions, or anti-cheat events created across Steps 2–32. Every local test run permanently pollutes the DB. After dozens of CI runs, `SELECT COUNT(*) FROM users ...
-
-### LOW: `contest-participant-audit.spec.ts` silently skips on any missing live data
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/contest-participant-audit.spec.ts:43–101`
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/contest-participant-audit.spec.ts:43–101`   **Failure scenario:** Both tests check `if (!isVisible) { test.skip(true, ...); return }` for: no contests, no submissions tab, no participant links. On a freshly deployed environment (no pre-existing contest data), both tests call `test.skip()` and report as skipped. CI treats skips as success; the participant audit page regression is silently unguarded.  **Root cause:** Tests d...
-
-### LOW: `contest-status-board.spec.ts` inserts student rows without `passwordHash`
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/contest-status-board.spec.ts:57–77`
-- **Details:** **Severity:** Low | **Confidence:** CONFIRMED  **File:** `tests/e2e/contest-status-board.spec.ts:57–77`   **Failure scenario:** Two student users are inserted with `db.insert(users).values([{ ... }])` with no `passwordHash` field. The column is nullable in the schema (`text("password_hash")`), so the insert succeeds. However, if any auth middleware changes to require a non-null hash for active users, these fixture users would cause the contest-board data load to fail in unexpected ways. Addit...
-
-### LOW: `contextmenu` flagged without explanation.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: `data-retention.ts`: `parseRetentionOverride()` invalid env values produce silent fallback — untested
-
-- **Flagged by:** test-engineer
-- **Details:** **File:** `src/lib/data-retention.ts` **Confidence:** PLAUSIBLE  `parseRetentionOverride` is module-private and falls back to defaults when env values are `NaN` or `<= 0`. Tests in `tests/unit/data-retention.test.ts` cover pruning logic but do not exercise the parsing path with invalid values:  - `AUDIT_EVENT_RETENTION_DAYS="not-a-number"` → should use default 90; untested - `AUDIT_EVENT_RETENTION_DAYS="-5"` → should use default 90; untested - `AUDIT_EVENT_RETENTION_DAYS="0"` → should use def...
-
-### LOW: `defaultLanguage` is a free-text input (`create-problem-form.tsx:918–926`) with no validation. A typo (`pyhon`) silently produces an invalid default; the student sees no language pre-selected and no error.
-
-- **Flagged by:** instructor-reviewer
-- **Details:** - **Suggested fix:** Replace with a validated dropdown populated from the active language list. - **Severity:** LOW | **Confidence:** HIGH  ---
-
-### LOW: `docker/Dockerfile.judge-simula` orphan — no language config, no type entry, no docs mention
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `docker/Dockerfile.judge-simula`: exists in the `docker/` directory - `src/types/index.ts`: no `simula` in `Language` union - `src/lib/judge/languages.ts`: no `simula` entry - `AGENTS.md`, `docs/languages.md`, `README.md`: no mention of `simula` anywhere  **Failure scenario:** A developer scanning `docker/` for the set of supported languages would find `Dockerfile.judge-simula` and incorrectly conclude `simula` is a supported language. Following the "Adding a New Language" checkl...
-
-### LOW: `function-judging.spec.ts` has no `try/finally`; cleanup only runs if prior steps succeed
-
-- **Flagged by:** qa-tester
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/function-judging.spec.ts` (serial steps 1–6; cleanup is Step 6)   **Failure scenario:** If any step between problem creation (Step 2) and the final cleanup step (Step 6) throws, the problem is never deleted via `DELETE /api/v1/problems/${problemId}?force=true`. Over repeated CI runs with worker failures or network timeouts, orphan `[E2E] twoSum Function {suffix}` problems accumulate.  **Suggested fix:** Wrap the problem li...
-
-### LOW: `getDbNowMs()` DB round-trip on every leaderboard request even with warm cache
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/assignments/leaderboard.ts:61`
-- **Details:** **Severity:** HIGH | **Confidence:** CONFIRMED **File:** `src/lib/assignments/leaderboard.ts:61`  ```ts export async function computeLeaderboard(assignmentId, isInstructorView) {   const meta = await rawQueryOne<AssignmentFreezeRow>(     `SELECT freeze_leaderboard_at, scoring_model, starts_at, deadline, late_deadline      FROM assignments WHERE id = @assignmentId`, { assignmentId }   );   // ...   const nowMs = await getDbNowMs();   // separate DB round-trip, always ```  `computeLeaderboard` ...
-
-### LOW: `getLeaderboardProblems()` not cached on every leaderboard request
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/assignments/leaderboard.ts:21`
-- **Details:** **Severity:** MEDIUM | **Confidence:** CONFIRMED **File:** `src/lib/assignments/leaderboard.ts:21`, leaderboard route  ```ts // leaderboard route handler, every GET: const problems = await getLeaderboardProblems(assignmentId);   // DB query, no cache const leaderboard = await computeLeaderboard(assignmentId, isInstructorView); ```  The assignment's problem list (title, points, sort order) never changes during a running contest. Yet `getLeaderboardProblems` issues a fresh SQL join on every req...
-
-### LOW: `invalidateRankingCache` O(n) LRU scan on every judge verdict
-
-- **Flagged by:** perf-reviewer
-- **Location(s):** `src/lib/assignments/contest-scoring.ts:56`
-- **Details:** **Severity:** LOW | **Confidence:** CONFIRMED **File:** `src/lib/assignments/contest-scoring.ts:56`  ```ts for (const key of rankingCache.keys()) {   if (key.startsWith(`${assignmentId}:`)) rankingCache.delete(key); } ```  O(n) iteration of the LRU (max=50) on every final verdict to find frozen-variant keys. Also iterates `_refreshingKeys` (a Set) and `_lastRefreshFailureAt` (a Map) with the same pattern. Not a current bottleneck at max=50, but will bite if the LRU max is raised for multi-con...
-
-### LOW: `locale-cookie-respected.spec.ts` does not assert `Vary: Cookie` in e2e layer; regression can slip through
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/locale-cookie-respected.spec.ts:46–54`
-- **Details:** **Severity:** Low | **Confidence:** PLAUSIBLE  **File:** `tests/e2e/locale-cookie-respected.spec.ts:46–54`   **Failure scenario:** The spec's inline comment explicitly says "Vary: Cookie is asserted at the proxy unit-test layer." If the middleware changes (new Next.js version, RSC rewrite) and the `Vary` header is dropped or changed, content negotiation caches could serve the wrong locale to all users. The proxy unit test (`tests/unit/proxy.test.ts`) checks the header in isolation, but the e2...
-
-### LOW: `mobile-layout.spec.ts` hardcodes admin credentials instead of using `DEFAULT_CREDENTIALS`
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/mobile-layout.spec.ts:33, 38–40`, `tests/e2e/contest-status-board.spec.ts:18–19`
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/mobile-layout.spec.ts:33, 38–40`   **Failure scenario:** The helper `loginAsSeededAdmin` fills `#password` with literal `"admin123"` and on first-login change sets `"AdminPass234"`. If the E2E environment uses `E2E_PASSWORD` with a different value (or if the seeded admin has already been migrated to a different password), every mobile-layout test fails with "Login failed" or stays on the change-password page forever (15s t...
-
-### LOW: `next-auth` pinned to `5.0.0-beta.31` (pre-release)
-
-- **Flagged by:** architect
-- **Location(s):** `package.json:58`
-- **Details:** **File:** `package.json:58`  ```json "next-auth": "5.0.0-beta.31", ```  **Observation:**   NextAuth v5 is pinned to a specific beta. Pre-release packages do not follow semantic versioning guarantees; breaking changes can appear in any beta increment without a major version bump. The `next-auth@^5.0.0-beta.31` range (without `^`) avoids accidental upgrades, which is correct defensive pinning. However, the underlying risk is that beta.31 may have known security vulnerabilities addressed in late...
-
-### LOW: `recruiting-invitation.spec.ts` does not clean up created group, problems, or assignment
-
-- **Flagged by:** qa-tester
-- **Details:** **Severity:** Medium | **Confidence:** CONFIRMED  **File:** `tests/e2e/recruiting-invitation.spec.ts` (end of test, line ~115)   **Failure scenario:** The test creates: a group, two problems (one allowed, one blocked), and an assignment. After the assertion sequence, `candidateContext.close()` is called but no API DELETE calls clean up the group, problems, or assignment. These accumulate on shared test environments.  **Suggested fix:** Add `try/finally` cleanup: ```ts } finally {   await admi...
-
-### LOW: `remediation.smoke.spec.ts` name misleadingly implies it runs in the smoke profile
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/remediation.smoke.spec.ts:1`, `playwright.config.ts:26–47`
-- **Details:** **Severity:** Low | **Confidence:** CONFIRMED  **File:** `tests/e2e/remediation.smoke.spec.ts:1`, `playwright.config.ts:26–47`   **Failure scenario:** The file is named `remediation.smoke.spec.ts` but is excluded from `remoteSafeSpecsWithAuth`. It directly imports `{ db } from "@/lib/db"` and requires local DB access, making it local-only. Any developer who reads "smoke" in the filename and expects it to run in post-deploy checks will be mistaken — the spec is a full-profile local-only test. ...
-
-### LOW: `signOut` race on start.
-
-- **Flagged by:** applicant-reviewer
-- **Details:** ---
-
-### LOW: `student-submission-flow.spec.ts` Step 3 does not verify the `mustChangePassword` PATCH succeeded
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/student-submission-flow.spec.ts:118–124`
-- **Details:** **Severity:** Low | **Confidence:** CONFIRMED  **File:** `tests/e2e/student-submission-flow.spec.ts:118–124`   **Failure scenario:** The PATCH to `/api/v1/users/${studentUserId}` sets `mustChangePassword: false`. The response is not checked. If the PATCH silently fails (permission issue, network blip), Step 4 (student login) hits `/change-password` and Step 4 throws `"Unexpected forced password change for student-sub-..."` because `allowPasswordChange: false`. The root cause (PATCH failure) i...
-
-### LOW: `student-submission-flow.spec.ts` silently treats a submission failure (409) as a passing outcome
-
-- **Flagged by:** qa-tester
-- **Location(s):** `tests/e2e/student-submission-flow.spec.ts:163–175`
-- **Details:** **Severity:** High | **Confidence:** CONFIRMED  **File:** `tests/e2e/student-submission-flow.spec.ts:163–175`   **Failure scenario:** Step 7 ("Student submits solution via API") posts to `/api/v1/submissions`. When the problem has no assignment context, the API correctly returns `409 assignmentContextRequired`. The test then accepts this with `expect([200, 201, 409]).toContain(res.status())` and returns early without setting `submissionId`. As a result, Steps 8 ("Poll submission until judged"...
-
-### LOW: crun/OCI runtime no checksum
-
-- **Flagged by:** security-analyzer
-
-### LOW: docs/languages.md amd64/arm64 E2E summary (line 198) refers to 113 languages — stale against 125-language reality
-
-- **Flagged by:** document-specialist
-- **Details:** **Files:** - `docs/languages.md` lines 194–204: "amd64 E2E Summary (2026-03-29): **113 of 113 languages pass** on amd64" and "arm64 E2E Summary (2026-03-29): **112 of 113 languages pass** on arm64" - The active language count is now 125  **Failure scenario:** An agent or contributor reading the E2E summary section concludes the total test scope is 113 languages. They may not run E2E for the 12 languages added after 2026-03-29. The outdated totals also undercount the number of languages that n...
-
-### LOW: nginx config regenerated on every deploy, operator customisations lost.
-
-- **Flagged by:** admin-reviewer
-- **Location(s):** `deploy-docker.sh:884-1057`
-- **Details:** `deploy-docker.sh:884-1057` overwrites `/etc/nginx/sites-available/judgekit` in full on every deploy. Any operator adjustment (rate-limit burst tuning, temporary IP block, maintenance page) is silently lost on the next deploy. - Fix: before regenerating, `remote_sudo "cp /etc/nginx/sites-available/judgekit /etc/nginx/sites-available/judgekit.bak.$(date +%s)"` with a 5-copy rotation.
-
-### LOW: npm audit: 2 moderate-severity dependency vulnerabilities
-
-- **Flagged by:** security-reviewer
-- **Details:** **Severity:** LOW   **Category:** A06 Vulnerable and Outdated Components   **Location:** `package.json` / `node_modules`   **Exploitability:** Depends on specific CVE; neither is high/critical    **Issue:** `npm audit` reports 2 moderate vulnerabilities. Neither is high/critical, but they should be reviewed and resolved.  **Fix:** Run `npm audit fix` or check `npm audit --json` for specifics and patch or pin affected packages.  ---
-
-### LOW: src/components/assignment/assignment-overview.tsx:227
-
-- **Flagged by:** student-reviewer
-- **Details:** Late penalty renders as `{assignment.latePenalty ?? 0}%`. If the instructor never configured it, the student sees "0%" implying no penalty when the actual policy was simply not set. Better: show "-" or "Not configured" when the value is null.  ---
-
-### LOW: src/components/exam/countdown-timer.tsx:224
-
-- **Flagged by:** student-reviewer
-- **Details:** The timer renders inside a small `<Badge>` inline in the page flow. On a long problem statement the badge can scroll off-screen. Under exam stress I want the timer pinned somewhere permanent (sticky header or floating chip), not buried in the content flow.  ---
-
-### LOW: ~30+ source-scanning tests assert string presence instead of runtime behavior
-
-- **Flagged by:** test-engineer
-- **Details:** **Files:** `tests/unit/proxy-error-handling.test.ts`, `tests/unit/auth/login-rate-limit-order.test.ts`, `tests/unit/auth/rate-limit-await.test.ts`, `tests/unit/auto-review-implementation.test.ts`, `tests/unit/discussions-reply-count-implementation.test.ts`, `tests/unit/participant-audit-page-implementation.test.ts`, `tests/unit/submission-detail-time-limit-implementation.test.ts`, `tests/unit/problem-duplicate-implementation.test.ts`, `tests/unit/public-user-stats-implementation.test.ts`, and...
-
-## Risks Needing Manual Validation
-
-- **LOW** — Shell command validation bypassed when Rust runner is configured (security-reviewer)
-- **HIGH** — Browser crash or accidental close loses in-progress code. (applicant-reviewer)
-- **HIGH** — Container logs unbounded — disk fill confirmed risk. (admin-reviewer)
-- **HIGH** — No "test your editor" before start. (applicant-reviewer)
-- **HIGH** — No TA workload metrics anywhere. (assistant-reviewer)
-- **HIGH** — No contest-mode preflight checklist or script. (admin-reviewer)
-- **HIGH** — No documented secret rotation procedure for any of the 7 key types. (admin-reviewer)
-- **HIGH** — No in-platform DM system. (assistant-reviewer)
-- **HIGH** — No problem statement version history. As an instructor I cannot see what a problem said before I edited it, and students in a live homework window see the new text with no change notice. If I find a typo mid-deadline and fix it, there is no audit of what changed. (instructor-reviewer)
-- **HIGH** — No regrade request model, API route, or UI. (assistant-reviewer)
-- **HIGH** — No self-service data export for candidates or students. (admin-reviewer)
-- **HIGH** — No side-by-side code diff for similarity hits. (assistant-reviewer)
-- **HIGH** — No visible "your code is being autosaved" indicator. (applicant-reviewer)
-- **HIGH** — No workload counter or grading triage view. (assistant-reviewer)
-- **HIGH** — Similarity check is hardcoded contest-only and returns 404 for regular homework. `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:18`: (instructor-reviewer)
-- **HIGH** — `flix` Docker image documented as `judge-jvm`; actual image is `judge-flix` (document-specialist)
-- **HIGH** — `j` and `malbolge` appear in README Docker image size table but have no language config anywhere (document-specialist)
-- **HIGH** — `roc` in AGENTS.md language table (row 94) but absent from the `Language` type union (document-specialist)
-- **HIGH** — `stop_grace_period` not set in `docker-compose.production.yml`. (admin-reviewer)
-
-## Agent Failures
-
-No agent files were skipped; all registered and fallback reviewers produced review content.
+- **Severity:** HIGH
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect, critic, perf-reviewer
+- **Files / Lines:** `src/lib/system-settings-config.ts:84`; `src/lib/capabilities/cache.ts:17`; `src/lib/assignments/contest-analytics-cache.ts:27`
+- **Problem:** `resolveCapabilities`, `getConfiguredSettings`, and the analytics LRU are module-level, in-process singletons. Invalidation only clears the current process. In a horizontally scaled deployment, an admin change to role capabilities or system settings propagates only to the replica that handled the write.
+- **Failure scenario:** An admin revokes `MANAGE_CONTESTS` from a role. Other replicas continue to authorize `MANAGE_CONTESTS` actions for up to 60 s.
+- **Suggested fix:** Short-term: reduce capabilities cache TTL to ~5 s. Correct solution: introduce a DB version counter or Redis pub/sub invalidation so all replicas observe writes promptly.
+
+### HIGH: Unbounded code-similarity query loads every best submission before the cap is enforced
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:330-339` (CTE), `379` (fallback guard)
+- **Problem:** `runSimilarityCheck` fetches the best submission per `(user, problem, language)` for the whole assignment via a raw CTE with no `LIMIT`. The `MAX_SUBMISSIONS_FOR_SIMILARITY = 500` guard is applied only to the TypeScript fallback after rows are materialized in memory.
+- **Failure scenario:** A large contest with tens of thousands of source-code rows causes the app process to allocate a huge array before the Rust sidecar or fallback guard can run, leading to OOM.
+- **Suggested fix:** Apply the cap in SQL (e.g., wrap the CTE in `SELECT ... LIMIT $1`) or sample in the database. Move the row-count guard before the fetch when the sidecar is unavailable.
+
+### HIGH: Leaderboard recomputes over the full assignment submissions table on every cache miss
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/assignments/contest-scoring.ts:201-244` (scoring CTE), `132-191` (cache logic)
+- **Problem:** `_computeContestRankingInner` builds a CTE over `submissions` filtered only by `assignment_id` and terminal statuses, then applies window functions over the full per-assignment set. The 30-second in-process cache is invalidated by every judge verdict (`src/app/api/v1/judge/poll/route.ts:198-200`).
+- **Failure scenario:** In a large contest with many re-submissions, the CTE scans/aggregates a very wide intermediate set on every leaderboard request and after every submission update. Under burst judging the cache is constantly cold and DB CPU saturates.
+- **Suggested fix:** Maintain a materialized/incremental per-user/problem best-score table updated when a verdict lands, and have the leaderboard read from that summary. Alternatively extend cache TTL and use stale-while-revalidate.
+
+### HIGH: Contest replay recomputes ranking up to 40 times per request
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/assignments/contest-replay.ts:38-83`
+- **Problem:** `computeContestReplay` samples up to 40 replay cutoffs and invokes `computeContestRanking` for each one. Each ranking invocation runs multiple heavy raw-SQL aggregations, throttled only by `pLimit(2)`.
+- **Failure scenario:** A large contest triggers 40+ sequential heavy ranking queries, monopolizing pool connections and causing 504s or connection-pool exhaustion.
+- **Suggested fix:** Cache snapshot rankings, precompute them in the background, or compute all cutoffs in a single set-based SQL query instead of re-running the full ranking function per cutoff.
+
+### HIGH: Public contests listing is unbounded and eagerly loads every problem
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/assignments/public-contests.ts:33-64`
+- **Problem:** `getPublicContests()` calls `db.query.assignments.findMany` with no `limit` and eager-loads every `assignmentProblems.problem`. It then counts public/private problems in JavaScript.
+- **Failure scenario:** As the public contest catalog grows, each request loads every public contest row and every associated problem. Network transfer and JS object allocation grow linearly and can block the event loop.
+- **Suggested fix:** Add pagination (`limit`/`offset` or cursor), push the public-problem count into SQL with a subquery/lateral join, and avoid eager-loading nested problem rows just to count visibility.
+
+### MEDIUM: Missing indexes on heavily filtered columns
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/db/schema.pg.ts` — `sessions` (lines 65-71), `problems` (250-290), `assignments` (329-378), `problemSets` (800-816), `discussionThreads` (922-947), `antiCheatEvents` (1186-1210), `examSessions` (381-402)
+- **Problem:** High-cardinality filter columns lack supporting indexes: `sessions.userId`/`expires`, `problems.visibility`, `assignments.visibility`/`examMode`, `problemSets.isPublic`/`createdBy`, `discussionThreads.authorId`, and IP-address columns in `antiCheatEvents`/`examSessions`.
+- **Failure scenario:** Public pages that filter `visibility = 'public'` scan the entire `problems` table. Session lookups degrade as the session table grows. Anti-cheat IP-overlap reports scan hundreds of thousands of heartbeat rows.
+- **Suggested fix:** Add composite indexes: `problems_visibility_created_idx`, `sessions_user_expires_idx`, `assignments_visibility_exam_mode_idx`, `problem_sets_is_public_created_idx`, `dt_author_idx`, `ace_assignment_ip_idx`, `exam_sessions_assignment_ip_idx`.
+
+### MEDIUM: Unbounded JSON body parsing in shared API handler
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/api/handler.ts:157-162`
+- **Problem:** `createApiHandler` calls `raw = await req.json()` before any body-size guard. Next.js buffers the entire body into memory and parses it before the Zod schema can reject an oversized payload.
+- **Failure scenario:** A few concurrent malicious POSTs with multi-megabyte JSON bodies to `/api/v1/submissions`, `/api/v1/admin/migrate/import`, or anti-cheat endpoints can exhaust the Node.js heap and crash the app container.
+- **Suggested fix:** Reject requests whose `Content-Length` exceeds a route-specific cap before calling `req.json()`, or add a global body-size limit in nginx/Next.js middleware. Use streaming parsers for large import routes.
+
+### MEDIUM: Contest export builds the full ranking before truncation
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/export/route.ts:60-62`
+- **Problem:** `computeContestRanking(assignmentId)` is invoked with no row limit. The `MAX_EXPORT_ENTRIES` cap is applied only after the full ranking array, anti-cheat counts, and IP aggregates are computed and held in memory.
+- **Failure scenario:** Exporting a contest with tens of thousands of participants allocates huge intermediate structures and can OOM or hang the request worker.
+- **Suggested fix:** Push the entry limit into `computeContestRanking` so aggregation stops early, or compute ranking in a streaming/paginated fashion for exports.
+
+### MEDIUM: Code-snapshot list returns full source code for up to 200 rows per page
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/code-snapshots/[userId]/route.ts:20-23,41-47`
+- **Problem:** The paginated endpoint allows up to 200 rows per page and selects `sourceCode: codeSnapshots.sourceCode` for every row. The route has no `rateLimit` key.
+- **Failure scenario:** A single page can return hundreds of megabytes of source code, stalling JSON serialization, response transfer, and the DB. Repeated fetches are unthrottled.
+- **Suggested fix:** Cap the page size lower (e.g., 20-50) for source-code-heavy endpoints, or offer a summary endpoint without `sourceCode` and a separate fetch for individual snapshots. Add rate limiting.
+
+### MEDIUM: Discussion thread view loads all posts without limit
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/discussions/data.ts:270-283`
+- **Problem:** `getDiscussionThreadById()` eagerly loads `posts` for a thread with no `LIMIT`.
+- **Failure scenario:** A popular editorial or solution thread with thousands of posts loads the entire thread into memory and returns a huge JSON response.
+- **Suggested fix:** Paginate posts in the thread query and add a per-page limit.
+
+### MEDIUM: Admin chat-log transcript returns every message for a session
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/admin/chat-logs/route.ts:24-48`
+- **Problem:** When `sessionId` is provided, the route loads every chat message for that session with no `limit`. The route also has no `rateLimit` key.
+- **Failure scenario:** A long support session with thousands of messages returns a multi-megabyte response; an admin/API key can repeatedly trigger this without throttling.
+- **Suggested fix:** Add pagination to the transcript query and a `rateLimit` key (e.g., `chat-logs:view`).
+
+### MEDIUM: Analytics cache mixes DB clock and app clock
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `src/lib/assignments/contest-analytics-cache.ts:47,62`
+- **Problem:** Cache entries are written with `createdAt: await getDbNowMs()` (DB server clock) but aged with `Date.now() - cached.createdAt` (app server clock). If the two clocks drift, the computed age is wrong.
+- **Failure scenario:** App clock behind DB clock produces negative ages and suppresses background refresh; app clock ahead produces premature refreshes.
+- **Suggested fix:** Use a consistent clock source. Replace `createdAt: await getDbNowMs()` with `createdAt: Date.now()`.
+
+### MEDIUM: Data-retention prunes run eight large table deletes concurrently
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/data-retention-maintenance.ts:8-35,146-155`
+- **Problem:** Eight independent prunes run via `Promise.allSettled`, each deleting batches of 5,000 rows with a fixed 100 ms sleep. There is no per-run row cap or adaptive backoff.
+- **Failure scenario:** Years of submissions/audit/chat data can cause a single daily window to run for hours, generating WAL traffic and lock contention.
+- **Suggested fix:** Add a per-prune row cap, make sleep adaptive based on recent delete throughput, and run prunes during a configurable low-traffic window.
+
+### MEDIUM: DB pool has a fixed max of 20 connections and no statement timeout
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/db/index.ts:41-54`
+- **Problem:** The PostgreSQL pool defaults to `max: 20`, `connectionTimeoutMillis: 10s`, `idleTimeoutMillis: 30s`, with no `statement_timeout` configured.
+- **Failure scenario:** Bursty workloads queue for more than 10 seconds and return connection-timeout errors; a single runaway query can hold a connection indefinitely.
+- **Suggested fix:** Make pool size and timeouts env-driven, set a reasonable `statement_timeout` on new connections (e.g., 30-60s), and add pool-saturation alerting.
+
+### MEDIUM: File download reads the entire stored file into a Buffer
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/files/[id]/route.ts:100-102,123`
+- **Problem:** The GET handler reads the whole uploaded file into memory with `buffer = await readUploadedFile(file.storedName)` and then wraps it in a `Uint8Array` for the response. There is no streaming.
+- **Failure scenario:** Concurrent downloads of a few large test-case attachments or PDFs can exhaust the Node.js heap and crash the app.
+- **Suggested fix:** Stream files from disk through the response without loading the full content into memory.
+
+### MEDIUM: Judge claim endpoint fetches every test case for the problem after claiming
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/judge/claim/route.ts:319-329`
+- **Problem:** The claim response loads all test-case `input` and `expectedOutput` columns for the claimed problem in one query. There is no count or size cap.
+- **Failure scenario:** Problems with hundreds of test cases or very large generated inputs/outputs transfer multi-megabyte payloads from DB to app server to worker.
+- **Suggested fix:** Enforce a maximum number of test cases and a per-case size limit at problem-import time, or stream/lazy-load test cases to the worker in chunks.
+
+### MEDIUM: Heartbeat endpoint runs the worker staleness sweep inline
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/judge/heartbeat/route.ts:80`
+- **Problem:** Every worker heartbeat awaits `sweepStaleWorkers(now)`, which updates the status of stale workers in the same request handler.
+- **Failure scenario:** With many workers heartbeating frequently, the sweep runs repeatedly and serializes updates to `judgeWorkers`. Under worker churn, heartbeats pile up behind the sweep.
+- **Suggested fix:** Move the staleness sweep to a single background interval/cron and make the heartbeat path a minimal `UPDATE` of the calling worker.
+
+### MEDIUM: Docker image build blocks a Next.js request worker for up to 600s
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/admin/docker/images/build/route.ts:119`
+- **Problem:** The handler awaits `buildDockerImage(...)` synchronously in the request thread with only the underlying build timeout.
+- **Failure scenario:** A slow multi-GB language image build occupies a request worker for up to 10 minutes, reducing capacity for other admin requests.
+- **Suggested fix:** Move image builds to an asynchronous job queue or background worker and return a build-id/job-status response.
+
+### MEDIUM: Bulk file delete performs sequential disk I/O
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/files/bulk-delete/route.ts:33-39`
+- **Problem:** After the DB delete, the handler loops over deleted files and awaits `deleteUploadedFile` sequentially.
+- **Failure scenario:** Bulk-deleting the maximum allowed files spends most of the request waiting on serial I/O, holding the connection open.
+- **Suggested fix:** Run disk deletions in parallel with `Promise.all` (or a bounded `p-limit`) and return success based on the DB delete.
+
+### LOW/MEDIUM: Rate-limiter state is in-process and non-replicated
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `rate-limiter-rs/src/main.rs:31,152-213,215-281`
+- **Problem:** All buckets live in a `DashMap` inside the single process. There is no persistence or shared backend. Restarting the container resets counters and blocks; running more than one replica shards state inconsistently.
+- **Failure scenario:** A rolling update of the rate-limiter sidecar wipes out login-failure counts, allowing a brute-force attacker to resume from zero. Horizontal scaling splits counters across instances.
+- **Suggested fix:** Document that the rate limiter must run as a single replica, or back it with Redis or a small persistent store so state survives restarts and replicas.
+
+### LOW/MEDIUM: Audit-event buffer can grow unbounded during DB back-pressure
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/audit/events.ts:163-262`
+- **Problem:** `recordAuditEvent()` synchronously pushes rows into an in-memory buffer and triggers an async flush. On flush failure, the failed batch is re-buffered unless the total exceeds `FLUSH_SIZE_THRESHOLD * 2`, at which point events are dropped silently.
+- **Failure scenario:** If the DB slows down, high-frequency events keep arriving faster than flushes complete. The buffer balloons until the drop threshold is hit, losing audit entries and increasing GC pressure.
+- **Suggested fix:** Apply a hard upper bound on `_auditBuffer.length` with a documented drop policy, or switch to a bounded queue with backpressure for critical events.
+
+### LOW/MEDIUM: Audit flush interval starts once and is never stopped
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/audit/events.ts:167-178`
+- **Problem:** `ensureFlushTimer` starts a 5-second interval on the first audit event and never stops it. The timer fires for the process lifetime and survives HMR/test module reloads.
+- **Failure scenario:** Empty-buffer flushes waste CPU and can retain the module closure in long-running dev/test processes.
+- **Suggested fix:** Provide a `stopAuditFlushTimer` export and call it during graceful shutdown/HMR; only arm the timer when the buffer is non-empty and stop it after a flush if the buffer is empty.
+
+### LOW/MEDIUM: Anti-cheat event ingestion performs one INSERT per event
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:180-190`
+- **Problem:** Non-heartbeat telemetry events are inserted one row at a time with no batching or queue.
+- **Failure scenario:** A burst of client telemetry creates a synchronous DB round-trip per request and can backlog the connection pool.
+- **Suggested fix:** Batch insert events (e.g., accept an array of events and use `INSERT ... VALUES ...`) or add a small in-memory queue flushed periodically.
+
+## Theme: UI / UX / Accessibility
+
+### MEDIUM: Dialog and Sheet close buttons expose a duplicate accessible name
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/components/ui/dialog.tsx:66-79`; `src/components/ui/sheet.tsx:66-79`
+- **Problem:** `DialogPrimitive.Close` / `SheetPrimitive.Close` is rendered with a `Button` that already has `aria-label={tCommon("close")}` inside the `render` prop, and then contains children `<XIcon aria-hidden="true" />` plus `<span className="sr-only">{tCommon("close")}</span>`. `DialogContent` / `SheetContent` do not forward `aria-labelledby` pointing at the title.
+- **Failure scenario:** Screen-reader users hear a duplicated or inconsistent label and cannot rely on the title to identify the modal.
+- **Suggested fix:** Remove either the `aria-label` on the `Button` or the inner `sr-only` text. Generate an `id` for the title and pass `aria-labelledby={titleId}` to the popup.
+
+### MEDIUM: Tab panels lack programmatic labels on nested tab sets
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/practice/problems/[id]/page.tsx:522,879`; `src/app/(public)/dashboard/_components/dashboard-judge-system-tabs.tsx:68`; `src/components/code/compiler-client.tsx:452,551`; `src/components/submissions/output-diff-view.tsx:30`
+- **Problem:** Multiple `<Tabs>` instances on the same page are rendered without an `aria-label`. Screen-reader users cannot distinguish tablists, and voice-control users cannot target a tablist by name.
+- **Failure scenario:** VoiceOver/NVDA rotor lists two generic "tab groups" with no context; a voice-control user cannot say "switch to accepted solutions".
+- **Suggested fix:** Add `aria-label` (or `aria-labelledby`) to every `<Tabs>` root.
+
+### MEDIUM: Yellow/amber semantic text likely fails WCAG AA contrast
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/_components/public-problem-list.tsx:163`; `src/components/contest/leaderboard-table.tsx:98`; `src/app/(dashboard)/dashboard/admin/languages/language-config-table.tsx:479,484`; `src/lib/ratings.ts:25` (consumed by `src/components/tier-badge.tsx`)
+- **Problem:** `text-yellow-600` on a white/light surface is estimated below the 4.5:1 required for normal body text under WCAG 2.2 1.4.3.
+- **Failure scenario:** Users with low contrast sensitivity cannot distinguish success rates, first place, or stale/load-error badge text.
+- **Suggested fix:** Move to a darker hue such as `text-yellow-700`/`amber-700` or add non-color cues (icon, weight).
+
+### MEDIUM: Empty `<SelectValue />` causes triggers to display raw values instead of labels
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/groups/[id]/assignments/[assignmentId]/filter-form.tsx:81`; `src/components/problem/accepted-solutions.tsx:121,136`; `src/components/contest/score-timeline-chart.tsx:66`; `src/components/contest/contest-replay.tsx:222`; `src/components/contest/anti-cheat-dashboard.tsx:504`; `src/components/contest/contest-clarifications.tsx:203`
+- **Problem:** These call sites render `<SelectValue />` with no children. Base UI falls back to the raw `value` string.
+- **Failure scenario:** Users see untranslated keys or opaque identifiers such as `"newest"`, `"shortest"`, a user UUID, or a numeric playback speed rather than the human-readable label.
+- **Suggested fix:** Pass the selected label as children to `<SelectValue>`, mirroring the pattern already used elsewhere. Add these call sites to `tests/unit/select-value-contract-implementation.test.ts`.
+
+### MEDIUM: Single-key "n"/"p" shortcuts conflict with screen-reader reading keys
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/practice/problems/[id]/problem-keyboard-nav.tsx:15-18`; `src/hooks/use-keyboard-shortcuts.ts:32-67`
+- **Problem:** The component registers unmodified `n` and `p` keys to navigate to the next/previous problem. These keys are commonly used by NVDA/JAWS for next/previous paragraph.
+- **Failure scenario:** A screen-reader user presses "p" to read the previous paragraph and is unexpectedly navigated to the previous problem.
+- **Suggested fix:** Require a modifier for problem navigation (e.g., `Alt+n` / `Alt+p`), or provide a user preference to disable single-key shortcuts. After navigation, move focus to the top of the new problem content and announce the change via `aria-live`.
+
+### MEDIUM: Login form errors are not programmatically associated with inputs
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/app/(auth)/login/login-form.tsx:62-101`
+- **Problem:** When login fails, the error is rendered inside `<p role="alert" aria-live="polite">`. The inputs do not receive `aria-invalid="true"`, and none are linked to the alert via `aria-describedby`.
+- **Failure scenario:** A screen-reader user tabs back to the email field after a failed login and has no programmatic indication that the field is invalid or relates to the alert text.
+- **Suggested fix:** Add `aria-invalid={!!error}` and `aria-describedby="login-error"` to both inputs, and give the alert paragraph `id="login-error"`.
+
+### MEDIUM: Contest join success state is not announced and redirects quickly
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/contests/join/contest-join-client.tsx:101-105`
+- **Problem:** After a successful join, the UI shows a green `CheckCircle2` icon with `animate-pulse` plus green success text, but there is no `aria-live` announcement. The redirect is delayed by a timer.
+- **Failure scenario:** A screen-reader user submits the form and receives no confirmation that the join succeeded before the redirect.
+- **Suggested fix:** Wrap the success message in a container with `role="status" aria-live="polite"` and move focus to it when `success` becomes true. Make the auto-redirect delay configurable or longer.
+
+### MEDIUM: StatusBoard mobile card uses invalid nested interactive elements
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:135-190`
+- **Problem:** The mobile card uses a `<div role="button" tabIndex={0}>` that contains a student-name `<Link>` and a "view submissions" `<Button>` wrapped in another `<Link>`. Nesting interactive controls inside a button is invalid HTML and breaks keyboard/AT behavior.
+- **Failure scenario:** Voice-control users cannot target "view submissions". Keyboard users may activate the wrong action because events bubble inconsistently.
+- **Suggested fix:** Restructure the card so the expand/collapse action is a separate native `<button>` and the nested links/buttons are siblings. Remove the manual keyboard handler.
+
+### MEDIUM: Many form labels are not programmatically associated with controls
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** Representative call sites: `src/lib/plugins/chat-widget/admin-config.tsx`; `src/components/contest/recruiting-invitations-panel.tsx`; `src/components/contest/quick-create-contest-form.tsx`; `src/components/problem/function-reference-solution.tsx`; `src/components/contest/contest-clarifications.tsx`; `src/app/(dashboard)/dashboard/admin/settings/system-settings-form.tsx`; `src/app/(dashboard)/dashboard/admin/roles/role-editor-dialog.tsx`; `src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx`; `src/app/(dashboard)/dashboard/admin/settings/home-page-content-form.tsx`; `src/app/(dashboard)/dashboard/admin/settings/footer-content-form.tsx`
+- **Problem:** `<Label>` is used without `htmlFor` and the associated input/select/textarea is not nested inside it.
+- **Failure scenario:** Screen-reader users hear a label but the control is not programmatically named by it. Voice-control users cannot say "click Provider" to focus the select.
+- **Suggested fix:** Add `htmlFor` to each `<Label>` matching the `id` on the associated control, or wrap the control inside the `<Label>`.
+
+### LOW: File upload dropzone has faint border and custom keyboard behavior
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** designer
+- **Files / Lines:** `src/app/(dashboard)/dashboard/admin/files/file-upload-dialog.tsx:196-225,246-255`
+- **Problem:** The dropzone is a `<div role="button" tabIndex={0}>` with a dashed border using `border-muted-foreground/25`. At 25% opacity the boundary may fall below the 3:1 non-text contrast requirement. Keyboard activation is handled manually for only Enter/Space.
+- **Failure scenario:** Low-vision users cannot perceive the dropzone boundary. Screen-reader users cannot tell what the remove button does.
+- **Suggested fix:** Increase border contrast, replace the custom div with a native `<button>`, and add `aria-label` to the remove button.
+
+### LOW: Active navigation links lack `aria-current`
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** designer
+- **Files / Lines:** `src/components/layout/public-header.tsx:180-196`
+- **Problem:** The desktop navigation highlights the active page visually but does not add `aria-current="page"`.
+- **Failure scenario:** Screen-reader users browsing the navigation rotor hear a list of links with no indication of the current page.
+- **Suggested fix:** Add `aria-current={active ? "page" : undefined}` to each navigation `<Link>`.
+
+---
+
+## Theme: Documentation / API Drift
+
+### HIGH: `docs/api.md` omits ~31 live `/api/v1` endpoints
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/api.md:1-2037`; `src/app/api/v1/**` (113 `route.ts` files)
+- **Problem:** The documented endpoint list covers roughly 82 of the 113 live route files. Missing routes include auth, code snapshots, community threads/posts/votes, contest sub-resources (announcements, clarifications, code snapshots, stats, recruiting invitations, quick-create), playground, problem import/draft/accepted-solutions, recruiting validate, submissions queue-status, admin submissions export/rejudge, and admin test-email.
+- **Failure scenario:** API consumers, SDK generators, and integration tests cannot discover a large portion of the public surface.
+- **Suggested fix:** Add a documentation pass for each missing route group, including method, auth model, capability/role, rate-limit key, request body schema, and response shape.
+
+### HIGH: `flix` documented as `judge-jvm`; actual image is `judge-flix`
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `AGENTS.md:113`; `docs/languages.md:73`; `src/lib/judge/languages.ts:1197`
+- **Problem:** Docs say `flix` uses Docker image `judge-jvm`; code uses `judge-flix:latest`.
+- **Failure scenario:** Operators following the docs will not build `judge-flix`; submissions in Flix fail at runtime with "image not found".
+- **Suggested fix:** Update `AGENTS.md:113` and `docs/languages.md:73` to `judge-flix`.
+
+### HIGH: `flix` is simultaneously marked arm64-ready and listed as ARM-prohibitive
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/languages.md:73` (table), `docs/languages.md:224` (ARM-prohibitive set); `deploy-docker.sh:220`
+- **Problem:** The docs contain two contradictory statements about `flix` ARM support.
+- **Failure scenario:** Operators cannot tell whether `flix` is included in the `all` preset.
+- **Suggested fix:** Decide canonical status. If ARM-ready, remove from ARM-prohibitive set; if prohibitive, change table checkmarks to `—`.
+
+### HIGH: `roc` listed as active in `AGENTS.md` but absent from TypeScript language system
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `AGENTS.md:20,119`; `docs/languages.md:208-210`; `src/types/index.ts:30-156`; `src/lib/judge/languages.ts`
+- **Problem:** `AGENTS.md` treats `roc` as active; TypeScript app cannot accept `roc` submissions because it is not in the `Language` union.
+- **Failure scenario:** An agent scanning `AGENTS.md` to enumerate supported languages includes `roc` and then fails when using it.
+- **Suggested fix:** Remove the `roc` row from `AGENTS.md` (or mark it `[DISABLED]`). Optionally remove `Roc` from the Rust worker if permanently retired.
+
+### HIGH: README image-size table lists images with no active language configuration
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `README.md:86,94,104`; `src/types/index.ts:30-156`; `src/lib/judge/languages.ts`
+- **Problem:** README lists `judge-j`, `judge-malbolge`, `judge-roc` as active images, but none have active language configs.
+- **Failure scenario:** Contributors conclude these languages are supported; submissions using them would fail validation.
+- **Suggested fix:** Remove the three rows from the README size table or add a footnote that these Dockerfiles exist but are not integrated.
+
+### HIGH: Similarity-check endpoint auth described as "Instructor or above"; code also allows assistants
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/api.md:1089-1091`; `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24`
+- **Problem:** Docs say "Instructor or above"; code also allows any role with `anti_cheat.run_similarity` that is a group TA or assigned to the teaching group.
+- **Failure scenario:** A client built against the API docs hides the similarity-check affordance from assistants even though the backend accepts the call.
+- **Suggested fix:** Update `docs/api.md` to: "Requires `anti_cheat.run_similarity` capability plus group TA/assigned teaching-group membership, or `canManageContest`."
+
+### HIGH: `docs/deployment.md` misstates the app container's internal listen port
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/deployment.md:7`; `docker-compose.production.yml:96`
+- **Problem:** Docs say the app container listens on port 3100 internally; actual internal port is 3000 (host 3100 is the nginx upstream target).
+- **Failure scenario:** Operators debugging connectivity or writing custom compose overrides target the wrong internal port.
+- **Suggested fix:** Change `docs/deployment.md:7` to state the app listens on port 3000 internally and is mapped to host port 3100.
+
+### MEDIUM: README and AGENTS.md claim 43 capabilities; code defines 46
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `README.md:29`; `AGENTS.md`; `src/lib/capabilities/types.ts:8-53`
+- **Problem:** Docs claim 43 capabilities; `ALL_CAPABILITIES` contains 46.
+- **Failure scenario:** Security architecture descriptions and automation that counts capabilities are off by three.
+- **Suggested fix:** Update README.md and AGENTS.md to state 46 capabilities.
+
+### MEDIUM: Documentation claims 102 active Docker images; active configs reference 98
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `README.md:77`; `docs/languages.md:192`; `src/lib/judge/languages.ts`
+- **Problem:** Docs claim 102 active images; active language configs reference 98 distinct images. Four Dockerfiles (`judge-j`, `judge-malbolge`, `judge-roc`, `judge-simula`) are orphans.
+- **Failure scenario:** Image-count claims and size tables are inflated by orphan images. Operators overestimate disk capacity and build time.
+- **Suggested fix:** Update docs to 98 images. Remove or annotate orphan image rows. Decide whether to delete `docker/Dockerfile.judge-simula` or complete its integration.
+
+### MEDIUM: `all` language preset contents disagree between `setup.sh` and `deploy-docker.sh`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/languages.md:214-220`; `README.md:71`; `deploy-docker.sh:220-221`; `scripts/setup.sh:59-67`
+- **Problem:** `deploy-docker.sh` excludes the ARM-prohibitive set from `all`; `scripts/setup.sh` includes the prohibitive set in `all`.
+- **Failure scenario:** A developer running `scripts/setup.sh --all` builds a different image set than a production operator running `./deploy-docker.sh --languages=all`.
+- **Suggested fix:** Align `scripts/setup.sh` with `deploy-docker.sh`. Update preset descriptions.
+
+### MEDIUM: `docs/deployment.md` language-preset size estimates are stale
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/deployment.md:80`; `deploy-docker.sh:268-277`; `AGENTS.md:375`; `README.md:71`
+- **Problem:** Docs use smaller size estimates than the script help text and README/AGENTS.md.
+- **Failure scenario:** Operators provisioning disk space from `docs/deployment.md` may underestimate by up to 50% for smaller presets.
+- **Suggested fix:** Update `docs/deployment.md:80` to match current estimates.
+
+### MEDIUM: Several documented admin/problem endpoints have incorrect role-based auth descriptions
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/api.md:1666-1668` (`GET /api/v1/admin/docker/images`); `AGENTS.md:260-261`; `src/app/api/v1/admin/docker/images/route.ts:55,93,165`
+- **Problem:** Docs describe these endpoints as "Admin or Super Admin"; code requires the `system.settings` capability.
+- **Failure scenario:** Custom roles or integrations that gate on role names apply the wrong authorization model.
+- **Suggested fix:** Change auth descriptions to "Requires `system.settings` capability."
+
+### MEDIUM: Contest join endpoint docs omit failure-scoped rate-limit buckets
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `docs/api.md:941-943`; `src/app/api/v1/contests/join/route.ts:28-36`
+- **Problem:** Docs list only `contest:join`; the route also consumes `contest:join:invalid` (per-user) and `contest:join:invalid-code` (per access-code hash) on failed redemption.
+- **Failure scenario:** API consumers retrying on 400 may hit 429 from undocumented buckets.
+- **Suggested fix:** Expand the docs to list all three buckets and the conditions that trigger the failure buckets.
+
+### MEDIUM: `judge-haskell` base image/OS reported three different ways
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** document-specialist
+- **Files / Lines:** `AGENTS.md:210`; `src/lib/judge/languages.ts:110`; `docker/Dockerfile.judge-haskell:1`
+- **Problem:** AGENTS says `ghc:9.4-alpine`; code says "Debian Bookworm / GHC 9.4"; Dockerfile says `alpine:3.21`.
+- **Failure scenario:** Operators troubleshooting musl/glibc or shell-path issues are misled.
+- **Suggested fix:** Update both docs and code to "Alpine 3.21 / GHC 9.4".
+
+### LOW: AGENTS.md "Adding a New Language" checklist omits Rust runner-side validation
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** document-specialist
+- **Files / Lines:** `AGENTS.md:151-159`; `judge-worker-rs/src/languages.rs`
+- **Problem:** The checklist stops at Rust config + test entry, but production sidecar mode requires the new language's commands to also be accepted by the Rust-side validator.
+- **Failure scenario:** A contributor validates locally via Node fallback and discovers production failures only after deploy.
+- **Suggested fix:** Add a checklist step: "Verify the new language's compile/run commands pass the Rust-side validator."
+
+### LOW: README language-preset list omits the `everything` preset
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** document-specialist
+- **Files / Lines:** `README.md:71`; `docs/languages.md:214-220`; `AGENTS.md:375`
+- **Problem:** README lists only `core`, `popular`, `extended`, `all`; five presets exist including `everything`.
+- **Failure scenario:** README readers miss the `everything` escape hatch.
+- **Suggested fix:** Add `everything` to the README presets list or reference `docs/languages.md`.
+
+## Theme: Testing / Test Coverage
+
+### HIGH: Critical security gates have zero unit tests
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** test-engineer
+- **Files / Lines:** `src/lib/security/sandbox-gate.ts:37-92`; `src/lib/security/hcaptcha.ts:1-89`; `src/lib/security/production-config.ts:54-89`; `src/lib/security/sensitive-settings.ts:19-61`; `src/lib/security/derive-key.ts:1-31`
+- **Problem:** Five security-critical library modules have no unit tests despite being on the direct path of production routes. Every route test mocks them away.
+- **Failure scenario:** A fresh deployment without SMTP can silently block instructors, a refactor swaps DB/env priority for hCaptcha, a typo in a required env var passes startup checks, a new sensitive setting is added without password reconfirmation, or a domain string change breaks plugin-config decryption — all with no failing test.
+- **Suggested fix:** Add unit tests for: `sandbox-gate` (all five branches), `hcaptcha` (precedence/verify paths), `production-config` (missing required vars → `process.exit`), `sensitive-settings` (key list contract), and `derive-key` (HKDF determinism/domain separation).
+
+### HIGH: E2E `contest-participant-audit.spec.ts` is permanently dead
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** test-engineer
+- **Files / Lines:** `tests/e2e/contest-participant-audit.spec.ts:52,65,79,111,123,136,177,190,203`
+- **Problem:** Every assertion branch uses unconditional `test.skip(true, "...")`. The participant audit flow is never exercised.
+- **Failure scenario:** A route rename, tab rename, or nav restructuring breaks the flow, yet CI reports green because the spec silently skips.
+- **Suggested fix:** Seed data in `beforeAll` and navigate/assert the audit sections without runtime data discovery.
+
+### MEDIUM: ~90 implementation-checklist tests assert string presence instead of runtime behavior
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** test-engineer
+- **Files / Lines:** `tests/unit/*-implementation.test.ts` (~90 files), plus proxy-error-handling, auto-review-implementation, deployment-automation-docs, admin-security-docs, etc.
+- **Problem:** These tests read source files and assert `toContain`/`not.toContain`. They inflate coverage numbers without proving logic works at runtime.
+- **Failure scenario:** A behavior-preserving refactor breaks dozens of "tests" while real regressions elsewhere go undetected. Conversely, a behavioral regression that does not change the searched strings passes the suite.
+- **Suggested fix:** Treat source-scan tests as documentation/contract checks. Add corresponding runtime tests that import the function/module and exercise behavior. Exclude checklist files from coverage thresholds.
+
+### MEDIUM: Compiler local fallback Docker path is not behavior-tested
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** test-engineer
+- **Files / Lines:** `src/lib/compiler/execute.ts:717-951`; `tests/unit/compiler/execute.test.ts`; `tests/unit/compiler/execute-implementation.test.ts:6-34`
+- **Problem:** The local-fallback Docker path is only checked by source-scan assertions. Untested runtime behavior includes temp workspace creation/removal, permission application, chown failure handling, and compile-command propagation.
+- **Failure scenario:** A refactor changes the order of `chown` vs. `chmod` or swallows a Docker error. Source-scan tests pass, but the sandbox becomes world-readable or failures are silently reported as success.
+- **Suggested fix:** Add behavior tests for the local fallback behind `ENABLE_COMPILER_LOCAL_FALLBACK=1` using `vi.mock` for `child_process.execFile`/`fs`/`docker`.
+
+### MEDIUM: `similarity-check` route lacks negative authorization and error-path tests
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-94`; `tests/unit/api/similarity-check.route.test.ts:86-193`
+- **Problem:** Existing tests cover `not_run`, timeout, and assistant authorization. Missing: 403 for non-managers/assistants without `anti_cheat.run_similarity`, 404 for missing assignment/`examMode === "none"`, non-abort error rethrow, and DB enrichment of pairs with usernames.
+- **Failure scenario:** A regression removes the `canManageContest` check or returns 200 for assistants assigned to a different group.
+- **Suggested fix:** Extend the route tests with 403, 404, non-abort error propagation, and pair username enrichment cases.
+
+### MEDIUM: API route unit tests bypass the real `createApiHandler` middleware stack
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic, test-engineer
+- **Files / Lines:** `src/lib/api/handler.ts:94-219`; widespread in `tests/unit/api/*.test.ts`
+- **Problem:** Most route tests mock `@/lib/api/handler` so `createApiHandler` becomes a thin wrapper that skips rate limiting, session/API-key auth, role/capability checks, CSRF validation, and Zod body parsing.
+- **Failure scenario:** A regression that removes `rateLimit: "similarity-check"` or the `capabilities` requirement passes the unit suite but leaves the deployed endpoint unprotected.
+- **Suggested fix:** For at least one representative route per category, remove the `createApiHandler` mock and call the exported handler through the real wrapper. Add negative cases for missing CSRF, wrong role, and missing capability.
+
+### MEDIUM: Infrastructure tests are static substring checks and do not execute scripts
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer, critic
+- **Files / Lines:** `tests/unit/infra/deploy-security.test.ts:9-251`; `tests/unit/infra/deploy-storage-safety.test.ts:21-143`; `tests/unit/infra/judge-report-nginx.test.ts:9-45`
+- **Problem:** These tests assert that scripts/configs contain specific strings. They do not run `bash -n`, validate rendered nginx with `nginx -t`, or assert `.env.production` permissions after a real deploy run.
+- **Failure scenario:** A deployment script is syntactically valid and contains expected strings, but a subtle bug causes `.env.production` permissions to remain world-readable in practice.
+- **Suggested fix:** Complement string-presence checks with lightweight runtime smoke tests: `bash -n`, spin up compose in CI and assert generated env file permissions, and validate nginx config with `nginx -t`.
+
+### MEDIUM: `rate-limit-core.ts` `ON CONFLICT` first-insert race path not directly tested
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `src/lib/security/rate-limit-core.ts:89-138`; `tests/unit/security/api-rate-limit.test.ts`
+- **Problem:** `insertRateLimitEntryIfAbsent()` returns `true` on a winning insert and `false` when a concurrent transaction already inserted. Existing tests mock the insert as always succeeding, so the UPDATE fallback is never exercised.
+- **Failure scenario:** A refactor removes the `if (inserted) return` guard; on a genuine first insert the UPDATE path may undercount or misorder attempts.
+- **Suggested fix:** Add `tests/unit/security/rate-limit-core.test.ts` with a DB mock returning `{ rowCount: 0 }` to exercise the conflict/fallthrough path.
+
+### MEDIUM: `rate-limiter-rs` middleware, constant-time compare, and backoff cap are untested
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `rate-limiter-rs/src/main.rs:52-85,257-263`
+- **Problem:** Existing Rust tests call handler functions directly and bypass the Axum stack. Missing coverage for `constant_time_eq`, `require_bearer` middleware, and exponential backoff cap (`MAX_CONSECUTIVE_BLOCKS_EXP = 4`).
+- **Failure scenario:** A refactor of `require_bearer` accidentally drops the `strip_prefix("Bearer ")` check.
+- **Suggested fix:** Use Axum's test helpers to invoke the full router including middleware. Add direct tests for `constant_time_eq` and backoff cap.
+
+### MEDIUM: `judge-worker-rs/src/runner.rs` HTTP handler validation logic has no unit tests
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `judge-worker-rs/src/runner.rs:658-713`
+- **Problem:** `runner.rs` contains source-code size enforcement, stdin size enforcement, Docker image validation, and semaphore capacity enforcement, but has no `#[cfg(test)]` blocks.
+- **Failure scenario:** The `source_code.len() > MAX_SOURCE_CODE_BYTES` guard is removed in a refactor; a 1 MB source file reaches Docker and OOM-kills the container.
+- **Suggested fix:** Add `#[cfg(test)]` blocks to `runner.rs` covering oversized source/stdin, invalid `docker_image`, semaphore exhausted, and `docker_capability_ok = false`.
+
+### MEDIUM: `ip.ts` `unwrapMappedIpv4()` edge cases lack direct tests
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `src/lib/security/ip.ts:33-44`; `tests/unit/security/ip.test.ts:106-133`
+- **Problem:** `unwrapMappedIpv4` is exported but only exercised indirectly. Direct edge cases not tested: uppercase `::FFFF:...`, empty string, trailing garbage, invalid octet >255.
+- **Failure scenario:** `unwrapMappedIpv4("::ffff:999.1.1.1")` returns an invalid IP that flows into rate-limit keying or audit logs.
+- **Suggested fix:** Add direct `unwrapMappedIpv4` cases to `tests/unit/security/ip.test.ts`.
+
+### MEDIUM: `MockSubmissionRow` factory is missing production columns and uses wrong timestamp types
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `tests/unit/support/factories.ts:76-119`; `src/lib/db/schema.pg.ts` (submissions table)
+- **Problem:** The mock declares only 14 columns and omits `judgeClaimToken`, `judgeClaimedAt`, `judgeWorkerId`, `failedTestCaseIndex`, `runtimeErrorType`, and `ipAddress`. It uses `number` for `submittedAt`/`judgedAt` while the real columns are `timestamp with time zone`.
+- **Failure scenario:** A unit test for the judge claim/poll path creates a mock row and asserts on `judgeClaimToken`. The mock returns `undefined`, so a regression is not caught.
+- **Suggested fix:** Sync `MockSubmissionRow` with `schema.pg.ts`, add missing fields, and change timestamp fields to `Date`.
+
+### LOW/MEDIUM: Coverage thresholds are low and not enforced on the default unit gate
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `vitest.config.ts:36-54`; `package.json`
+- **Problem:** The default `npm run test:unit` runs `vitest run` without `--coverage`. Thresholds are only evaluated under `npm run test:unit:coverage`. Global thresholds are permissive (functions 40%).
+- **Failure scenario:** A PR adds a new security-critical module with zero tests and still passes the default CI-style gate.
+- **Suggested fix:** Run `npm run test:unit:coverage` in CI and consider failing the gate on uncovered additions to `src/lib/security/**` or `src/lib/auth/**`. Raise the global function threshold over time.
+
+### LOW/MEDIUM: Integration tests are conditionally skipped and not guaranteed locally
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** test-engineer
+- **Files / Lines:** `tests/integration/db/catalog-numbers.test.ts:23`; `tests/integration/db/user-crud.test.ts:15`; `tests/integration/db/submission-lifecycle.test.ts:28`; `tests/integration/db/judge-claim-reclaim.test.ts:28`; `tests/integration/api/health.test.ts:6`
+- **Problem:** All integration suites use `describe.skipIf(!hasPostgresIntegrationSupport)`. They run in CI but silently skip locally.
+- **Failure scenario:** A developer running `npm run test:unit` believes reliability logic is tested, but judge claim reclaim after worker death is never exercised locally.
+- **Suggested fix:** Provide a `docker-compose.test-backends.yml` or documented one-liner to spin up test Postgres. Add a pre-test warning when integration tests skip.
+
+---
+
+## Theme: Latent Bugs / Operational
+
+### HIGH: `sshpass` exposes the SSH password in local process listings
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic, tracer, debugger, security-reviewer
+- **Files / Lines:** `deploy-docker.sh:391-392,399-400,595`; `deploy.sh:57-58,65-66`
+- **Problem:** `remote()` and `remote_copy()` helpers invoke `sshpass -p "$SSH_PASSWORD"`. Command-line arguments are visible to any local user via `ps` or `/proc/<pid>/cmdline` while the deploy runs.
+- **Failure scenario:** A CI runner or shared operator laptop deploys with password auth. Another unprivileged user captures the plaintext `SSH_PASSWORD`.
+- **Suggested fix:** Switch to the environment-variable form (`SSHPASS="$SSH_PASSWORD" sshpass -e ssh ...`) for all remote helpers, or remove password auth entirely and require SSH keys.
+
+### MEDIUM: Rate-limiter sidecar uses wall-clock time for windows and blocks
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `rate-limiter-rs/src/main.rs:137-142,152-212,215-281,292-315`
+- **Problem:** `now_ms()` is `SystemTime::now().duration_since(UNIX_EPOCH)`. If the system clock jumps backward (NTP sync, manual adjustment), an active block can appear expired and a window may not reset when it should.
+- **Failure scenario:** An attacker blocked for 15 minutes benefits from a backward NTP correction and is allowed more attempts before the DB path re-synchronizes.
+- **Suggested fix:** Store `tokio::time::Instant` values for windows/blocks and use monotonic elapsed durations for interval comparisons.
+
+### MEDIUM: Fixed `/tmp` filenames create races during parallel deploys
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `deploy-docker.sh:1446,1530,1602-1605` (nginx config); `1663,1669` (smoke log)
+- **Problem:** The nginx config is written to `/tmp/judgekit-nginx.conf` and the smoke log to `/tmp/judgekit-smoke-${DOMAIN}.log` on the deploying machine. These paths are deterministic.
+- **Failure scenario:** Two concurrent deploys on the same machine can overwrite each other's files; the wrong config may be copied to a production host.
+- **Suggested fix:** Use `mktemp /tmp/judgekit-nginx.XXXXXX` and include PID/timestamp in the smoke log filename. Clean up files in the `EXIT` trap.
+
+### MEDIUM: Migration container runs unpinned `npm install --no-save drizzle-kit@latest pg`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** tracer
+- **Files / Lines:** `deploy-docker.sh:~1237`
+- **Problem:** The migration step runs a transient container that installs `drizzle-kit@latest` and `pg` without a lockfile. The container is launched with `--env-file .env.production`, giving it access to all secrets.
+- **Failure scenario:** A compromised npm registry, a malicious takeover, or an accidental breaking release could cause the migration container to execute attacker-controlled code with full database credentials.
+- **Suggested fix:** Pin `drizzle-kit` and `pg` to exact versions in `package.json` or the deploy script, and install from the locked dependency tree.
+
+### MEDIUM: `pg-volume-safety-check.sh` can return `.` as the cluster source
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `scripts/pg-volume-safety-check.sh:156-158`
+- **Problem:** Candidate cluster path discovery uses `find ... | head -1 | xargs -I{} dirname {}`. When `find` produces no output, `xargs` without `-r` still runs `dirname` once with an empty argument, printing `.`.
+- **Failure scenario:** The script treats the current working directory as the cluster source, potentially reporting a false orphan-cluster emergency.
+- **Suggested fix:** Use `xargs -r` or `find ... -printf '%h\n' -quit`.
+
+### MEDIUM: `rebuild-worker-language-images.sh` `eval`s part of `deploy-docker.sh`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `scripts/rebuild-worker-language-images.sh:37-38`
+- **Problem:** The script extracts language list assignments from `deploy-docker.sh` and `eval`s them. Future shell-special characters inside those assignments can break or execute unexpected code.
+- **Failure scenario:** A future edit adds a language list like `CORE_LANGS="cpp python # core only"`. The `#` is treated as a comment by `eval`, truncating the list.
+- **Suggested fix:** Move language list constants into a dedicated sourced file (`scripts/language-lists.sh`) that both scripts source without `eval`.
+
+### MEDIUM: `bootstrap-instance.sh` assumes `--swap` is always in gigabytes
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `scripts/bootstrap-instance.sh:112-124`
+- **Problem:** Swap-size fallback uses `echo ${SWAP_SIZE} | sed 's/G//' | awk '{print $1 * 1024}'`. If the operator passes `--swap=512M`, the `G` removal does nothing and the script tries to allocate 512 GB of swap.
+- **Failure scenario:** An operator on a small instance runs `--swap=2M` expecting 2 MB and instead creates a 2 GB swap file, potentially filling the root filesystem.
+- **Suggested fix:** Parse the numeric suffix explicitly and convert M/G/T to megabytes. Reject unsupported units.
+
+### MEDIUM: Rust Dockerfiles use rolling `rust:1-alpine` tag
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `Dockerfile.judge-worker:10`; `Dockerfile.code-similarity:6`; `Dockerfile.rate-limiter-rs:8`
+- **Problem:** `rust:1-alpine` is a rolling tag. A future Rust release can introduce new deprecation warnings treated as errors, edition changes, or dependency breakage.
+- **Failure scenario:** A routine deploy on a fresh worker host fails mid-build because `rust:1-alpine` now resolves to a newer Rust without any code change.
+- **Suggested fix:** Pin to a specific minor/patch version (e.g., `rust:1.93-alpine`) and update deliberately after testing.
+
+### MEDIUM: Language Dockerfiles download `latest` releases without checksum verification
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `docker/Dockerfile.judge-jvm:10`; `docker/Dockerfile.judge-moonbit:16,21`; `docker/Dockerfile.judge-uiua:7`; `docker/Dockerfile.judge-v:8`
+- **Problem:** Several language images fetch `latest` release artifacts directly from GitHub or vendor CDNs with no version pinning, checksum verification, or signature checking.
+- **Failure scenario:** A compromised release, breaking upstream change, or network MitM can break or poison the image, causing all submissions in that language to fail.
+- **Suggested fix:** Pin to explicit release tags/versions and verify SHA-256 checksums after download. Store expected checksums in the repo.
+
+### MEDIUM: `apiFetchJson` calls `.json()` before checking `response.ok`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** debugger
+- **Files / Lines:** `src/lib/api/client.ts:147-158`
+- **Problem:** The file's own documentation states "Always check `response.ok` BEFORE calling `.json()`." `apiFetchJson` parses first and then branches on `res.ok && parseOk`.
+- **Failure scenario:** A reverse proxy returns an HTML 502 page. `apiFetchJson` returns `{ ok: false, data: fallback }`; the caller cannot distinguish a network failure from a 502/503/504.
+- **Suggested fix:** Restructure to check `res.ok` first, then parse success/error bodies separately.
+
+### MEDIUM: `generateNgrams` does not validate `n`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** debugger
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:197-204`
+- **Problem:** The loop condition `i <= tokens.length - n` produces an infinite loop when `n` is 0 or negative.
+- **Failure scenario:** A malformed setting or future caller passes `ngramSize=0`. The similarity-check API route times out after 30 seconds, but the synchronous loop blocks the event loop.
+- **Suggested fix:** Add an early guard: `if (n <= 0 || tokens.length < n) return new Set();`.
+
+### MEDIUM: `normalizeSource` string-literal cap leaks content into normalized output
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** debugger
+- **Files / Lines:** `src/lib/assignments/code-similarity.ts:67-93,106`
+- **Problem:** When a string literal exceeds `MAX_STRING_LITERAL_LENGTH` (10 000 chars), the inner while exits without reaching the closing delimiter. The outer loop continues from inside the string body and appends that character to `result` as if it were code.
+- **Failure scenario:** Two unrelated submissions sharing the same long base64 blob may get an artificially high similarity score.
+- **Suggested fix:** When the cap is hit, skip ahead to the delimiter (or newline) without emitting anything.
+
+### MEDIUM: `judge-worker-rs` startup/periodic sweeps only reap `status=exited`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `judge-worker-rs/src/docker.rs:574-650`
+- **Problem:** The periodic `cleanup_orphaned_containers` filters on `status=exited`. Containers in `dead` or `created` states are never reaped by the periodic sweep.
+- **Failure scenario:** A Docker daemon restart leaves `oj-*` containers in `dead` state. The periodic sweep ignores them until the next worker restart.
+- **Suggested fix:** Remove the `status=exited` filter or explicitly include `status=dead` and `status=created`.
+
+### LOW/MEDIUM: Backup retention can erase all historical backups
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `deploy-docker.sh:1019-1020`; `deploy.sh:178-181`
+- **Problem:** `find ... -mtime +${BACKUP_RETAIN_DAYS} -delete`. `BACKUP_RETAIN_DAYS` is operator-overridable; a value of `0` or `1` deletes all prior backups immediately after creating one.
+- **Failure scenario:** A misconfigured `BACKUP_RETAIN_DAYS=0` deletes all backups after the daily backup runs.
+- **Suggested fix:** Enforce a minimum retention value (e.g., 2) or require explicit confirmation for values <=1.
+
+### LOW/MEDIUM: Backup verification only checks gzip structure
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `scripts/verify-db-backup.sh:13-65`
+- **Problem:** The script does not call `pg_restore` by default, so a truncated or corrupted custom-format dump can report success.
+- **Failure scenario:** A corrupted backup is trusted as valid; disaster recovery fails when the backup is actually needed.
+- **Suggested fix:** Run `pg_restore --list` (or a dry-run restore) as the default verification step.
+
+### LOW/MEDIUM: No off-host backup
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `deploy-docker.sh`, `deploy.sh` backup logic
+- **Problem:** Backups are written to `~/backups/` on the same host.
+- **Failure scenario:** A disk failure or host loss destroys the database and every backup simultaneously.
+- **Suggested fix:** Implement off-host backup copy (e.g., via `rclone` to object storage or another host) as part of the daily backup job.
+
+### LOW/MEDIUM: Rust worker graceful shutdown does not drain runner requests
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/main.rs:655-689`
+- **Problem:** Shutdown aborts the axum task without waiting for active `/run` requests.
+- **Failure scenario:** In-flight verdict submissions may be lost or orphaned containers left running during a restart.
+- **Suggested fix:** Add a graceful shutdown handler that waits for active requests to complete within a bounded timeout.
+
+### LOW/MEDIUM: `ensure_env_secret` base64 generator branch is dead and misleading
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `deploy-docker.sh:715-718`
+- **Problem:** The function accepts a `generator` argument. For `generator == "base64"` it first generates a hex value and then unconditionally overwrites it with `openssl rand -base64 32`. There are no callers that pass `"base64"`.
+- **Failure scenario:** A future maintainer adds `ensure_env_secret SOME_KEY base64` expecting a hex string and gets a base64 string, which may be rejected by a downstream validator.
+- **Suggested fix:** Remove the dead branch or make the generator logic explicit and test it.
+
+### LOW/MEDIUM: Dedicated worker `.env` only receives a subset of required variables
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `scripts/deploy-worker.sh:137-144`
+- **Problem:** The script creates a remote `.env` with only `JUDGE_BASE_URL`, `JUDGE_AUTH_TOKEN`, `RUNNER_AUTH_TOKEN`, `JUDGE_CONCURRENCY`, `JUDGE_WORKER_HOSTNAME`, and `RUST_LOG`. Additional compose-required vars must be pre-provisioned manually.
+- **Failure scenario:** An operator adds a required env var to `docker-compose.worker.yml` but forgets to copy it to the worker host; the worker fails to start after deploy.
+- **Suggested fix:** Document required worker env vars in `AGENTS.md` and optionally sync an allow-listed set from `.env.production`.
+
+### LOW: `compute-expected` populates `expectedOutput` with stdout even when reference exits non-zero
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** verifier
+- **Files / Lines:** `src/app/api/v1/problems/[id]/compute-expected/route.ts:162-170`
+- **Problem:** The route marks `ok: false` for non-zero exit but still stores the captured stdout in `expectedOutput`. The field name implies the value will be used as expected output.
+- **Failure scenario:** An authoring UI that ignores `ok` writes a crashing reference solution's partial/empty stdout as canonical expected output.
+- **Suggested fix:** When `exitCode !== 0`, set `expectedOutput: ""` so the field is unambiguously not usable, or rename the field to `output` for non-success cases. Document the contract.
+
+### LOW: Java function harness formats `double` returns with only 10 significant digits
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** verifier
+- **Files / Lines:** `src/lib/judge/function-judging/adapters/java.ts:186`
+- **Problem:** The Java adapter serializes `double` returns using `String.format(Locale.ROOT, "%.10g", v)`. `serialization.ts` uses `String(Number(v))` (~17 digits), and C# uses `"R"`.
+- **Failure scenario:** Values near the tolerance boundary with more than 10 significant digits may produce wrong verdicts across languages.
+- **Suggested fix:** Replace `%.10g` with `%.17g` or `Double.toString(v)` to match the precision contract used elsewhere.
+
+### LOW: PostScript runner disables SAFER mode
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** security-reviewer
+- **Files / Lines:** `src/lib/judge/languages.ts:854`
+- **Problem:** The PostScript run command passes `-dNOSAFER`, which disables Ghostscript's file-access sandbox.
+- **Failure scenario:** A PostScript submission can read or write any file reachable in the writable tmpfs or mounted workspace.
+- **Suggested fix:** Use `-dSAFER` for normal submissions and only allow `NOSAFER` for specific problems that require file I/O, gated by a problem-level flag.
+
+### LOW: Uploaded files written with world-readable permissions
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer
+- **Files / Lines:** `src/lib/files/storage.ts:27-30`
+- **Problem:** `writeUploadedFile` passes `{ mode: 0o644 }`.
+- **Failure scenario:** If the data volume is accessible to other users on the host, submission source code, test data, or attachments can be read outside the application.
+- **Suggested fix:** Use `{ mode: 0o600 }` for uploaded files.
+
+### LOW: Dead-letter files are written with default permissions
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/executor.rs:1052-1096`
+- **Problem:** `fs::create_dir_all` and `fs::write` inherit the process umask. There is no explicit `0o700` directory or `0o600` file mode.
+- **Failure scenario:** Verdicts persisted to the dead-letter volume can be read by another unprivileged user or container on the shared worker host.
+- **Suggested fix:** Set the dead-letter directory to `0o700` and each file to `0o600` after writing.
+
+---
+
+## Theme: Judge Worker / Rust
+
+### MEDIUM: `Language::Unknown` silently breaks new-language rollouts
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/types.rs:201-203`; `judge-worker-rs/src/languages.rs:1909-2040`; `judge-worker-rs/src/executor.rs:220-234`
+- **Problem:** The `Language` enum maps unknown values to `Language::Unknown` via `#[serde(other)]`, and `get_config` returns `None` for it. When no DB overrides are present, the worker rejects the submission as `compile_error`.
+- **Failure scenario:** A new language is added to the web app and database but the Rust enum is not updated. Submissions for that language immediately fail with "Unsupported language" even though the server is ready to judge them.
+- **Suggested fix:** Have the worker advertise its supported languages during `/register`; the app server should only dispatch languages the worker declares. Add a CI contract test comparing the TS language set with the Rust `Language` enum.
+
+### MEDIUM: Compile-phase memory limit always evaluates to the default ceiling
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/executor.rs:449-450`
+- **Problem:** `compile_memory_mb = compilation_memory_limit_mb().max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB))` always evaluates to `compilation_memory_limit_mb()` (default 2048 MB) because the right-hand term is at most 1024 MB.
+- **Failure scenario:** A problem-level memory limit never constrains compilation. A malicious or pathological build can consume up to 2 GiB per concurrent compile slot.
+- **Suggested fix:** Decide whether compile memory should be independently configurable or derived from the problem limit, then implement a clear policy.
+
+### MEDIUM: Run-phase memory cap differs between Rust worker and Node fallback
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `judge-worker-rs/src/executor.rs:23,579`; `src/lib/compiler/execute.ts:15`
+- **Problem:** The Rust worker silently clamps per-submission memory to `MAX_MEMORY_LIMIT_MB = 1024`, while the Node local fallback hard-codes `MEMORY_LIMIT_MB = 2048`.
+- **Failure scenario:** Problems authored with a memory limit between 1024 MB and 2048 MB produce inconsistent verdicts across runners.
+- **Suggested fix:** Make both runners use the same configurable ceiling and surface the clamp in logs/metrics. Prefer making the cap env-driven and identical across runners.
+
+### MEDIUM: `JUDGE_MAX_OUTPUT_BYTES` parsed without upper bound
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** critic
+- **Files / Lines:** `judge-worker-rs/src/docker.rs:420-424,432-464`
+- **Problem:** The per-stream output cap is read from the environment as a `u64` and used to size an in-memory buffer. There is no maximum value check.
+- **Failure scenario:** A misconfigured `JUDGE_MAX_OUTPUT_BYTES=10737418240` (10 GiB) with `JUDGE_CONCURRENCY=16` lets the worker try buffering hundreds of gigabytes, leading to OOM.
+- **Suggested fix:** Clamp the parsed value to a hard ceiling (e.g., 128 MiB) and log a warning when the env var is ignored or truncated.
+
+### MEDIUM: `/api/v1/judge/poll` route path is baked into the Rust worker binary
+- **Severity:** MEDIUM
+- **Confidence:** HIGH
+- **Status:** Confirmed
+- **Agents:** architect
+- **Files / Lines:** `src/app/api/v1/judge/poll/route.ts:1-5`; `judge-worker-rs/src/main.rs`
+- **Problem:** The route name `/api/v1/judge/poll` is semantically misleading and permanently frozen because the Rust worker hard-codes the URL. Renaming or restructuring judge routes requires a coordinated app + worker redeploy.
+- **Failure scenario:** A future refactor moves judge routes; the worker binary on `worker-0` posts results to a 404, and submissions remain stuck in "judging".
+- **Suggested fix:** Externalize the result-submission URL as a worker env var, add an `/api/v1/judge/results` alias, and document the frozen path prominently in `AGENTS.md`.
+
+### LOW/MEDIUM: Rust worker output buffers up to 128 MiB per stream per sandbox
+- **Severity:** LOW (covered under performance; included here for worker-specific visibility)
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** perf-reviewer
+- **Files / Lines:** `judge-worker-rs/src/docker.rs:420-464`
+- **Problem:** Each judged container spawns two Tokio tasks that read stdout/stderr into memory until `max_output_bytes` (default 128 MiB per stream).
+- **Failure scenario:** A `JUDGE_CONCURRENCY` of 8 already reserves ~2 GiB just for output buffers; a malicious submission that prints in a tight loop fills these buffers.
+- **Suggested fix:** Lower the default (e.g., 8-32 MiB) and stream outputs to the comparator without fully materializing them in memory.
+
+---
+
+## Theme: Files / Storage
+
+### MEDIUM: File download endpoint has no rate limiting (also listed under API/Auth)
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `src/app/api/v1/files/[id]/route.ts:62-140`
+- **Problem / Fix:** Same as API/Auth entry above. Add `rateLimit: "files:download"`.
+
+### LOW: Uploaded files written with world-readable permissions (also listed under Latent Bugs)
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** security-reviewer
+- **Files / Lines:** `src/lib/files/storage.ts:27-30`
+- **Problem / Fix:** Same as Latent Bugs entry above. Use `{ mode: 0o600 }`.
+
+---
+
+## Theme: Rate Limiter
+
+### MEDIUM: Rate-limiter state is in-process and non-replicated (also listed under Performance)
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Agents:** critic
+- **Files / Lines:** `rate-limiter-rs/src/main.rs:31,152-213,215-281`
+- **Problem / Fix:** Same as Performance entry above. Document single-replica requirement or back with Redis/Postgres.
+
+### MEDIUM: Rate-limiter sidecar uses wall-clock time (also listed under Latent Bugs)
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** debugger
+- **Files / Lines:** `rate-limiter-rs/src/main.rs:137-142,152-212,215-281,292-315`
+- **Problem / Fix:** Same as Latent Bugs entry above. Use monotonic `tokio::time::Instant` for interval comparisons.
+
+### LOW/MEDIUM: API rate limiter still performs a DB transaction on every allowed request
+- **Severity:** LOW/MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Agents:** perf-reviewer
+- **Files / Lines:** `src/lib/security/api-rate-limit.ts:69-129`; `src/lib/security/rate-limit.ts:178-209`
+- **Problem:** The sidecar only short-circuits when the caller is already blocked; allowed requests still execute a PostgreSQL transaction with `SELECT ... FOR UPDATE` and an update. Multi-key updates run serially inside the transaction.
+- **Failure scenario:** High-traffic authenticated endpoints create hot rows in `rate_limits`; `FOR UPDATE` row locks serialize requests sharing an IP/user key.
+- **Suggested fix:** Use the sidecar as the primary increment authority for allowed requests and asynchronously sync counters to Postgres, or shard keys by a small time bucket to spread lock contention.
+
+---
+
+## AGENT FAILURES
+
+None this cycle. All 11 agents produced readable, structured reviews within scope and without apparent tool failures or hallucinated file references.
+
+---
+
+## Final Sweep / Commonly Missed Cross-Cutting Risks
+
+The following risks were surfaced by multiple agents or fall between theme boundaries:
+
+1. **IP trust boundary is configured to fail safe, but nginx makes it fail null.** `extractClientIp` refuses to trust a short `X-Forwarded-For` chain, yet nginx replaces the chain with a single `$remote_addr`. The result is not "IP rejected" but `null`, and downstream code degrades to a shared bucket rather than denying. This is the single highest-impact deployment finding and should be validated before the next production deploy. (security-reviewer, critic, tracer, debugger, architect, code-reviewer)
+
+2. **Tests validate helper logic, not the wiring.** Most API unit tests mock `createApiHandler` and test the inner handler in isolation. Middleware-level regressions (dropped `rateLimit`, changed `auth` config, missing CSRF) are invisible to the fast suite. The dominance of ~90 source-scan "implementation" tests further inflates confidence without proving runtime behavior. (critic, test-engineer)
+
+3. **Privileged surface area is broader than documented.** The Docker socket proxy, runner auth token, judge IP allowlist, and systemd services are all described as restricted, but defaults or broad ACLs let a single compromise escalate quickly. (security-reviewer, critic)
+
+4. **Resource consumption precedes authorization.** `/compiler/run` deducts daily quota before checking `content.submit_solutions`; similarity runs delete old events before verifying serialization succeeded; file downloads have no rate limit. (critic, security-reviewer)
+
+5. **State lives in single processes with no invalidation story.** Rate-limiter buckets, in-process settings caches, and capability caches do not survive restarts or horizontal scaling. (critic, architect, perf-reviewer)
+
+6. **Container logs are unbounded.** `docker-compose.production.yml` has no `logging:` section on any service; the default json-file driver accumulates without limit. (critic)
+
+7. **Process-local caches have no cross-instance invalidation.** `system-settings-config.ts`, `capabilities/cache.ts`, and `contest-analytics-cache.ts` all hold module-level singletons. In a multi-instance deployment, settings/role changes are stale in other processes until TTL expires. (architect, critic, perf-reviewer)
+
+8. **PostCSS moderate CVE remains unpatched.** `npm audit` reports GHSA-qx2v-qp2m-jg93 (PostCSS <8.5.10 XSS). The project uses Next.js which depends on the vulnerable range. (critic)
+
+9. **`.gitignore` comment contradicts tracked `.env.deploy*` files.** `.gitignore` claims `.env.*` are ignored, but `.env.deploy*` files are tracked and may be mistaken for secret stores. (critic)
+
+10. **Code-similarity normalization consistency between TS and Rust sidecar is unverified.** If the Rust sidecar normalizes differently than the TypeScript fallback, the same contest could produce inconsistent flagged pairs depending on which path runs. (architect, debugger)
+
+11. **No API-side dead-letter for mismatched judge claim tokens.** The Rust worker writes local dead-letter files, but the API never records that a worker attempted to report a result for a reclaimed submission, leaving operators without a metric to distinguish benign races from systemic worker lag. (tracer)
+
+12. **Similarity check is contest-only.** The route returns 404 for `examMode === "none"` (regular homework), where copying is common. (critic)
+
+---
+
+*End of aggregate review. Do not implement fixes without first reviewing the XFF/nginx impact on production rate limits and allowlists, and without rotating any credentials that may have been exposed via `sshpass` command lines.*
