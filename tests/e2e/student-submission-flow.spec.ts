@@ -195,11 +195,17 @@ test.describe.serial("Student Submission Flow", () => {
       return;
     }
     await navigateTo(studentPage, `/submissions/${submissionId}`);
-    await studentPage.waitForLoadState("networkidle");
+    await studentPage.waitForLoadState("load");
+
+    // Pending/queued/judging submissions open a long-lived SSE connection,
+    // so networkidle would never fire in environments without a worker.
+    // Wait for the server-rendered detail content instead.
+    await expect(studentPage.locator("body")).toContainText(
+      /submission|제출|accepted|wrong|error|pending|judging/i,
+      { timeout: 10000 }
+    );
 
     const content = await studentPage.textContent("body");
-    // Submission detail should show the submission ID or status
-    expect(content).toMatch(/submission|제출|accepted|wrong|error|pending|judging/i);
   });
 
   test("Step 10: Cleanup - close pages", async () => {
