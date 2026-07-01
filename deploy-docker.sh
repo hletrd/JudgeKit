@@ -598,6 +598,44 @@ remote_sudo() {
     fi
 }
 
+# Returns 0 if the given nginx version supports the modern `http2 on;`
+# directive (>= 1.25.1), 1 otherwise.
+nginx_version_supports_http2_on() {
+    local version="$1"
+    local major minor patch
+    major="$(printf '%s' "$version" | cut -d. -f1)"
+    minor="$(printf '%s' "$version" | cut -d. -f2)"
+    patch="$(printf '%s' "$version" | cut -d. -f3)"
+    # Strip any non-numeric suffix from patch (e.g. "-2ubuntu7.13").
+    patch="${patch%%[^0-9]*}"
+    [[ "$major" -gt 1 ]] ||
+    { [[ "$major" -eq 1 && "$minor" -gt 25 ]]; } ||
+    { [[ "$major" -eq 1 && "$minor" -eq 25 && "$patch" -ge 1 ]]; }
+}
+
+# Detect the remote nginx version and choose the HTTP/2 syntax it supports.
+# nginx 1.25.1+ accepts the modern `http2 on;` directive inside a server
+# block; older versions require `listen ... ssl http2`. Emits "modern" or
+# "legacy" so the generated config is loadable on the target host.
+detect_nginx_http2_mode() {
+    local nginx_version_line
+    nginx_version_line="$(remote "nginx -v 2>&1" | head -n1 || true)"
+    local nginx_version
+    nginx_version="$(printf '%s\n' "$nginx_version_line" | sed -n 's/^nginx\/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
+
+    if [[ -z "$nginx_version" ]]; then
+        warn "Could not detect remote nginx version; falling back to legacy listen ... http2 syntax"
+        echo "legacy"
+        return
+    fi
+
+    if nginx_version_supports_http2_on "$nginx_version"; then
+        echo "modern"
+    else
+        echo "legacy"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Pre-flight checks
 # ---------------------------------------------------------------------------
@@ -1425,6 +1463,9 @@ else
 fi
 
 # Write nginx config to /tmp first (avoids heredoc + sudo + tee issues)
+NGINX_HTTP2_MODE="$(detect_nginx_http2_mode)"
+info "Remote nginx HTTP/2 syntax mode: ${NGINX_HTTP2_MODE}"
+
 if [[ "${USE_TLS}" == "true" ]]; then
 cat > /tmp/judgekit-nginx.conf <<NGINX_EOF
 server_tokens off;
@@ -1446,9 +1487,22 @@ server {
 }
 
 server {
+NGINX_EOF
+
+if [[ "${NGINX_HTTP2_MODE}" == "modern" ]]; then
+cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
+NGINX_EOF
+else
+cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+NGINX_EOF
+fi
+
+cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
     server_name ${DOMAIN};
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
