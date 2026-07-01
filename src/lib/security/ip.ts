@@ -18,6 +18,9 @@ function getTrustedProxyHops(): number {
 function isValidIpv4(value: string): boolean {
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) return false;
   return value.split(".").every((part) => {
+    // Reject leading-zero octets (e.g. "01") to keep canonical form.
+    // The single digit "0" is the only allowed zero-prefixed octet.
+    if (part.length > 1 && part.startsWith("0")) return false;
     const number = Number(part);
     return Number.isInteger(number) && number >= 0 && number <= 255;
   });

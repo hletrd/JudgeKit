@@ -153,6 +153,24 @@ describe("extractClientIp", () => {
     ).toBe("198.51.100.8");
   });
 
+  it("rejects IPv4 addresses with leading-zero octets", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-forwarded-for": "192.168.01.001, 203.0.113.10" }))).toBe("0.0.0.0");
+  });
+
+  it("accepts the all-zero IPv4 address", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "0.0.0.0" }))).toBe("0.0.0.0");
+  });
+
+  it("accepts canonical IPv4 addresses without leading zeros", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "192.168.1.1" }))).toBe("192.168.1.1");
+  });
+
   it('returns "0.0.0.0" when no x-forwarded-for and no x-real-ip', async () => {
     const { extractClientIp } = await importIpModule();
 
