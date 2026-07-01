@@ -349,6 +349,22 @@ export async function runSimilarityCheck(
     };
   }
 
+  // Guard against excessively large contests before invoking either engine.
+  // Reason is "too_many_submissions", NOT "service_unavailable" (RPF cycle-5
+  // AGG5-5): the declared enum member and its translated dashboard branch
+  // were unreachable, and the operator diagnosing a >MAX contest with the
+  // sidecar down was told only half the story. The count blocks both engines.
+  if (rows.length > MAX_SUBMISSIONS_FOR_SIMILARITY) {
+    return {
+      status: "not_run",
+      reason: "too_many_submissions",
+      pairs: [],
+      flaggedPairs: 0,
+      submissionCount: rows.length,
+      maxSupportedSubmissions: MAX_SUBMISSIONS_FOR_SIMILARITY,
+    };
+  }
+
   let pairs: SimilarityPair[];
 
   // Try Rust sidecar first
@@ -367,24 +383,6 @@ export async function runSimilarityCheck(
     }
   } catch {
     // Rust sidecar unavailable — fall through to TS
-  }
-
-  // Guard against excessively large contests only for the TypeScript fallback.
-  // Reason is "too_many_submissions", NOT "service_unavailable" (RPF cycle-5
-  // AGG5-5): the declared enum member and its translated dashboard branch
-  // were unreachable, and the operator diagnosing a >MAX contest with the
-  // sidecar down was told only half the story. The sidecar being absent is
-  // the precondition for reaching this guard; the COUNT is what blocks the
-  // fallback engine.
-  if (rows.length > MAX_SUBMISSIONS_FOR_SIMILARITY) {
-    return {
-      status: "not_run",
-      reason: "too_many_submissions",
-      pairs: [],
-      flaggedPairs: 0,
-      submissionCount: rows.length,
-      maxSupportedSubmissions: MAX_SUBMISSIONS_FOR_SIMILARITY,
-    };
   }
 
   pairs = await runSimilarityCheckTS(rows, threshold, ngramSize, signal);
