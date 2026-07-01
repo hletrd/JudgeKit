@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { consumeUserDailyQuota } from "@/lib/security/api-rate-limit";
 import { getSystemSettings } from "@/lib/system-settings";
+import { resolveCapabilities } from "@/lib/capabilities/cache";
 
 const ALLOW_UNVERIFIED_EMAIL_ENV = (() => {
   // Hard env-level escape hatch for deployments that intentionally don't
@@ -54,6 +55,8 @@ export async function gateSandboxEndpoint(options: GateOptions): Promise<NextRes
     }
   }
 
+  let userRow: { emailVerified: Date | null; role: string } | undefined;
+
   if (enforceEmailGate) {
     const [row] = await db
       .select({
@@ -63,6 +66,8 @@ export async function gateSandboxEndpoint(options: GateOptions): Promise<NextRes
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
+
+    userRow = row;
 
     // Staff (instructors/admins/super_admins) bypass the verified-email
     // gate. They're created by operators, not by public signup, so
@@ -83,6 +88,16 @@ export async function gateSandboxEndpoint(options: GateOptions): Promise<NextRes
         },
         { status: 403 },
       );
+    }
+  }
+
+  // Operators and integrators with the system.settings capability bypass the
+  // daily sandbox quota so that routine maintenance and testing are not
+  // throttled by the same per-user limit as candidates.
+  if (userRow) {
+    const caps = await resolveCapabilities(userRow.role);
+    if (caps.has("system.settings")) {
+      return null;
     }
   }
 
