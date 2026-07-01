@@ -1246,23 +1246,6 @@ else
   success "Database migrated"
 fi
 
-# Apply additive schema repairs for columns that may be missing on older
-# PostgreSQL deployments even when drizzle-kit push reports no diff.
-info "Applying additive PostgreSQL schema repairs..."
-remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-    export POSTGRES_PASSWORD=\"\${PG_PASS}\" && \
-    export PGPASSWORD=\"\${PG_PASS}\" && \
-    export DATABASE_URL=\"postgres://judgekit:\${PG_PASS}@db:5432/judgekit\" && \
-    docker run --rm \
-    --network ${NETWORK_NAME} \
-    -e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL \
-    postgres:18-alpine \
-    psql -h db -U judgekit -d judgekit <<'SQL'
-ALTER TABLE problems ADD COLUMN IF NOT EXISTS default_language text;
-ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS default_language text;
-SQL" >/dev/null
-success "Schema repairs applied"
-
 # Run ANALYZE to ensure query planner has fresh statistics
 info "Running ANALYZE on database..."
 remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
@@ -1480,7 +1463,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1495,7 +1478,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1507,7 +1490,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1519,7 +1502,7 @@ server {
         proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
         proxy_cache_bypass \$http_upgrade;
@@ -1550,7 +1533,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1565,7 +1548,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1577,7 +1560,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
     }
@@ -1589,7 +1572,7 @@ server {
         proxy_set_header Connection \$connection_upgrade;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
         proxy_cache_bypass \$http_upgrade;

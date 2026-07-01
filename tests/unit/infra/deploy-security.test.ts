@@ -26,6 +26,9 @@ describe("deployment security defaults", () => {
     expect(deployDocker).toContain("legacy escaped route-group directories");
     expect(deployDocker).toContain("DB_BECAME_HEALTHY=0");
     expect(deployDocker).toContain("Database did not become healthy in 30s — aborting deploy before migrations");
+    // Schema changes must go through Drizzle migrations; raw additive repairs
+    // bypass the journal and break disaster recovery.
+    expect(deployDocker).not.toMatch(/ALTER TABLE\s+\w+\s+ADD COLUMN IF NOT EXISTS/);
   });
 
   it("hardens local deploy profiles before sourcing them", () => {
