@@ -26,11 +26,12 @@ function javaScalar(t: string): string {
 
 // Self-contained prelude: a minimal one-line JSON reader over the args array,
 // scalar readers for the supported types, and canonical writers matching
-// serialization.ts (compact JSON, no inner spaces, true/false, %.10g doubles
-// which the worker's whitespace-token float comparator accepts). No external
-// libraries (Gson/Jackson are not on the classpath). The Solution class is
-// appended after this; class order is irrelevant to javac so Main (appended
-// last) can reference both this helper and Solution.
+// serialization.ts (compact JSON, no inner spaces, true/false, %.17g doubles
+// so full f64 precision round-trips, which the worker's whitespace-token float
+// comparator accepts within tolerance). No external libraries (Gson/Jackson are
+// not on the classpath). The Solution class is appended after this; class order
+// is irrelevant to javac so Main (appended last) can reference both this helper
+// and Solution.
 //
 // Broad java.util / java.util.stream imports are placed at the very top so the
 // student's Solution code can use HashMap/HashSet/Arrays/List/streams without
@@ -183,7 +184,7 @@ final class __FnJudge {
     }
 
     static void write(StringBuilder o, long v) { o.append(v); }
-    static void write(StringBuilder o, double v) { o.append(String.format(java.util.Locale.ROOT, "%.10g", v)); }
+    static void write(StringBuilder o, double v) { o.append(String.format(java.util.Locale.ROOT, "%.17g", v)); }
     static void write(StringBuilder o, boolean v) { o.append(v ? "true" : "false"); }
     static void write(StringBuilder o, String v) {
         // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
@@ -315,7 +316,7 @@ ${printBlock(spec.returnType)}
  * token for a scalar, space-joined for an array) to match encodeValue's
  * float/space-separated contract — the worker's whitespace-token float
  * comparator tokenizes these but cannot tokenize a JSON `[a,b]`. Both reuse the
- * existing `write(StringBuilder, double)` formatter (`%.10g`), accepted under
+ * existing `write(StringBuilder, double)` formatter (`%.17g`), accepted under
  * the comparator's tolerance. Every other type keeps the JSON writer.
  */
 function printBlock(returnType: FunctionType): string {

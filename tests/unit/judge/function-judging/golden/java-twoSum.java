@@ -144,7 +144,7 @@ final class __FnJudge {
     }
 
     static void write(StringBuilder o, long v) { o.append(v); }
-    static void write(StringBuilder o, double v) { o.append(String.format(java.util.Locale.ROOT, "%.10g", v)); }
+    static void write(StringBuilder o, double v) { o.append(String.format(java.util.Locale.ROOT, "%.17g", v)); }
     static void write(StringBuilder o, boolean v) { o.append(v ? "true" : "false"); }
     static void write(StringBuilder o, String v) {
         // Canonical JSON.stringify (ECMA-404) escaping: named short escapes for
