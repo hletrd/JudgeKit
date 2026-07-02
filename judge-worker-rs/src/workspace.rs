@@ -1,5 +1,6 @@
 use std::io;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 /// A temporary workspace directory intended for sandboxed compiler/judge runs.
 ///
@@ -39,26 +40,77 @@ fn chown_recursive(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     Ok(())
 }
 
+fn cleanup_with_docker(path: &Path) -> io::Result<()> {
+    let parent = path.parent().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "workspace path has no parent")
+    })?;
+    let name = path.file_name().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "workspace path has no file name")
+    })?;
+
+    let mount = format!("{}:/work", parent.display());
+    let target = format!("/work/{}", name.to_string_lossy());
+
+    let output = Command::new("docker")
+        .args([
+            "run",
+            "--rm",
+            "--user",
+            "root",
+            "-v",
+            &mount,
+            "alpine",
+            "rm",
+            "-rf",
+            &target,
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!("docker cleanup failed: {stderr}"),
+        ));
+    }
+    Ok(())
+}
+
 impl Drop for SandboxWorkspace {
     fn drop(&mut self) {
         if let Some(path) = self.path.take() {
             unsafe {
                 let uid = libc::getuid();
-                let gid = libc::getgid();
-                if let Err(e) = chown_recursive(&path, uid, gid) {
-                    tracing::warn!(
-                        error = %e,
-                        path = %path.display(),
-                        "Failed to chown workspace back to worker user; cleanup may fail",
-                    );
+                if uid == 0 {
+                    let gid = libc::getgid();
+                    if let Err(e) = chown_recursive(&path, uid, gid) {
+                        tracing::warn!(
+                            error = %e,
+                            path = %path.display(),
+                            "Failed to chown workspace back to worker user; cleanup may fail",
+                        );
+                    }
                 }
             }
+
             if let Err(e) = std::fs::remove_dir_all(&path) {
-                tracing::warn!(
-                    error = %e,
-                    path = %path.display(),
-                    "Failed to clean up sandbox workspace",
-                );
+                unsafe {
+                    if libc::getuid() != 0 {
+                        if let Err(docker_err) = cleanup_with_docker(&path) {
+                            tracing::warn!(
+                                error = %docker_err,
+                                path = %path.display(),
+                                "Failed to clean up sandbox workspace via docker",
+                            );
+                        }
+                    } else {
+                        tracing::warn!(
+                            error = %e,
+                            path = %path.display(),
+                            "Failed to clean up sandbox workspace",
+                        );
+                    }
+                }
             }
         }
     }
@@ -66,9 +118,10 @@ impl Drop for SandboxWorkspace {
 
 #[cfg(test)]
 mod tests {
-    use super::SandboxWorkspace;
+    use super::{cleanup_with_docker, SandboxWorkspace};
     use std::fs;
     use std::os::unix::fs::{chown, PermissionsExt};
+    use std::process::Command;
 
     fn is_root() -> bool {
         // SAFETY: getuid is async-signal-safe and has no side effects.
@@ -129,5 +182,75 @@ mod tests {
             !remaining.contains(&workspace_name),
             "sandbox-owned workspace leaked: {workspace_name}"
         );
+    }
+
+    fn docker_can_reach_temp() -> bool {
+        let tmp = std::env::temp_dir();
+        let probe_name = format!("judgekit-docker-probe-{}", std::process::id());
+        let probe = tmp.join(&probe_name);
+        if fs::create_dir(&probe).is_err() {
+            return false;
+        }
+        let mount = format!("{}:/work", tmp.display());
+        let target = format!("/work/{}", probe_name);
+        let result = Command::new("docker")
+            .args([
+                "run",
+                "--rm",
+                "--user",
+                "root",
+                "-v",
+                &mount,
+                "alpine",
+                "rm",
+                "-rf",
+                &target,
+            ])
+            .output()
+            .map(|o| o.status.success() && !probe.exists())
+            .unwrap_or(false);
+        let _ = fs::remove_dir_all(&probe);
+        result
+    }
+
+    #[test]
+    fn non_root_workspace_is_cleaned_up() {
+        if is_root() {
+            return;
+        }
+
+        let path = {
+            let workspace = SandboxWorkspace::new().expect("create workspace");
+            let p = workspace.path().to_path_buf();
+
+            let nested = p.join("build");
+            fs::create_dir(&nested).expect("create nested dir");
+            fs::write(nested.join("out.o"), b"").expect("write artifact");
+            fs::write(p.join("solution.py"), b"print(1)").expect("write source");
+
+            // The production Dockerfile runs the worker as uid 1000, so this path
+            // exercises the non-root direct-removal branch of Drop.
+            p
+        };
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn docker_cleanup_helper_removes_workspace() {
+        if !docker_can_reach_temp() {
+            // Privileged container cleanup requires a working Docker socket that can reach /tmp.
+            return;
+        }
+
+        let workspace = SandboxWorkspace::new().expect("create workspace");
+        let p = workspace.path().to_path_buf();
+
+        let nested = p.join("build");
+        fs::create_dir(&nested).expect("create nested dir");
+        fs::write(nested.join("out.o"), b"").expect("write artifact");
+
+        cleanup_with_docker(&p).expect("docker cleanup should remove workspace");
+
+        assert!(!p.exists());
     }
 }

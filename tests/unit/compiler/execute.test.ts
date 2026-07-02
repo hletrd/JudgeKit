@@ -264,3 +264,38 @@ describe("workspace leak regression", () => {
     }
   });
 });
+
+describe("non-root workspace cleanup", () => {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
+  it("cleans up an ordinary workspace tree when running non-root", async () => {
+    if (isRoot) {
+      // The docker fallback is only for non-root production runs (Dockerfile USER 1001).
+      return;
+    }
+
+    const { cleanupCompilerWorkspace } = await import("@/lib/compiler/execute");
+    const base = await mkdtemp(join(tmpdir(), "compiler-nonroot-"));
+    const nested = join(base, "build");
+
+    try {
+      await mkdir(nested);
+      await writeFile(join(nested, "out.o"), "", { encoding: "utf8" });
+      await writeFile(join(base, "solution.py"), "print(1)", { encoding: "utf8" });
+
+      await cleanupCompilerWorkspace(base);
+
+      expect(existsSync(base)).toBe(false);
+      const leftovers = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith("compiler-nonroot-"),
+      );
+      expect(leftovers).toHaveLength(0);
+    } finally {
+      try {
+        await cleanupCompilerWorkspace(base);
+      } catch {
+        // ignore
+      }
+    }
+  });
+});

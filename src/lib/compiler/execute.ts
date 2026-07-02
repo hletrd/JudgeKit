@@ -10,7 +10,7 @@ import {
   rm,
   writeFile,
 } from "fs/promises";
-import { join } from "path";
+import { basename, dirname, join } from "path";
 import { tmpdir, cpus } from "os";
 import { randomUUID } from "crypto";
 import { existsSync } from "fs";
@@ -362,24 +362,68 @@ async function chownRecursive(dir: string, uid: number, gid: number): Promise<vo
  * nested files were chowned to SANDBOX_UID; chown them back to the app user
  * first so Node can remove the tree.
  */
+async function cleanupWorkspaceWithDocker(workspaceDir: string): Promise<void> {
+  const parentDir = dirname(workspaceDir);
+  const workspaceName = basename(workspaceDir);
+  await exec("docker", [
+    "run",
+    "--rm",
+    "--user",
+    "root",
+    "-v",
+    `${parentDir}:/work`,
+    "alpine",
+    "rm",
+    "-rf",
+    `/work/${workspaceName}`,
+  ]);
+}
+
 export async function cleanupCompilerWorkspace(workspaceDir: string): Promise<void> {
-  try {
-    const appUid = typeof process.getuid === "function" ? process.getuid() : null;
-    const appGid = typeof process.getgid === "function" ? process.getgid() : null;
-    if (appUid !== null && appGid !== null) {
-      await chownRecursive(workspaceDir, appUid, appGid);
+  const appUid = typeof process.getuid === "function" ? process.getuid() : undefined;
+  const appGid = typeof process.getgid === "function" ? process.getgid() : undefined;
+  const isRoot = appUid === 0;
+
+  if (isRoot) {
+    try {
+      await chownRecursive(workspaceDir, appUid, appGid ?? 0);
+    } catch (error) {
+      logger.warn(
+        { error, workspaceDir },
+        "[compiler] Failed to chown workspace back to app user; cleanup may fail",
+      );
     }
-  } catch (error) {
-    logger.warn(
-      { error, workspaceDir },
-      "[compiler] Failed to chown workspace back to app user; cleanup may fail",
-    );
   }
 
   try {
     await rm(workspaceDir, { recursive: true, force: true });
+    return;
   } catch (error) {
-    logger.warn({ error, workspaceDir }, "[compiler] Failed to clean up workspace");
+    if (isRoot) {
+      logger.warn({ error, workspaceDir }, "[compiler] Failed to clean up workspace");
+      return;
+    }
+  }
+
+  try {
+    await cleanupWorkspaceWithDocker(workspaceDir);
+  } catch (error) {
+    const isDockerMissing =
+      error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT";
+    if (isDockerMissing) {
+      logger.warn(
+        { error, workspaceDir },
+        "[compiler] Docker is not available; workspace cleanup skipped",
+      );
+    } else {
+      logger.warn(
+        { error, workspaceDir },
+        "[compiler] Failed to clean up workspace via docker",
+      );
+    }
   }
 }
 
