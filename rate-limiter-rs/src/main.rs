@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     net::SocketAddr,
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::signal;
 use tracing::{info, warn};
@@ -20,15 +20,84 @@ use tracing::{info, warn};
 // Types
 // ---------------------------------------------------------------------------
 
+/// A clock source for rate-limit bookkeeping. Production uses real wall/system
+/// and monotonic clocks; tests use a manually advanced clock so we can assert
+/// behavior when the system clock jumps backward while the monotonic clock
+/// keeps advancing normally.
+trait Clock: Send + Sync {
+    /// Monotonic instant. Used for all window, block, and eviction decisions.
+    fn now(&self) -> Instant;
+    /// Wall-clock Unix time in milliseconds. Used only for converting internal
+    /// monotonic instants into the absolute `blocked_until` timestamps that the
+    /// HTTP API contract exposes.
+    fn now_unix_ms(&self) -> u64;
+}
+
+struct RealClock;
+
+impl Clock for RealClock {
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
+
+    fn now_unix_ms(&self) -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+}
+
+#[cfg(test)]
+struct ManualClock {
+    instant: std::sync::Mutex<Instant>,
+    unix_ms: std::sync::Mutex<u64>,
+}
+
+#[cfg(test)]
+impl ManualClock {
+    fn new(instant: Instant, unix_ms: u64) -> Self {
+        Self {
+            instant: std::sync::Mutex::new(instant),
+            unix_ms: std::sync::Mutex::new(unix_ms),
+        }
+    }
+
+    fn set_unix_ms(&self, ms: u64) {
+        *self.unix_ms.lock().unwrap() = ms;
+    }
+
+    fn advance_instant(&self, duration: Duration) {
+        *self.instant.lock().unwrap() += duration;
+    }
+}
+
+#[cfg(test)]
+impl Clock for ManualClock {
+    fn now(&self) -> Instant {
+        *self.instant.lock().unwrap()
+    }
+
+    fn now_unix_ms(&self) -> u64 {
+        *self.unix_ms.lock().unwrap()
+    }
+}
+
 struct RateLimitEntry {
     attempts: u32,
-    window_started_at: u64,
-    blocked_until: Option<u64>,
+    window_started_at: Instant,
+    blocked_until: Option<Instant>,
     consecutive_blocks: u32,
-    last_attempt: u64,
+    last_attempt: Instant,
 }
 
 type Store = Arc<DashMap<String, RateLimitEntry>>;
+
+#[derive(Clone)]
+struct AppState {
+    store: Store,
+    clock: Arc<dyn Clock>,
+}
 
 // Maximum block duration: 24 hours
 const MAX_BLOCK_MS: u64 = 24 * 60 * 60 * 1000;
@@ -131,17 +200,6 @@ struct OkResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64
-}
-
-// ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
 
@@ -149,10 +207,10 @@ async fn health() -> impl IntoResponse {
     Json(OkResponse { ok: true })
 }
 
-async fn check(State(store): State<Store>, Json(req): Json<CheckRequest>) -> impl IntoResponse {
-    let now = now_ms();
+async fn check(State(state): State<AppState>, Json(req): Json<CheckRequest>) -> impl IntoResponse {
+    let now = state.clock.now();
 
-    let mut entry = store.entry(req.key).or_insert_with(|| RateLimitEntry {
+    let mut entry = state.store.entry(req.key).or_insert_with(|| RateLimitEntry {
         attempts: 0,
         window_started_at: now,
         blocked_until: None,
@@ -170,7 +228,9 @@ async fn check(State(store): State<Store>, Json(req): Json<CheckRequest>) -> imp
                 Json(CheckResponse {
                     allowed: false,
                     remaining: 0,
-                    retry_after: Some(until - now),
+                    retry_after: Some(
+                        until.saturating_duration_since(now).as_millis() as u64
+                    ),
                 }),
             );
         }
@@ -179,14 +239,16 @@ async fn check(State(store): State<Store>, Json(req): Json<CheckRequest>) -> imp
     }
 
     // Check if window expired — reset
-    if e.window_started_at + req.window_ms <= now {
+    if e.window_started_at + Duration::from_millis(req.window_ms) <= now {
         e.attempts = 0;
         e.window_started_at = now;
     }
 
     // Check if at or over limit
     if e.attempts >= req.max_attempts {
-        let retry_after = (e.window_started_at + req.window_ms).saturating_sub(now);
+        let retry_after = (e.window_started_at + Duration::from_millis(req.window_ms))
+            .saturating_duration_since(now)
+            .as_millis() as u64;
         return (
             StatusCode::OK,
             Json(CheckResponse {
@@ -213,12 +275,13 @@ async fn check(State(store): State<Store>, Json(req): Json<CheckRequest>) -> imp
 }
 
 async fn record_failure(
-    State(store): State<Store>,
+    State(state): State<AppState>,
     Json(req): Json<RecordFailureRequest>,
 ) -> impl IntoResponse {
-    let now = now_ms();
+    let now = state.clock.now();
+    let now_unix_ms = state.clock.now_unix_ms();
 
-    let mut entry = store.entry(req.key).or_insert_with(|| RateLimitEntry {
+    let mut entry = state.store.entry(req.key).or_insert_with(|| RateLimitEntry {
         attempts: 0,
         window_started_at: now,
         blocked_until: None,
@@ -235,7 +298,9 @@ async fn record_failure(
                 StatusCode::OK,
                 Json(RecordFailureResponse {
                     blocked: true,
-                    blocked_until: Some(until),
+                    blocked_until: Some(
+                        now_unix_ms + until.saturating_duration_since(now).as_millis() as u64,
+                    ),
                 }),
             );
         }
@@ -244,7 +309,7 @@ async fn record_failure(
     }
 
     // Reset window if expired
-    if e.window_started_at + req.window_ms <= now {
+    if e.window_started_at + Duration::from_millis(req.window_ms) <= now {
         e.attempts = 0;
         e.window_started_at = now;
     }
@@ -257,7 +322,7 @@ async fn record_failure(
     if e.attempts >= req.max_attempts {
         let exp = e.consecutive_blocks.min(MAX_CONSECUTIVE_BLOCKS_EXP);
         let multiplier = 2u64.pow(exp);
-        let block_duration = (req.block_ms * multiplier).min(MAX_BLOCK_MS);
+        let block_duration = Duration::from_millis((req.block_ms * multiplier).min(MAX_BLOCK_MS));
         let blocked_until = now + block_duration;
         e.blocked_until = Some(blocked_until);
         e.consecutive_blocks += 1;
@@ -266,7 +331,7 @@ async fn record_failure(
             StatusCode::OK,
             Json(RecordFailureResponse {
                 blocked: true,
-                blocked_until: Some(blocked_until),
+                blocked_until: Some(now_unix_ms + block_duration.as_millis() as u64),
             }),
         );
     }
@@ -280,8 +345,8 @@ async fn record_failure(
     )
 }
 
-async fn reset(State(store): State<Store>, Json(req): Json<ResetRequest>) -> impl IntoResponse {
-    store.remove(&req.key);
+async fn reset(State(state): State<AppState>, Json(req): Json<ResetRequest>) -> impl IntoResponse {
+    state.store.remove(&req.key);
     Json(OkResponse { ok: true })
 }
 
@@ -289,26 +354,27 @@ async fn reset(State(store): State<Store>, Json(req): Json<ResetRequest>) -> imp
 // Eviction background task
 // ---------------------------------------------------------------------------
 
-fn spawn_eviction_task(store: Store) {
+fn spawn_eviction_task(state: AppState) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(EVICTION_INTERVAL_SECS));
         loop {
             interval.tick().await;
-            let now = now_ms();
-            let before = store.len();
-            store.retain(|_, entry| {
+            let now = state.clock.now();
+            let before = state.store.len();
+            state.store.retain(|_, entry| {
                 // Keep entries that were active within the eviction window
                 // or that have an active block
-                let active = now.saturating_sub(entry.last_attempt) < EVICTION_AGE_MS;
+                let active = now.saturating_duration_since(entry.last_attempt)
+                    < Duration::from_millis(EVICTION_AGE_MS);
                 let blocked = entry
                     .blocked_until
                     .map(|until| until > now)
                     .unwrap_or(false);
                 active || blocked
             });
-            let evicted = before.saturating_sub(store.len());
+            let evicted = before.saturating_sub(state.store.len());
             if evicted > 0 {
-                info!(evicted, remaining = store.len(), "eviction sweep complete");
+                info!(evicted, remaining = state.store.len(), "eviction sweep complete");
             }
         }
     });
@@ -404,10 +470,13 @@ async fn main() {
         );
     }
 
-    let store: Store = Arc::new(DashMap::new());
+    let state = AppState {
+        store: Arc::new(DashMap::new()),
+        clock: Arc::new(RealClock),
+    };
 
     // Start background eviction
-    spawn_eviction_task(Arc::clone(&store));
+    spawn_eviction_task(state.clone());
 
     let mut protected = Router::new()
         .route("/check", post(check))
@@ -423,7 +492,7 @@ async fn main() {
             auth_state.clone(),
             require_bearer,
         ))
-        .with_state(store);
+        .with_state(state);
 
     let app = Router::new().route("/health", get(health)).merge(protected);
 
@@ -458,13 +527,27 @@ mod tests {
         serde_json::from_slice(&body).unwrap()
     }
 
+    fn test_state(start: Instant, unix_ms: u64) -> AppState {
+        test_state_with_clock(start, unix_ms).0
+    }
+
+    fn test_state_with_clock(start: Instant, unix_ms: u64) -> (AppState, Arc<ManualClock>) {
+        let clock = Arc::new(ManualClock::new(start, unix_ms));
+        let state = AppState {
+            store: Arc::new(DashMap::new()),
+            clock: clock.clone(),
+        };
+        (state, clock)
+    }
+
     #[tokio::test]
     async fn check_increments_and_blocks_at_limit() {
-        let store: Store = Arc::new(DashMap::new());
+        let start = Instant::now();
+        let state = test_state(start, 1_000_000);
 
         let first: CheckResponse = decode_json(
             check(
-                State(Arc::clone(&store)),
+                State(state.clone()),
                 Json(CheckRequest {
                     key: "login:user".into(),
                     max_attempts: 2,
@@ -479,7 +562,7 @@ mod tests {
 
         let second: CheckResponse = decode_json(
             check(
-                State(Arc::clone(&store)),
+                State(state.clone()),
                 Json(CheckRequest {
                     key: "login:user".into(),
                     max_attempts: 2,
@@ -494,7 +577,7 @@ mod tests {
 
         let third: CheckResponse = decode_json(
             check(
-                State(store),
+                State(state),
                 Json(CheckRequest {
                     key: "login:user".into(),
                     max_attempts: 2,
@@ -511,11 +594,12 @@ mod tests {
 
     #[tokio::test]
     async fn record_failure_blocks_and_reset_clears_entry() {
-        let store: Store = Arc::new(DashMap::new());
+        let start = Instant::now();
+        let state = test_state(start, 1_000_000);
 
         let first: RecordFailureResponse = decode_json(
             record_failure(
-                State(Arc::clone(&store)),
+                State(state.clone()),
                 Json(RecordFailureRequest {
                     key: "auth:user".into(),
                     max_attempts: 2,
@@ -531,7 +615,7 @@ mod tests {
 
         let second: RecordFailureResponse = decode_json(
             record_failure(
-                State(Arc::clone(&store)),
+                State(state.clone()),
                 Json(RecordFailureRequest {
                     key: "auth:user".into(),
                     max_attempts: 2,
@@ -547,7 +631,7 @@ mod tests {
 
         let _: OkResponse = decode_json(
             reset(
-                State(Arc::clone(&store)),
+                State(state.clone()),
                 Json(ResetRequest {
                     key: "auth:user".into(),
                 }),
@@ -555,11 +639,11 @@ mod tests {
             .await,
         )
         .await;
-        assert!(store.get("auth:user").is_none());
+        assert!(state.store.get("auth:user").is_none());
 
         let after_reset: CheckResponse = decode_json(
             check(
-                State(store),
+                State(state),
                 Json(CheckRequest {
                     key: "auth:user".into(),
                     max_attempts: 2,
@@ -571,5 +655,81 @@ mod tests {
         .await;
         assert!(after_reset.allowed);
         assert_eq!(after_reset.remaining, 1);
+    }
+
+    #[tokio::test]
+    async fn block_persists_when_system_clock_jumps_backward() {
+        // Simulate a backward system-clock jump (e.g., NTP correction) while the
+        // monotonic clock keeps advancing normally. The pre-fix implementation
+        // used SystemTime for block decisions, so a backward jump would
+        // prematurely expire an active block.
+        let start = Instant::now();
+        let unix_start = 1_000_000_000_000u64;
+        let (state, clock) = test_state_with_clock(start, unix_start);
+
+        // Record two failures to trigger a block.
+        let _ = record_failure(
+            State(state.clone()),
+            Json(RecordFailureRequest {
+                key: "auth:user".into(),
+                max_attempts: 2,
+                window_ms: 60_000,
+                block_ms: 60_000,
+            }),
+        )
+        .await;
+        let second: RecordFailureResponse = decode_json(
+            record_failure(
+                State(state.clone()),
+                Json(RecordFailureRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                    block_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert!(second.blocked);
+        assert!(second.blocked_until.is_some(), "block should have expiry");
+
+        // Advance monotonic clock by only 1 second, but jump the system clock
+        // backward by 1 hour.
+        clock.advance_instant(Duration::from_secs(1));
+        clock.set_unix_ms(unix_start - 60 * 60 * 1000);
+
+        let check_after_jump: CheckResponse = decode_json(
+            check(
+                State(state.clone()),
+                Json(CheckRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert!(
+            !check_after_jump.allowed,
+            "block must survive a backward system-clock jump"
+        );
+
+        // Advance monotonic clock past the block duration.
+        clock.advance_instant(Duration::from_secs(70));
+        let check_after_expiry: CheckResponse = decode_json(
+            check(
+                State(state),
+                Json(CheckRequest {
+                    key: "auth:user".into(),
+                    max_attempts: 2,
+                    window_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert!(check_after_expiry.allowed, "block should expire by monotonic clock");
     }
 }
