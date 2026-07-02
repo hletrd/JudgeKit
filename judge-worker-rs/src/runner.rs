@@ -175,6 +175,93 @@ fn validate_shell_command(cmd: &str) -> bool {
     true
 }
 
+// Kept in lock-step with src/lib/compiler/execute.ts#ALLOWED_COMMAND_PREFIXES.
+// Shell interpreters are intentionally excluded so admin-configured commands
+// cannot spawn nested shells.
+const ALLOWED_COMMAND_PREFIXES: &[&str] = &[
+    "gcc", "g++", "clang", "clang++", "cc", "c++",
+    "javac", "java", "jar",
+    "go",
+    "rustc", "cargo",
+    "python3", "python", "pypy3",
+    "node",
+    "dotnet", "mcs", "mono",
+    "ghc", "runhaskell",
+    "dart",
+    "swiftc",
+    "fpc",
+    "ruby",
+    "kotlinc", "kotlin",
+    "scalac", "scala",
+    "gdc", "ldc2",
+    "vbnc", "vbc",
+    "racket",
+    "gs",
+    "csc",
+    "octave",
+    "Rscript",
+    "php",
+    "perl",
+    "lua",
+    "awk",
+    "sed",
+];
+
+fn is_valid_command_prefix(base_name: &str) -> bool {
+    ALLOWED_COMMAND_PREFIXES.iter().any(|prefix| {
+        if base_name == *prefix {
+            return true;
+        }
+        if base_name.len() > prefix.len() && base_name.starts_with(prefix) {
+            let suffix = &base_name[prefix.len()..];
+            return suffix
+                .chars()
+                .all(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | '_'));
+        }
+        false
+    })
+}
+
+fn is_env_assignment(token: &str) -> bool {
+    match token.find('=') {
+        Some(0) => false,
+        Some(pos) => {
+            let key = &token[..pos];
+            if key.is_empty() {
+                return false;
+            }
+            key.chars().enumerate().all(|(i, c)| {
+                if i == 0 {
+                    c.is_ascii_alphabetic() || c == '_'
+                } else {
+                    c.is_ascii_alphanumeric() || c == '_'
+                }
+            })
+        }
+        None => false,
+    }
+}
+
+fn validate_shell_command_strict(cmd: &str) -> bool {
+    if !validate_shell_command(cmd) {
+        return false;
+    }
+    for segment in cmd.split("&&").flat_map(|s| s.split(';')) {
+        let mut tokens = segment.split_whitespace();
+        let first = tokens.find(|t| !is_env_assignment(t));
+        match first {
+            None => return false,
+            Some(token) => {
+                let base = token.rsplit('/').next().unwrap_or(token);
+                if !is_valid_command_prefix(base) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
 fn contains_shell_variable_expansion(cmd: &str) -> bool {
     let bytes = cmd.as_bytes();
     bytes
@@ -689,7 +776,7 @@ async fn run_handler(
 
     // Validate shell commands
     if let Some(ref cmd) = req.compile_command
-        && !validate_shell_command(cmd)
+        && !validate_shell_command_strict(cmd)
     {
         return (
             StatusCode::BAD_REQUEST,
@@ -699,7 +786,7 @@ async fn run_handler(
         )
             .into_response();
     }
-    if !validate_shell_command(&req.run_command) {
+    if !validate_shell_command_strict(&req.run_command) {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -940,7 +1027,7 @@ pub fn create_router(state: Arc<RunnerState>) -> Router {
 
 #[cfg(test)]
 mod tests {
-    use super::{MEMORY_LIMIT_MB, validate_shell_command};
+    use super::{MEMORY_LIMIT_MB, validate_shell_command, validate_shell_command_strict};
 
     #[test]
     fn compiler_runner_memory_limit_matches_node_executor() {
@@ -1024,5 +1111,39 @@ mod tests {
         assert!(!validate_shell_command("echo $PATH"));
         assert!(!validate_shell_command("echo $1"));
         assert!(!validate_shell_command("echo $_"));
+    }
+
+    #[test]
+    fn strict_accepts_env_prefixed_compiler_commands() {
+        assert!(validate_shell_command_strict("CC=gcc gcc main.c"));
+        assert!(validate_shell_command_strict("CFLAGS=-O2 gcc main.c"));
+        assert!(validate_shell_command_strict(
+            "HOME=/tmp mono /workspace/solution.exe"
+        ));
+    }
+
+    #[test]
+    fn strict_rejects_shell_interpreters_and_dash_c_smuggling() {
+        for cmd in [
+            "bash -c 'id'",
+            "sh -c 'id'",
+            "powershell -c 'id'",
+            "pwsh -c 'id'",
+            "-c 'id'",
+            "bash /workspace/run.sh",
+            "/bin/sh -c pwd",
+        ] {
+            assert!(
+                !validate_shell_command_strict(cmd),
+                "expected strict rejection: {cmd}"
+            );
+        }
+    }
+
+    #[test]
+    fn strict_allows_known_compiler_prefixes() {
+        assert!(validate_shell_command_strict("python3 /workspace/main.py"));
+        assert!(validate_shell_command_strict("java -cp /workspace Main"));
+        assert!(validate_shell_command_strict("gcc -c foo.c && gcc -o foo foo.o"));
     }
 }
