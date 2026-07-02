@@ -4,21 +4,19 @@ import { logger } from "@/lib/logger";
 
 /**
  * Parse the JUDGE_ALLOWED_IPS env var (comma-separated IPs or CIDR ranges).
- * When empty or not set, all IPs are allowed (backward compatible) UNLESS the
- * operator has explicitly opted into strict enforcement via
- * `JUDGE_STRICT_IP_ALLOWLIST=1`.
  *
- * C4-2 Part 2: the unset==allow-all default is deliberately preserved for
- * backward compatibility. The cycle-2 attempt to flip this default was
- * reverted in `23851d69` because it broke deployed workers that rely on the
- * open default. Operators who want fail-closed behaviour must opt in
- * explicitly via `JUDGE_STRICT_IP_ALLOWLIST=1` (or simply set
- * `JUDGE_ALLOWED_IPS`).
+ * Production default is now fail-closed for judge API routes:
+ * - JUDGE_ALLOWED_IPS set                  → enforce the allowlist (deny unknown).
+ * - unset + JUDGE_ALLOW_ANY_JUDGE_IP=1     → allow all with a loud startup warning.
+ * - unset + JUDGE_ALLOW_ANY_JUDGE_IP not 1 → deny all.
+ *
+ * In non-production environments the unset default remains allow-all to avoid
+ * breaking local development and CI.
  */
 
-/** Whether the strict opt-in flag is set. Exposed for tests. */
-function isStrictIpAllowlistOptedIn(): boolean {
-  return process.env.JUDGE_STRICT_IP_ALLOWLIST === "1";
+/** Whether the operator opted into the legacy allow-all behaviour. */
+function isAllowAnyJudgeIp(): boolean {
+  return process.env.JUDGE_ALLOW_ANY_JUDGE_IP === "1";
 }
 
 let warnedAboutUnsetAllowlist = false;
@@ -205,28 +203,39 @@ export function ipMatchesAllowlistEntry(clientIp: string, entry: string): boolea
 /**
  * Check whether the request's client IP is allowed to access judge API routes.
  *
- * Behaviour matrix (C4-2 Part 2 — opt-in, NOT a default flip):
- * - `JUDGE_ALLOWED_IPS` set            → enforce the allowlist (deny unknown).
- * - unset + `JUDGE_STRICT_IP_ALLOWLIST=1` → fail-closed (deny all). Explicit opt-in.
- * - unset + flag unset                  → allow-all (back-compat) + loud startup WARN.
+ * Behaviour matrix:
+ * - `JUDGE_ALLOWED_IPS` set                → enforce the allowlist (deny unknown).
+ * - unset + `JUDGE_ALLOW_ANY_JUDGE_IP=1`   → allow-all (back-compat) + loud startup WARN.
+ * - unset + `JUDGE_ALLOW_ANY_JUDGE_IP` ≠ 1 → deny all (production only).
  */
 export function isJudgeIpAllowed(request: NextRequest): boolean {
   const allowlist = getAllowlist();
 
   // No allowlist configured.
   if (!allowlist) {
-    if (isStrictIpAllowlistOptedIn()) {
-      // Operator explicitly opted into strict enforcement without configuring
-      // an allowlist — fail closed.
+    if (process.env.NODE_ENV === "production") {
+      // Production default is fail-closed unless the operator explicitly opts
+      // into the legacy allow-all behaviour.
+      if (isAllowAnyJudgeIp()) {
+        if (!warnedAboutUnsetAllowlist) {
+          warnedAboutUnsetAllowlist = true;
+          logger.warn(
+            "JUDGE_ALLOWED_IPS is not set but JUDGE_ALLOW_ANY_JUDGE_IP=1 allows any client IP. " +
+              "Configure JUDGE_ALLOWED_IPS for network-layer isolation of judge API routes.",
+          );
+        }
+        return true;
+      }
       return false;
     }
-    // Back-compat: allow all. Warn once at startup so the open posture is not
-    // silent (a leaked judge token has no network-layer backstop in this mode).
+
+    // Non-production: keep allow-all for local development / CI. Warn once so
+    // the open posture is not silent.
     if (!warnedAboutUnsetAllowlist) {
       warnedAboutUnsetAllowlist = true;
       logger.warn(
         "JUDGE_ALLOWED_IPS is not set; judge API routes accept any client IP. " +
-          "Set JUDGE_ALLOWED_IPS or JUDGE_STRICT_IP_ALLOWLIST=1 to enforce network isolation.",
+          "Set JUDGE_ALLOWED_IPS or JUDGE_ALLOW_ANY_JUDGE_IP=1 to enforce network isolation.",
       );
     }
     return true;

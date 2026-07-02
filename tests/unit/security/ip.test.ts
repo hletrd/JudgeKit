@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+import { isJudgeIpAllowed, resetIpAllowlistCache } from "@/lib/judge/ip-allowlist";
 
 vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -267,5 +269,40 @@ describe("extractClientIp", () => {
     } finally {
       (process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv;
     }
+  });
+});
+
+describe("isJudgeIpAllowed production default", () => {
+  function judgeRequestWithIp(ip: string | null): NextRequest {
+    const headers: Record<string, string> = {};
+    if (ip !== null) headers["x-real-ip"] = ip;
+    return new NextRequest("http://localhost:3000/api/v1/judge/claim", {
+      method: "POST",
+      headers,
+    });
+  }
+
+  beforeEach(() => {
+    resetIpAllowlistCache();
+    vi.unstubAllEnvs();
+    vi.stubEnv("TRUSTED_PROXY_HOPS", "0");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    resetIpAllowlistCache();
+  });
+
+  it("denies all judge requests in production when JUDGE_ALLOWED_IPS is unset", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    expect(isJudgeIpAllowed(judgeRequestWithIp("203.0.113.9"))).toBe(false);
+    expect(isJudgeIpAllowed(judgeRequestWithIp("127.0.0.1"))).toBe(false);
+  });
+
+  it("allows all judge requests when JUDGE_ALLOW_ANY_JUDGE_IP=1 is set", () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("JUDGE_ALLOW_ANY_JUDGE_IP", "1");
+    resetIpAllowlistCache();
+    expect(isJudgeIpAllowed(judgeRequestWithIp("203.0.113.9"))).toBe(true);
   });
 });

@@ -761,6 +761,10 @@ RATE_LIMITER_AUTH_TOKEN=${RATE_LIMITER_AUTH_TOKEN}
 JUDGE_CONCURRENCY=2
 POLL_INTERVAL=500
 JUDGE_DISABLE_CUSTOM_SECCOMP=0
+# Judge API network-layer isolation. In production judge routes fail closed
+# unless JUDGE_ALLOWED_IPS is set or JUDGE_ALLOW_ANY_JUDGE_IP=1.
+JUDGE_ALLOWED_IPS=
+JUDGE_ALLOW_ANY_JUDGE_IP=0
 RATE_LIMIT_MAX_ATTEMPTS=10
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_BLOCK_MS=900000
@@ -777,6 +781,8 @@ else
     chmod 0600 "${SCRIPT_DIR}/.env.production" 2>/dev/null || true
     info "Using existing .env.production"
 fi
+
+warn_judge_ip_allowlist "${SCRIPT_DIR}/.env.production"
 
 # ---------------------------------------------------------------------------
 # Step 1b: Backfill missing required secrets in the remote .env.production
@@ -858,6 +864,22 @@ PY
 chmod 600 ${REMOTE_ENV_FILE}" \
     || warn "Failed to upsert ${key} — please update it manually before the app starts"
 }
+
+# Warn when judge API routes would deny all requests in production because
+# neither an allowlist nor the explicit allow-any override is configured.
+warn_judge_ip_allowlist() {
+    local env_file="$1"
+    if [[ ! -f "${env_file}" ]]; then
+        return 0
+    fi
+    local allowed_ips allow_any
+    allowed_ips=$(grep '^JUDGE_ALLOWED_IPS=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+    allow_any=$(grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+    if [[ -z "${allowed_ips}" && "${allow_any}" != "1" ]]; then
+        warn "JUDGE_ALLOWED_IPS is not configured and JUDGE_ALLOW_ANY_JUDGE_IP is not 1. Judge API routes will deny all requests in production. Set JUDGE_ALLOWED_IPS to the worker IP/CIDR, or set JUDGE_ALLOW_ANY_JUDGE_IP=1 only if network isolation is handled elsewhere."
+    fi
+}
+
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
 ensure_env_secret NODE_ENCRYPTION_KEY hex
 ensure_env_secret RUNNER_AUTH_TOKEN hex
@@ -875,6 +897,9 @@ ensure_env_secret RATE_LIMITER_AUTH_TOKEN hex
 # X-Forwarded-Host to the canonical host, so the app sees the external domain
 # without trusting client-supplied forwarded-host headers.
 ensure_env_literal AUTH_TRUST_HOST false
+# JUDGE_ALLOW_ANY_JUDGE_IP defaults to 0 in production. Judge API routes fail
+# closed when JUDGE_ALLOWED_IPS is unset unless this override is set to 1.
+ensure_env_literal JUDGE_ALLOW_ANY_JUDGE_IP 0
 fi
 
 # In dry-run mode we never probe the remote host for TLS certs; default to
@@ -949,6 +974,16 @@ if [[ "${INCLUDE_WORKER}" != "true" ]]; then
     fi
 fi
 upsert_env_literal AUTH_TRUST_HOST false
+upsert_env_literal JUDGE_ALLOW_ANY_JUDGE_IP 0
+
+# Warn if the remote production config leaves judge routes fail-closed.
+if remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
+    REMOTE_JUDGE_ALLOWED_IPS=$(remote "grep '^JUDGE_ALLOWED_IPS=' ${REMOTE_DIR}/.env.production 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'" 2>/dev/null || true)
+    REMOTE_JUDGE_ALLOW_ANY=$(remote "grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' ${REMOTE_DIR}/.env.production 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'" 2>/dev/null || true)
+    if [[ -z "${REMOTE_JUDGE_ALLOWED_IPS}" && "${REMOTE_JUDGE_ALLOW_ANY}" != "1" ]]; then
+        warn "JUDGE_ALLOWED_IPS is not configured and JUDGE_ALLOW_ANY_JUDGE_IP is not 1. Judge API routes will deny all requests in production. Set JUDGE_ALLOWED_IPS to the worker IP/CIDR, or set JUDGE_ALLOW_ANY_JUDGE_IP=1 only if network isolation is handled elsewhere."
+    fi
+fi
 
 # Compute AUTH_URL before the app starts so first boot uses the target domain.
 if [[ "${DRY_RUN}" == "1" ]]; then
