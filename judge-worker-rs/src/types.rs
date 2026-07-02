@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 /// A newtype wrapper that redacts the inner value in `Debug` output,
 /// preventing accidental leakage of secrets into logs.
@@ -12,6 +13,29 @@ impl SecretString {
     /// Expose the inner secret for use in HTTP headers, etc.
     pub fn expose(&self) -> &str {
         &self.0
+    }
+}
+
+impl Drop for SecretString {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SecretString;
+
+    #[test]
+    fn secret_string_zeroizes_on_drop_without_panic() {
+        let secret = SecretString::new("super-secret-token".to_string());
+        drop(secret);
+    }
+
+    #[test]
+    fn secret_string_redacts_debug_output() {
+        let secret = SecretString::new("super-secret-token".to_string());
+        assert_eq!(format!("{:?}", secret), "[REDACTED]");
     }
 }
 
