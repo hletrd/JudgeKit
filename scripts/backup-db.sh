@@ -97,9 +97,13 @@ fi
 
 # Optional off-host sync (3-2-1 rule)
 BACKUP_REMOTE="${BACKUP_REMOTE:-}"
-if [ -n "$BACKUP_REMOTE" ] && command -v rclone >/dev/null 2>&1; then
-    rclone copy "$BACKUP_PATH" "${BACKUP_REMOTE}/$(hostname)/"
-    echo "Synced backup to remote: ${BACKUP_REMOTE}/$(hostname)/"
+if [ -n "$BACKUP_REMOTE" ]; then
+    if command -v rclone >/dev/null 2>&1; then
+        timeout 300s rclone copy "$BACKUP_PATH" "${BACKUP_REMOTE}/$(hostname)/"
+        echo "Synced backup to remote: ${BACKUP_REMOTE}/$(hostname)/"
+    else
+        echo "WARNING: BACKUP_REMOTE is set but rclone is not installed or not on PATH" >&2
+    fi
 fi
 
 # Retention policy: remove backups older than 30 days
@@ -107,7 +111,7 @@ BACKUP_DIR="$(dirname "$BACKUP_PATH")"
 if [ -d "$BACKUP_DIR" ]; then
     find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.db.age" -o -name "judge-*.sql.gz" -o -name "judge-*.sql.gz.age" \) | while read -r f; do
         if [ "$(find "$f" -mtime +30 2>/dev/null)" ]; then
-            NEWER_COUNT=$(find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.sql.gz" \) -mtime -30 2>/dev/null | wc -l)
+            NEWER_COUNT=$(find "$BACKUP_DIR" -maxdepth 1 \( -name "judge-*.db" -o -name "judge-*.db.age" -o -name "judge-*.sql.gz" -o -name "judge-*.sql.gz.age" \) -mtime -30 2>/dev/null | wc -l)
             if [ "$NEWER_COUNT" -gt 0 ]; then
                 rm -f "$f"
                 echo "Removed old backup: $f"

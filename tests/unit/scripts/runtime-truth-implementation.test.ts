@@ -14,6 +14,9 @@ describe("runtime-truth implementation guards", () => {
     expect(backupScript).toContain('DB_DIALECT="${DB_DIALECT:-postgresql}"');
     expect(backupScript).toContain("BACKUP_REMOTE");
     expect(backupScript).toContain("rclone copy");
+    expect(backupScript).toContain("timeout 300s rclone copy");
+    expect(backupScript).toContain("BACKUP_REMOTE is set but rclone is not installed");
+    expect(backupScript).toContain('judge-*.sql.gz.age"');
     expect(monitorScript).toContain('DB_DIALECT="${DB_DIALECT:-postgresql}"');
     expect(monitorScript).toContain("judge_workers");
     expect(monitorScript).toContain("submissions WHERE status IN ('pending', 'queued', 'judging')");
