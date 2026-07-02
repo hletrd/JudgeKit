@@ -34,7 +34,7 @@ describe("raw query usage implementation guards", () => {
     // active transaction client; outside it falls back to the global pool.
     expect(helper).toContain("namedToPositional");
     expect(helper).toContain("transactionContext.getStore()");
-    expect(helper).toContain("tx.execute(buildSqlQuery(text, values))");
+    expect(helper).toContain("tx.execute(buildSqlQuery(sqlText, values))");
     expect(helper).toContain("pool.query(sqlText, values)");
   });
 });
