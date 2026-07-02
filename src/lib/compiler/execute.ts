@@ -25,7 +25,7 @@ const MEMORY_LIMIT_MB = 2048;
 // Keep aligned with the Rust judge worker so stdout/stderr truncation matches
 // between local compiler-run requests and remote judge execution.
 const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB
-const MAX_SOURCE_CODE_BYTES = 64 * 1024; // 64KB
+const MAX_SOURCE_CODE_BYTES = 256 * 1024; // 256KB
 const COMPILE_TMPFS = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS = "/tmp:rw,noexec,nosuid,size=64m";
 const SECCOMP_PROFILE_PATH = join(
@@ -720,7 +720,7 @@ export async function executeCompilerRun(
   if (Buffer.byteLength(options.sourceCode, "utf8") > MAX_SOURCE_CODE_BYTES) {
     return {
       stdout: "",
-      stderr: "Source code exceeds maximum size limit (64KB)",
+      stderr: "Source code exceeds maximum size limit (256KB)",
       exitCode: null,
       executionTimeMs: 0,
       timedOut: false,

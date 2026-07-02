@@ -78,6 +78,16 @@ describe("compiler execute implementation", () => {
     expect(source).toContain("\\|\\|");
   });
 
+  it("keeps MAX_SOURCE_CODE_BYTES aligned between executor, runner, and Node fallback", () => {
+    const nodeSource = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+    const rustRunnerSource = readFileSync(join(process.cwd(), "judge-worker-rs/src/runner.rs"), "utf8");
+    const rustExecutorSource = readFileSync(join(process.cwd(), "judge-worker-rs/src/executor.rs"), "utf8");
+
+    expect(nodeSource).toContain("const MAX_SOURCE_CODE_BYTES = 256 * 1024; // 256KB");
+    expect(rustRunnerSource).toContain("const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB");
+    expect(rustExecutorSource).toContain("const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB");
+  });
+
   it("caches seccomp profile availability instead of checking synchronously on every run", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 

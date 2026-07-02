@@ -55,7 +55,7 @@ fn compilation_memory_limit_mb() -> u32 {
         .filter(|&n| n > 0)
         .unwrap_or(COMPILATION_MEMORY_LIMIT_MB)
 }
-const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256 KB
+const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB
 
 use crate::validation::validate_docker_image;
 
@@ -368,7 +368,7 @@ async fn execute_inner(
             config,
             &submission,
             Verdict::CompileError.as_str(),
-            "Source code exceeds maximum size limit",
+            "Source code exceeds maximum size limit (256KB)",
             worker_secret,
         )
         .await;

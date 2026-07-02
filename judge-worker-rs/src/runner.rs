@@ -20,7 +20,7 @@ use crate::workspace::SandboxWorkspace;
 // Keep aligned with src/lib/compiler/execute.ts so the app-side compiler
 // fallback and Rust runner sidecar expose the same resource envelope.
 const MEMORY_LIMIT_MB: u32 = 2048;
-const MAX_SOURCE_CODE_BYTES: usize = 64 * 1024; // 64KB
+const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB
 const MAX_STDIN_BYTES: usize = 64 * 1024; // 64KB
 const DEFAULT_TIME_LIMIT_MS: u64 = 10_000;
 const MIN_COMPILE_TIMEOUT_MS: u64 = 30_000;
@@ -747,7 +747,7 @@ async fn run_handler(
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Source code exceeds maximum size limit (64KB)".to_string(),
+                error: "Source code exceeds maximum size limit (256KB)".to_string(),
             }),
         )
             .into_response();
