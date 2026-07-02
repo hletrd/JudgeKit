@@ -256,17 +256,34 @@ describe("createApiHandler", () => {
       expect(forbiddenMock).toHaveBeenCalledOnce();
     });
 
-    it("returns 403 when isUserRole returns false", async () => {
+    it("allows a custom role when required capabilities are present", async () => {
       isUserRoleMock.mockReturnValue(false);
+      resolveCapabilitiesMock.mockResolvedValue(new Set(["custom.permission"]));
 
       const handler = createApiHandler({
-        auth: { roles: ["admin"] },
+        auth: { roles: ["admin"], capabilities: ["custom.permission"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+
+      expect(res.status).toBe(200);
+      expect(resolveCapabilitiesMock).toHaveBeenCalledWith(fakeUser.role);
+    });
+
+    it("returns 403 for a custom role when required capabilities are missing", async () => {
+      isUserRoleMock.mockReturnValue(false);
+      resolveCapabilitiesMock.mockResolvedValue(new Set());
+
+      const handler = createApiHandler({
+        auth: { roles: ["admin"], capabilities: ["custom.permission"] },
         handler: async () => NextResponse.json({ ok: true }),
       });
 
       const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(403);
+      expect(forbiddenMock).toHaveBeenCalledOnce();
     });
 
     it("allows any authenticated user when auth is true with no roles", async () => {

@@ -197,9 +197,13 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         user = await getApiUser(req);
         if (!user) return addRequestId(unauthorized(), requestId);
 
-        // Role check
+        // Role check: built-in roles must be explicitly listed. Custom roles are
+        // not rejected here; they are validated through the capability check below
+        // so that deployments with custom roles can still enforce required capabilities.
         if (typeof auth === "object" && auth.roles && auth.roles.length > 0) {
-          if (!isUserRole(user.role) || !auth.roles.includes(user.role)) return addRequestId(forbidden(), requestId);
+          if (isUserRole(user.role) && !auth.roles.includes(user.role)) {
+            return addRequestId(forbidden(), requestId);
+          }
         }
 
         if (typeof auth === "object" && auth.capabilities && auth.capabilities.length > 0) {
