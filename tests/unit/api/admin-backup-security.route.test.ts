@@ -99,9 +99,13 @@ vi.mock("@/lib/db/export-with-files", () => ({
   restoreParsedBackupFiles: restoreParsedBackupFilesMock,
 }));
 
-vi.mock("@/lib/db/pre-restore-snapshot", () => ({
-  takePreRestoreSnapshot: takePreRestoreSnapshotMock,
-}));
+vi.mock("@/lib/db/pre-restore-snapshot", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/db/pre-restore-snapshot")>("@/lib/db/pre-restore-snapshot");
+  return {
+    takePreRestoreSnapshot: takePreRestoreSnapshotMock,
+    snapshotIdFromPath: actual.snapshotIdFromPath,
+  };
+});
 
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn() },
@@ -341,7 +345,7 @@ describe("backup restore semantic safety", () => {
       tableResults: {},
       errors: [],
     });
-    takePreRestoreSnapshotMock.mockResolvedValue("/tmp/snapshots/test-snapshot.sql");
+    takePreRestoreSnapshotMock.mockResolvedValue("/tmp/snapshots/pre-restore-2026-04-12T00-00-00-000Z-admin-1.json");
     restoreParsedBackupFilesMock.mockResolvedValue(0);
   });
 
@@ -448,6 +452,8 @@ describe("backup restore semantic safety", () => {
 
     expect(res.status).toBe(200);
     expect(body.success).toBe(true);
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
     // The DURABLE helper is used (not the buffered recordAuditEvent).
     expect(recordAuditEventDurableMock).toHaveBeenCalledTimes(1);
     expect(recordAuditEventMock).not.toHaveBeenCalled();
@@ -482,16 +488,22 @@ describe("backup restore semantic safety", () => {
       new File([new Uint8Array([1, 2, 3])], "backup.zip", { type: "application/zip" }),
     );
     const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/restore", form));
+    const body = await res.json();
 
     expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
     expect(recordAuditEventDurableMock).toHaveBeenCalledTimes(1);
     // Audit fires only after file restoration completes (not before).
     expect(restoreParsedBackupFilesMock).toHaveBeenCalledBefore(recordAuditEventDurableMock);
     const auditPayload = recordAuditEventDurableMock.mock.calls[0][0];
     expect(auditPayload.summary).toContain("2 files written");
-    expect(auditPayload.details).toEqual({
-      preRestoreSnapshotPath: "/tmp/snapshots/test-snapshot.sql",
-    });
+    expect(auditPayload.details).toEqual(
+      expect.objectContaining({
+        preRestoreSnapshotPath: "/tmp/snapshots/pre-restore-2026-04-12T00-00-00-000Z-admin-1.json",
+      }),
+    );
   });
 
   it("records a durable failure audit and surfaces the snapshot path when file restoration fails after the DB commit", async () => {
@@ -520,7 +532,8 @@ describe("backup restore semantic safety", () => {
 
     expect(res.status).toBe(500);
     expect(body.error).toBe("restoreFailed");
-    expect(body.preRestoreSnapshotPath).toBe("/tmp/snapshots/test-snapshot.sql");
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
     // The success audit must NOT fire; a dedicated failure audit must.
     const successCalls = recordAuditEventDurableMock.mock.calls.filter(
       (c) => c[0].action === "system_settings.database_restored",
@@ -561,7 +574,83 @@ describe("backup restore semantic safety", () => {
 
     expect(res.status).toBe(500);
     expect(body.error).toBe("restoreFailed");
-    expect(body.preRestoreSnapshotPath).toBe("/tmp/snapshots/test-snapshot.sql");
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
     expect(recordAuditEventDurableMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("migrate/import snapshot correlation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getApiUserMock.mockResolvedValue({
+      id: "admin-1",
+      role: "admin",
+      username: "admin",
+      email: "admin@example.com",
+      name: "Admin",
+      className: null,
+      mustChangePassword: false,
+    });
+    csrfForbiddenMock.mockReturnValue(null);
+    consumeApiRateLimitMock.mockResolvedValue(null);
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["system.backup"]));
+    verifyAndRehashPasswordMock.mockResolvedValue({ valid: true });
+    dbSelectMock.mockReturnValue(makeLimitChain([{ passwordHash: "stored-hash" }]));
+    validateExportMock.mockReturnValue([]);
+    importDatabaseMock.mockResolvedValue({
+      success: true,
+      tablesImported: 1,
+      totalRowsImported: 1,
+      tableResults: {},
+      errors: [],
+    });
+    takePreRestoreSnapshotMock.mockResolvedValue(
+      "/tmp/snapshots/pre-restore-2026-04-12T00-00-00-000Z-admin-1.json",
+    );
+    readUploadedJsonFileWithLimitMock.mockResolvedValue({
+      version: 1,
+      exportedAt: "2026-04-12T00:00:00.000Z",
+      sourceDialect: "postgresql",
+      appVersion: "test",
+      redactionMode: "full-fidelity",
+      tables: {},
+    });
+  });
+
+  it("returns snapshotId and omits preRestoreSnapshotPath on successful POST /api/v1/admin/migrate/import", async () => {
+    const { POST } = await import("@/app/api/v1/admin/migrate/import/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set("file", new File([JSON.stringify({})], "backup.json", { type: "application/json" }));
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/migrate/import", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.success).toBe(true);
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
+  });
+
+  it("returns snapshotId and omits preRestoreSnapshotPath when importDatabase fails", async () => {
+    importDatabaseMock.mockResolvedValue({
+      success: false,
+      tablesImported: 0,
+      totalRowsImported: 0,
+      tableResults: {},
+      errors: ["boom"],
+    });
+
+    const { POST } = await import("@/app/api/v1/admin/migrate/import/route");
+    const form = new FormData();
+    form.set("password", "correct-password");
+    form.set("file", new File([JSON.stringify({})], "backup.json", { type: "application/json" }));
+    const res = await POST(makeFormRequest("http://localhost:3000/api/v1/admin/migrate/import", form));
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("importFailed");
+    expect(body.snapshotId).toBe("pre-restore-2026-04-12T00-00-00-000Z-admin-1");
+    expect(body).not.toHaveProperty("preRestoreSnapshotPath");
   });
 });

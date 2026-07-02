@@ -13,7 +13,7 @@ import { importDatabase } from "@/lib/db/import";
 import { isSanitizedExport, validateExport, type JudgeKitExport } from "@/lib/db/export";
 import { MAX_IMPORT_BYTES, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { parseBackupZip, restoreParsedBackupFiles } from "@/lib/db/export-with-files";
-import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
+import { takePreRestoreSnapshot, snapshotIdFromPath } from "@/lib/db/pre-restore-snapshot";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
     // turns out to be wrong. The 5 most recent snapshots are retained;
     // older ones are pruned best-effort.
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+    const snapshotId = snapshotIdFromPath(preSnapshotPath);
 
     // The snapshot is the operator's only emergency rollback artifact. If it
     // failed (disk full / I/O error / read-only mount → null), do NOT proceed
@@ -167,7 +168,7 @@ export async function POST(request: NextRequest) {
         error: "restoreFailed",
         details: result.errors,
         partial: result.tableResults,
-        preRestoreSnapshotPath: preSnapshotPath,
+        snapshotId,
       }, { status: 500 });
     }
 
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest) {
             error: "restoreFailed",
             details: ["fileRestoreFailed"],
             missingFiles,
-            preRestoreSnapshotPath: preSnapshotPath,
+            snapshotId,
           },
           { status: 500 },
         );
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
       totalRowsImported: result.totalRowsImported,
       filesRestored: isZipFile ? filesRestored : undefined,
       skippedTables: result.skippedTables,
-      preRestoreSnapshotPath: preSnapshotPath,
+      snapshotId,
     });
   } catch (error) {
     logger.error({ err: error }, "Database restore error");

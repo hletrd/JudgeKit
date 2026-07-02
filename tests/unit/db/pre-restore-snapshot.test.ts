@@ -198,4 +198,20 @@ describe("takePreRestoreSnapshot", () => {
     expect(typeof ctx?.sizeBytes).toBe("number");
     expect(ctx?.actorId).toBe("actor1234");
   });
+
+  it("exposes a stable snapshot id derived from the returned path", async () => {
+    mocks.streamDatabaseExport.mockReturnValue(
+      makeBytesStream(new TextEncoder().encode("{}")),
+    );
+    const { takePreRestoreSnapshot, snapshotIdFromPath } = await import("@/lib/db/pre-restore-snapshot");
+
+    const path = await takePreRestoreSnapshot("actor1234567890");
+    expect(path).not.toBeNull();
+
+    const id = snapshotIdFromPath(path!);
+    const filename = path!.split(/[/\\]/).pop()!;
+    expect(id).toBe(filename.replace(/\.json$/, ""));
+    expect(id).toMatch(/^pre-restore-/);
+    expect(id).not.toContain("/");
+  });
 });

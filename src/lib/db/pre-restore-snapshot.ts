@@ -3,7 +3,7 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { ReadableStream as NodeReadableStream } from "node:stream/web";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { logger } from "@/lib/logger";
 import { streamDatabaseExport } from "./export";
 
@@ -54,6 +54,12 @@ function snapshotDir(): string {
  * later operator-initiated restore does not pick up a truncated
  * artifact as the "latest snapshot" (cycle-2 C2-AGG-2).
  */
+export function snapshotIdFromPath(snapshotPath: string | null): string | null {
+  if (!snapshotPath) return null;
+  const filename = basename(snapshotPath);
+  return filename.replace(/\.json$/, "");
+}
+
 export async function takePreRestoreSnapshot(actorId: string): Promise<string | null> {
   const dir = snapshotDir();
   try {

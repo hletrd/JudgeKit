@@ -5,7 +5,7 @@ import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { importDatabase } from "@/lib/db/import";
 import { validateExport, isSanitizedExport, type JudgeKitExport } from "@/lib/db/export";
-import { takePreRestoreSnapshot } from "@/lib/db/pre-restore-snapshot";
+import { takePreRestoreSnapshot, snapshotIdFromPath } from "@/lib/db/pre-restore-snapshot";
 import { MAX_IMPORT_BYTES, readJsonBodyWithLimit, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { recordAuditEventDurable } from "@/lib/audit/events";
 import { verifyAndRehashPassword } from "@/lib/security/password-hash";
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       }
 
       const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+      const snapshotId = snapshotIdFromPath(preSnapshotPath);
       // Abort if the emergency-rollback snapshot failed, unless the operator
       // explicitly opted into the break-glass (disk-full recovery). See restore
       // route for full rationale.
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
           error: "importFailed",
           details: result.errors,
           partial: result.tableResults,
-          preRestoreSnapshotPath: preSnapshotPath,
+          snapshotId,
         }, { status: 500 });
       }
 
@@ -128,7 +129,7 @@ export async function POST(request: NextRequest) {
         resourceId: "database",
         resourceLabel: "Database import",
         summary: `Imported database from ${data.sourceDialect} export (${data.exportedAt})`,
-        details: { skippedTables: result.skippedTables },
+        details: { preRestoreSnapshotPath: preSnapshotPath, skippedTables: result.skippedTables },
         request,
       });
 
@@ -138,7 +139,7 @@ export async function POST(request: NextRequest) {
         totalRowsImported: result.totalRowsImported,
         tableResults: result.tableResults,
         skippedTables: result.skippedTables,
-        preRestoreSnapshotPath: preSnapshotPath,
+        snapshotId,
       });
     }
 
@@ -219,6 +220,7 @@ export async function POST(request: NextRequest) {
     }
 
     const preSnapshotPath = await takePreRestoreSnapshot(user.id);
+    const snapshotId = snapshotIdFromPath(preSnapshotPath);
     if (preSnapshotPath === null && process.env.ALLOW_UNSNAPSHOTTED_RESTORE !== "1") {
       logger.error(
         "[import] Pre-restore snapshot failed; aborting before destructive import (set ALLOW_UNSNAPSHOTTED_RESTORE=1 to override)",
@@ -232,7 +234,7 @@ export async function POST(request: NextRequest) {
         error: "importFailed",
         details: result.errors,
         partial: result.tableResults,
-        preRestoreSnapshotPath: preSnapshotPath,
+        snapshotId,
       }, { status: 500, headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
     }
 
@@ -245,7 +247,7 @@ export async function POST(request: NextRequest) {
       resourceId: "database",
       resourceLabel: "Database import",
       summary: `Imported database from ${data.sourceDialect} export (${data.exportedAt})`,
-      details: { skippedTables: result.skippedTables },
+      details: { preRestoreSnapshotPath: preSnapshotPath, skippedTables: result.skippedTables },
       request,
     });
 
@@ -267,7 +269,7 @@ export async function POST(request: NextRequest) {
       totalRowsImported: result.totalRowsImported,
       tableResults: result.tableResults,
       skippedTables: result.skippedTables,
-      preRestoreSnapshotPath: preSnapshotPath,
+      snapshotId,
     }, { headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } });
   } catch (error) {
     logger.error({ err: error }, "Database import error");
