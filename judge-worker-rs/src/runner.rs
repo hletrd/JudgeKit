@@ -24,6 +24,11 @@ const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB
 const MAX_STDIN_BYTES: usize = 64 * 1024; // 64KB
 const DEFAULT_TIME_LIMIT_MS: u64 = 10_000;
 const MIN_COMPILE_TIMEOUT_MS: u64 = 30_000;
+// Wall-clock budget for Docker container startup/teardown added on top of the
+// problem time limit. Docker reports CPU runtime via StartedAt/FinishedAt, so
+// the buffer only affects the kill deadline; TLE semantics still compare the
+// Docker-reported duration against the unbuffered problem limit.
+const DOCKER_RUN_OVERHEAD_BUDGET_MS: u64 = 2_000;
 // Upper bound on the raw request body size accepted by the runner HTTP
 // server. Prevents an authenticated caller (or a compromised app server)
 // from OOM-ing the worker before the per-field size checks fire.
@@ -982,7 +987,7 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         } else {
             Some(stdin_text)
         },
-        timeout_ms: time_limit_ms,
+        timeout_ms: time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS),
         memory_limit_mb: MEMORY_LIMIT_MB,
         read_only_workspace: true,
         needs_exec_tmp,
@@ -1030,6 +1035,19 @@ pub fn create_router(state: Arc<RunnerState>) -> Router {
 #[cfg(test)]
 mod tests {
     use super::{MEMORY_LIMIT_MB, validate_shell_command, validate_shell_command_strict};
+
+    #[test]
+    fn run_timeout_includes_docker_overhead_budget() {
+        let source = include_str!("runner.rs");
+        assert!(
+            source.contains("const DOCKER_RUN_OVERHEAD_BUDGET_MS: u64 = 2_000;"),
+            "runner must define the Docker overhead budget"
+        );
+        assert!(
+            source.contains("timeout_ms: time_limit_ms.saturating_add(DOCKER_RUN_OVERHEAD_BUDGET_MS)"),
+            "runner run timeout must include the Docker overhead budget"
+        );
+    }
 
     #[test]
     fn compiler_runner_memory_limit_matches_node_executor() {

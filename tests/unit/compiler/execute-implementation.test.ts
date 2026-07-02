@@ -78,6 +78,13 @@ describe("compiler execute implementation", () => {
     expect(source).toContain("\\|\\|");
   });
 
+  it("adds Docker startup overhead to the run-phase timeout", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+
+    expect(source).toContain("const DOCKER_RUN_OVERHEAD_BUDGET_MS = 2_000;");
+    expect(source).toContain("timeoutMs: timeLimitMs + DOCKER_RUN_OVERHEAD_BUDGET_MS,");
+  });
+
   it("keeps MAX_SOURCE_CODE_BYTES aligned between executor, runner, and Node fallback", () => {
     const nodeSource = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
     const rustRunnerSource = readFileSync(join(process.cwd(), "judge-worker-rs/src/runner.rs"), "utf8");

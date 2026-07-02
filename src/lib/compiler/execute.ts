@@ -26,6 +26,7 @@ const MEMORY_LIMIT_MB = 2048;
 // between local compiler-run requests and remote judge execution.
 const MAX_OUTPUT_BYTES = 134_217_728; // 128 MiB
 const MAX_SOURCE_CODE_BYTES = 256 * 1024; // 256KB
+const DOCKER_RUN_OVERHEAD_BUDGET_MS = 2_000;
 const COMPILE_TMPFS = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS = "/tmp:rw,noexec,nosuid,size=64m";
 const SECCOMP_PROFILE_PATH = join(
@@ -912,7 +913,7 @@ export async function executeCompilerRun(
       workspaceDir,
       command: runCmd,
       stdin: stdinBuffer,
-      timeoutMs: timeLimitMs,
+      timeoutMs: timeLimitMs + DOCKER_RUN_OVERHEAD_BUDGET_MS,
       readOnlyWorkspace: true,
       phase: "run",
     });
