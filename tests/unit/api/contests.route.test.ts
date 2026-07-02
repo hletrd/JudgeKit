@@ -47,7 +47,12 @@ const {
 
 vi.mock("@/lib/api/auth", () => ({
   getApiUser: getApiUserMock,
-  csrfForbidden: vi.fn(() => null),
+  csrfForbidden: vi.fn((req: NextRequest) => {
+    if (!req.headers.get("X-Requested-With")) {
+      return NextResponse.json({ error: "csrfForbidden" }, { status: 403 });
+    }
+    return null;
+  }),
   unauthorized: () => NextResponse.json({ error: "unauthorized" }, { status: 401 }),
   forbidden: () => NextResponse.json({ error: "forbidden" }, { status: 403 }),
 }));
@@ -342,6 +347,80 @@ describe("POST /api/v1/contests/join", () => {
     expect(body.error).toBe("forbidden");
     expect(redeemAccessCodeMock).not.toHaveBeenCalled();
     expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 when the CSRF header is missing", async () => {
+    const req = new NextRequest("http://localhost:3000/api/v1/contests/join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "ABC" }),
+    });
+    const res = await joinPOST(req, { params: Promise.resolve({}) });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe("csrfForbidden");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+    expect(redeemAccessCodeMock).not.toHaveBeenCalled();
+    expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 invalidJson when the body is malformed", async () => {
+    const req = new NextRequest("http://localhost:3000/api/v1/contests/join", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: "{not-valid-json",
+    });
+    const res = await joinPOST(req, { params: Promise.resolve({}) });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("invalidJson");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+  });
+
+  it("returns 400 when the code fails Zod validation", async () => {
+    const res = await joinPOST(makeJoinRequest({ code: 123 }), { params: Promise.resolve({}) });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBeTruthy();
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
+  });
+
+  it("rejects recruiting access before consuming the rate limit", async () => {
+    getRecruitingAccessContextMock.mockResolvedValueOnce({
+      assignmentIds: ["assign-1"],
+      problemIds: ["problem-1"],
+      isRecruitingCandidate: true,
+      effectivePlatformMode: "recruiting",
+    });
+    const res = await joinPOST(makeJoinRequest({ code: "ABC123" }), { params: Promise.resolve({}) });
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe("forbidden");
+    expect(redeemAccessCodeMock).not.toHaveBeenCalled();
+    expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
+  });
+
+  it("propagates an incoming X-Request-Id header", async () => {
+    const req = new NextRequest("http://localhost:3000/api/v1/contests/join", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-Request-Id": "req-join-123",
+      },
+      body: JSON.stringify({ code: "ABC123" }),
+    });
+    const res = await joinPOST(req, { params: Promise.resolve({}) });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-Request-Id")).toBe("req-join-123");
   });
 
   it("returns 500 on unexpected error", async () => {
