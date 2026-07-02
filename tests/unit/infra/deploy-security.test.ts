@@ -156,7 +156,17 @@ describe("deployment security defaults", () => {
     const productionAppSection = production.split("judge-worker:")[0] ?? production;
 
     expect(productionAppSection).not.toContain("DOCKER_HOST=tcp://docker-proxy:2375");
-    expect(testBackends).toContain("COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker:3001}");
+    // test-backends uses per-backend workers so PostgreSQL/MySQL submissions are
+    // actually judged, not left for a single SQLite worker.
+    expect(testBackends).toContain(
+      "COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-sqlite:3001}",
+    );
+    expect(testBackends).toContain(
+      "COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-postgres:3002}",
+    );
+    expect(testBackends).toContain(
+      "COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-mysql:3003}",
+    );
     expect(dockerfile).not.toContain("docker-cli");
     expect(dockerfile).not.toContain("addgroup nextjs docker");
   });

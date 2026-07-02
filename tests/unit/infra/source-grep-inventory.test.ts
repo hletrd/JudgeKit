@@ -53,8 +53,10 @@ const relativeNames = sourceGrepFiles.map((f) => relative(process.cwd(), f));
  */
 const INTENTIONAL_INFRA_DEPLOY = [
   "tests/unit/infra/deploy-security.test.ts",
+  "tests/unit/infra/deploy-storage-safety.test.ts",
   "tests/unit/infra/env-generation.test.ts",
   "tests/unit/infra/judge-report-nginx.test.ts",
+  "tests/unit/infra/language-contract.test.ts",
   "tests/unit/infra/pgdata-pinning.test.ts",
   "tests/unit/infra/playwright-remote-safety.test.ts",
   "tests/unit/infra/playwright-profiles.test.ts",
@@ -231,11 +233,12 @@ describe("source-grep test inventory", () => {
     //     streams via measureEntryStreamedSize (no allocate-then-check .async)
     //     so a zip-bomb entry is rejected before its full payload is allocated
     //     (NEW-M8 / C3-N8).
-    // Bumped 161 -> 162 (2026-06-30, cycle-1 remediation):
-    //   - tests/unit/instrumentation-build-phase.test.ts pins that Next
-    //     production builds do not execute runtime instrumentation startup
-    //     jobs or database startup work.
-    const DOCUMENTED_BASELINE = 162;
+    // Bumped 162 -> 163 (2026-07-02, cycle-2 remediation):
+    //   - tests/unit/infra/language-contract.test.ts (S8) and
+    //     tests/unit/infra/deploy-storage-safety.test.ts (S9) are infra text
+    //     contracts; language-contract spans TS/Rust language identifiers and
+    //     deploy-storage-safety guards destructive Docker prune commands.
+    const DOCUMENTED_BASELINE = 163;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 
