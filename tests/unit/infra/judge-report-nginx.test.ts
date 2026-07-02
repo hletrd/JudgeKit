@@ -94,18 +94,22 @@ describe("judge report nginx body-size guardrails", () => {
     expect(parseNginxVersion("not nginx output")).toBe("");
   });
 
-  it("keeps a larger body limit only on the final judge result report endpoint", () => {
+  it("keeps a larger body limit on the catch-all and judge result report endpoint", () => {
     const deployDocker = read("deploy-docker.sh");
     const nginxTemplate = read("scripts/online-judge.nginx.conf");
 
-    // Strip the allowed judge/poll location block(s) before checking for any
-    // other 50M directive, because the naive server-block regex would match
-    // the location block itself (it lives inside a server block).
-    const allowedBlock = /location = \/api\/v1\/judge\/poll \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/g;
-    expect(deployDocker.replace(allowedBlock, "")).not.toContain("client_max_body_size 50M;");
+    // Strip the allowed location blocks before checking for any other 50M
+    // directive, because the naive server-block regex would match the location
+    // block itself (it lives inside a server block).
+    const allowedPollBlock = /location = \/api\/v1\/judge\/poll \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/g;
+    const allowedCatchAllBlock = /location \/ \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/g;
+    expect(deployDocker.replace(allowedPollBlock, "").replace(allowedCatchAllBlock, "")).not.toContain(
+      "client_max_body_size 50M;"
+    );
     expect(deployDocker).toMatch(
       /location = \/api\/v1\/judge\/poll \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/
     );
+    expect(deployDocker).toMatch(/location \/ \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/);
     expect(deployDocker).toMatch(
       /location \/api\/v1\/judge\/ \{[\s\S]*?client_max_body_size 1m;[\s\S]*?\}/
     );

@@ -11,6 +11,7 @@
 #   ./deploy-docker.sh --skip-languages   # Skip building judge language images
 #   ./deploy-docker.sh --languages=core   # Build only core language images
 #   ./deploy-docker.sh --languages=cpp,python,jvm  # Build specific languages
+#   ./deploy-docker.sh --dry-run          # Generate nginx config locally without deploying
 #
 # Environment:
 #   SSH_PASSWORD          — SSH password for the remote host (password auth)
@@ -125,6 +126,14 @@ _CALLER_WORKER_HOSTS="${WORKER_HOSTS:-}"
 _CALLER_COMPILER_RUNNER_URL="${COMPILER_RUNNER_URL:-}"
 _CALLER_E2E_HOME_HEADING="${E2E_HOME_HEADING:-}"
 
+# Detect --dry-run early so missing remote env vars do not abort generation.
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=1 ;;
+  esac
+done
+
 DEPLOY_TARGET="${DEPLOY_TARGET:-}"
 if [[ "${DEPLOY_TARGET}" == "oj" ]]; then
     DEPLOY_TARGET="auraedu"
@@ -190,6 +199,14 @@ fi
 [[ -n "$_CALLER_COMPILER_RUNNER_URL" ]] && COMPILER_RUNNER_URL="$_CALLER_COMPILER_RUNNER_URL"
 [[ -n "$_CALLER_E2E_HOME_HEADING" ]] && E2E_HOME_HEADING="$_CALLER_E2E_HOME_HEADING"
 
+# In dry-run mode we only generate artifacts locally; provide placeholder
+# remote values so the rest of the script can run without a real target.
+if [[ "${DRY_RUN}" == "1" ]]; then
+  REMOTE_HOST="${REMOTE_HOST:-dry-run.local}"
+  REMOTE_USER="${REMOTE_USER:-dryrun}"
+  DOMAIN="${DOMAIN:-dry-run.local}"
+fi
+
 REMOTE_HOST="${REMOTE_HOST:?REMOTE_HOST is required (see .env)}"
 REMOTE_USER="${REMOTE_USER:?REMOTE_USER is required (see .env)}"
 REMOTE_DIR="/home/${REMOTE_USER}/judgekit"
@@ -251,14 +268,16 @@ for arg in "$@"; do
     --with-worker) INCLUDE_WORKER=true ;;
     --skip-worker-build) BUILD_WORKER_IMAGE=false ;;
     --build-worker) BUILD_WORKER_IMAGE=true ;;
+    --dry-run) DRY_RUN=1 ;;
     --help|-h)
-      echo "Usage: $0 [--skip-build] [--skip-languages] [--languages=<preset|lang,lang,...>] [--no-worker|--with-worker] [--skip-worker-build|--build-worker]"
+      echo "Usage: $0 [--skip-build] [--skip-languages] [--languages=<preset|lang,lang,...>] [--no-worker|--with-worker] [--skip-worker-build|--build-worker] [--dry-run]"
       echo ""
       echo "Options:"
       echo "  --no-worker    — Do not start a local judge worker (use when workers run on separate machines)"
       echo "  --with-worker  — Force starting a local judge worker"
       echo "  --skip-worker-build — Skip building the judge-worker image"
       echo "  --build-worker      — Force building the judge-worker image"
+      echo "  --dry-run           — Generate nginx config locally without deploying"
       echo ""
       echo "Environment:"
       echo "  INCLUDE_WORKER=false  — Persistently disable the local worker for this target"
@@ -389,6 +408,7 @@ _initial_ssh_check() {
 }
 
 remote() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then return 0; fi
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
         SSHPASS="$SSH_PASSWORD" sshpass -e ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
     else
@@ -397,6 +417,7 @@ remote() {
 }
 
 remote_copy() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then return 0; fi
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
         SSHPASS="$SSH_PASSWORD" sshpass -e scp $SSH_OPTS "$@"
     else
@@ -405,6 +426,7 @@ remote_copy() {
 }
 
 remote_rsync() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then return 0; fi
     local protect_args=""
     if rsync --help 2>&1 | grep -q -- '--protect-args'; then
         protect_args="-s"
@@ -582,6 +604,7 @@ preflight_docker_storage() {
 }
 
 remote_sudo() {
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then return 0; fi
     local cmd="$1"
     local quoted_cmd
     printf -v quoted_cmd '%q' "$cmd"
@@ -620,7 +643,18 @@ nginx_version_supports_http2_on() {
 # "legacy" so the generated config is loadable on the target host.
 detect_nginx_http2_mode() {
     local nginx_version_line
-    nginx_version_line="$(remote "nginx -v 2>&1" | head -n1 || true)"
+    if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        # Dry-run has no remote host; prefer locally installed nginx, otherwise
+        # default to the modern syntax so the generated config can be inspected.
+        if command -v nginx >/dev/null 2>&1; then
+            nginx_version_line="$(nginx -v 2>&1 | head -n1 || true)"
+        else
+            echo "modern"
+            return
+        fi
+    else
+        nginx_version_line="$(remote "nginx -v 2>&1" | head -n1 || true)"
+    fi
     local nginx_version
     nginx_version="$(printf '%s\n' "$nginx_version_line" | sed -n 's/.*nginx\/\([0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')"
 
@@ -642,47 +676,62 @@ detect_nginx_http2_mode() {
 # ---------------------------------------------------------------------------
 info "Pre-flight checks..."
 
-if [[ -n "${SSH_PASSWORD:-}" ]]; then
-    command -v sshpass >/dev/null 2>&1 || die "sshpass is required when SSH_PASSWORD is set"
-fi
-
-if [[ -n "${SSH_KEY:-}" && ! -f "${SSH_KEY}" ]]; then
-    die "SSH key not found: ${SSH_KEY}"
-fi
-
 command -v rsync >/dev/null 2>&1 || die "rsync is not installed locally"
 
-# Test SSH connectivity
-_initial_ssh_check || die "Cannot SSH to ${REMOTE_USER}@${REMOTE_HOST}"
-success "SSH connection to ${REMOTE_HOST} verified"
-
-# Verify docker is available on the remote host
-remote "docker info >/dev/null 2>&1" || die "docker is not available on the remote host"
-success "Remote docker verified"
-
-# Pre-build Docker storage guard.
-# A full image build needs several GB. If Docker's data root or the shared
-# workspace mount is already near-full, builds die mid-layer and leave more
-# cache behind. Reclaim safe artifacts first (never volumes), then abort before
-# starting a doomed build when a build is scheduled.
-if [[ "$SKIP_BUILD" == false ]]; then
-    preflight_docker_storage "app ${REMOTE_HOST}" remote true
+if [[ "${DRY_RUN}" == "1" ]]; then
+    info "Dry-run mode: skipping remote SSH, docker, and storage pre-flight checks"
+    # Provide sensible defaults so the nginx generation path can run locally.
+    PLATFORM="linux/amd64"
 else
-    preflight_docker_storage "app ${REMOTE_HOST}" remote false
-fi
+    if [[ -n "${SSH_PASSWORD:-}" ]]; then
+        command -v sshpass >/dev/null 2>&1 || die "sshpass is required when SSH_PASSWORD is set"
+    fi
 
-# Detect remote architecture
-REMOTE_ARCH=$(remote "uname -m")
-case "$REMOTE_ARCH" in
-    x86_64)  PLATFORM="linux/amd64" ;;
-    aarch64) PLATFORM="linux/arm64" ;;
-    *)       PLATFORM="linux/amd64" ; warn "Unknown arch '${REMOTE_ARCH}', defaulting to linux/amd64" ;;
-esac
-info "Detected remote architecture: ${REMOTE_ARCH} → ${PLATFORM}"
+    if [[ -n "${SSH_KEY:-}" && ! -f "${SSH_KEY}" ]]; then
+        die "SSH key not found: ${SSH_KEY}"
+    fi
+
+    # Test SSH connectivity
+    _initial_ssh_check || die "Cannot SSH to ${REMOTE_USER}@${REMOTE_HOST}"
+    success "SSH connection to ${REMOTE_HOST} verified"
+
+    # Verify docker is available on the remote host
+    remote "docker info >/dev/null 2>&1" || die "docker is not available on the remote host"
+    success "Remote docker verified"
+
+    # Pre-build Docker storage guard.
+    # A full image build needs several GB. If Docker's data root or the shared
+    # workspace mount is already near-full, builds die mid-layer and leave more
+    # cache behind. Reclaim safe artifacts first (never volumes), then abort before
+    # starting a doomed build when a build is scheduled.
+    if [[ "$SKIP_BUILD" == false ]]; then
+        preflight_docker_storage "app ${REMOTE_HOST}" remote true
+    else
+        preflight_docker_storage "app ${REMOTE_HOST}" remote false
+    fi
+
+    # Detect remote architecture
+    REMOTE_ARCH=$(remote "uname -m")
+    case "$REMOTE_ARCH" in
+        x86_64)  PLATFORM="linux/amd64" ;;
+        aarch64) PLATFORM="linux/arm64" ;;
+        *)       PLATFORM="linux/amd64" ; warn "Unknown arch '${REMOTE_ARCH}', defaulting to linux/amd64" ;;
+    esac
+    info "Detected remote architecture: ${REMOTE_ARCH} → ${PLATFORM}"
+fi
 
 # ---------------------------------------------------------------------------
 # Step 1: Generate .env.production if it does not exist
 # ---------------------------------------------------------------------------
+if [[ "${DRY_RUN}" == "1" ]]; then
+    # Backfill helpers touch the remote host; stub them for dry-run so the
+    # post-backfill production assertions (AUTH_TRUST_HOST, COMPILER_RUNNER_URL)
+    # can still be evaluated without failing on undefined functions.
+    ensure_env_secret() { :; }
+    ensure_env_literal() { :; }
+    upsert_env_literal() { :; }
+    info "Dry-run mode: skipping local .env.production generation and remote backfill"
+else
 if [[ ! -f "${SCRIPT_DIR}/.env.production" ]]; then
     info "Generating .env.production with fresh secrets..."
     AUTH_SECRET=$(openssl rand -base64 32)
@@ -827,7 +876,15 @@ ensure_env_secret RATE_LIMITER_AUTH_TOKEN hex
 # because the Host header may be the internal container hostname (e.g., localhost:3000)
 # rather than the external domain.
 ensure_env_literal AUTH_TRUST_HOST true
+fi
 
+# In dry-run mode we never probe the remote host for TLS certs; default to
+# HTTP so the nginx generation path can proceed without side effects.
+if [[ "${DRY_RUN}" == "1" ]]; then
+    USE_TLS=false
+fi
+
+if [[ "${DRY_RUN}" != "1" ]]; then
 # ---------------------------------------------------------------------------
 # Step 2: Sync source code to remote host
 # ---------------------------------------------------------------------------
@@ -895,15 +952,21 @@ fi
 upsert_env_literal AUTH_TRUST_HOST true
 
 # Compute AUTH_URL before the app starts so first boot uses the target domain.
-USE_TLS=false
-if remote_sudo "test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem -a -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem" 2>/dev/null; then
-    USE_TLS=true
-    info "Detected existing TLS certificate for ${DOMAIN}; AUTH_URL will use HTTPS"
+if [[ "${DRY_RUN}" == "1" ]]; then
+    USE_TLS=false
+    AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-http://${DOMAIN}}"
+    info "Dry-run mode: using HTTP AUTH_URL target ${AUTH_URL_TARGET}"
 else
-    info "No TLS certificate detected for ${DOMAIN}; AUTH_URL will use HTTP until TLS is provisioned"
+    USE_TLS=false
+    if remote_sudo "test -f /etc/letsencrypt/live/${DOMAIN}/fullchain.pem -a -f /etc/letsencrypt/live/${DOMAIN}/privkey.pem" 2>/dev/null; then
+        USE_TLS=true
+        info "Detected existing TLS certificate for ${DOMAIN}; AUTH_URL will use HTTPS"
+    else
+        info "No TLS certificate detected for ${DOMAIN}; AUTH_URL will use HTTP until TLS is provisioned"
+    fi
+    AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-$([ "${USE_TLS}" = "true" ] && echo "https://${DOMAIN}" || echo "http://${DOMAIN}")}"
+    upsert_env_literal AUTH_URL "${AUTH_URL_TARGET}"
 fi
-AUTH_URL_TARGET="${AUTH_URL_OVERRIDE:-$([ "${USE_TLS}" = "true" ] && echo "https://${DOMAIN}" || echo "http://${DOMAIN}")}"
-upsert_env_literal AUTH_URL "${AUTH_URL_TARGET}"
 
 WORKER_JUDGE_BASE_URL=""
 if [[ -n "${WORKER_HOSTS:-}" ]]; then
@@ -1454,6 +1517,7 @@ fi
 # (the auraedu deploy misfired exactly this way before this step existed).
 # ---------------------------------------------------------------------------
 prune_old_docker_artifacts "app ${REMOTE_HOST}" remote
+fi
 
 # ---------------------------------------------------------------------------
 # Step 7: Set up nginx reverse proxy
@@ -1562,6 +1626,7 @@ cat >> "$NGINX_TMPFILE" <<NGINX_EOF
     }
 
     location / {
+        client_max_body_size 50M;
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -1639,6 +1704,7 @@ server {
     }
 
     location / {
+        client_max_body_size 50M;
         proxy_pass http://127.0.0.1:${APP_PORT};
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -1655,6 +1721,11 @@ NGINX_EOF
 fi
 
 # Transfer nginx config via scp, then sudo copy into place
+if [[ "${DRY_RUN}" == "1" ]]; then
+    success "Dry-run nginx config generated: ${NGINX_TMPFILE}"
+    info "Dry-run mode: skipping remote copy, nginx -t, and reload"
+    exit 0
+fi
 remote_copy "$NGINX_TMPFILE" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/nginx-judgekit.conf"
 remote_sudo "cp ${REMOTE_DIR}/nginx-judgekit.conf /etc/nginx/sites-available/judgekit"
 remote_sudo "ln -sf /etc/nginx/sites-available/judgekit /etc/nginx/sites-enabled/judgekit"
