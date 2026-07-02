@@ -14,7 +14,7 @@ function parseTsLanguageUnion(source: string): Set<string> {
     throw new Error("TypeScript Language union start marker not found");
   }
 
-  let endIndex = source.indexOf(";", startIndex);
+  const endIndex = source.indexOf(";", startIndex);
   if (endIndex === -1) {
     throw new Error("TypeScript Language union end marker not found");
   }
