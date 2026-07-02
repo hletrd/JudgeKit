@@ -145,6 +145,13 @@ export async function POST(request: NextRequest) {
     // JSON body path — DEPRECATED: password included in body as { password, data }
     // Prefer multipart/form-data which keeps the password out of JSON request bodies
     // that may be logged by middleware or reverse proxies.
+    if (process.env.ALLOW_JSON_IMPORT_PASSWORD !== "1") {
+      return NextResponse.json(
+        { error: "jsonImportDisabled" },
+        { status: 400, headers: { "Deprecation": "true", "Sunset": "Sun, 01 Nov 2026 00:00:00 GMT" } },
+      );
+    }
+
     logger.warn({ userId: user.id }, "[migrate-import] JSON body path is deprecated — use multipart/form-data instead");
     let rawJsonBody: unknown;
     try {
@@ -239,6 +246,18 @@ export async function POST(request: NextRequest) {
       resourceLabel: "Database import",
       summary: `Imported database from ${data.sourceDialect} export (${data.exportedAt})`,
       details: { skippedTables: result.skippedTables },
+      request,
+    });
+
+    await recordAuditEventDurable({
+      actorId: user.id,
+      actorRole: user.role,
+      action: "security.alert",
+      resourceType: "system_settings",
+      resourceId: "database",
+      resourceLabel: "Deprecated JSON import path used",
+      summary: "Database import used the deprecated JSON body path with password in request body",
+      details: { reason: "jsonPasswordImportEnabled", gatedByEnv: "ALLOW_JSON_IMPORT_PASSWORD" },
       request,
     });
 

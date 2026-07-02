@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { NextRequest } from "next/server";
 
 const {
@@ -139,8 +139,11 @@ function makeFormRequest(url: string, formData: FormData) {
 }
 
 describe("destructive backup/import route password confirmation", () => {
+  const originalJsonImportEnv = process.env.ALLOW_JSON_IMPORT_PASSWORD;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.ALLOW_JSON_IMPORT_PASSWORD = "1";
     getApiUserMock.mockResolvedValue({
       id: "admin-1",
       role: "admin",
@@ -289,6 +292,26 @@ describe("destructive backup/import route password confirmation", () => {
 
     expect(res.status).toBe(403);
     expect(body.error).toBe("invalidPassword");
+  });
+
+  it("disables the JSON import path by default", async () => {
+    delete process.env.ALLOW_JSON_IMPORT_PASSWORD;
+    const { POST } = await import("@/app/api/v1/admin/migrate/import/route");
+    const res = await POST(
+      makeJsonRequest("http://localhost:3000/api/v1/admin/migrate/import", { password: "any" })
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe("jsonImportDisabled");
+  });
+
+  afterEach(() => {
+    if (originalJsonImportEnv === undefined) {
+      delete process.env.ALLOW_JSON_IMPORT_PASSWORD;
+    } else {
+      process.env.ALLOW_JSON_IMPORT_PASSWORD = originalJsonImportEnv;
+    }
   });
 });
 
