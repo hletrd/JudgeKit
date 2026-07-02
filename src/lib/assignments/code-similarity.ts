@@ -2,9 +2,11 @@ import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import { rawQueryAll } from "@/lib/db/queries";
 import { antiCheatEvents } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getDbNowUncached } from "@/lib/db-time";
+import { logger } from "@/lib/logger";
 import { computeSimilarityRust } from "./code-similarity-client";
+import type { SimilaritySidecarResult } from "./code-similarity-client";
 
 /**
  * Maximum length (in characters) of a single string literal before the
@@ -367,10 +369,16 @@ export async function runSimilarityCheck(
 
   let pairs: SimilarityPair[];
 
-  // Try Rust sidecar first
+  // Try Rust sidecar first. Thread the caller's signal through so a route-level
+  // abort cancels the sidecar request instead of letting it run to completion.
   try {
-    const rustResult = await computeSimilarityRust(rows, threshold, ngramSize);
-    if (rustResult !== null) {
+    const rustResult: SimilaritySidecarResult = await computeSimilarityRust(
+      rows,
+      threshold,
+      ngramSize,
+      signal
+    );
+    if (Array.isArray(rustResult)) {
       pairs = rustResult;
       return {
         status: "completed",
@@ -381,8 +389,25 @@ export async function runSimilarityCheck(
         maxSupportedSubmissions: MAX_SUBMISSIONS_FOR_SIMILARITY,
       };
     }
-  } catch {
-    // Rust sidecar unavailable — fall through to TS
+
+    // Caller abort or sidecar timeout should surface as an abort, not fall back
+    // to the TypeScript implementation and risk misclassifying the failure.
+    if (rustResult === "SIDECAR_ABORTED" || rustResult === "SIDECAR_TIMEOUT") {
+      throw new DOMException("Similarity check timed out", "AbortError");
+    }
+
+    logger.warn(
+      { code: rustResult },
+      "[code-similarity] Rust sidecar failed, falling back to TypeScript implementation"
+    );
+  } catch (error) {
+    // Re-throw aborts from the sidecar or the caller signal unchanged.
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw error;
+    }
+    // Any unexpected error falls through to the TypeScript implementation so the
+    // check remains fail-open for transient sidecar failures.
+    logger.warn({ error }, "[code-similarity] unexpected sidecar error, falling back");
   }
 
   pairs = await runSimilarityCheckTS(rows, threshold, ngramSize, signal);
@@ -396,14 +421,38 @@ export async function runSimilarityCheck(
   };
 }
 
+function getSimilarityLockKey(assignmentId: string) {
+  return `similarity-check:${assignmentId}`;
+}
+
+async function withPgAdvisoryLock<T>(
+  lockKey: string,
+  fn: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(('x' || md5(${lockKey}))::bit(64)::bigint)`
+    );
+    return fn(tx);
+  });
+}
+
 /**
  * Run similarity check and store flagged pairs as anti-cheat events.
+ *
+ * The delete+insert store is serialized per assignment with a PostgreSQL
+ * advisory lock so concurrent runs cannot interleave and delete each other's
+ * anti-cheat events.
  */
 export async function runAndStoreSimilarityCheck(
   assignmentId: string,
   threshold = 0.85,
   signal?: AbortSignal
 ): Promise<SimilarityRunResult> {
+  if (signal?.aborted) {
+    throw new DOMException("Similarity check timed out", "AbortError");
+  }
+
   const result = await runSimilarityCheck(assignmentId, threshold, 3, signal);
 
   if (result.status !== "completed") {
@@ -436,8 +485,13 @@ export async function runAndStoreSimilarityCheck(
     })
   );
 
-  // Atomic: delete old events and insert new ones
-  await db.transaction(async (tx) => {
+  // Atomic: delete old events and insert new ones, guarded by an advisory lock
+  // so concurrent runs for the same assignment cannot delete each other's events.
+  return withPgAdvisoryLock(getSimilarityLockKey(assignmentId), async (tx) => {
+    if (signal?.aborted) {
+      throw new DOMException("Similarity check timed out", "AbortError");
+    }
+
     await tx.delete(antiCheatEvents)
       .where(
         and(
@@ -449,7 +503,7 @@ export async function runAndStoreSimilarityCheck(
     if (eventValues.length > 0) {
       await tx.insert(antiCheatEvents).values(eventValues);
     }
-  });
 
-  return result;
+    return result;
+  });
 }
