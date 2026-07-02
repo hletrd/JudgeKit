@@ -372,7 +372,7 @@ async function cleanupWorkspaceWithDocker(workspaceDir: string): Promise<void> {
     "root",
     "-v",
     `${parentDir}:/work`,
-    "alpine",
+    "alpine:3.21",
     "rm",
     "-rf",
     `/work/${workspaceName}`,

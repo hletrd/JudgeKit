@@ -59,7 +59,7 @@ fn cleanup_with_docker(path: &Path) -> io::Result<()> {
             "root",
             "-v",
             &mount,
-            "alpine",
+            "alpine:3.21",
             "rm",
             "-rf",
             &target,
@@ -201,7 +201,7 @@ mod tests {
                 "root",
                 "-v",
                 &mount,
-                "alpine",
+                "alpine:3.21",
                 "rm",
                 "-rf",
                 &target,
@@ -233,6 +233,75 @@ mod tests {
             p
         };
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn non_root_sandbox_owned_workspace_is_cleaned_up_via_docker() {
+        if is_root() {
+            // Root path uses direct chown+remove; this test exercises the non-root docker fallback.
+            return;
+        }
+        if !docker_can_reach_temp() {
+            // Privileged container cleanup requires a working Docker socket that can reach /tmp.
+            return;
+        }
+
+        let workspace_name = {
+            let workspace = SandboxWorkspace::new().expect("create workspace");
+            let p = workspace.path().to_path_buf();
+            let workspace_name = p
+                .file_name()
+                .expect("workspace has a directory name")
+                .to_string_lossy()
+                .to_string();
+
+            let nested = p.join("build");
+            fs::create_dir(&nested).expect("create nested dir");
+            fs::write(nested.join("out.o"), b"").expect("write artifact");
+            fs::write(p.join("solution.py"), b"print(1)").expect("write source");
+
+            // Simulate production: the sandbox container writes files as uid 65534,
+            // so the worker process (non-root) cannot remove them without the docker fallback.
+            let parent = p.parent().expect("workspace has parent");
+            let mount = format!("{}:/work", parent.display());
+            let target = format!("/work/{}", workspace_name);
+            let output = Command::new("docker")
+                .args([
+                    "run",
+                    "--rm",
+                    "--user",
+                    "root",
+                    "-v",
+                    &mount,
+                    "alpine:3.21",
+                    "chown",
+                    "-R",
+                    "65534:65534",
+                    &target,
+                ])
+                .output()
+                .expect("docker chown command");
+            assert!(
+                output.status.success(),
+                "docker chown failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+
+            workspace_name
+        };
+
+        let tmp = std::env::temp_dir();
+        let remaining: Vec<String> = fs::read_dir(&tmp)
+            .expect("read temp dir")
+            .filter_map(|e| e.ok())
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.starts_with(".tmp"))
+            .collect();
+
+        assert!(
+            !remaining.contains(&workspace_name),
+            "sandbox-owned workspace leaked: {workspace_name}"
+        );
     }
 
     #[test]

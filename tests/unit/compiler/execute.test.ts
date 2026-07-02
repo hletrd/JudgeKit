@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { existsSync, readdirSync } from "node:fs";
-import { chmod, chown, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { chmod, chown, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 vi.mock("@/lib/system-settings-config", () => ({
   getConfiguredSettings: () => ({
@@ -298,4 +302,86 @@ describe("non-root workspace cleanup", () => {
       }
     }
   });
+
+  it("falls back to docker cleanup for a sandbox-owned workspace", async () => {
+    if (!(await dockerCanReachTemp())) {
+      // Privileged container cleanup requires a working Docker socket that can reach /tmp.
+      return;
+    }
+
+    const { cleanupCompilerWorkspace } = await import("@/lib/compiler/execute");
+    const base = await mkdtemp(join(tmpdir(), "compiler-nonroot-sandbox-"));
+    const nested = join(base, "build");
+
+    try {
+      await mkdir(nested);
+      await writeFile(join(nested, "out.o"), "", { encoding: "utf8" });
+      await writeFile(join(base, "solution.py"), "print(1)", { encoding: "utf8" });
+
+      // Simulate production: the sandbox container writes files as uid 65534,
+      // so the app process (non-root) cannot remove them without the docker fallback.
+      await execFileAsync("docker", [
+        "run",
+        "--rm",
+        "--user",
+        "root",
+        "-v",
+        `${dirname(base)}:/work`,
+        "alpine:3.21",
+        "chown",
+        "-R",
+        "65534:65534",
+        `/work/${basename(base)}`,
+      ]);
+
+      await cleanupCompilerWorkspace(base);
+
+      expect(existsSync(base)).toBe(false);
+      const leftovers = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith("compiler-nonroot-sandbox-"),
+      );
+      expect(leftovers).toHaveLength(0);
+    } finally {
+      try {
+        await cleanupCompilerWorkspace(base);
+      } catch {
+        // ignore
+      }
+    }
+  });
 });
+
+async function dockerCanReachTemp(): Promise<boolean> {
+  const tmp = tmpdir();
+  const probeName = `judgekit-docker-probe-${process.pid}`;
+  const probe = join(tmp, probeName);
+  try {
+    await mkdir(probe);
+  } catch {
+    return false;
+  }
+  try {
+    await execFileAsync("docker", [
+      "run",
+      "--rm",
+      "--user",
+      "root",
+      "-v",
+      `${tmp}:/work`,
+      "alpine:3.21",
+      "rm",
+      "-rf",
+      `/work/${probeName}`,
+    ]);
+    return !existsSync(probe);
+  } catch {
+    return false;
+  } finally {
+    try {
+      await rm(probe, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  }
+}
+
