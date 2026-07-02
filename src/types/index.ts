@@ -127,6 +127,7 @@ export type Language =
   | "micropython"
   | "squirrel"
   | "rexx"
+  | "roc"
   | "hy"
   | "arturo"
   | "janet"
