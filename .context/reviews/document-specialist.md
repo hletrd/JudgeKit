@@ -1,305 +1,217 @@
-# Document-Specialist Review
+# Document-Specialist Review — JudgeKit Cycle 3 Refresh
 
-Date: 2026-07-01
-Scope: AGENTS.md, README.md, SECURITY.md, docs/api.md, docs/deployment.md, docs/languages.md vs. implementation.
-Method: Compared documentation claims against `src/app/api/v1/**` route files, `src/lib/judge/languages.ts`, `src/types/index.ts`, `judge-worker-rs/src/{types,languages}.rs`, `src/lib/capabilities/types.ts`, `deploy-docker.sh`, `scripts/setup.sh`, `docker-compose.production.yml`, and `package.json`.
+**Date:** 2026-07-03  
+**Scope:** `AGENTS.md`, `README.md`, `docs/**/*.md`, `.env.example`, `.env.production.example`, `deploy-docker.sh`, `static-site/nginx.conf`, `scripts/*.nginx.conf`, and the source files they describe. Focus is on drift introduced or left visible after the cycle-3 nginx/env hardening commits.  
+**Method:** Re-read `.context/reviews/_aggregate.md`, the previous `document-specialist.md`, and the cycle-3 plan. Compared current docs against the modified working-tree files and authoritative sources (`src/`, `docker/`, `docker-compose.production.yml`, `.env` examples).  
 
-Summary: **24 findings** across API docs, language/image inventory, deployment instructions, capability claims, and data-retention mechanics. The largest drift class is `docs/api.md`, which omits 34 live endpoints. Language/image documentation contains the most cross-file contradictions (Docker image names, active vs. disabled languages, image counts, preset contents, and ARM64 claims).
+## Executive Summary
 
----
+- **5 fresh doc/code mismatches** are introduced or newly visible after cycle-3 changes (DOC-25 through DOC-31).
+- **22 prior findings remain unchanged**; **2 prior findings are partially resolved** by code changes but still have documentation contradictions (DOC-4, DOC-5).
+- **3 aggregate-level nginx issues** from the Cycle 2 review are now verified as fixed in `deploy-docker.sh` (catch-all body size, XFF chain preservation, baseline security headers) and are documented in the "Verified Cycle-3 Code Fixes" section.
+- The largest remaining drift class is still **API documentation** (`docs/api.md`), followed by **deployment/environment documentation** and the **language inventory**.
 
-## Findings Summary
+## Findings Register
 
-| ID | Severity | Classification | Confidence | Area | Finding |
-|----|----------|----------------|------------|------|---------|
-| DOC-1 | High | Missing | High | API docs | `docs/api.md` omits 34 live `/api/v1` endpoints |
-| DOC-2 | High | Incorrect | High | Languages | `flix` documented as `judge-jvm`; code uses `judge-flix` |
-| DOC-3 | High | Inconsistent | High | Languages | `flix` marked arm64-ready in table but also listed in ARM-prohibitive set |
-| DOC-4 | High | Outdated | High | Languages | `roc` listed as active in `AGENTS.md` but absent from TypeScript `Language` union |
-| DOC-5 | High | Outdated | High | Images | README image-size table lists `judge-j`, `judge-malbolge`, `judge-roc` with no active language config |
-| DOC-6 | High | Incorrect | High | API docs | Similarity-check endpoint auth described as "Instructor or above"; code also allows assistants |
-| DOC-7 | High | Incorrect | High | Deployment | `docs/deployment.md` says app container listens on port 3100 internally; actual internal port is 3000 |
-| DOC-8 | Medium | Outdated | High | Capabilities | README/AGENTS.md claim 43 capabilities; code defines 46 |
-| DOC-9 | Medium | Outdated | High | Images | Docs claim 102 active Docker images; active language configs reference 98 distinct images |
-| DOC-10 | Medium | Inconsistent | High | Presets | `scripts/setup.sh` `all` preset includes ARM-prohibitive languages; `deploy-docker.sh` and docs exclude them |
-| DOC-11 | Medium | Outdated | High | Deployment | `docs/deployment.md` language-preset size estimates disagree with `deploy-docker.sh` and README/AGENTS.md |
-| DOC-12 | Medium | Incorrect | High | API docs | `GET /api/v1/admin/docker/images` auth described as "Admin or Super Admin"; code requires `system.settings` |
-| DOC-13 | Medium | Incorrect | High | API docs / agent guide | AGENTS.md Docker image build/delete auth described as "Admin/super_admin only"; code requires `system.settings` |
-| DOC-14 | Medium | Missing | High | API docs | Contest join endpoint docs omit two failure-scoped rate-limit buckets |
-| DOC-15 | Medium | Inconsistent | High | Languages | `judge-haskell` base image/OS is reported three different ways across docs, code, and Dockerfile |
-| DOC-16 | Low | Outdated | High | Languages | `docs/languages.md` E2E summary reports 113-language scope; active count is 125 |
-| DOC-17 | Low | Outdated | High | Languages | `AGENTS.md` language table contains 126 rows while claiming 125 variants |
-| DOC-18 | Low | Orphan | High | Images | `docker/Dockerfile.judge-simula` exists but has no language config or doc mention |
-| DOC-19 | Low | Missing | Medium | Developer guide | AGENTS.md "Adding a New Language" checklist omits Rust runner-side validation |
-| DOC-20 | Low | Missing | Medium | README | README language-preset list omits the `everything` preset |
-| DOC-21 | Low | Missing | Medium | API docs | `docs/api.md` does not document response/request bodies for several admin/problem endpoints |
-| DOC-22 | Low | Inconsistent | Medium | Security | `SECURITY.md` scope mentions `code-similarity-rs/`; project root contains the sidecar at top-level, not under that path |
-| DOC-23 | Low | Outdated | Medium | API docs | `docs/api.md` internal cleanup endpoint uses `/api/internal/cleanup`; implementation is at `/api/internal/cleanup` but auth wiring references `CRON_SECRET` consistently |
-| DOC-24 | Low | Incorrect | High | Data retention | `docs/data-retention-policy.md` says legal hold requires an application restart; code re-reads `DATA_RETENTION_LEGAL_HOLD` every prune cycle so a restart is unnecessary |
-
----
-
-## High Severity
-
-### DOC-1: `docs/api.md` omits 34 live `/api/v1` endpoints
-- **Doc**: `docs/api.md:1-2037` (endpoint catalogue)
-- **Code**: `src/app/api/v1/**` — 109 `route.ts` files exporting ~148 endpoint methods; the documented endpoint list covers 75 route files and misses 34 route files entirely.
-- **What the doc says**: The API reference presents a complete endpoint list under "Endpoints" (Users, Problems, Submissions, Groups, Assignments, Contests, Problem Sets, Files, Languages, Compiler, Judge Workers, Admin, Plugins, Chat Widget, Internal).
-- **What the code does**: The following 34 route files exist and are exported but have no entry in `docs/api.md`:
-  - Auth: `POST /api/v1/auth/forgot-password`, `POST /api/v1/auth/resend-verification`, `POST /api/v1/auth/reset-password`, `POST /api/v1/auth/verify-email`
-  - Code snapshots: `POST /api/v1/code-snapshots`
-  - Community: `GET/POST /api/v1/community/threads`, `PATCH/DELETE /api/v1/community/threads/[id]`, `POST /api/v1/community/threads/[id]/posts`, `DELETE /api/v1/community/posts/[id]`, `POST /api/v1/community/votes`
-  - Contest sub-resources: `GET/POST /api/v1/contests/[assignmentId]/announcements`, `PATCH/DELETE /api/v1/contests/[assignmentId]/announcements/[announcementId]`, `GET/POST /api/v1/contests/[assignmentId]/clarifications`, `PATCH/DELETE /api/v1/contests/[assignmentId]/clarifications/[clarificationId]`, `GET /api/v1/contests/[assignmentId]/code-snapshots/[userId]`, `GET /api/v1/contests/[assignmentId]/participant-timeline/[userId]`, `GET /api/v1/contests/[assignmentId]/participants`, `POST /api/v1/contests/quick-create`, `GET /api/v1/contests/[assignmentId]/stats`, `GET/POST /api/v1/contests/[assignmentId]/recruiting-invitations`, `GET/PATCH/DELETE /api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]`, `POST /api/v1/contests/[assignmentId]/recruiting-invitations/bulk`, `GET /api/v1/contests/[assignmentId]/recruiting-invitations/stats`
-  - Exam sessions: `GET /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions`, `PATCH /api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/[userId]`
-  - Health: `GET /api/v1/health`
-  - Playground: `POST /api/v1/playground/run`
-  - Problems: `POST /api/v1/problems/import`, `GET /api/v1/problems/[id]/accepted-solutions`, `GET/PUT/DELETE /api/v1/problems/[id]/draft`
-  - Recruiting: `POST /api/v1/recruiting/validate`
-  - Submissions: `GET /api/v1/submissions/[id]/queue-status`
-  - Admin submissions: `GET /api/v1/admin/submissions/export`, `POST /api/v1/admin/submissions/rejudge`
-  - Admin utility: `POST /api/v1/admin/test-email`
-- **Consequence**: API consumers, SDK generators, and integration tests cannot discover a large portion of the public surface. External developers may re-implement functionality or miss rate-limit/CSRF requirements for these routes.
-- **Suggested fix**: Add a documentation pass for each missing route group. For each, include HTTP method, auth model, required capability/role, rate-limit key, request body schema, and response shape, matching the style of existing entries.
-- **Classification**: Missing
-- **Confidence**: High
-
-### DOC-2: `flix` documented as using `judge-jvm`; actual image is `judge-flix`
-- **Doc**: `AGENTS.md:113`, `docs/languages.md:73`
-- **Code**: `src/lib/judge/languages.ts:1197`
-- **What the doc says**: `flix` uses Docker image `judge-jvm`.
-- **What the code does**: `src/lib/judge/languages.ts` sets `dockerImage: "judge-flix:latest"` and `docker/Dockerfile.judge-flix` is a separate image.
-- **Consequence**: Operators/agents following the docs will not build `judge-flix`; submissions in Flix will fail at runtime with "image not found". Admin UI also displays the runtime info from `languages.ts`, but if an operator edits the language config using the docs as reference they may enter `judge-jvm`.
-- **Suggested fix**: Update `AGENTS.md:113` and `docs/languages.md:73` to `judge-flix`.
-- **Classification**: Incorrect
-- **Confidence**: High
-
-### DOC-3: `flix` is simultaneously marked arm64-ready and listed as ARM-prohibitive
-- **Doc**: `docs/languages.md:73` (table shows `✅` for amd64/arm64/amd64 E2E/arm64 E2E), `docs/languages.md:224` (ARM-prohibitive set includes `flix`)
-- **Code**: `docker/Dockerfile.judge-flix` exists; `src/lib/judge/languages.ts:1197` references `judge-flix:latest`.
-- **What the doc says**: Two contradictory statements on the same page.
-- **What the code does**: The language is active and has its own Dockerfile, so it is built in normal flows.
-- **Consequence**: Operators cannot tell whether `flix` is included in the `all` preset or excluded. The `deploy-docker.sh` `ARM_PROHIBITIVE_LANGS` list (`deploy-docker.sh:220`) includes `flix`, so the script excludes it from `all`, yet the docs table claims arm64 success.
-- **Suggested fix**: Decide canonical status. If `flix` is ARM-ready, remove it from the ARM-prohibitive set in `docs/languages.md:224` and `deploy-docker.sh:220`. If it is prohibitive, change the table checkmarks to `—`.
-- **Classification**: Inconsistent
-- **Confidence**: High
-
-### DOC-4: `roc` listed as active in `AGENTS.md` but absent from the TypeScript language system
-- **Doc**: `AGENTS.md:20` ("125 language variants"), `AGENTS.md:119` (row 94 `roc`), `docs/languages.md:208-210` (disabled section)
-- **Code**: `src/types/index.ts:30-156` (no `roc`), `src/lib/judge/languages.ts` (no `roc` config), `judge-worker-rs/src/types.rs:191` (`Language::Roc` still present), `judge-worker-rs/src/languages.rs:1762-1769` (`ROC_CONFIG` still present)
-- **What the doc says**: `AGENTS.md` treats `roc` as an active supported language; `docs/languages.md` correctly marks it disabled.
-- **What the code does**: The TypeScript app cannot accept `roc` submissions because it is not in the `Language` union. The Rust worker still knows how to judge it.
-- **Consequence**: An agent scanning `AGENTS.md` to enumerate supported languages will include `roc` and then fail when using it as a `Language`. The Rust worker dead code may also be misleading during future language work.
-- **Suggested fix**: Remove the `roc` row from `AGENTS.md:119` (or mark it `[DISABLED]` and point to the Disabled Languages section). Optionally remove `Roc` from `judge-worker-rs/src/types.rs` and `judge-worker-rs/src/languages.rs` if the language is permanently retired.
-- **Classification**: Outdated
-- **Confidence**: High
-
-### DOC-5: README image-size table lists images with no active language configuration
-- **Doc**: `README.md:86,94,104` (size table rows for `judge-malbolge`, `judge-j`, `judge-roc`)
-- **Code**: `src/types/index.ts:30-156`, `src/lib/judge/languages.ts` — none of `j`, `malbolge`, or `roc` have active configs. `docker/Dockerfile.judge-j`, `docker/Dockerfile.judge-malbolge`, `docker/Dockerfile.judge-roc` exist as orphans.
-- **What the doc says**: These are active, submittable language images with published sizes.
-- **What the code does**: No language variant maps to these images; submissions using them would fail validation.
-- **Consequence**: Contributors and users conclude these languages are supported. A developer following the "Adding a New Language" checklist would find Dockerfiles already present but all other integration steps missing.
-- **Suggested fix**: Remove the three rows from the README size table, or add a footnote that these Dockerfiles exist but are not integrated. Alternatively complete the integration for each.
-- **Classification**: Outdated
-- **Confidence**: High
-
-### DOC-6: Similarity-check endpoint auth described as "Instructor or above" but code also allows assistants
-- **Doc**: `docs/api.md:1089-1091`
-- **Code**: `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24`
-- **What the doc says**: "Run code similarity analysis. **Instructor or above.**"
-- **What the code does**: `canRunSimilarityCheck` returns true for `canManageContest` (instructor/admin) **or** for any role with the `anti_cheat.run_similarity` capability that is also a group TA or assigned to the teaching group. `anti_cheat.run_similarity` is part of `ASSISTANT_CAPABILITIES` (`src/lib/capabilities/defaults.ts:15-32`).
-- **Consequence**: A client built against the API docs hides the similarity-check affordance from assistants even though the backend accepts the call. A custom role granted only `anti_cheat.run_similarity` may be surprised by the extra group-scope check not mentioned in the docs.
-- **Suggested fix**: Update `docs/api.md:1089-1091` to: "Requires `anti_cheat.run_similarity` capability plus group TA/assigned teaching-group membership, or `canManageContest`."
-- **Classification**: Incorrect
-- **Confidence**: High
-
-### DOC-7: `docs/deployment.md` misstates the app container's internal listen port
-- **Doc**: `docs/deployment.md:7` — "Ports `80`/`443` terminated by nginx; app container listens on port `3100` internally"
-- **Code**: `docker-compose.production.yml:96` — `127.0.0.1:3100:3000` (host 3100 → container 3000)
-- **What the doc says**: The app process listens on 3100 inside the container.
-- **What the code does**: The app listens on 3000 inside the container; host port 3100 is the nginx upstream target.
-- **Consequence**: Operators debugging connectivity or writing custom compose overrides may target the wrong internal port. Health checks inside the container (`http://127.0.0.1:3000/login`) would fail if aimed at 3100.
-- **Suggested fix**: Change `docs/deployment.md:7` to: "Ports `80`/`443` terminated by nginx; app container listens on port `3000` internally and is mapped to host port `3100`."
-- **Classification**: Incorrect
-- **Confidence**: High
+| ID | Severity | Status | Area | Citation | Finding |
+|----|----------|--------|------|----------|---------|
+| DOC-1 | High | Still present | API docs | `docs/api.md:1-2037` vs. `src/app/api/v1/**` | Omits 34 live `/api/v1` endpoints. |
+| DOC-2 | High | Still present | Languages | `AGENTS.md:113`, `docs/languages.md:73` vs. `src/lib/judge/languages.ts` | `flix` documented as `judge-jvm`; code uses `judge-flix`. |
+| DOC-3 | High | Still present | Languages | `docs/languages.md:73` vs. `:224` | `flix` marked arm64-ready and also ARM-prohibitive. |
+| DOC-4 | High | Resolved in code, docs still stale | Languages | `src/types/index.ts:30-157`, `src/lib/judge/languages.ts:1430-1440` vs. `docs/languages.md:210`, `:224` | `roc` is now active in code but still listed as disabled/ARM-prohibitive. |
+| DOC-5 | High | Partially resolved | Images | `README.md:86,94,104` vs. `src/lib/judge/languages.ts` | `judge-roc` is now active; `judge-j` and `judge-malbolge` remain orphan images. |
+| DOC-6 | High | Still present | API docs | `docs/api.md:1089-1091` vs. `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24` | Similarity-check auth described as "Instructor or above"; code also allows assistants with `anti_cheat.run_similarity`. |
+| DOC-7 | High | Still present | Deployment | `docs/deployment.md:7` vs. `docker-compose.production.yml:96` | App container internal port stated as `3100`; actual internal port is `3000`. |
+| DOC-8 | Medium | Still present | Capabilities | `README.md:29`, `AGENTS.md` vs. `src/lib/capabilities/types.ts:8-80` | Docs claim 43 capabilities; code defines 46. |
+| DOC-9 | Medium | Still present / updated count | Images | `README.md:77`, `docs/languages.md:192` vs. `src/lib/judge/languages.ts` | Docs claim 102 active images; active configs reference 99 distinct images (was 98 before `roc` re-enable). |
+| DOC-10 | Medium | Still present | Presets | `docs/languages.md:214-220`, `scripts/setup.sh:59-149` | `setup.sh` `all` preset includes ARM-prohibitive languages; docs say it excludes them. |
+| DOC-11 | Medium | Still present | Deployment | `docs/deployment.md:80-81` vs. `deploy-docker.sh:268-277`, `AGENTS.md:375` | Preset size estimates are stale (core 0.8 vs. 1.2 GB, etc.). |
+| DOC-12 | Medium | Still present | API docs | `docs/api.md:1666-1668` vs. `src/app/api/v1/admin/docker/images/route.ts:55` | Docker images `GET` auth described as "Admin or Super Admin"; code requires `system.settings`. |
+| DOC-13 | Medium | Still present | Agent guide | `AGENTS.md:260-261` vs. `src/app/api/v1/admin/docker/images/build/route.ts:19`, `src/app/api/v1/admin/docker/images/route.ts:93,165` | Docker build/delete auth described as "Admin/super_admin only"; code requires `system.settings`. |
+| DOC-14 | Medium | Still present | API docs | `docs/api.md:941-943` vs. `src/app/api/v1/contests/join/route.ts:27-42` | Contest join docs omit the two failure-scoped rate-limit buckets. |
+| DOC-15 | Medium | Still present | Languages | `AGENTS.md:210`, `src/lib/judge/languages.ts:111` vs. `docker/Dockerfile.judge-haskell:1` | `judge-haskell` base reported three different ways (Alpine 3.21, ghc:9.4-alpine, Debian Bookworm). |
+| DOC-16 | Low | Still present | Languages | `docs/languages.md:194-204` vs. `src/types/index.ts:30-157` | E2E summary reports 113-language scope; active count is 125. |
+| DOC-17 | Low | Still present | Languages | `AGENTS.md:20`, `AGENTS.md:22-150` | Language table has 126 rows while docs claim 125 variants. |
+| DOC-18 | Low | Still present | Images | `docker/Dockerfile.judge-simula` vs. `src/types/index.ts`, `src/lib/judge/languages.ts` | Orphan Dockerfile with no language binding. |
+| DOC-19 | Low | Still present | Developer guide | `AGENTS.md:151-159` vs. `judge-worker-rs/src/languages.rs`, `src/lib/compiler/execute.ts` | New-language checklist omits Rust runner-side validation. |
+| DOC-20 | Low | Still present | README | `README.md:71` vs. `docs/languages.md:214-220`, `AGENTS.md:375` | README preset list omits the `everything` preset. |
+| DOC-21 | Low | Still present | API docs | `docs/api.md` | Several admin/problem endpoints lack request/response body details. |
+| DOC-22 | Low | Low impact / unclear | Security | `SECURITY.md:20` vs. `code-similarity-rs/`, `Dockerfile.code-similarity` | Path wording is technically correct but could be clearer about the root-level Dockerfile. |
+| DOC-23 | Low | Clean | API docs | `docs/api.md:1936-1944` vs. `src/app/api/internal/cleanup/route.ts` | Path and `CRON_SECRET` auth match implementation. |
+| DOC-24 | Medium | Still present | Data retention | `docs/data-retention-policy.md:38` vs. `src/lib/data-retention.ts:46-52` | Legal hold said to require restart; code re-reads the env var every prune cycle. |
+| DOC-25 | Medium | **Fresh** | Deployment | `docs/deployment.md:18,44` vs. `deploy-docker.sh:750`, `docker-compose.production.yml:115`, `src/lib/security/env.ts:260-265` | `AUTH_TRUST_HOST` table says default `false`; example, generated `.env.production`, and compose default to `true`. |
+| DOC-26 | Medium | **Fresh** | Deployment | `docs/deployment.md:40-63` vs. `.env.example:122,175-182,230-236`, `.env.production.example:56,85-93,145-151` | Env var reference omits operational/security variables such as `TRUSTED_PROXY_HOPS`, `JUDGE_ALLOWED_IPS`, `COMPILER_RUNNER_URL`, `SKIP_POST_DEPLOY_PRUNE`. |
+| DOC-27 | Medium | **Fresh** | Deployment / API | `docs/deployment.md`, `docs/api.md` vs. `deploy-docker.sh:1589-1629` | Generated nginx body-size scoping is undocumented: `/api/auth/` and `/api/v1/judge/` are limited to `1m`, while app defaults allow `50M`. |
+| DOC-28 | High | **Fresh** | API docs | `docs/api.md:1089-1098` vs. `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:26-97`, `src/lib/assignments/code-similarity.ts:248-253` | Docs say similarity-check returns `504` on timeout and only `{ flaggedPairs }`; actual response is `200` with `status`, `reason`, `pairs`, enriched usernames, etc. |
+| DOC-29 | Medium | **Fresh** | Security ops | `docs/admin-security-operations.md:67-77` vs. `src/lib/security/ip.ts:11-205`, `.env.example:175-182` | No documentation for `TRUSTED_PROXY_HOPS`, XFF chain expectations, or X-Real-IP fallback rules. |
+| DOC-30 | Medium | **Fresh** | Languages | `docs/languages.md:210,224` vs. `src/types/index.ts:130`, `src/lib/judge/languages.ts:1430-1440`, `docker/Dockerfile.judge-roc` | `roc` is re-enabled in code but still listed as disabled and ARM-prohibitive. |
+| DOC-31 | Low | **Fresh** | Languages | `docs/languages.md:192`, `README.md:77` vs. `src/lib/judge/languages.ts`, `docker/Dockerfile.judge-*` | Image-count claims still say 102 active; 99 are referenced by active configs, 3 Dockerfiles are orphans. |
 
 ---
 
-## Medium Severity
+## Fresh Findings (Cycle 3)
 
-### DOC-8: README and AGENTS.md claim 43 capabilities; code defines 46
-- **Doc**: `README.md:29` ("Capabilities are granular (43 of them)"), `AGENTS.md` (same phrasing throughout role/capability sections)
-- **Code**: `src/lib/capabilities/types.ts:8-53` — `ALL_CAPABILITIES` contains 46 unique capability strings (`users.view`, `users.create`, `users.edit`, `users.delete`, `users.manage_roles`, `problems.create`, `problems.edit`, `problems.delete`, `problems.view_all`, `problems.manage_visibility`, `groups.create`, `groups.edit`, `groups.delete`, `groups.view_all`, `groups.manage_members`, `assignments.create`, `assignments.edit`, `assignments.delete`, `assignments.view_status`, `submissions.view_all`, `submissions.view_source`, `submissions.rejudge`, `submissions.comment`, `problem_sets.create`, `problem_sets.edit`, `problem_sets.delete`, `problem_sets.assign_groups`, `contests.create`, `contests.manage_access_codes`, `contests.view_analytics`, `contests.view_leaderboard_full`, `contests.export`, `community.moderate`, `recruiting.manage_invitations`, `anti_cheat.view_events`, `anti_cheat.run_similarity`, `system.settings`, `system.backup`, `system.audit_logs`, `system.login_logs`, `system.plugins`, `system.chat_logs`, `files.upload`, `files.manage`, `content.submit_solutions`, `content.view_own_submissions`).
-- **What the doc says**: 43 granular capabilities.
-- **What the code does**: 46 unique capabilities.
-- **Consequence**: Security architecture descriptions and any automation that counts capabilities are off by three. Newer capabilities such as `community.moderate`, `recruiting.manage_invitations`, and `content.view_own_submissions` are likely the additions not reflected in the count.
-- **Suggested fix**: Update README.md and AGENTS.md to state 46 capabilities.
-- **Classification**: Outdated
-- **Confidence**: High
+### DOC-25: `docs/deployment.md` contradicts production defaults for `AUTH_TRUST_HOST`
 
-### DOC-9: Documentation claims 102 active Docker images; active configs reference 98
-- **Doc**: `README.md:77` ("102 language-specific Docker images"), `docs/languages.md:192` ("102 of 102 images build on ARM64")
-- **Code**: `src/lib/judge/languages.ts` — 98 distinct `dockerImage` values are referenced by the active `JUDGE_LANGUAGE_CONFIGS`. `docker/` contains 102 `Dockerfile.judge-*` files, but four of them (`judge-j`, `judge-malbolge`, `judge-roc`, `judge-simula`) are not referenced by any active language config.
-- **What the doc says**: 102 images correspond to the 125 language variants.
-- **What the code does**: Only 98 images are actually used by submittable languages.
-- **Consequence**: Image-count claims and size tables are inflated by orphan images. Operators planning disk capacity or build time from the docs will overestimate.
-- **Suggested fix**: Update README.md and docs/languages.md to "98 language-specific Docker images". Remove or annotate the orphan image rows in the README size table (`judge-j`, `judge-malbolge`, `judge-roc`). Decide whether to delete `docker/Dockerfile.judge-simula` or complete its integration.
-- **Classification**: Outdated
-- **Confidence**: High
+- **Doc:** `docs/deployment.md:18` (example `.env.production` sets `AUTH_TRUST_HOST=true`), `:44` (env table says default `false`).
+- **Code:** `deploy-docker.sh:750` generates `.env.production` with `AUTH_TRUST_HOST=true`; `docker-compose.production.yml:115` defaults `AUTH_TRUST_HOST=${AUTH_TRUST_HOST:-true}`; `src/lib/security/env.ts:260-265` returns `process.env.AUTH_TRUST_HOST === "true"`.
+- **Problem:** The environment reference table tells operators the default is `false`, while every production path ships `true`. This is an internal doc contradiction and a doc/code mismatch.
+- **Failure scenario:** An operator reads the table, believes the app defaults to a strict host-validation posture, and does not explicitly set the variable. The generated production file and compose still set `true`, which changes the effective Auth.js trust behavior without the operator realizing it. Conversely, an operator who sets `false` because the table says it is the default may break reverse-proxy Auth.js flows that the docs elsewhere say require `true`.
+- **Suggested fix:** Change the `Default` column for `AUTH_TRUST_HOST` to `true` (production / reverse-proxy) and add a note that local/dev `.env.example` uses `false`. Alternatively split the table into "local defaults" and "production defaults."
+- **Severity:** MEDIUM  
+- **Confidence:** High  
+- **Classification:** Incorrect / inconsistent
 
-### DOC-10: `all` language preset contents disagree between `setup.sh` and `deploy-docker.sh`
-- **Doc**: `docs/languages.md:214-220` ("all" excludes the 18 ARM-prohibitive languages), `README.md:71` (links to presets)
-- **Code**: `deploy-docker.sh:220-221` — `ARM_PROHIBITIVE_LANGS` excludes `carp chapel clean curry elm factor flix grain idris2 mercury minizinc modula2 moonbit pony purescript rescript roc wat` from `all`; `scripts/setup.sh:59-67` — `ALL_LANGS` includes the same prohibitive set (including `roc`) in the `all` preset.
-- **What the doc says**: `all` excludes the ARM-prohibitive set.
-- **What the code does**: `deploy-docker.sh` matches the docs; `setup.sh` contradicts them by building the prohibitive set under `all`.
-- **Consequence**: A developer running `bash scripts/setup.sh` and selecting "all" will build a different (larger, much slower) image set than a production operator running `./deploy-docker.sh --languages=all`. This creates confusion about what "all" means.
-- **Suggested fix**: Align `scripts/setup.sh:59-67` with `deploy-docker.sh:221` so both `all` presets exclude the ARM-prohibitive set and `everything` includes them. Update `preset_description` in `setup.sh` accordingly.
-- **Classification**: Inconsistent
-- **Confidence**: High
+### DOC-26: `docs/deployment.md` env var reference omits security/operational variables
 
-### DOC-11: `docs/deployment.md` language-preset size estimates are stale
-- **Doc**: `docs/deployment.md:80` — "Presets: core (~0.8 GB), popular (~2.5 GB), extended (~8 GB), all (~30 GB), everything (~35 GB ...)"
-- **Code**: `deploy-docker.sh:268-277` — "core (~1.2 GB), popular (~4 GB), extended (~12 GB), all (~30 GB), everything ... multi-hour ..."; `AGENTS.md:375` and `README.md:71` also use the larger figures.
-- **What the doc says**: Smaller size estimates that no longer match the script help text or empirical sizes.
-- **What the code does**: `deploy-docker.sh --help` and README/AGENTS.md use larger, presumably current estimates.
-- **Consequence**: Operators provisioning disk space from `docs/deployment.md` may underestimate by up to 50% for the smaller presets.
-- **Suggested fix**: Update `docs/deployment.md:80` to match `deploy-docker.sh:268-277` (core ~1.2 GB, popular ~4 GB, extended ~12 GB, all ~30 GB, everything multi-hour ~35 GB+).
-- **Classification**: Outdated
-- **Confidence**: High
+- **Doc:** `docs/deployment.md:40-63` ("Environment Variable Reference" table).
+- **Code:** `.env.example:175-182` (`TRUSTED_PROXY_HOPS`, `JUDGE_ALLOWED_IPS`, `JUDGE_STRICT_IP_ALLOWLIST`), `:122` (`RUNNER_AUTH_TOKEN`), `:230-236` (`ENABLE_COMPILER_LOCAL_FALLBACK`, `DATA_RETENTION_LEGAL_HOLD`); `.env.production.example:85-93`, `:145-151`; `deploy-docker.sh` reads `SKIP_POST_DEPLOY_PRUNE`, `LANGUAGE_FILTER`, `LANGUAGE_BUILD_STRATEGY`, etc.
+- **Problem:** The deployment guide presents itself as the canonical env var reference but leaves out variables that control IP trust, judge allowlists, compiler runner auth, legal hold, and deploy behavior.
+- **Failure scenario:** An operator deploying behind Cloudflare does not know `TRUSTED_PROXY_HOPS` exists; the default of `1` causes `extractClientIp` to return `null`, collapsing rate-limit keys and judge IP allowlists. Another operator omits `JUDGE_ALLOWED_IPS` because it is not in the guide, leaving the judge API open by default.
+- **Suggested fix:** Add rows for `TRUSTED_PROXY_HOPS`, `JUDGE_ALLOWED_IPS`, `JUDGE_STRICT_IP_ALLOWLIST`, `COMPILER_RUNNER_URL`, `RUNNER_AUTH_TOKEN`, `ENABLE_COMPILER_LOCAL_FALLBACK`, `DATA_RETENTION_LEGAL_HOLD`, `SKIP_POST_DEPLOY_PRUNE`, `LANGUAGE_FILTER`, and `LANGUAGE_BUILD_STRATEGY` to the reference table.
+- **Severity:** MEDIUM  
+- **Confidence:** High  
+- **Classification:** Missing
 
-### DOC-12: `GET /api/v1/admin/docker/images` auth described as role-based
-- **Doc**: `docs/api.md:1666-1668` — "List Docker images. **Admin or Super Admin.**"
-- **Code**: `src/app/api/v1/admin/docker/images/route.ts:55` — handler checks `system.settings` capability.
-- **What the doc says**: Admin role gate.
-- **What the code does**: Capability gate (`system.settings`).
-- **Consequence**: Custom roles or integrations that gate on role names will reject users who have the correct capability, or conversely assume any admin can access it.
-- **Suggested fix**: Change `docs/api.md:1668` to "Requires `system.settings` capability."
-- **Classification**: Incorrect
-- **Confidence**: High
+### DOC-27: Generated nginx `client_max_body_size` scoping is undocumented
 
-### DOC-13: AGENTS.md Docker image build/delete auth described as "Admin/super_admin only"
-- **Doc**: `AGENTS.md:260-261`
-- **Code**: `src/app/api/v1/admin/docker/images/route.ts:93,165` and `src/app/api/v1/admin/docker/images/build/route.ts:19` — all three require `system.settings`.
-- **What the doc says**: "Admin/super_admin only."
-- **What the code does**: Capability-based gate.
-- **Consequence**: Same class as DOC-12 — role-based integrations apply the wrong authorization model.
-- **Suggested fix**: Change `AGENTS.md:260-261` to "Requires `system.settings` capability. Audit logged." to match `docs/api.md` and the implementation.
-- **Classification**: Incorrect
-- **Confidence**: High
+- **Doc:** `docs/deployment.md` and `docs/api.md` describe the default upload ceiling (`50M`) but do not describe nginx path-level limits.
+- **Code:** `deploy-docker.sh:1589-1629` generates: `/api/auth/` → `1m`; `/api/v1/judge/poll` → `50M`; `/api/v1/judge/` → `1m`; `location /` → `50M`.
+- **Problem:** Application-level defaults (`uploadMaxFileSizeBytes = 50 MiB`) and the broad `location /` limit agree, but auth and generic judge paths are capped at `1m`. This is intentional hardening, yet it is invisible to API consumers and operators.
+- **Failure scenario:** An admin uploads a 2 MiB profile picture through an `/api/auth/` endpoint, or a worker/judge report path other than `/api/v1/judge/poll` receives a >1 MiB payload. nginx returns `413 Payload Too Large` before the application can validate the request, and the API docs give no hint that these paths have a lower limit.
+- **Suggested fix:** Add a "Request body limits" subsection to `docs/deployment.md` (and a note in `docs/api.md`) listing the nginx path-level caps and the app-level defaults.
+- **Severity:** MEDIUM  
+- **Confidence:** High  
+- **Classification:** Missing
 
-### DOC-14: Contest join endpoint docs omit failure-scoped rate limits
-- **Doc**: `docs/api.md:941-943` — "Rate limit: `contest:join`."
-- **Code**: `src/app/api/v1/contests/join/route.ts:28-36` — on failed redemption, the route additionally consumes `contest:join:invalid` (per-user) and `contest:join:invalid-code` (per access-code hash).
-- **What the doc says**: Only one rate-limit bucket.
-- **What the code does**: Three buckets depending on success/failure.
-- **Consequence**: API consumers retrying on 400 may hit 429 from undocumented buckets. Operators monitoring rate-limit headers will not understand the source.
-- **Suggested fix**: Expand `docs/api.md:941-943` to list all three buckets and the conditions that trigger the failure buckets.
-- **Classification**: Missing
-- **Confidence**: High
+### DOC-28: `docs/api.md` similarity-check endpoint is stale
 
-### DOC-15: `judge-haskell` base image/OS reported three different ways
-- **Doc**: `AGENTS.md:210` — base `ghc:9.4-alpine`; `src/lib/judge/languages.ts:110` — "Debian Bookworm / GHC 9.4"
-- **Code**: `docker/Dockerfile.judge-haskell:1` — `FROM alpine:3.21`
-- **What the doc says**: Two contradictory OS/base descriptions.
-- **What the code does**: The image is Alpine 3.21 with GHC 9.4 installed via apk.
-- **Consequence**: Operators troubleshooting musl/glibc or shell-path issues are misled. The admin UI runtime-info column shows the wrong OS.
-- **Suggested fix**: Update `src/lib/judge/languages.ts:110` to "Alpine 3.21 / GHC 9.4". Update `AGENTS.md:210` base column to "Alpine 3.21".
-- **Classification**: Inconsistent
-- **Confidence**: High
+- **Doc:** `docs/api.md:1089-1098` — auth "Instructor or above", "30-second timeout. Returns `504` on timeout.", response `{ "data": { "flaggedPairs": 5 } }`.
+- **Code:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-97` allows assistants with `anti_cheat.run_similarity`; returns `200` with `status`, `reason`, `flaggedPairs`, `submissionCount`, `maxSupportedSubmissions`, `pairs` (enriched with `user1Name`/`user2Name` and rounded similarity). `src/lib/assignments/code-similarity.ts:248-253` defines the result shape. Unit tests in `tests/unit/api/similarity-check.route.test.ts:104-189` assert the new shape.
+- **Problem:** Auth, HTTP status on timeout, and response schema are all wrong.
+- **Failure scenario:** A front-end integration written against the docs polls for a timeout and expects `504`, receiving `200` with `status: "timed_out"` instead, and fails to parse the response because `pairs`, `submissionCount`, and `maxSupportedSubmissions` are missing from the documented schema.
+- **Suggested fix:** Update the endpoint entry to: (1) auth requires `anti_cheat.run_similarity` plus group TA/assignment, or `canManageContest`; (2) timeout returns `200` with `status: "timed_out"`; (3) document the full response schema including `pairs[]` with enriched names and `similarity` as a percentage.
+- **Severity:** HIGH  
+- **Confidence:** High  
+- **Classification:** Outdated / incorrect
+
+### DOC-29: `docs/admin-security-operations.md` lacks reverse-proxy IP trust documentation
+
+- **Doc:** `docs/admin-security-operations.md:67-77` discusses reverse-proxy perimeter controls but never mentions IP extraction mechanics.
+- **Code:** `src/lib/security/ip.ts:11-205` implements `TRUSTED_PROXY_HOPS`, XFF chain validation, IPv4-mapped-IPv6 unwrapping, IPv6 canonicalization, and X-Real-IP fallback only when XFF is absent. `.env.example:175-182` documents the variables only in the example file.
+- **Problem:** The cycle-3 change to IP extraction (DOC A7) has no admin-facing documentation. Operators must read `src/lib/security/ip.ts` to understand how to configure `TRUSTED_PROXY_HOPS` or why `X-Real-IP` is ignored when XFF is present.
+- **Failure scenario:** A deployment behind Cloudflare plus origin nginx sets `TRUSTED_PROXY_HOPS=1` but receives `X-Forwarded-For: <client>, <cloudflare>, <origin-nginx>`. `extractClientIp` returns `null`, so rate-limit keys fall back to a global bucket and judge IP allowlists deny legitimate workers. The operator has no runbook to diagnose this.
+- **Suggested fix:** Add a section to `docs/admin-security-operations.md` describing `TRUSTED_PROXY_HOPS`, the required minimum XFF hop count, X-Real-IP fallback behavior, and IPv6 canonicalization.
+- **Severity:** MEDIUM  
+- **Confidence:** High  
+- **Classification:** Missing
+
+### DOC-30: `docs/languages.md` still disables `roc` after the codebase re-enabled it
+
+- **Doc:** `docs/languages.md:210` lists `roc` in "Disabled Languages" with the note "Upstream compiler panic"; `:224` includes `roc` in the ARM-prohibitive set.
+- **Code:** `src/types/index.ts:130` includes `"roc"` in the `Language` union; `src/lib/judge/languages.ts:1430-1440` defines an active `roc` config with `dockerImage: "judge-roc:latest"` and a `roc build` compile command; `docker/Dockerfile.judge-roc` exists.
+- **Problem:** The language is treated as a first-class supported variant in code but is documented as disabled and excluded from the `all` preset.
+- **Failure scenario:** An operator building the `all` preset from `docs/languages.md` skips `roc` and later cannot explain why submissions in `roc` fail to validate in the UI, or why the admin language list shows a language that the docs say is disabled.
+- **Suggested fix:** Remove `roc` from the "Disabled Languages" section and the ARM-prohibitive set in `docs/languages.md`; update the preset description and E2E/image counts accordingly.
+- **Severity:** MEDIUM  
+- **Confidence:** High  
+- **Classification:** Outdated
+
+### DOC-31: Language image-count claims are still stale
+
+- **Doc:** `README.md:77` ("102 language-specific Docker images"), `docs/languages.md:192` ("102 of 102 images build on ARM64").
+- **Code:** `src/lib/judge/languages.ts` references **99** distinct `dockerImage` values. `docker/Dockerfile.judge-*` files total **102**; three (`judge-j`, `judge-malbolge`, `judge-simula`) are not referenced by any active config.
+- **Problem:** The docs continue to conflate "Dockerfiles in the repo" with "images used by submittable languages." After `roc` was re-enabled, the active image count rose from 98 to 99, but the docs still say 102.
+- **Failure scenario:** Capacity and build-time planning from the README overestimates by three orphan images. The "102 of 102 build on ARM64" claim also conflicts with the ARM-prohibitive set, which excludes languages whose Dockerfiles still exist.
+- **Suggested fix:** Update the claims to "99 active language images" and "102 language Dockerfiles (3 not yet bound to active configs)." Remove or annotate the orphan rows in `README.md`.
+- **Severity:** LOW  
+- **Confidence:** High  
+- **Classification:** Outdated
 
 ---
 
-## Low Severity
+## Validated / Upgraded Cycle 2 Findings
 
-### DOC-16: `docs/languages.md` E2E summary still reports 113-language scope
-- **Doc**: `docs/languages.md:194-204`
-- **Code**: `src/types/index.ts:30-156` — 125 active language variants.
-- **What the doc says**: "113 of 113 languages pass on amd64" and "112 of 113 languages pass on arm64" dated 2026-03-29.
-- **What the code does**: Active language count is now 125.
-- **Consequence**: Contributors assume E2E coverage is 113 languages and may skip the newer 12 variants. The stale totals also hide real coverage gaps.
-- **Suggested fix**: Mark the section as a dated historical snapshot and add a note: "As of 2026-03-29 (113 languages). Current active count: 125." Update with current pass counts when a new E2E run is available.
-- **Classification**: Outdated
-- **Confidence**: High
+The following findings from the 2026-07-01 review were re-checked against the current working tree. They are **still present** unless noted.
 
-### DOC-17: `AGENTS.md` language table row count does not match its "125 variants" claim
-- **Doc**: `AGENTS.md:20`, `AGENTS.md:22-150`
-- **Code**: `src/types/index.ts:30-156` — 125 active variants; the `AGENTS.md` table has 126 rows including sub-rows 6b/8b and the inactive `roc` row.
-- **What the doc says**: "JudgeKit currently defines 125 language variants."
-- **What the code does**: The table contains 126 entries.
-- **Consequence**: Any automated count of the AGENTS.md table produces the wrong number; the inclusion of inactive `roc` inflates the active count.
-- **Suggested fix**: Remove the `roc` row (or mark it `[DISABLED]`) and renumber sub-rows to match the 125-variant claim.
-- **Classification**: Outdated
-- **Confidence**: High
+### DOC-1 — `docs/api.md` omits 34 live `/api/v1` endpoints
+**Status:** Still present. `src/app/api/v1/**` contains the same undocumented routes listed in the prior review (auth password/reset/verify, code snapshots, community, contest sub-resources, exam sessions, health, playground, problems import/draft, recruiting validate, submissions queue-status, admin submissions export/rejudge/test-email). The env-hardening cycle did not touch API docs.
 
-### DOC-18: `docker/Dockerfile.judge-simula` is an orphan image
-- **Doc**: none
-- **Code**: `docker/Dockerfile.judge-simula` exists; no entry in `src/types/index.ts`, `src/lib/judge/languages.ts`, `judge-worker-rs/src/types.rs`, or any docs.
-- **What the doc says**: Nothing.
-- **What the code does**: Dockerfile exists with no language binding.
-- **Consequence**: A developer scanning `docker/` incorrectly concludes `simula` is supported. Following the "Adding a New Language" checklist would produce a duplicate Dockerfile.
-- **Suggested fix**: Either complete the `simula` integration (type, config, Rust enum/test, E2E solution, docs) or remove `docker/Dockerfile.judge-simula` and optionally add a note in `docs/languages.md` "Potential Additions" table.
-- **Classification**: Orphan
-- **Confidence**: High
+### DOC-2 — `flix` documented as `judge-jvm`, actual image is `judge-flix`
+**Status:** Still present. `AGENTS.md:113` and `docs/languages.md:73` list `judge-jvm`; `src/lib/judge/languages.ts` uses `judge-flix:latest`.
 
-### DOC-19: AGENTS.md "Adding a New Language" checklist omits Rust runner-side validation
-- **Doc**: `AGENTS.md:151-159`
-- **Code**: `src/lib/compiler/execute.ts` delegates to a Rust runner sidecar when `COMPILER_RUNNER_URL` is configured; `judge-worker-rs/src/languages.rs` and runner code validate/execute the commands.
-- **What the doc says**: Checklist stops at Rust config + test entry.
-- **What the code does**: Production sidecar mode requires the new language's compile/run commands to also be accepted by the Rust-side validator.
-- **Consequence**: A contributor validates locally via Node fallback and discovers production failures only after deploy because the Rust-side validator or serialization differs.
-- **Suggested fix**: Add a checklist step: "Verify the new language's compile/run commands pass the Rust-side validator and add a runner test/config entry in `judge-worker-rs/`."
-- **Classification**: Missing
-- **Confidence**: Medium
+### DOC-3 — `flix` simultaneously arm64-ready and ARM-prohibitive
+**Status:** Still present. `docs/languages.md:73` shows checkmarks for arm64; `:224` includes `flix` in the ARM-prohibitive set; `deploy-docker.sh:220` also excludes it from `all`.
 
-### DOC-20: README language-preset list omits the `everything` preset
-- **Doc**: `README.md:71` — "See Language presets for preset options (`core`, `popular`, `extended`, `all`)."
-- **Code**: `docs/languages.md:214-220`, `AGENTS.md:375`, `deploy-docker.sh:268-277` all document the `everything` escape hatch.
-- **What the doc says**: Four presets.
-- **What the code does**: Five presets exist.
-- **Consequence**: README readers miss the `everything` escape hatch documented elsewhere.
-- **Suggested fix**: Add `everything` to the README presets list or replace the inline list with a reference to `docs/languages.md#docker-image-presets`.
-- **Classification**: Missing
-- **Confidence**: Medium
+### DOC-4 — `roc` language support
+**Status:** Resolved in code, upgraded to DOC-30. The TypeScript `Language` union (`src/types/index.ts:130`) and Rust worker now include `roc`, and `src/lib/judge/languages.ts:1430-1440` has an active config. The docs still mark it disabled, so the mismatch has migrated from "doc says active but code rejects" to "code supports but docs disable."
 
-### DOC-21: Several documented admin/problem endpoints lack request/response body details
-- **Doc**: `docs/api.md` — `GET /api/v1/admin/workers/stats`, `POST /api/v1/admin/docker/images/prune`, `PATCH /api/v1/admin/plugins/:id`, `GET /api/v1/problems/:id/export`, `POST /api/v1/problems/:id/compute-expected`, and several other admin/problem entries only describe the endpoint without full schemas.
-- **Code**: Corresponding route files define request bodies and response shapes.
-- **What the doc says**: Minimal or no body/response detail.
-- **What the code does**: Full validation and response objects exist.
-- **Consequence**: API consumers must read source code to construct valid requests.
-- **Suggested fix**: Flesh out request/response schemas for partially documented endpoints during the API-doc update pass.
-- **Classification**: Missing
-- **Confidence**: Medium
+### DOC-5 — README image-size table lists orphan images
+**Status:** Partially resolved. `judge-roc` is now a legitimate active image. `judge-j` (`README.md:94`) and `judge-malbolge` (`README.md:86`) still have no active language config and remain orphan rows.
 
-### DOC-22: `SECURITY.md` scope references a non-existent `code-similarity-rs/` directory
-- **Doc**: `SECURITY.md:20` — "The code-similarity and rate-limiter sidecars (`code-similarity-rs/`, `rate-limiter-rs/`)"
-- **Code**: `rate-limiter-rs/` exists as a directory; the code-similarity sidecar is at the repository root (`Dockerfile.code-similarity`, `code-similarity-rs/Cargo.toml` only at top-level?) — actually `code-similarity-rs/` exists as a directory containing `Cargo.toml`, but it is not listed in README/AGENTS.md project structure the same way? Wait the top-level listing shows `code-similarity-rs/Cargo.toml`. Let me verify directory contents.
-- **What the doc says**: Both sidecars live under `code-similarity-rs/` and `rate-limiter-rs/`.
-- **What the code does**: `code-similarity-rs/` directory exists with `Cargo.toml`; however the project's Docker compose builds from `Dockerfile.code-similarity` at root. The path is technically present but the security scope wording could be clearer.
-- **Consequence**: Minor ambiguity about which paths are in scope for vulnerability reports.
-- **Suggested fix**: Verify directory layout and update `SECURITY.md:20` to match the actual paths (e.g., `code-similarity-rs/` source + `Dockerfile.code-similarity` at root, `rate-limiter-rs/` source + `Dockerfile.rate-limiter-rs` at root).
-- **Classification**: Inconsistent
-- **Confidence**: Low
+### DOC-6 — Similarity-check auth
+**Status:** Still present. `docs/api.md:1091` says "Instructor or above"; `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:12-24` also grants access to assistants with `anti_cheat.run_similarity` who are group TAs or assigned to the teaching group. This is now bundled with the broader similarity-check doc staleness in DOC-28.
 
-### DOC-23: Internal cleanup endpoint path/auth is correct but could be cross-checked
-- **Doc**: `docs/api.md:1936-1944` — `POST /api/internal/cleanup` with `CRON_SECRET` bearer.
-- **Code**: `src/app/api/internal/cleanup/route.ts` exists and checks `CRON_SECRET`.
-- **What the doc says**: Path and auth method match.
-- **What the code does**: Matches.
-- **Consequence**: None; included for completeness of the final sweep.
-- **Suggested fix**: None.
-- **Classification**: Clean
-- **Confidence**: High
+### DOC-7 — App container internal port
+**Status:** Still present. `docs/deployment.md:7` says "app container listens on port `3100` internally"; `docker-compose.production.yml:96` maps `127.0.0.1:3100:3000`, so the app listens on `3000` inside the container.
 
-### DOC-24: `docs/data-retention-policy.md` incorrectly states legal hold requires a restart
-- **Doc**: `docs/data-retention-policy.md:38` — "No data is deleted until the variable is removed and the application is restarted."
-- **Code**: `src/lib/data-retention.ts:46-52` — `isDataRetentionLegalHold()` re-reads `process.env.DATA_RETENTION_LEGAL_HOLD` on every prune cycle; `src/lib/data-retention-maintenance.ts:131-134` calls it before each daily prune.
-- **What the doc says**: Removing the legal hold only takes effect after a process restart.
-- **What the code does**: The next scheduled prune (within 24 hours) will observe the changed env var and resume pruning without a restart.
-- **Consequence**: Operators may schedule unnecessary restarts, or — worse — assume pruning cannot be accidentally re-enabled by simply unsetting the variable and therefore fail to lift the hold promptly.
-- **Suggested fix**: Update `docs/data-retention-policy.md:38` to: "No data is deleted while the variable is set. Removing or unsetting it allows the next scheduled prune cycle to resume normal retention enforcement without requiring a process restart."
-- **Classification**: Incorrect
-- **Confidence**: High
+### DOC-8 — Capability count 43 vs. 46
+**Status:** Still present. `README.md:29` and `AGENTS.md` state 43 capabilities; `src/lib/capabilities/types.ts:8-80` defines 46 (`community.moderate`, `recruiting.manage_invitations`, `content.view_own_submissions` are the additions).
+
+### DOC-9 — Active Docker image count
+**Status:** Still present, count updated. README/docs claim 102 active images; active configs now reference 99 distinct images (was 98 before `roc` was re-enabled). Three Dockerfiles remain orphans (`judge-j`, `judge-malbolge`, `judge-simula`). See DOC-31.
+
+### DOC-10 — `all` preset disagreement
+**Status:** Still present. `docs/languages.md:214-220` says `all` excludes the 18 ARM-prohibitive languages; `scripts/setup.sh:59-149` includes those languages in its `all` preset.
+
+### DOC-11 — Preset size estimates stale
+**Status:** Still present. `docs/deployment.md:80-81` lists core ~0.8 GB, popular ~2.5 GB, extended ~8 GB; `deploy-docker.sh:268-277` and `AGENTS.md:375` use core ~1.2 GB, popular ~4 GB, extended ~12 GB.
+
+### DOC-12 / DOC-13 — Docker image API auth
+**Status:** Still present. `docs/api.md:1668` says Docker image list requires "Admin or Super Admin" while `:1678,1693,1704,1718` correctly say `system.settings`. `AGENTS.md:260-261` still says "Admin/super_admin only." All three route handlers check `system.settings`.
+
+### DOC-14 — Contest join rate limits
+**Status:** Still present. `docs/api.md:943` lists only `contest:join`; `src/app/api/v1/contests/join/route.ts:34-41` additionally consumes `contest:join:invalid` and `contest:join:invalid-code` on failed redemption.
+
+### DOC-15 — `judge-haskell` base image reported three ways
+**Status:** Still present. `docker/Dockerfile.judge-haskell:1` is `FROM alpine:3.21`; `AGENTS.md:210` says `ghc:9.4-alpine`; `src/lib/judge/languages.ts:111` runtime info says `Debian Bookworm / GHC 9.4`.
+
+### DOC-16 — E2E totals report 113 languages
+**Status:** Still present. `docs/languages.md:194-204` reports the March 29 113-language snapshot; active variant count is 125.
+
+### DOC-17 — AGENTS language table row count
+**Status:** Still present. `AGENTS.md:20` claims 125 variants; the table (`AGENTS.md:22-150`) contains 126 rows including `6b`, `8b`, and the now-active `roc` row.
+
+### DOC-18 — Orphan `judge-simula` Dockerfile
+**Status:** Still present. `docker/Dockerfile.judge-simula` exists; no entry in `src/types/index.ts`, `src/lib/judge/languages.ts`, or docs.
+
+### DOC-19 — New-language checklist omits Rust runner validation
+**Status:** Still present. `AGENTS.md:151-159` checklist stops before `judge-worker-rs/src/languages.rs` and runner-side validation, despite production deployments delegating to the Rust runner.
+
+### DOC-20 — README omits `everything` preset
+**Status:** Still present. `README.md:71` lists `core`, `popular`, `extended`, `all`; `docs/languages.md:214-220`, `AGENTS.md:375`, and `deploy-docker.sh:268-277` document `everything`.
+
+### DOC-21 — Admin/problem endpoints lack body/response details
+**Status:** Still present. Partially documented endpoints (admin worker stats, docker prune, plugin patch, problem export/compute-expected, etc.) still do not include full request/response schemas.
+
+### DOC-22 — `SECURITY.md` code-similarity path wording
+**Status:** Low impact. `code-similarity-rs/` exists, so the path is technically correct. The root-level `Dockerfile.code-similarity` is not under that directory, which can confuse contributors. Consider clarifying.
+
+### DOC-24 — Data-retention legal hold restart claim
+**Status:** Still present. `docs/data-retention-policy.md:38` says a restart is required; `src/lib/data-retention.ts:46-52` re-reads `DATA_RETENTION_LEGAL_HOLD` every prune cycle.
+
+---
+
+## Verified Cycle-3 Code Fixes (resolved issues, noted for documentation completeness)
+
+These aggregate-level findings are no longer active in the code. They are listed because the documentation should reference the current behavior if it ever describes nginx or proxy behavior.
+
+1. **Generated nginx catch-all body size** — `deploy-docker.sh:1629` and `:1707` now set `client_max_body_size 50M;` in `location /`, resolving the prior CRITICAL `413` issue for uploads.
+2. **X-Forwarded-For chain preservation** — `deploy-docker.sh:1596,1611,1623,1636` and `scripts/online-judge.nginx.conf:62-100` use `$proxy_add_x_forwarded_for`, and the generated config explicitly avoids `X-Forwarded-Host` (`deploy-docker.sh:1598,1612`).
+3. **Baseline nginx security headers** — `deploy-docker.sh:1583-1587`, `static-site/nginx.conf:25-29`, `static-site/static.nginx.conf:24-28`, and `scripts/online-judge.nginx.conf:51-56` all set `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy`, and `Strict-Transport-Security`.
+4. **Static-site directory listing** — `static-site/nginx.conf:45` sets `autoindex off;`.
+5. **Compiler validation before Rust runner delegation** — `src/lib/compiler/execute.ts:709-759` validates Docker image, source size, compile command, and run command before calling `tryRustRunner`, matching the cycle-3 plan.
+6. **IP extraction X-Real-IP fallback** — `src/lib/security/ip.ts:189-193` only uses `X-Real-IP` when `X-Forwarded-For` is absent, as documented in the cycle-3 plan.
 
 ---
 
@@ -307,27 +219,20 @@ Summary: **24 findings** across API docs, language/image inventory, deployment i
 
 | Area | Verdict | Notes |
 |------|---------|-------|
-| `CLAUDE.md` deployment rules | Clean | `SKIP_LANGUAGES`, `BUILD_WORKER_IMAGE`, `INCLUDE_WORKER` flags match `deploy-docker.sh` and production deploy scripts. |
-| `docs/api.md` endpoint list | Drift | Structurally incomplete; auth descriptions for Docker list and similarity-check need fixes; contest join rate limits need expansion. |
-| `docs/languages.md` active language table | Mostly clean | 125 active rows match `src/types/index.ts`; contradictions around `flix`, `roc`, image counts, and E2E totals need fixing. |
-| `AGENTS.md` language table | Drift | 126 rows including inactive `roc`; `flix` image wrong; `haskell` base wrong; capability count wrong. |
-| `docs/deployment.md` env var table | Mostly clean | Port mapping and preset sizes are stale; otherwise matches `docker-compose.production.yml` and `deploy-docker.sh`. |
-| `docs/data-retention-policy.md` | Minor drift | Default windows and env var names match `src/lib/data-retention.ts`; the restart requirement claim is incorrect. |
-| `docs/judge-workers.md` | Not reviewed in depth | Spot checks match `docker-compose.worker.yml`; no findings. |
-| `docker-compose.production.yml` | Clean | PostgreSQL 18 pin, PGDATA, docker-proxy setup, sidecar env vars match AGENTS.md descriptions. |
-| `package.json` versions | Clean | Next.js 16, TypeScript 5.9, React 19, Tailwind v4, Auth.js v5 (beta.31) all match README/AGENTS.md. |
-| `package.json` scripts | Clean | All npm scripts referenced in README exist. |
-| Password validation | Clean | 8-character minimum matches `src/lib/security/password.ts`. |
-| Setup script workflow | Drift | `scripts/setup.sh` `all` preset and size description disagree with `deploy-docker.sh` and docs. |
+| `docs/deployment.md` | Drift | Port mapping, preset sizes, `AUTH_TRUST_HOST` default, and missing env vars remain the main issues. Nginx body-size scoping is now a fresh gap. |
+| `docs/api.md` | Drift | Similarity-check docs are now significantly stale; contest join rate limits and Docker image auth still wrong; 34 endpoints still undocumented. |
+| `docs/languages.md` | Drift | `flix`/`roc`/ARM-prohibitive contradictions, stale image counts, and stale E2E totals persist. The `roc` re-enable created a new contradiction. |
+| `AGENTS.md` | Drift | Language table count, `flix`/`haskell` base, capability count, Docker auth wording, and setup preset mismatch remain. |
+| `README.md` | Drift | Capability count, image count, orphan image rows, and missing `everything` preset remain. |
+| `docs/admin-security-operations.md` | Drift | No guidance on `TRUSTED_PROXY_HOPS` or the new X-Real-IP fallback semantics. |
+| `docs/data-retention-policy.md` | Minor drift | Legal-hold restart claim still wrong. |
+| `static-site/nginx.conf` / generated nginx | Clean (code) | Headers, autoindex, body-size, and XFF handling are now correct; docs do not contradict them, they simply do not describe them. |
 
----
+## Suggested Remediation Order
 
-## Suggested Documentation Remediation Order
-
-1. **API completeness** — document all undocumented endpoints and fix auth descriptions (DOC-1, DOC-6, DOC-12, DOC-13, DOC-14, DOC-21).
-2. **Language inventory reconciliation** — decide `roc`/`flix`/ARM-prohibitive status, then update all three language tables and the Rust worker (DOC-2, DOC-3, DOC-4, DOC-15, DOC-16, DOC-17).
-3. **Image counts and orphan Dockerfiles** — remove or integrate `judge-j`, `judge-malbolge`, `judge-roc`, `judge-simula`; update 102→98 claims (DOC-5, DOC-9, DOC-18).
-4. **Deployment accuracy** — fix internal port, preset sizes, and `setup.sh`/`deploy-docker.sh` `all` preset alignment (DOC-7, DOC-10, DOC-11).
-5. **Capability count** — update 43→46 in README/AGENTS.md (DOC-8).
-6. **Data retention mechanics** — correct the legal-hold restart claim (DOC-24).
-7. **Developer guide polish** — add Rust runner validation step and README `everything` preset mention (DOC-19, DOC-20).
+1. **API docs accuracy** — fix similarity-check auth/response/timeout (DOC-28), contest join rate limits (DOC-14), Docker image auth inconsistency (DOC-12/DOC-13), and begin documenting the 34 missing endpoints (DOC-1/DOC-21).
+2. **Deployment guide** — fix internal port (DOC-7), preset sizes (DOC-11), `AUTH_TRUST_HOST` default contradiction (DOC-25), and add the missing env vars (DOC-26). Document nginx body-size scoping (DOC-27).
+3. **Language inventory** — reconcile `roc` status (DOC-30), `flix` image and ARM status (DOC-2/DOC-3), update active image count to 99 (DOC-9/DOC-31), fix `haskell` base description (DOC-15), and refresh E2E totals (DOC-16/DOC-17).
+4. **Security ops guide** — add `TRUSTED_PROXY_HOPS`/XFF/X-Real-IP documentation (DOC-29).
+5. **README/AGENTS polish** — update capability count (DOC-8), preset list (DOC-20), orphan image rows (DOC-5), and image count (DOC-9/DOC-31).
+6. **Data retention** — correct the legal-hold restart claim (DOC-24).

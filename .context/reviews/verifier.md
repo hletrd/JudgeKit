@@ -251,3 +251,74 @@ These claims are implemented as stated:
 - `deploy-docker.sh` correctly generates `docker-compose.app-only.yml` at deploy time and enforces `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false` for `algo.xylolabs.com`.
 - The raw `psql` additive repair block that previously bypassed the Drizzle journal has been removed; the deploy-security test confirms no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` remains in `deploy-docker.sh`.
 - No additional unimplemented features or doc/comment lies were found beyond those listed above during the scanned areas.
+
+## Cycle-3 remediation verification (2026-07-03)
+
+Verification was re-run against the cycle-3 hardening changes. The following original findings are now addressed; the remaining open items from the prior review are unchanged unless noted below.
+
+### Verified fixes
+
+1. **Nginx X-Forwarded-For chain**
+   - `deploy-docker.sh` emits `$proxy_add_x_forwarded_for` in generated proxy blocks.
+   - `scripts/online-judge.nginx.conf` and `scripts/online-judge.nginx-http.conf` were updated to use `$proxy_add_x_forwarded_for`.
+   - `tests/unit/infra/judge-report-nginx.test.ts` asserts these constraints and passes.
+
+2. **Nginx upload body limit**
+   - `deploy-docker.sh` now sets `client_max_body_size 50M;` in the catch-all `location /` block and the judge poll endpoint, while `/api/v1/judge/` remains at `1m`.
+   - `tests/unit/infra/judge-report-nginx.test.ts:97-123` covers the body-size guardrails.
+
+3. **Nginx security headers**
+   - `deploy-docker.sh` emits baseline security headers (`X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security`) in both generated server blocks.
+   - `static-site/nginx.conf` and committed app templates include matching headers.
+   - `tests/unit/infra/deploy-security.test.ts` asserts header presence.
+
+4. **Rust worker PID limits**
+   - `judge-worker-rs/src/docker.rs:323-326` now uses phase-specific limits: `Compile = 128`, `Run = 64`.
+
+5. **Rust worker workspace cleanup**
+   - `judge-worker-rs/src/workspace.rs:42-65` implements `Drop` for `SandboxWorkspace`, rechowning the tree back to the worker UID/GID before `remove_dir_all`.
+   - `judge-worker-rs/src/executor.rs` and `judge-worker-rs/src/runner.rs:842-878` mount the workspace, chown to `65534`, and rely on drop cleanup.
+   - Unit tests in `workspace.rs` verify normal and sandbox-owned cleanup.
+
+6. **`roc` language consistency**
+   - `src/types/index.ts` now includes `"roc"` in the `Language` union.
+   - `src/lib/judge/languages.ts` defines `roc` with `JUDGE_TOOLCHAIN_VERSIONS.roc = 0.0.3`.
+
+7. **IP canonicalization**
+   - `src/lib/judge/ip-allowlist.ts:139-152` now rejects leading-zero IPv4 octets (except the single digit `0`), matching `src/lib/security/ip.ts`.
+   - `src/lib/security/ip.ts` canonicalizes IPv6 and normalized IPv4 in `extractClientIp`.
+
+8. **Code-similarity sidecar**
+   - `src/lib/judge/code-similarity-client.ts` uses `AbortSignal.any([signal, timeoutSignal])`, returns structured error codes, and logs via the shared logger.
+   - `src/lib/judge/code-similarity.ts` propagates the cancellation signal, serializes sidecar runs with an advisory file lock, and returns the `too_many_submissions` reason.
+   - `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts` handles abort-only timeout paths and the new sidecar return type.
+   - `tests/unit/api/similarity-check.route.test.ts` was updated for the new return type.
+
+9. **Auth security**
+   - `src/lib/security/env.ts:213-241` implements `getTrustedAuthHosts()` using `AUTH_URL` plus DB/system `allowedHosts`, with `normalizeHostForComparison()`.
+   - `src/lib/security/csrf.ts` uses `getTrustedAuthHosts()` for origin validation and rejects protocol-relative/malformed origins.
+   - `src/lib/auth/session-security.ts:36-41` compares token revocation at millisecond precision, and `clearAuthToken` sets `authenticatedAt = 0` to close the `iat` fallback window.
+   - `src/lib/auth/trusted-host.ts` adds a host-header guard for production.
+
+10. **Rate-limit ordering**
+    - `src/lib/api/handler.ts` documents that the configured rate-limit key is IP-keyed and checked before auth so unauthenticated requests are still throttled; endpoints needing user-keyed limits consume them inside the handler.
+    - `src/app/api/v1/contests/join/route.ts` rejects recruiting access before the rate-limit check.
+
+### Design notes / intentional remaining posture
+
+- `AUTH_TRUST_HOST=true` is still set in generated `.env.production` (`deploy-docker.sh:952`) because the app runs behind a trusted reverse proxy. Host validation is now enforced by `src/lib/security/csrf.ts` and `src/lib/auth/trusted-host.ts` against the `AUTH_URL` and DB `allowedHosts` set.
+- `JUDGE_ALLOWED_IPS` remains unset by default, with `JUDGE_STRICT_IP_ALLOWLIST` opt-in (`src/lib/judge/ip-allowlist.ts:20-22`). This preserves backward compatibility for existing worker deployments; operators who want fail-closed behavior must opt in explicitly.
+
+### Test verification
+
+- Unit test suite run (`npm run test:unit` in `/tmp/judgekit-local`): **391 test files passed, 3102 tests passed**, duration 30.45s.
+- Log output contained expected error-path warnings from negative test cases (invalid URL assertions, mocked DB failures, rate-limiter circuit-breaker network errors, CSRF origin rejects) but zero actual test failures.
+
+### Still-open items from prior review
+
+The following findings from the original review are not addressed by cycle-3 and remain open:
+
+- **Judge-container DNS hardening** (finding #6): `--dns 1.1.1.1` and immutable `/etc/resolv.conf` are still absent.
+- **Similarity-check API documentation** (finding #8): `docs/api.md` still shows the simplified `{ "data": { "flaggedPairs": 5 } }` shape.
+- **Deployment/infrastructure tests verify string presence** (finding #9): tests still grep substrings rather than rendering and validating generated configs.
+- **Missing env vars in `.env.example`** (finding #10): the listed variables are still undocumented.

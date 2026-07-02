@@ -1,244 +1,330 @@
-# Critic Review — Whole-Repository Multi-Perspective Critique
+# Critic Review — JudgeKit Multi-Perspective Critique
 
-Date: 2026-07-02  
-Scope: entire repository (`src/`, `judge-worker-rs/`, `rate-limiter-rs/`, `code-similarity-rs/`, `docker/`, `scripts/`, `deploy-docker.sh`, `deploy.sh`, `docs/`, `static-site/`, `tests/`)
+Date: 2026-07-03  
+Scope: entire repository (`/tmp/judgekit-local`) — `src/`, `judge-worker-rs/`, `rate-limiter-rs/`, `code-similarity-rs/`, `docker/`, `scripts/`, `deploy-docker.sh`, `deploy.sh`, `deploy-test-backends.sh`, `docker-compose*.yml`, `Dockerfile*`, `static-site/`, `docs/`, `tests/`.
 
-Summary: This is the post-cycle-3 follow-up to the 2026-07-01 critic review. Several previously flagged high-severity issues have been remediated (XFF chain preservation, IP leading-zero rejection, bulk-rejudge `activeTasks` accounting, similarity submission-count guard, raw-SQL additive repair removal, static-site baseline security headers, uploaded-file `0o600` permissions). The remaining risks cluster around **authorization ordering**, **concurrent state mutation**, **defaults that fail open**, and **layer boundaries that tests do not actually exercise**. The most consequential residual findings are: (1) `/compiler/run` still consumes the per-user daily sandbox quota before verifying the `content.submit_solutions` capability; (2) similarity-check runs can delete each other's anti-cheat events because no per-assignment serialization exists; (3) `createApiHandler` still rejects custom roles; (4) the judge API still defaults to allow-all IP posture; and (5) the Rust runner and TypeScript compiler validators both permit shell interpreters, turning a compromised `language_configs` row into arbitrary container code execution. The test suite continues to mock away the central middleware stack, so most regressions at the auth/rate-limit/CSRF boundary will not be caught by the fast unit suite.
+## Verdict
 
-Findings count: 24 (High 10, Medium 9, Low 5)
+REVISE. Cycle 3 remediation resolved many pointed correctness and security bugs, but four CRITICAL systemic risks remain untouched, and several HIGH/MEDIUM design and operational hazards persist. The remaining issues are architectural rather than one-line fixes.
 
-## Cross-cutting themes
+## Summary
 
-1. **Authorization ordering is still wrong in one hot path.** `/compiler/run` deducts scarce daily quota before checking the capability that would make the deduction legitimate. `/playground/run` already does this in the correct order.
-2. **Concurrent writers are unprotected at the anti-cheat boundary.** `runAndStoreSimilarityCheck` deletes all `code_similarity` events for an assignment and re-inserts them; two overlapping runs for the same assignment silently lose one writer's results.
-3. **Fail-open defaults survive for backward-compatibility reasons.** Judge IP allowlist, unverified-email sandbox bypass, and `AUTH_TRUST_HOST=true` all default to the permissive posture and require explicit operator opt-in to harden.
-4. **Privileged surface area is broader than documented.** The Docker socket proxy, runner admin endpoints, and shell-command validators all accept constructs (`bash -c …`, `;`, `&&`) that let a single compromise escalate.
-5. **Tests validate helpers, not the wiring.** Most API route tests mock `createApiHandler` and test the inner handler in isolation, so middleware-level regressions are invisible to CI.
+I validated every Cycle 2 aggregate finding against the current tree and searched for fresh cross-cutting issues. Cycle 3 fixed the majority of immediate correctness problems: workspace leaks, similarity-check concurrency, CSRF on public auth routes, monotonic rate-limiter clock, request/correlation IDs, nginx body size and XFF chain, security headers, non-root worker user, language contract test, and others.
 
-## File inventory reviewed
+However, the highest-severity systemic risks are still present: production defaults to `AUTH_TRUST_HOST=true` without stripping `X-Forwarded-Host`, internal service traffic is unencrypted HTTP, the judge API allowlist defaults to allow-all, and raw SQL additive schema patches bypass the Drizzle migration journal. In addition, a fresh discrepancy was found between the generated app nginx (50 MiB catch-all) and the committed standalone template (1 MiB catch-all), and the real-time coordination layer remains a hard PostgreSQL lock bottleneck.
 
-- Project instructions: `CLAUDE.md`, `AGENTS.md`
-- Prior aggregate baseline: `.context/reviews/_aggregate.md`, `.context/reviews/critic.md` (2026-07-01)
-- Auth / API middleware: `src/lib/api/handler.ts`, `src/lib/api/auth.ts`
-- IP / rate limit: `src/lib/security/ip.ts`, `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`, `src/lib/security/rate-limiter-client.ts`, `src/lib/security/sandbox-gate.ts`
-- Judge lifecycle: `src/lib/judge/ip-allowlist.ts`, `src/lib/judge/auth.ts`, `src/lib/judge/claim-query.ts`, `src/lib/judge/worker-staleness.ts`, `src/lib/judge/worker-staleness-sweep.ts`, `src/app/api/v1/judge/poll/route.ts`
-- Compiler / execution: `src/lib/compiler/execute.ts`, `judge-worker-rs/src/runner.rs`, `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/validation.rs`, `judge-worker-rs/src/types.rs`
-- Similarity / anti-cheat: `src/lib/assignments/code-similarity.ts`, `src/lib/assignments/code-similarity-client.ts`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts`
-- Contest access: `src/lib/assignments/contest-access-tokens.ts`, `src/lib/assignments/submissions.ts`
-- Files: `src/app/api/v1/files/[id]/route.ts`, `src/app/api/v1/files/route.ts`, `src/lib/files/storage.ts`
-- Deployment / infra: `deploy-docker.sh`, `deploy.sh`, `docker-compose.production.yml`, `docker-compose.worker.yml`, `Dockerfile.judge-worker`, `static-site/nginx.conf`, `scripts/online-judge.nginx.conf`, `scripts/online-judge.nginx-http.conf`
-- Sidecars: `rate-limiter-rs/src/main.rs`
-- Tests: `tests/unit/security/ip.test.ts`, `tests/unit/api/similarity-check.route.test.ts`, `tests/unit/api/contests.route.test.ts`, `tests/unit/compiler/execute.test.ts`, `tests/unit/infra/deploy-security.test.ts`, `tests/unit/infra/judge-report-nginx.test.ts`, `tests/unit/infra/deploy-storage-safety.test.ts`
+For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist defaults, and the raw SQL patch must be resolved. For ACCEPT, internal service encryption/mTLS and a scalable real-time coordination backend must also be addressed.
 
----
+## Validated Cycle 3 fixes (brief)
 
-## HIGH
-
-### 1. `/compiler/run` consumes daily sandbox quota before checking capability
-- **Files / Lines:** `src/app/api/v1/compiler/run/route.ts:77-88`; contrast with `src/app/api/v1/playground/run/route.ts`
-- **Problem:** The route calls `gateSandboxEndpoint` (which decrements the per-user daily quota) before resolving capabilities and checking `caps.has("content.submit_solutions")`. A user whose role lacks the capability pays the quota cost for every 403.
-- **Scenario:** A custom role with `files.upload` but not `content.submit_solutions` repeatedly hits `/api/v1/compiler/run`. Each request burns one invocation from the legitimate daily budget and eventually exhausts it, locking out authorized users.
-- **Suggested remediation:** Move the `content.submit_solutions` capability check before `gateSandboxEndpoint`, exactly as `/playground/run` does.
-- **Confidence:** High
-- **Classification:** Correctness / DoS
-
-### 2. Concurrent similarity checks can delete each other's anti-cheat events
-- **Files / Lines:** `src/lib/assignments/code-similarity.ts:439-454`; `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:44-64`
-- **Problem:** `runAndStoreSimilarityCheck` deletes all `code_similarity` events for the assignment and then inserts the newly computed pairs inside a transaction. Two concurrent runs for the same assignment serialize their write transactions, so the later transaction deletes the events the earlier one just inserted.
-- **Scenario:** Two TAs or an assistant and an instructor click "Run similarity check" at nearly the same time. The final DB state contains only one run's flagged pairs; the other is silently lost, and the dashboard shows a partial anti-cheat picture.
-- **Suggested remediation:** Serialize similarity compute-and-store per assignment with `pg_advisory_xact_lock(hashtextextended(assignmentId, 1)::bigint)`, or add an assignment-level version/timestamp guard that aborts stale writers.
-- **Confidence:** High
-- **Classification:** Correctness
-
-### 3. `createApiHandler` rejects custom roles in `auth.roles`
-- **Files / Lines:** `src/lib/api/handler.ts:131-132`
-- **Problem:** The role check calls `isUserRole(user.role)`, which only returns `true` for the five built-in role names. A route configured with `auth: { roles: ["custom_instructor"] }` rejects users whose role is exactly `custom_instructor`.
-- **Scenario:** A deployment introduces a custom role and restricts an admin route to it. The route is unreachable for that role, forcing all authorization onto capabilities and making the `roles` auth config effectively unusable for custom roles.
-- **Suggested remediation:** Remove the `isUserRole` guard from the role check, or change it to allow any string present in `auth.roles`.
-- **Confidence:** High
-- **Classification:** Correctness
-
-### 4. File download endpoint has no rate limiting
-- **Files / Lines:** `src/app/api/v1/files/[id]/route.ts:62-140`
-- **Problem:** The GET handler performs auth and access checks but never calls `consumeApiRateLimit`. Upload and delete are rate-limited; download is not.
-- **Scenario:** An authenticated user enumerates `/api/v1/files/{id}` and repeatedly downloads large files, abusing bandwidth and probing file IDs that may belong to others (the 403 access check is free).
-- **Suggested remediation:** Add `rateLimit: "files:download"` in `createApiHandler` for the GET handler.
-- **Confidence:** High
-- **Classification:** Security / Performance
-
-### 5. Judge API IP allowlist defaults to allow-all
-- **Files / Lines:** `src/lib/judge/ip-allowlist.ts:18-55,182-210`
-- **Problem:** When `JUDGE_ALLOWED_IPS` is unset and `JUDGE_STRICT_IP_ALLOWLIST` is not `1`, `isJudgeIpAllowed` returns `true` for every IP. The code warns once, but the default remains open for backward compatibility.
-- **Scenario:** A leaked `JUDGE_AUTH_TOKEN` lets an attacker register a rogue worker and inject fabricated judge results from any host.
-- **Suggested remediation:** Make `JUDGE_STRICT_IP_ALLOWLIST=1` the default for new deployments. Add a startup health signal that reports when the judge API is in allow-all mode, and require explicit operator acknowledgment in deploy scripts before continuing without an allowlist.
-- **Confidence:** High
-- **Classification:** Security
-
-### 6. Docker socket proxy grants broad container lifecycle privileges
-- **Files / Lines:** `docker-compose.production.yml:64-86`; `docker-compose.worker.yml:18-46`
-- **Problem:** `tecnativa/docker-socket-proxy` is configured with `POST=1 DELETE=1 ALLOW_START=1 ALLOW_STOP=1 IMAGES=1`. The worker can create, start, stop, delete arbitrary containers, and list images on the host Docker daemon.
-- **Scenario:** A compromised judge worker sends Docker API requests through the proxy and spawns a privileged container with `--pid=host` or volume mounts, escaping to the host and accessing the PostgreSQL volume or other containers.
-- **Suggested remediation:** Restrict the proxy to the exact endpoints required (e.g., only `POST /containers/create` and `DELETE /containers/{id}`). Run Docker rootless, add AppArmor/SELinux profiles to the worker, and drop all capabilities. Split image management into a separate admin service.
-- **Confidence:** High
-- **Classification:** Security / Architectural
-
-### 7. Runner `/run` endpoint accepts nested shells through single-quote gaps
-- **Files / Lines:** `judge-worker-rs/src/runner.rs:124-176`; `judge-worker-rs/src/runner.rs:890`
-- **Problem:** `validate_shell_command` blocks a short denylist but permits `&&`, `;`, environment prefixes, and single quotes, and does not reject the tokens `bash`/`sh`. Because the runner wraps the supplied command in `sh -c`, a caller can smuggle arbitrary commands inside quotes.
-- **Scenario:** A leaked `RUNNER_AUTH_TOKEN` lets an attacker execute arbitrary code inside the judged container. While the container is sandboxed, the attacker can still probe the kernel syscall surface or wage a noisy DoS.
-- **Suggested remediation:** Do not accept raw shell strings from the HTTP API. Accept an argv array, reject shell metacharacters/quotes entirely, and execute with `execvp`-style semantics; or store approved commands server-side and reference them by language ID.
-- **Confidence:** High
-- **Classification:** Security
-
-### 8. Rate-limiter sidecar state is in-process and non-replicated
-- **Files / Lines:** `rate-limiter-rs/src/main.rs:31,152-213`; `src/lib/security/api-rate-limit.ts:156-179`
-- **Problem:** All buckets live in a `DashMap` inside the single process. There is no persistence or shared backend. Restarting the container resets counters and blocks, and running more than one replica shards state inconsistently.
-- **Scenario:** A rolling update of the rate-limiter sidecar wipes out login-failure counts, allowing a brute-force attacker to resume from zero. Horizontal scaling splits counters across instances.
-- **Suggested remediation:** Document that the rate limiter must run as a single replica, or back it with Redis or a small persistent store so state survives restarts and replicas.
-- **Confidence:** High
-- **Classification:** Architectural / Operational
-
-### 9. In-progress judge reports can indefinitely refresh a stale claim
-- **Files / Lines:** `src/app/api/v1/judge/poll/route.ts:82-119`
-- **Problem:** A worker POSTing `status: "judging"` with a valid `claimToken` resets `judgeClaimedAt` to `dbNow` each time. There is no maximum-judging-time guard independent of heartbeats.
-- **Scenario:** A buggy or malicious worker repeatedly reports "judging" for a submission. The stale-claim sweep never reclaims it, and the submission remains stuck in `judging` forever.
-- **Suggested remediation:** Reject in-progress updates when `judgeClaimedAt` is older than the configured claim TTL, or add a `maxJudgingDurationMs` guard that forces the submission back to `pending`/`queued` regardless of worker heartbeats.
-- **Confidence:** Medium
-- **Classification:** Correctness / Architectural
-
-### 10. Legacy deploy path still overwrites `X-Forwarded-For` and defaults `AUTH_TRUST_HOST=true`
-- **Files / Lines:** `deploy-docker.sh:700,894`; `deploy.sh:257`; `scripts/online-judge.nginx.conf:63,77,88,100`; `scripts/online-judge.nginx-http.conf:33,44`
-- **Problem:** `deploy-docker.sh` correctly generates `$proxy_add_x_forwarded_for` (cycle-3 fix), but `deploy.sh` and the checked-in `scripts/online-judge.nginx*.conf` templates still replace the chain with `$remote_addr`. `deploy-docker.sh` also hard-codes `AUTH_TRUST_HOST=true` in generated `.env.production`.
-- **Scenario:** Anyone using the legacy `deploy.sh` or the static template directly re-introduces the XFF-collapse bug: `extractClientIp` returns `null`, rate limits collapse into a shared bucket, and judge IP allowlists deny legitimate workers. `AUTH_TRUST_HOST=true` means the app trusts the `Host` header supplied by the reverse proxy; combined with a permissive proxy this enables host-header attacks.
-- **Suggested remediation:** Update `deploy.sh` and the static templates to use `$proxy_add_x_forwarded_for`. Add an integration assertion that the live XFF chain length is compatible with `TRUSTED_PROXY_HOPS`. Make `AUTH_TRUST_HOST` opt-in per deployment target rather than universally true.
-- **Confidence:** High
-- **Classification:** Security / Operational
+- `client_max_body_size 50M` is in the generated catch-all `location /` (`deploy-docker.sh:1629`, `1707`).
+- XFF chain preserved via `$proxy_add_x_forwarded_for` in generated and committed nginx templates.
+- Security headers added to generated, static-site, and committed nginx configs.
+- Docker networks segmented (`frontend/backend/judge/db`) in `docker-compose.production.yml`.
+- `docker-proxy` no longer has `BUILD=1` or `IMAGES=1` on the app host.
+- `Dockerfile.judge-worker` ends with `USER judge`.
+- Node compiler workspace cleanup chowns back to the app user (`execute.ts:365-384`).
+- Rust `SandboxWorkspace` handles recursive chown-on-drop cleanup.
+- `code-similarity-client.ts` propagates caller `AbortSignal` and returns structured error codes.
+- `code-similarity.ts` serializes store operations per assignment via `pg_advisory_xact_lock`.
+- Similarity-check route only reports `timed_out` for genuine `AbortError`.
+- Token revocation compares at millisecond precision (`session-security.ts:36-41`).
+- Public auth routes now call `validateCsrf`.
+- CSRF origin check honors `allowedHosts` via `getTrustedAuthHosts`.
+- `/api/v1/compiler/run` checks `content.submit_solutions` before `gateSandboxEndpoint`.
+- `deploy-test-backends.sh` uses a dedicated migration container with `npm install drizzle-kit`.
+- `createApiHandler` emits request/correlation ID and error taxonomy.
+- Rate-limiter sidecar uses monotonic `Instant`.
+- `SecretString` zeroizes on drop.
+- Worker `deregister` returns `Err` on non-2xx responses.
+- `sshpass -p` removed from deploy scripts.
 
 ---
 
-## MEDIUM
+## Findings
 
-### 11. Sandbox-gate env bypass fails on common whitespace
-- **Files / Lines:** `src/lib/security/sandbox-gate.ts:14-16`
-- **Problem:** `ALLOW_UNVERIFIED_EMAIL_ENV` does `raw === "1" || raw.toLowerCase() === "true"` without trimming. A value of `"true\n"` or `" true "` fails the literal comparison.
-- **Scenario:** An operator in an air-gapped lab sets `SANDBOX_ALLOW_UNVERIFIED_EMAIL=true` in an `.env` file that ends with a newline. The gate remains enforced even though the operator intended to bypass it, locking students out of the compiler/playground with no actionable error.
-- **Suggested remediation:** Trim and normalize: `return raw.trim() === "1" || raw.trim().toLowerCase() === "true";`.
+### CRITICAL-1: Production defaults to `AUTH_TRUST_HOST=true` and nginx does not strip `X-Forwarded-Host`
+
+- **Severity:** CRITICAL
 - **Confidence:** High
-- **Classification:** Correctness / UX
+- **Status:** Confirmed
+- **Files / Lines:** `deploy-docker.sh:750`, `docker-compose.production.yml:115`, `src/lib/security/env.ts:260-266`, `src/lib/auth/config.ts:317`
+- **Problem:** `deploy-docker.sh` generates `.env.production` with `AUTH_TRUST_HOST=true` and enforces the literal value during backfill; `docker-compose.production.yml` defaults it to `true`; `shouldTrustAuthHost()` returns `true` whenever the env var is set to `"true"`. The generated nginx templates overwrite `Host` but deliberately do **not** set or clear `X-Forwarded-Host` because of a comment that it breaks Next.js 16 RSC navigation (`deploy-docker.sh:1598`, `1613`, `1625`, `1638`, `1676`, `1691`, `1703`).
+- **Failure scenario:** An attacker sending direct requests to the origin with `Host: attacker.com` or `X-Forwarded-Host: attacker.com` can cause Auth.js to generate callback URLs, password-reset links, email magic links, or session state bound to an attacker-controlled host. If OAuth providers or magic-link flows are enabled later, this becomes an account-takeover vector. Today it weakens CSRF origin checks that rely on `AUTH_URL`.
+- **Suggested fix:** Default `AUTH_TRUST_HOST=false` in production when `AUTH_URL` is explicitly set; derive canonical URLs only from `AUTH_URL` and DB `allowedHosts`. In nginx, explicitly overwrite `X-Forwarded-Host` with the canonical host before proxying to the app, and verify that RSC navigation still works under that canonical host.
 
-### 12. Shell-command whitelist permits shell interpreters, undermining the denylist
-- **Files / Lines:** `src/lib/compiler/execute.ts:189-251`; `judge-worker-rs/src/runner.rs:124-176`
-- **Problem:** `validateShellCommandStrict` accepts `bash`, `sh`, `powershell`, `pwsh` as command prefixes. A compromised `language_configs` row can set `runCommand` to `bash -c '...'` and the denylist is bypassed because the payload lives inside the `-c` argument.
-- **Scenario:** An attacker who can modify a language config (e.g., via a compromised admin account) runs arbitrary code inside the judged container.
-- **Suggested remediation:** Remove shell interpreters from `ALLOWED_COMMAND_PREFIXES`, or add an explicit rule that rejects `-c`/`-Command` interpreter invocations. Treat commands as direct binary invocations only.
-- **Confidence:** Medium
-- **Classification:** Security
+### CRITICAL-2: Internal service traffic is unencrypted HTTP on a segmented but flat Docker network
 
-### 13. `JUDGE_MAX_OUTPUT_BYTES` is parsed without an upper bound
-- **Files / Lines:** `judge-worker-rs/src/docker.rs:420-424,432-464`
-- **Problem:** The per-stream output cap is read from the environment as a `u64` and used to size an in-memory buffer. There is no maximum value check.
-- **Scenario:** A misconfigured `JUDGE_MAX_OUTPUT_BYTES=10737418240` (10 GiB) with `JUDGE_CONCURRENCY=16` lets the worker try buffering hundreds of gigabytes, leading to worker OOM and cascading failures.
-- **Suggested remediation:** Clamp the parsed value to a hard ceiling (e.g., 128 MiB) and log a warning when the env var is ignored or truncated.
-- **Confidence:** Medium
-- **Classification:** Operational / Performance
-
-### 14. Compile-phase memory limit always evaluates to the default ceiling
-- **Files / Lines:** `judge-worker-rs/src/executor.rs:452-453`
-- **Problem:** `compile_memory_mb = compilation_memory_limit_mb().max(submission.memory_limit_mb.min(MAX_MEMORY_LIMIT_MB))` always evaluates to `compilation_memory_limit_mb()` (default 2048 MB) because the right-hand term is at most 1024 MB.
-- **Scenario:** A problem-level memory limit never constrains compilation. A malicious or pathological build can consume up to 2 GiB per concurrent compile slot.
-- **Suggested remediation:** Decide whether compile memory should be independently configurable or derived from the problem limit, then implement a clear policy (e.g., `min(env_cap, problem_limit * 2, MAX_COMPILE_MEMORY)`).
-- **Confidence:** Medium
-- **Classification:** Operational / Performance
-
-### 15. Similarity Rust sidecar call ignores the route's abort signal
-- **Files / Lines:** `src/lib/assignments/code-similarity-client.ts:53`; `src/lib/assignments/code-similarity.ts:370-386`; `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:44-64`
-- **Problem:** The API route arms a 30 s `AbortController`. The Rust sidecar fetch uses a fixed 25 s timeout and does not receive the route's signal.
-- **Scenario:** If the sidecar hangs, the route cannot cancel it early; after 25 s it returns `null` and the TS fallback starts, often only to be aborted milliseconds later when the 30 s deadline fires, wasting CPU. Conversely, if the sidecar takes >30 s, the client sees a 500 while the orphaned fetch continues.
-- **Suggested remediation:** Pass the route's `signal` into `computeSimilarityRust` and use it as the `fetch` signal. Check `signal.aborted` before falling back to the TS implementation.
-- **Confidence:** Medium
-- **Classification:** Performance / Correctness
-
-### 16. Rate-limiter sidecar and PostgreSQL authoritative path double-count requests
-- **Files / Lines:** `src/lib/security/api-rate-limit.ts:156-179`; `src/lib/security/rate-limiter-client.ts:127-141`
-- **Problem:** `consumeApiRateLimit` calls `sidecarConsume` (which increments the in-memory sidecar counter) and then unconditionally runs `atomicConsumeRateLimit` (which increments the DB counter). The two stores diverge and the sidecar may return a 429 earlier or later than the authoritative DB.
-- **Scenario:** Under load the sidecar blocks a key while the DB still has budget, or the DB blocks while the sidecar has budget. After a sidecar restart its counter is zero even though the DB is near the limit, allowing a burst.
-- **Suggested remediation:** Use the sidecar only as a read-only cache or short-circuit, not as an independent counter. If it is kept as a fast path, the DB path should not re-increment after a sidecar "allowed" response.
-- **Confidence:** Medium
-- **Classification:** Correctness / Operational
-
-### 17. Dead-letter files are written with default permissions
-- **Files / Lines:** `judge-worker-rs/src/executor.rs:1074-1091`
-- **Problem:** `fs::create_dir_all` and `fs::write` inherit the process umask. There is no explicit `0o700` directory or `0o600` file mode.
-- **Scenario:** Verdicts are persisted to the dead-letter volume. Another unprivileged user or container on the shared worker host can read these files, leaking submission diagnostics and compiler errors.
-- **Suggested remediation:** Set the dead-letter directory to `0o700` and each file to `0o600` after writing. Add an operator alert/metric when dead-letter files accumulate.
-- **Confidence:** Medium
-- **Classification:** Security / Operational
-
-### 18. `sshpass` still exposes the SSH password for non-rsync remote helpers
-- **Files / Lines:** `deploy-docker.sh:392,400`
-- **Problem:** `remote()` and `remote_copy()` helpers invoke `sshpass -p "$SSH_PASSWORD" ssh` and `sshpass -p "$SSH_PASSWORD" scp`. Command-line arguments are visible to any local user via `ps` or `/proc/<pid>/cmdline` while the deploy runs. Only the rsync path was migrated to the environment-variable form.
-- **Scenario:** A CI runner or shared operator laptop deploys with password auth. Another unprivileged user captures the plaintext `SSH_PASSWORD`, then SSHes into production or worker hosts.
-- **Suggested remediation:** Switch all remote helpers to `SSHPASS="$SSH_PASSWORD" sshpass -e ssh ...` / `sshpass -e scp ...`, or remove password auth entirely and require SSH keys.
+- **Severity:** CRITICAL
 - **Confidence:** High
-- **Classification:** Security
+- **Status:** Confirmed
+- **Files / Lines:** `docker-compose.production.yml:116-118`, `151`, `src/lib/assignments/code-similarity-client.ts:4`, `src/lib/compiler/execute.ts:69`
+- **Problem:** Network segmentation exists (`frontend/backend/judge/db`), but all inter-service URLs are plaintext HTTP: `COMPILER_RUNNER_URL=http://judge-worker:3001`, `CODE_SIMILARITY_URL=http://code-similarity:3002`, `RATE_LIMITER_URL=http://rate-limiter:3001`, `JUDGE_BASE_URL=http://app:3000/api/v1`.
+- **Failure scenario:** A compromised sidecar or auxiliary container on the `backend` network can passively sniff bearer tokens (`JUDGE_AUTH_TOKEN`, `RUNNER_AUTH_TOKEN`, `CODE_SIMILARITY_AUTH_TOKEN`, `RATE_LIMITER_AUTH_TOKEN`), hidden test cases in claim responses, submission source code, and worker secrets.
+- **Suggested fix:** Add mTLS or at least TLS between services using an internal CA and short-lived certificates; or move to Unix sockets where feasible. Encrypt `JUDGE_BASE_URL`, `COMPILER_RUNNER_URL`, `CODE_SIMILARITY_URL`, and `RATE_LIMITER_URL`.
 
-### 19. Worker workspace is chowned to 65534 but never re-chowned before `TempDir` drop
-- **Files / Lines:** `judge-worker-rs/src/executor.rs:304-691`
-- **Problem:** The temporary workspace directory and source file are `chown`ed to `65534:65534` with mode `0o700`. When `temp_dir` is dropped at the end of the function, the worker process (which may not be root) cannot remove files owned by `65534`, so cleanup fails and workspaces leak on disk.
-- **Scenario:** A worker running as a non-root user accumulates orphaned judge workspaces in `/tmp` or `/judge-workspaces`, eventually exhausting disk space.
-- **Suggested remediation:** Re-chown the workspace back to the worker process UID in a `Drop` guard or explicit cleanup block before `temp_dir` goes out of scope, or run a periodic cleanup job with appropriate privileges.
-- **Confidence:** Medium
-- **Classification:** Operational
+### CRITICAL-3: Judge API IP allowlist defaults to allow-all in production
 
-### 20. Catch-all nginx location has no explicit `client_max_body_size`
-- **Files / Lines:** `deploy-docker.sh:1515-1630` (generated nginx); `src/app/api/v1/files/route.ts:17-89`
-- **Problem:** Generated nginx sets `client_max_body_size` only for `/api/auth/`, `/api/v1/judge/poll`, and `/api/v1/judge/`. The catch-all `location /` falls back to nginx's 1 MiB default.
-- **Scenario:** Legitimate file uploads via `/api/v1/files` that exceed 1 MiB are rejected by nginx before the app can enforce its own size limits, producing a confusing 413 for users.
-- **Suggested remediation:** Add an explicit `client_max_body_size` to the catch-all block that matches the application's maximum upload size, or set a server-level default.
-- **Confidence:** Medium
-- **Classification:** Operational / UX
+- **Severity:** CRITICAL
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/judge/ip-allowlist.ts:17-25`, `209-232`; `deploy-docker.sh:746-770`; `docker-compose.production.yml`
+- **Problem:** When `JUDGE_ALLOWED_IPS` is unset and `JUDGE_STRICT_IP_ALLOWLIST` is not `1`, `isJudgeIpAllowed()` returns `true` for every IP. The production compose file does not set either variable, and the generated `.env.production` does not populate an allowlist. The code logs a one-time warning, but the open posture ships by default. The file comment explicitly states the unset==allow-all default is deliberately preserved for backward compatibility.
+- **Failure scenario:** A leaked `JUDGE_AUTH_TOKEN` (via env backup, CI log, container inspect, or unencrypted backup) lets any internet host register fake workers, claim submissions (reading `sourceCode` and hidden `testCases`), and inject arbitrary judge verdicts.
+- **Suggested fix:** Generate `.env.production` with `JUDGE_ALLOWED_IPS` restricted to the worker subnet(s), or set `JUDGE_STRICT_IP_ALLOWLIST=1` and require operators to configure an explicit allowlist before workers can register. Document the break-the-glass override for legacy deployments.
+
+### CRITICAL-4: Raw SQL additive schema patch bypasses the Drizzle migration journal
+
+- **Severity:** CRITICAL
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `deploy-docker.sh:1207-1293`; `src/lib/db/migrate.ts:1-7`; `src/lib/judge/auth.ts:75-82`
+- **Problem:** Step 5b inlines a `psql` backfill/drop for `judge_workers.secret_token` (`UPDATE ... SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') ...; ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token`). This runs before `drizzle-kit push` and is not captured in the Drizzle journal. The file acknowledges that drizzle-kit ignores SQL files in the journal.
+- **Failure scenario:** A disaster-recovery replay from the journal produces a schema still containing `secret_token` or missing the hash cleanup; `src/lib/judge/auth.ts` rejects workers with `secret_token IS NOT NULL AND secret_token_hash IS NULL`, causing all worker registrations to fail after DR. Conversely, a fresh environment stood up from backups and migrations may lack the column cleanup and queries fail at runtime.
+- **Suggested fix:** Move the transition into a tracked Drizzle migration, or remove the backfill entirely once all environments are verified clean and add a journal-only migration for the final drop. Add a CI step that replays migrations from an empty database and asserts the schema matches what `deploy-docker.sh` would produce after its raw SQL step.
 
 ---
 
-## LOW
+### HIGH-1: Real-time coordination serializes every SSE acquisition and heartbeat through PostgreSQL advisory locks
 
-### 21. API route unit tests bypass the real `createApiHandler` middleware stack
-- **Files / Lines:** `src/lib/api/handler.ts:94-219`; widespread in `tests/unit/api/*.test.ts`
-- **Problem:** Most route tests mock `@/lib/api/handler` so `createApiHandler` becomes a thin wrapper that injects a synthetic user and skips rate limiting, session/API-key auth, role/capability checks, CSRF validation, and Zod body parsing.
-- **Scenario:** A regression that removes `rateLimit: "similarity-check"` or the `capabilities` requirement from the route config passes the unit suite but leaves the deployed endpoint unprotected.
-- **Suggested remediation:** For at least one representative route per category, remove the `createApiHandler` mock and call the exported handler through the real wrapper. Add negative cases for missing CSRF, wrong role, and missing capability.
+- **Severity:** HIGH
 - **Confidence:** High
-- **Classification:** Testing / Architectural
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/realtime/realtime-coordination.ts:73-78`, `101-140`, `163-199`
+- **Problem:** `withPgAdvisoryLock("realtime:sse:acquire", ...)` wraps global/user SSE slot acquisition; per-assignment/user heartbeats also take an advisory lock. The module explicitly warns that multi-instance deployments require `REALTIME_COORDINATION_BACKEND=postgresql`, which serializes every SSE acquisition and heartbeat update through `pg_advisory_xact_lock` and a single table.
+- **Failure scenario:** A contest with 1,000 concurrent users opens. Every SSE connection attempt acquires an advisory lock and performs `DELETE + SELECT count(*) + INSERT` in a transaction. Lock contention and table bloat cause connection acquisition latency to spike, degrading the live submission-status experience and potentially timing out heartbeats.
+- **Suggested fix:** Replace advisory-lock serialization with Redis-backed coordination or at least a dedicated connection-pool/queue with TTL-indexed cleanup and optimistic locking. If PostgreSQL remains the backend, switch to `INSERT ... ON CONFLICT` with partial indexes and avoid holding advisory locks during cross-service calls.
 
-### 22. `code-similarity-client.ts` logs with `console.warn` instead of the project logger
-- **Files / Lines:** `src/lib/assignments/code-similarity-client.ts:6-9`
-- **Problem:** The module uses `console.warn` for a missing-auth-token warning, bypassing the structured logger and making the message invisible to centralized log aggregation.
-- **Scenario:** Operators relying on log pipelines miss the warning that the similarity sidecar is unauthenticated.
-- **Suggested remediation:** Import `logger` from `@/lib/logger` and use `logger.warn(...)`.
+### HIGH-2: Docker socket proxy still grants broad container lifecycle privileges
+
+- **Severity:** HIGH
 - **Confidence:** High
-- **Classification:** Observability
+- **Status:** Confirmed
+- **Files / Lines:** `docker-compose.production.yml:69-90`; `docker-compose.worker.yml:22-43`
+- **Problem:** `tecnativa/docker-socket-proxy` is configured with `POST=1 DELETE=1 ALLOW_START=1 ALLOW_STOP=1`. While `BUILD=0` and `IMAGES=0` were removed from the app host, the worker can still create, start, stop, and delete arbitrary containers on the host Docker daemon.
+- **Failure scenario:** A compromised worker sends Docker API requests through the proxy to spawn a privileged container with `--pid=host` or host volume mounts, escaping the sandbox and gaining host access.
+- **Suggested fix:** Restrict the proxy to a narrowly scoped filter or use a custom authorizer. Alternatively, run the worker with a read-only Docker API client that can only manage containers with a specific label prefix. Log every Docker API operation at the proxy or worker level for audit.
 
-### 23. Production compose uses the default bridge network without segmentation
-- **Files / Lines:** `docker-compose.production.yml:13-202`
-- **Problem:** All services share the default Docker bridge. There is no separate network for the database, app, worker, or sidecars.
-- **Scenario:** A compromised sidecar or worker can directly reach the PostgreSQL port and every other service, increasing lateral-movement options.
-- **Suggested remediation:** Define separate networks (e.g., `frontend`, `backend`, `worker`) and attach services only to the networks they need.
+### HIGH-3: `deploy-docker.sh` exceeds modularization threshold and couples unrelated concerns
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `deploy-docker.sh` (~1,100+ lines)
+- **Problem:** A single shell script performs SSH setup, remote architecture detection, env generation, Docker builds (app + worker + ~100 languages), BuildKit recovery, DB migration, raw SQL additive patches, nginx generation, container lifecycle, health checks, artifact pruning, and worker-host reconciliation. Any failure late in the script leaves prior mutations applied with no automated rollback.
+- **Failure scenario:** A typo in the nginx heredoc causes the deploy to fail after migrations have already run and new app/worker containers have started. The operator must manually determine whether to roll back the DB, restart old containers, or fix the template and re-run. During incident response this ambiguity extends downtime.
+- **Suggested fix:** Split the script into modules: `lib/ssh.sh`, `lib/nginx.sh`, `lib/migrate.sh`, `lib/build.sh`, and a thin orchestrator. Add an explicit rollback manifest and `--rollback` flag. Add a `--dry-run` mode that renders configs without mutating the target.
+
+### HIGH-4: Rate-limiting has two sources of truth (sidecar + DB)
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/security/api-rate-limit.ts`; `rate-limiter-rs/src/main.rs`
+- **Problem:** API rate limits use the `rate-limiter-rs` sidecar as a fast pre-check, then always hit the DB as the authoritative source. The sidecar is stateful and in-memory; if it restarts, its counters reset, while the DB path continues. The sidecar circuit breaker is process-local, so a multi-instance deployment sees inconsistent sidecar health.
+- **Failure scenario:** An attacker exceeds the rate limit. The sidecar says blocked, but a DB race or clock-skew handling difference allows one request through before the DB path also blocks, producing non-deterministic 429s that are hard to explain to users or incident responders.
+- **Suggested fix:** Make the DB the single source of truth and use the sidecar only as a cache with bounded TTL and explicit invalidation; or move entirely to Redis-backed rate limiting shared across instances. Document the fallback behavior when the sidecar is unreachable.
+
+### HIGH-5: Role/capability authorization is split across role names and capability strings
+
+- **Severity:** HIGH
 - **Confidence:** Medium
-- **Classification:** Security / Architectural
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/security/constants.ts`; `src/lib/capabilities/cache.ts`; `src/lib/db/schema.pg.ts`
+- **Problem:** Roles are stored as text in `users.role` with a foreign-key reference to `roles.name`, but capabilities are checked at runtime from the role. There is no database-enforced guarantee that a role's capabilities are consistent with its name, and custom roles can silently lose required capabilities.
+- **Failure scenario:** An operator renames the `admin` role in the DB. The `users.role` FK restricts deletion but not capability mapping, so existing admins keep their role name but `resolveCapabilities` may return an empty set, locking them out of admin endpoints. Conversely, a custom role created via the admin UI may lack capabilities required by routes it is expected to use.
+- **Suggested fix:** Store capabilities in the DB with a foreign-key relationship and enforce a role-capability mapping constraint; or move authorization to a capability-centric model where role names are display-only. Add a startup integrity check that warns if any role has zero capabilities.
 
-### 24. Assignment per-user latest-submission aggregate has no deterministic tie-break
-- **Files / Lines:** `src/lib/assignments/submissions.ts:750-775`
-- **Problem:** The per-user reducer picks the latest submission by comparing `latestSubmittedAt`. If a user submitted to two problems at the exact same millisecond, the order of `problemAggRows` (which is undefined) determines which submission is reported as the user's latest.
-- **Scenario:** A student submits to two problems at the same instant. The dashboard may show a different `latestSubmissionId`/`latestStatus` on each page load for the same student.
-- **Suggested remediation:** Tie-break by `latestSubId` (or problem order) when `rowDate === existDate`.
-- **Confidence:** Low
-- **Classification:** Correctness
+### HIGH-6: Standalone nginx template still uses `client_max_body_size 1m` in catch-all `location /`
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `scripts/online-judge.nginx.conf:60`, `85`, `95`; contrast `deploy-docker.sh:1629`
+- **Problem:** While the generated `deploy-docker.sh` nginx now sets 50 MiB in the catch-all `location /`, the committed standalone template `scripts/online-judge.nginx.conf` still sets `client_max_body_size 1m` in the catch-all block (`location /`) and in `/api/v1/judge/`. The aggregate finding was that uploads, restore, and imports larger than 1 MiB would be rejected. The HTTP-only template (`scripts/online-judge.nginx-http.conf`) has 50 MiB already.
+- **Failure scenario:** An operator using the committed standalone HTTPS template (manual install, dev/CI, or a host not using `deploy-docker.sh`) will see 413 errors on file uploads, backup restore ZIPs, and JSON imports larger than 1 MiB.
+- **Suggested fix:** Align the standalone HTTPS template's catch-all `client_max_body_size` with the generated config (50 MiB) or with the system setting. Remove the stale 1 MiB defaults from `/api/v1/judge/` unless they are intentionally scoped.
+
+### HIGH-7: Admin restore/import responses still leak server-side snapshot path
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/app/api/v1/admin/restore/route.ts:170`, `196`, `207`, `229`, `239`; `src/app/api/v1/admin/migrate/import/route.ts:115-142`
+- **Problem:** The `preRestoreSnapshotPath` filesystem path is returned verbatim in JSON responses to authenticated admin callers and is also included in the durable audit log details sent to the client.
+- **Failure scenario:** A compromised admin account, malicious browser extension, or accidentally shared API response reveals the exact host path layout (e.g., `/home/deployer/data/pre-restore-snapshots/...`), which aids lateral movement and targeted file access.
+- **Suggested fix:** Return only a snapshot ID or timestamp that operators can correlate with server logs; log the full path server-side. Remove `preRestoreSnapshotPath` from user-facing error and success payloads.
+
+### HIGH-8: `GET /api/v1/files` has no rate limit
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/app/api/v1/files/route.ts:155-208`
+- **Problem:** The file-list endpoint is wrapped with `createApiHandler` but omits a `rateLimit` key. It performs a `LEFT JOIN` against `users`, a `COUNT(*) OVER()` window function, pagination, and optional `LIKE` search over filenames.
+- **Failure scenario:** An authenticated attacker can scrape or brute-force paginated file lists without throttling, driving unnecessary database load and potentially enumerating every uploaded file's metadata.
+- **Suggested fix:** Add `rateLimit: "files:list"` (or reuse `files:upload`) to the `GET` handler config.
+
+### HIGH-9: Language configuration remains triplicated with only a partial contract test
+
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/judge/languages.ts`; `judge-worker-rs/src/types.rs`; `judge-worker-rs/src/languages.rs`; `tests/unit/infra/language-contract.test.ts`
+- **Problem:** The same language list and command templates are authored in TypeScript, Rust, and the database. The contract test compares the TypeScript `Language` union, Rust `Language` enum, and `JUDGE_LANGUAGE_CONFIGS` map, but does not verify runtime DB `language_configs` rows against the compiled definitions.
+- **Failure scenario:** An admin enables a language that exists in the DB but whose Rust enum variant is missing or spelled differently; the worker deserializes the claim request and the submission hangs/fails with an internal parse error. Conversely, a Rust-only language cannot be selected from the UI because the TS union lacks it.
+- **Suggested fix:** Add a runtime sync/validation job that asserts every enabled DB `language_configs` row has a matching TS union member and Rust enum variant, and reject enabling mismatched languages in the admin UI.
+
+### HIGH-10: Function-judging literal values are not validated against target-language ranges
+
+- **Severity:** HIGH
+- **Confidence:** Medium
+- **Status:** Risk
+- **Files / Lines:** `src/lib/judge/function-judging/types.ts:47-57`
+- **Problem:** `functionSpecSchema` validates scalar/array types and identifiers, but never checks that test-case literal values fit within the target language's representable range.
+- **Failure scenario:** An author enters a Java `long` larger than `Long.MAX_VALUE` or a `double` that the target harness cannot represent, producing wrong verdicts or harness crashes.
+- **Suggested fix:** Add per-type range validation that rejects out-of-range literals at problem authoring time, with target-language-specific limits.
 
 ---
 
-## Final sweep notes
+### MEDIUM-1: Deployment/infrastructure tests verify string presence, not rendered behavior
 
-- **Static checks:** `npm run lint` passes. `cargo test` in `rate-limiter-rs/` passes (2/2). `npx tsc --noEmit` emits two pre-existing errors in `.next/types/validator.ts` (generated Next.js types) that are unrelated to the reviewed code and likely stem from a stale `.next` build directory in the local clone.
-- **Resolved since the 2026-07-01 critic review:** XFF chain is preserved in `deploy-docker.sh` generated nginx; IPv4 leading-zero octets are rejected; bulk-rejudge correctly decrements `activeTasks`; `MAX_SUBMISSIONS_FOR_SIMILARITY` is enforced before invoking the Rust sidecar; raw-SQL additive repair blocks were removed from `deploy-docker.sh`; baseline security headers were added to `static-site/nginx.conf`; uploaded files are written with mode `0o600`.
-- **Commonly missed issues checked:** no hardcoded secrets in the reviewed files; no `docker system prune --volumes`; the production DB image is pinned to `postgres:18-alpine`; the similarity route now returns explicit `not_run` and `timed_out` reasons; dedicated-worker deployment forces HTTPS `JUDGE_BASE_URL` before restart.
-- **Residual risk overall:** The codebase has a solid cycle-3 hardening baseline, but several high-severity findings persist because they require intentional behavior changes rather than configuration fixes: quota-before-capability, unprotected concurrent similarity writers, custom-role rejection, and default-allow judge IP posture. These should be prioritized in the next remediation cycle.
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `tests/unit/infra/deploy-security.test.ts`; `tests/unit/infra/judge-report-nginx.test.ts`
+- **Problem:** Tests assert that `deploy-docker.sh` contains specific substrings (e.g., `add_header X-Content-Type-Options`). They do not render the generated nginx config or validate proxy behavior.
+- **Failure scenario:** `deploy-docker.sh` could contain a header inside an `if false; then ... fi` block and the storage-safety test would still pass. The XFF/body-size findings above are exactly the kind of drift these tests miss because they do not render and validate the generated config.
+- **Suggested fix:** Add tests that run `deploy-docker.sh --dry-run` and parse the emitted nginx config with `nginx -t` or a real syntax check. Assert the rendered values, not source substrings.
+
+### MEDIUM-2: Deprecated migrate/import JSON path still accepts password in request body
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `src/app/api/v1/admin/migrate/import/route.ts:145-185`
+- **Problem:** The endpoint still supports a JSON body of `{ password, data }` and validates the admin password from the request body. It logs a deprecation warning and adds `Deprecation`/`Sunset` headers, but the path remains functional until November 2026.
+- **Failure scenario:** Any reverse proxy, WAF, or debug middleware that logs request bodies will capture the admin password in plaintext. This is exactly the scenario the multipart path was introduced to avoid.
+- **Suggested fix:** Remove the JSON path, or gate it behind an env flag that defaults to off before the stated sunset. Emit a rate-limited `SECURITY_ALERT` log if the legacy path is used.
+
+### MEDIUM-3: Unit of work / transaction boundary discipline is inconsistent
+
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/db/index.ts`; multiple route handlers
+- **Problem:** `execTransaction` wraps callbacks in a Drizzle transaction, but `rawQueryOne`/`rawQueryAll` use the global pool and do not participate in an open transaction. The codebase uses `transactionContext` (AsyncLocalStorage) only to detect this mistake, not to route queries to the transaction client. Many route handlers perform multiple DB operations without an explicit transaction.
+- **Failure scenario:** A submission creation writes the submission row, increments pending count, and logs an audit event in separate calls. If the process crashes between calls, the DB is left inconsistent (submission exists but audit event is missing, or pending count is wrong).
+- **Suggested fix:** Route raw queries through the transaction client when inside `execTransaction`, and refactor multi-step handlers to use explicit transactions. Add a lint rule or runtime assertion that detects raw queries outside a transaction context in state-changing routes.
+
+### MEDIUM-4: Docker Compose lacks explicit bridge isolation from host networks
+
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Files / Lines:** `docker-compose.production.yml:215-222`
+- **Problem:** Networks are segmented (`frontend/backend/judge/db`) but the compose file does not set `internal: true` on the `db` or `judge` networks, and the `frontend` network is implicitly attached to the app. If `ports:` are added later or a service is misconfigured with `network_mode: host`, the segmentation is bypassed.
+- **Failure scenario:** A future change exposes `db:5432` or `judge-worker:3001` on the host interface by accident, allowing lateral movement from a compromised container.
+- **Suggested fix:** Mark the `db` and `judge` networks as `internal: true` so they cannot reach the external network. Document which services must be reachable from outside and pin those to `frontend` only.
+
+### MEDIUM-5: No documented operational rollback runbook for `deploy-docker.sh`
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `deploy-docker.sh`; `docs/ops/`
+- **Problem:** The deploy script performs many mutations (image builds, container starts, migrations, nginx reload, worker reconciliation) without a rollback manifest or documented recovery procedure.
+- **Failure scenario:** A deploy fails partway through. The operator has no authoritative list of what changed and must reverse-engineer the state before deciding whether to re-run or roll back.
+- **Suggested fix:** Add a runbook and/or a `--rollback` flag that uses a manifest file recorded at deploy start. Include rollback steps for DB (pre-deploy backup), containers (previous image tags), and nginx (previous config).
+
+### MEDIUM-6: Judge worker IP allowlist auto-population is missing
+
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Risk
+- **Files / Lines:** `deploy-docker.sh`; `docker-compose.production.yml`
+- **Problem:** There is no mechanism that auto-detects worker host IPs and seeds `JUDGE_ALLOWED_IPS` during deploy. The variable is left empty, which silently enables allow-all mode.
+- **Failure scenario:** Operators following the default deploy path end up with an open judge API even though the intended architecture has a dedicated worker host.
+- **Suggested fix:** During deploy, detect the worker container/service IP range and write it into `.env.production` as `JUDGE_ALLOWED_IPS`. If detection fails, fail closed with `JUDGE_STRICT_IP_ALLOWLIST=1` and require manual configuration.
+
+### MEDIUM-7: Container lifecycle audit logging is absent
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `docker-compose.production.yml:69-90`; `docker-compose.worker.yml:22-43`
+- **Problem:** The Docker socket proxy does not log which container operations were performed. Worker logs may log high-level actions, but the proxy itself is silent.
+- **Failure scenario:** A compromised worker creates a privileged container. There is no centralized record of the Docker API call, hampering incident response and forensic reconstruction.
+- **Suggested fix:** Add an audit logger in front of the Docker socket proxy, or configure the proxy to log requests. Ship those logs to the same centralized log sink used by the app.
+
+### MEDIUM-8: `AUTH_TRUST_HOST=true` comment conflates reverse-proxy use with trusting arbitrary Host headers
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / Lines:** `deploy-docker.sh:874-877`
+- **Problem:** The comment states `AUTH_TRUST_HOST` must be `true` "when behind a reverse proxy." This conflates "behind a reverse proxy" with "trust arbitrary Host/X-Forwarded-Host headers."
+- **Failure scenario:** Future maintainers read the comment and leave the default in place, perpetuating the host-header trust vulnerability.
+- **Suggested fix:** Rewrite the comment to explain that `AUTH_TRUST_HOST` should be `false` when `AUTH_URL` is fixed, and that nginx must canonicalize `X-Forwarded-Host` before proxying.
+
+### MEDIUM-9: Real-time coordination warns but does not fail when multi-instance is undeclared
+
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Confirmed
+- **Files / Lines:** `src/lib/realtime/realtime-coordination.ts:205-218`
+- **Problem:** `warnIfSingleInstanceRealtimeOnly` logs a warning when the backend is process-local and no instance count is declared. In production this is treated as a warning, not a startup failure.
+- **Failure scenario:** An operator scales the app to two replicas without setting `REALTIME_COORDINATION_BACKEND=postgresql`. Each instance maintains its own local SSE slot table; users connected to different instances exceed per-user limits silently.
+- **Suggested fix:** In production, treat undeclared multi-instance realtime as a fatal startup error unless an explicit opt-out env var is set. Alternatively, default to the PostgreSQL backend in production.
+
+---
+
+## Fresh cross-cutting issues (not in Cycle 2 aggregate)
+
+1. **Standalone HTTPS nginx template body-size regression.** `scripts/online-judge.nginx.conf:95` sets `client_max_body_size 1m` in the catch-all `location /`, contradicting the generated `deploy-docker.sh` value of 50 MiB. This creates a manual-install/dev regression.
+2. **`AUTH_TRUST_HOST` documentation is misleading.** The deploy comment frames the setting as required for reverse-proxy use rather than as a dangerous fallback, increasing the risk it remains enabled.
+3. **`APP_INSTANCE_COUNT=1` hides the realtime bottleneck.** `docker-compose.production.yml:114` sets the instance count to 1, so the single-instance guard is not triggered and operators may not realize the PostgreSQL advisory-lock path is the only shared backend.
+
+---
+
+## Distinguishing confirmed, likely, and validation-needed
+
+**Confirmed issues** (directly observable in current source/config): CRITICAL-1 through CRITICAL-4, HIGH-1 through HIGH-9, MEDIUM-1 through MEDIUM-3, MEDIUM-5, MEDIUM-7, MEDIUM-8.
+
+**Likely issues / design risks** (consequences follow from confirmed architecture but require load or incident to observe): HIGH-10, MEDIUM-4, MEDIUM-6, MEDIUM-9.
+
+**Risks needing manual validation:**
+- Whether `scripts/online-judge.nginx.conf` is still used by `deploy.sh` or any production host.
+- Whether the `judge_workers.secret_token` column is verified absent in all production environments so the raw SQL backfill can be removed per its sunset criterion.
+- Observed p99 latency of `acquireSharedSseConnectionSlot` under multi-instance load.
+- Whether any WAF, reverse proxy, or debug middleware logs request bodies to the deprecated `/api/v1/admin/migrate/import` JSON path.
+
+---
+
+## Commonly missed cross-cutting issues (final sweep)
+
+- **No internal TLS/mTLS design document.** The env wiring and compose networks assume plaintext HTTP forever.
+- **No DR schema contract test.** There is no CI step that replays migrations from an empty database and asserts the schema matches what `deploy-docker.sh` would produce after its raw SQL step.
+- **No documented rate-limiter sidecar failure mode.** When the sidecar is unreachable, behavior is unspecified beyond "fall through to DB."
+- **No migration path from PostgreSQL advisory locks to Redis.** The realtime module lists Redis as unsupported (`UNSUPPORTED_BACKENDS = new Set(["redis"])`).
+- **No container-operation audit log.** The Docker socket proxy is a silent high-privilege component.
+- **File-upload rate-limit parity is broken.** `POST /api/v1/files` has a rate limit while `GET /api/v1/files` does not, and the GET endpoint is more expensive.
+
+---
+
+## Multi-perspective summary
+
+- **Security engineer:** The three CRITICAL findings (host-header trust, plaintext internal traffic, judge allow-all) form a chained attack surface. A compromised worker or sidecar can sniff tokens, then use them from any IP to register fake workers or inject verdicts. The lack of internal encryption is the largest residual risk.
+- **New hire:** The deploy script is intimidating and not modular; understanding which step failed and how to recover requires reading ~1,100 lines of bash. The raw SQL backfill has a sunset criterion but no automated verification that the criterion is met.
+- **Ops engineer:** The real-time coordination layer will become a DB bottleneck during large contests. The deploy script has no rollback. The two-source-of-truth rate limiter will produce confusing incident data during partial outages.
+- **Stakeholder:** Cycle 3 has materially improved safety and correctness, but the unresolved systemic items still expose the platform to host-header attacks, lateral movement, and scalable-contest failures.
+
+---
+
+## Open questions
+
+1. Is `scripts/online-judge.nginx.conf` still used by `deploy.sh` or any production host?
+2. Has the `judge_workers.secret_token` column been verified absent in all production environments so the raw SQL backfill can be removed?
+3. What is the observed p99 latency of `acquireSharedSseConnectionSlot` under multi-instance load?
+4. Are there plans to move the rate-limiter sidecar state to Redis or the DB entirely?
+5. Does the Docker socket proxy log container operations anywhere, or is audit coverage limited to worker application logs?

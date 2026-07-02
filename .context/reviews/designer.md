@@ -1,8 +1,8 @@
-# UI/UX Review — JudgeKit Next.js Frontend
+# Cycle 3 UI/UX Review — JudgeKit Next.js Frontend
 
-**Review date:** 2026-07-02  
+**Review date:** 2026-06-30  
 **Scope:** `src/app/**/*.tsx`, `src/components/**/*.tsx`, `src/hooks/**/*.ts`, `src/contexts/**/*.ts`, `src/app/globals.css`, `next.config.ts`, `components.json`, i18n messages, public assets.  
-**Method:** Static code analysis plus a successful dev-server run against the local `judgekit-playwright-db` Postgres container. Live browser inspection was performed with `agent-browser` on home, login, practice, problem detail, playground, dashboard, and admin language-management pages. Some findings are confirmed only in source code where the page requires unavailable state.
+**Method:** Static code analysis plus a dev-server run against the local `judgekit-postgres` Postgres container. Live browser inspection was performed with `agent-browser` on home, login, practice, problem detail, playground, dashboard, and admin language-management pages. Some findings are confirmed only in source code where the page requires unavailable state.
 
 ---
 
@@ -36,7 +36,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 1. Empty `<SelectValue />` shows raw option values
 
-- **Severity:** Medium  
+- **Severity:** HIGH  
 - **Confidence:** High  
 - **Files & regions:**
   - `src/app/(public)/groups/[id]/assignments/[assignmentId]/filter-form.tsx:81`
@@ -51,7 +51,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 2. Form labels not associated with their controls
 
-- **Severity:** Medium  
+- **Severity:** HIGH  
 - **Confidence:** High  
 - **Files & regions (representative list):**
   - `src/components/contest/quick-create-contest-form.tsx:106`, `:115`, `:126`, `:140`, `:151`
@@ -72,7 +72,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 3. Missing visible focus indicators on custom interactive elements
 
-- **Severity:** Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** High  
 - **Files & regions:**
   - `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:135-146` — `role="button"` div has `cursor-pointer` but no `focus-visible` ring.
@@ -91,7 +91,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 4. Interactive content nested inside a `role="button"` container
 
-- **Severity:** Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** High  
 - **File:** `src/app/(public)/groups/[id]/assignments/[assignmentId]/status-board.tsx:135-170`
 - **Problem:** The row header is a `<div role="button" tabIndex={0}>` that also contains a student-name `<Link>` and a “View submissions” `<Button>`. Although `stopPropagation` is used on the inner links, the DOM still places focusable interactive children inside an element with button semantics. Screen readers may announce the row as a button while also announcing nested links/buttons, producing a confusing tab order and invalid accessibility tree.
@@ -100,7 +100,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 5. Chat widget has no focus trap and header buttons lack explicit type/ring
 
-- **Severity:** Low–Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** Medium  
 - **File:** `src/lib/plugins/chat-widget/chat-widget.tsx:313-411`
 - **Problem:** When the chat panel is open it overlays the page, but focus is not trapped inside it. A keyboard user can tab behind the panel. The minimize/close header buttons are plain `<button>` elements without `type="button"` and without visible focus rings, and the launcher button has `aria-label="Chat"` hardcoded in English instead of using the locale key.
@@ -109,7 +109,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 6. Snapshot mini-timeline dots are too small and have no focus indicator
 
-- **Severity:** Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** High  
 - **File:** `src/components/contest/code-timeline-panel.tsx:211-221`
 - **Problem:** Each snapshot is a `<button>` rendered as a 2 px × 2 px (inactive) or 6 px × 2 px (active) rounded bar. This is far below the 24 × 24 CSS-pixel minimum touch-target size and has no visible focus state.
@@ -118,7 +118,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 7. Some `<Button onClick>` components inside forms lack explicit `type="button"`
 
-- **Severity:** Low  
+- **Severity:** LOW  
 - **Confidence:** Medium  
 - **Files & regions:**
   - `src/app/(public)/groups/[id]/group-members-manager.tsx:399`
@@ -134,7 +134,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 8. Footer and header action links lack focus rings
 
-- **Severity:** Low  
+- **Severity:** LOW  
 - **Confidence:** High  
 - **Files:** `src/components/layout/public-footer.tsx:52-59`, `src/components/layout/public-header.tsx:235-244`
 - **Problem:** These text links only change color on hover; they have no `:focus-visible` outline, so keyboard users cannot see focus.
@@ -142,7 +142,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 9. Tablists lack accessible names
 
-- **Severity:** Low–Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** High  
 - **Files & regions (verified in browser):**
   - `src/app/(public)/practice/problems/[id]/page.tsx` — top-level tabs “Problem / Editorial / Accepted Solutions / Problem discussion” have no `aria-label`.
@@ -154,7 +154,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 10. Nested `<Link>` wrapping `<Button>` creates invalid interactive nesting
 
-- **Severity:** Low–Medium  
+- **Severity:** MEDIUM  
 - **Confidence:** High  
 - **Files & regions (verified in browser):**
   - `src/app/(dashboard)/dashboard/page.tsx` — Admin shortcut cards are `<Link>` elements containing `<Button>` children.
@@ -165,7 +165,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ### 11. Playground shows untranslated i18n keys and unlabeled controls
 
-- **Severity:** Low  
+- **Severity:** LOW  
 - **Confidence:** High  
 - **File:** `src/components/code/compiler-client.tsx` (rendered at `/playground`)
 - **Problem:** The test-case tab is announced as `"compiler.testCaseLabel"` and the test-case textbox contains that raw key as its value. The language `<Select>` at the top of the page has no associated `<Label>`.
@@ -176,7 +176,7 @@ No findings suggest the app is unusable, but the first two should be fixed befor
 
 ## Browser Verification Notes
 
-A local dev server was started against the `judgekit-playwright-db` Postgres container (`DATABASE_URL=postgres://judgekit:judgekit_test@localhost:55432/judgekit`). The following pages were inspected with `agent-browser` accessibility snapshots:
+A local dev server was started against the `judgekit-postgres` Postgres container (`DATABASE_URL=postgres://judgekit:judgekit@localhost:5432/judgekit`). The following pages were inspected with `agent-browser` accessibility snapshots:
 
 - `/` (home) — good landmarks, skip link, labeled navigation, heading structure.
 - `/login` — form labels are programmatically associated; password show/hide button is present.
