@@ -264,4 +264,74 @@ describe("deployment security defaults", () => {
     expect(agents).not.toContain("default action is `SCMP_ACT_ALLOW`");
   });
 
+  it("sets baseline security headers in the generated app nginx config", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    // Extract the generated nginx config region (between the first heredoc
+    // and the config transfer step). Both TLS and non-TLS variants are
+    // generated inside this region.
+    const nginxStart = deployDocker.indexOf('cat > "$NGINX_TMPFILE" <<NGINX_EOF');
+    const nginxEnd = deployDocker.indexOf("# Transfer nginx config via scp", nginxStart);
+    expect(nginxStart).toBeGreaterThanOrEqual(0);
+    expect(nginxEnd).toBeGreaterThan(nginxStart);
+    const nginxConfig = deployDocker.slice(nginxStart, nginxEnd);
+
+    expect(nginxConfig).toContain("add_header X-Content-Type-Options");
+    expect(nginxConfig).toContain("add_header X-Frame-Options");
+    expect(nginxConfig).toContain("add_header Referrer-Policy");
+    expect(nginxConfig).toContain("add_header Content-Security-Policy");
+    expect(nginxConfig).toContain("add_header Strict-Transport-Security");
+  });
+
+  it("hardens static-site nginx with HTTPS redirect and baseline headers", () => {
+    const staticSiteNginx = read("static-site/nginx.conf");
+
+    // Redirect HTTP to HTTPS.
+    expect(staticSiteNginx).toMatch(/return\s+301\s+https:\/\//);
+
+    // HTTPS block sets baseline security headers.
+    expect(staticSiteNginx).toContain("listen 443 ssl;");
+    expect(staticSiteNginx).toContain("add_header X-Content-Type-Options");
+    expect(staticSiteNginx).toContain("add_header X-Frame-Options");
+    expect(staticSiteNginx).toContain("add_header Referrer-Policy");
+    expect(staticSiteNginx).toContain("add_header Content-Security-Policy");
+    expect(staticSiteNginx).toContain("add_header Strict-Transport-Security");
+
+    // Static-asset location block must not override server-level add_header
+    // directives (using `expires` keeps Cache-Control without breaking
+    // inheritance).
+    const staticAssetLocation = staticSiteNginx.match(
+      /location\s+~\*\s+\\\.\(css\|js\|[^}]+\}/,
+    )?.[0];
+    expect(staticAssetLocation).toBeDefined();
+    expect(staticAssetLocation!).not.toContain("add_header");
+    expect(staticAssetLocation!).toContain("expires 7d;");
+  });
+
+  it("hardens the public static-site reverse proxy with security headers", () => {
+    const staticNginx = read("static-site/static.nginx.conf");
+
+    // HTTP block redirects to HTTPS.
+    expect(staticNginx).toContain("return 301 https://static.auraedu.me$request_uri;");
+
+    // HTTPS block sets baseline security headers at server level so they
+    // propagate to all proxied responses, including static assets.
+    const httpsBlock = staticNginx.split("server {")[2];
+    expect(httpsBlock).toBeDefined();
+    expect(httpsBlock).toContain("listen 443 ssl;");
+    expect(httpsBlock).toContain("add_header X-Content-Type-Options");
+    expect(httpsBlock).toContain("add_header X-Frame-Options");
+    expect(httpsBlock).toContain("add_header Referrer-Policy");
+    expect(httpsBlock).toContain("add_header Content-Security-Policy");
+    expect(httpsBlock).toContain("add_header Strict-Transport-Security");
+
+    // No location block should shadow the server-level security headers with
+    // its own add_header directives.
+    const locationBlocks = httpsBlock.match(/location\s+\S+\s*\{[\s\S]*?\}/g) ?? [];
+    expect(locationBlocks.length).toBeGreaterThan(0);
+    for (const block of locationBlocks) {
+      expect(block).not.toContain("add_header");
+    }
+  });
+
 });
