@@ -73,7 +73,7 @@ export interface ImportResult {
 /**
  * Convert a portable value back to the target dialect's format.
  */
-function convertValue(val: unknown, colName: string): unknown {
+export function convertValue(val: unknown, colName: string): unknown {
   if (val === null || val === undefined) return null;
 
   // Timestamp columns: ISO string → Date
@@ -83,8 +83,18 @@ function convertValue(val: unknown, colName: string): unknown {
     return date;
   }
 
-  // Boolean columns
+  // Boolean columns: coerce string/number forms produced by other dialects
+  // back to actual booleans. Boolean(val) would treat "false" as truthy, so
+  // we recognize the common string/number representations explicitly.
   if (BOOLEAN_COLUMNS.has(colName)) {
+    if (typeof val === "boolean") return val;
+    if (typeof val === "number") return val !== 0;
+    if (typeof val === "string") {
+      const normalized = val.trim().toLowerCase();
+      if (["false", "0", "no", "off"].includes(normalized)) return false;
+      if (["true", "1", "yes", "on"].includes(normalized)) return true;
+      return Boolean(val);
+    }
     return Boolean(val);
   }
 

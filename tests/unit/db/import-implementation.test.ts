@@ -15,7 +15,7 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
-import { buildImportColumnSets, importDatabase, TABLE_MAP } from "@/lib/db/import";
+import { buildImportColumnSets, convertValue, importDatabase, TABLE_MAP } from "@/lib/db/import";
 import { getTableOrder, TABLE_ORDER } from "@/lib/db/export";
 import { db } from "@/lib/db/index";
 
@@ -55,6 +55,45 @@ describe("importDatabase implementation guards", () => {
   });
 });
 
+describe("convertValue boolean coercion", () => {
+  it("returns false for falsy string/number forms", () => {
+    expect(convertValue(false, "isActive")).toBe(false);
+    expect(convertValue("false", "isActive")).toBe(false);
+    expect(convertValue("False", "isActive")).toBe(false);
+    expect(convertValue("FALSE", "isActive")).toBe(false);
+    expect(convertValue(0, "isActive")).toBe(false);
+    expect(convertValue("0", "isActive")).toBe(false);
+    expect(convertValue("no", "isActive")).toBe(false);
+    expect(convertValue("No", "isActive")).toBe(false);
+    expect(convertValue("off", "isActive")).toBe(false);
+    expect(convertValue("OFF", "isActive")).toBe(false);
+  });
+
+  it("returns true for truthy string/number forms", () => {
+    expect(convertValue(true, "isActive")).toBe(true);
+    expect(convertValue("true", "isActive")).toBe(true);
+    expect(convertValue("True", "isActive")).toBe(true);
+    expect(convertValue("TRUE", "isActive")).toBe(true);
+    expect(convertValue(1, "isActive")).toBe(true);
+    expect(convertValue("1", "isActive")).toBe(true);
+    expect(convertValue("yes", "isActive")).toBe(true);
+    expect(convertValue("Yes", "isActive")).toBe(true);
+    expect(convertValue("on", "isActive")).toBe(true);
+    expect(convertValue("ON", "isActive")).toBe(true);
+  });
+
+  it("falls back to Boolean() for unrecognized strings", () => {
+    expect(convertValue("", "isActive")).toBe(false);
+    expect(convertValue("maybe", "isActive")).toBe(true);
+  });
+
+  it("preserves non-boolean column behavior", () => {
+    expect(convertValue("false", "title")).toBe("false");
+    expect(convertValue("true", "description")).toBe("true");
+    expect(convertValue(0, "score")).toBe(0);
+    expect(convertValue(1, "score")).toBe(1);
+  });
+});
 describe("importDatabase partial-export data-loss guard", () => {
   it("does NOT truncate tables absent from the export and records them in skippedTables", async () => {
     // Mock transaction: invoke the callback with a recording mock tx so we can
