@@ -2,6 +2,7 @@ import { resolveCapabilities, getRoleLevel } from "@/lib/capabilities/cache";
 
 /**
  * Async version that supports custom roles via the capability cache.
+ * @deprecated Unused; prefer synchronous capability checks where possible.
  */
 export async function isAtLeastRoleAsync(userRole: string, requiredRole: string): Promise<boolean> {
   const userLevel = await getRoleLevel(userRole);
@@ -11,6 +12,7 @@ export async function isAtLeastRoleAsync(userRole: string, requiredRole: string)
 
 /**
  * Async version that checks capabilities for custom role support.
+ * @deprecated Unused; prefer synchronous capability checks where possible.
  */
 export async function canManageUsersAsync(role: string): Promise<boolean> {
   const caps = await resolveCapabilities(role);
@@ -19,6 +21,7 @@ export async function canManageUsersAsync(role: string): Promise<boolean> {
 
 /**
  * Async version that checks capabilities for custom role support.
+ * @deprecated Unused; prefer synchronous capability checks where possible.
  */
 export async function isInstructorOrAboveAsync(role: string): Promise<boolean> {
   const caps = await resolveCapabilities(role);
