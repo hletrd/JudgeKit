@@ -474,8 +474,8 @@ describe("backup restore semantic safety", () => {
         tables: {},
       },
       uploads: [
-        { storedName: "a.bin", buffer: Buffer.from("a") },
-        { storedName: "b.bin", buffer: Buffer.from("b") },
+        { storedName: "a.bin", stagedPath: "/tmp/staging/a.bin", byteLength: 1 },
+        { storedName: "b.bin", stagedPath: "/tmp/staging/b.bin", byteLength: 1 },
       ],
     });
     restoreParsedBackupFilesMock.mockResolvedValue(2);

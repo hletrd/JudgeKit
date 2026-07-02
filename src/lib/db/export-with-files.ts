@@ -4,9 +4,13 @@ import { streamDatabaseExport, type JudgeKitExport } from "@/lib/db/export";
 import { readUploadedFile, resolveStoredPath, writeUploadedFile, ensureUploadsDir, uploadedFileExists } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { asc } from "drizzle-orm";
-import { access } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { tmpdir } from "node:os";
+import { pipeline } from "node:stream/promises";
+import { Transform, type TransformCallback } from "node:stream";
+import { createWriteStream } from "node:fs";
 import { getDbNowUncached } from "@/lib/db-time";
 
 interface BackupIntegrityEntry {
@@ -40,6 +44,12 @@ export type LoadedZipEntry = {
   _data?: {
     uncompressedSize?: number;
   };
+};
+
+export type StagedUploadFile = {
+  storedName: string;
+  stagedPath: string;
+  byteLength: number;
 };
 
 // Intentionally uses inline createHash rather than hashToken — this computes
@@ -146,6 +156,42 @@ export function enforceBackupZipSizeLimits(entries: LoadedZipEntry[]) {
       throw new Error("backupZipTooLarge");
     }
   }
+}
+
+async function streamEntryToStaging(
+  entry: {
+    name: string;
+    nodeStream(type: "nodebuffer"): NodeJS.ReadableStream;
+  },
+  stagingDir: string,
+  expected?: BackupIntegrityEntry & { storedName: string }
+): Promise<StagedUploadFile> {
+  const storedName = entry.name.slice("uploads/".length);
+  const stagedPath = path.join(stagingDir, storedName);
+
+  const hash = createHash("sha256");
+  let byteLength = 0;
+  const hasher = new Transform({
+    transform(chunk: Buffer, _encoding: BufferEncoding, callback: TransformCallback) {
+      hash.update(chunk);
+      byteLength += chunk.length;
+      callback(null, chunk);
+    },
+  });
+
+  await pipeline(entry.nodeStream("nodebuffer"), hasher, createWriteStream(stagedPath, { mode: 0o600 }));
+
+  const actualHash = hash.digest("hex");
+  if (
+    expected &&
+    (expected.storedName !== storedName ||
+      expected.sha256 !== actualHash ||
+      expected.byteLength !== byteLength)
+  ) {
+    throw new Error("backupIntegrityMismatch");
+  }
+
+  return { storedName, stagedPath, byteLength };
 }
 
 /**
@@ -259,14 +305,22 @@ export async function restoreFilesFromZip(zipBuffer: Buffer): Promise<{
   dbExport: JudgeKitExport;
   filesRestored: number;
 }> {
-  const parsed = await parseBackupZip(zipBuffer);
-  const filesRestored = await restoreParsedBackupFiles(parsed.uploads);
-  return { dbExport: parsed.dbExport, filesRestored };
+  const stagingDir = await mkdtemp(path.join(tmpdir(), "judgekit-restore-"));
+  try {
+    const parsed = await parseBackupZip(zipBuffer, stagingDir);
+    const filesRestored = await restoreParsedBackupFiles(parsed.uploads);
+    return { dbExport: parsed.dbExport, filesRestored };
+  } finally {
+    await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+  }
 }
 
-export async function parseBackupZip(zipBuffer: Buffer): Promise<{
+export async function parseBackupZip(
+  zipBuffer: Buffer,
+  stagingDir: string
+): Promise<{
   dbExport: JudgeKitExport;
-  uploads: Array<{ storedName: string; buffer: Buffer }>;
+  uploads: StagedUploadFile[];
 }> {
   const JSZip = (await import("jszip")).default;
   const zip = await JSZip.loadAsync(zipBuffer);
@@ -301,9 +355,10 @@ export async function parseBackupZip(zipBuffer: Buffer): Promise<{
     throw new Error("invalidDatabaseJson");
   }
 
-  // 2. Validate uploaded files and keep them staged in memory. The restore
-  // route writes these only after DB validation/import succeeds.
-  const uploads: Array<{ storedName: string; buffer: Buffer }> = [];
+  // 2. Stream uploads/ entries to the staging directory, validating checksums
+  // incrementally. The restore route runs the DB transaction only after all
+  // files are staged and verified.
+  const uploads: StagedUploadFile[] = [];
   const fileEntries = zip.filter(
     (relativePath) => relativePath.startsWith("uploads/") && !relativePath.endsWith("/")
   );
@@ -323,20 +378,12 @@ export async function parseBackupZip(zipBuffer: Buffer): Promise<{
       continue;
     }
 
-    const buffer = await entry.async("nodebuffer");
-    if (manifestUploads) {
-      const expected = manifestUploads.get(entry.name);
-      if (
-        !expected ||
-        expected.storedName !== storedName ||
-        expected.sha256 !== sha256Hex(buffer) ||
-        expected.byteLength !== buffer.byteLength
-      ) {
-        throw new Error("backupIntegrityMismatch");
-      }
-      manifestUploads.delete(entry.name);
+    const expected = manifestUploads ? manifestUploads.get(entry.name) : undefined;
+    const staged = await streamEntryToStaging(entry, stagingDir, expected ?? undefined);
+    if (expected) {
+      manifestUploads!.delete(entry.name);
     }
-    uploads.push({ storedName, buffer });
+    uploads.push(staged);
   }
 
   if (manifestUploads && manifestUploads.size > 0) {
@@ -349,11 +396,12 @@ export async function parseBackupZip(zipBuffer: Buffer): Promise<{
 }
 
 export async function restoreParsedBackupFiles(
-  uploads: Array<{ storedName: string; buffer: Buffer }>
+  uploads: StagedUploadFile[]
 ): Promise<number> {
   await ensureUploadsDir();
   for (const upload of uploads) {
-    await writeUploadedFile(upload.storedName, upload.buffer);
+    const buffer = await readFile(upload.stagedPath);
+    await writeUploadedFile(upload.storedName, buffer);
   }
 
   // Post-write consistency verification (AGG-1 partial). The DB transaction

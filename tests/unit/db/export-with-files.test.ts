@@ -1,6 +1,9 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 const {
   dbSelectMock,
@@ -51,9 +54,13 @@ vi.mock("@/lib/files/storage", () => ({
   uploadedFileExists: uploadedFileExistsMock,
 }));
 
-vi.mock("node:fs/promises", () => ({
-  access: accessMock,
-}));
+vi.mock("node:fs/promises", async () => {
+  const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+  return {
+    ...actual,
+    access: accessMock,
+  };
+});
 
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
@@ -206,26 +213,33 @@ describe("export-with-files integrity manifests", () => {
     expect(writeUploadedFileMock).toHaveBeenCalledWith("upload-1.bin", Buffer.from("hello upload"));
   });
 
-  it("parses ZIP backups without mutating upload storage", async () => {
-    const { parseBackupZip } = await import("@/lib/db/export-with-files");
-    const zip = new JSZip();
-    const dbJson = JSON.stringify({
-      version: 1,
-      exportedAt: "2026-04-17T00:00:00.000Z",
-      sourceDialect: "postgresql",
-      appVersion: "test",
-      tables: {},
-    });
+  it("streams ZIP upload entries to a staging directory without mutating upload storage", async () => {
+    const stagingDir = await mkdtemp(path.join(tmpdir(), "judgekit-test-"));
+    try {
+      const { parseBackupZip } = await import("@/lib/db/export-with-files");
+      const zip = new JSZip();
+      const dbJson = JSON.stringify({
+        version: 1,
+        exportedAt: "2026-04-17T00:00:00.000Z",
+        sourceDialect: "postgresql",
+        appVersion: "test",
+        redactionMode: "full-fidelity",
+        tables: {},
+      });
 
-    zip.file("database.json", dbJson);
-    zip.file("uploads/upload-1.bin", Buffer.from("hello upload"));
+      zip.file("database.json", dbJson);
+      zip.file("uploads/upload-1.bin", Buffer.from("hello upload"));
 
-    const result = await parseBackupZip(await zip.generateAsync({ type: "nodebuffer" }));
+      const result = await parseBackupZip(await zip.generateAsync({ type: "nodebuffer" }), stagingDir);
 
-    expect(result.uploads).toEqual([
-      { storedName: "upload-1.bin", buffer: Buffer.from("hello upload") },
-    ]);
-    expect(writeUploadedFileMock).not.toHaveBeenCalled();
+      expect(result.uploads).toHaveLength(1);
+      expect(result.uploads[0].storedName).toBe("upload-1.bin");
+      expect(result.uploads[0].byteLength).toBe(Buffer.byteLength("hello upload"));
+      await expect(readFile(result.uploads[0].stagedPath)).resolves.toEqual(Buffer.from("hello upload"));
+      expect(writeUploadedFileMock).not.toHaveBeenCalled();
+    } finally {
+      await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+    }
   });
 
   it("skips path-traversal upload entries when restoring ZIP backups", async () => {
@@ -296,41 +310,64 @@ describe("export-with-files integrity manifests", () => {
 
   describe("restoreParsedBackupFiles post-write consistency verification (AGG-1 partial)", () => {
     it("returns the count when every written file is present on disk", async () => {
-      const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
-      uploadedFileExistsMock.mockResolvedValue(true);
+      const stagingDir = await mkdtemp(path.join(tmpdir(), "judgekit-restore-test-"));
+      try {
+        const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
+        uploadedFileExistsMock.mockResolvedValue(true);
 
-      const count = await restoreParsedBackupFiles([
-        { storedName: "upload-1.bin", buffer: Buffer.from("a") },
-        { storedName: "upload-2.bin", buffer: Buffer.from("b") },
-      ]);
+        const paths = [
+          path.join(stagingDir, "upload-1.bin"),
+          path.join(stagingDir, "upload-2.bin"),
+        ];
+        await Promise.all(paths.map((p, i) => writeFile(p, Buffer.from(String.fromCharCode(97 + i)))));
 
-      expect(count).toBe(2);
-      expect(writeUploadedFileMock).toHaveBeenCalledTimes(2);
-      expect(uploadedFileExistsMock).toHaveBeenCalledTimes(2);
+        const count = await restoreParsedBackupFiles([
+          { storedName: "upload-1.bin", stagedPath: paths[0], byteLength: 1 },
+          { storedName: "upload-2.bin", stagedPath: paths[1], byteLength: 1 },
+        ]);
+
+        expect(count).toBe(2);
+        expect(writeUploadedFileMock).toHaveBeenCalledTimes(2);
+        expect(uploadedFileExistsMock).toHaveBeenCalledTimes(2);
+      } finally {
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+      }
     });
 
     it("throws fileRestoreIncomplete naming the missing files after a silent partial write", async () => {
-      const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
-      // Simulate a silent partial write: writeUploadedFile did not throw, but
-      // uploadedFileExists reports upload-2.bin as absent on disk.
-      uploadedFileExistsMock.mockImplementation(async (storedName: string) =>
-        storedName !== "upload-2.bin"
-      );
+      const stagingDir = await mkdtemp(path.join(tmpdir(), "judgekit-restore-test-"));
+      try {
+        const { restoreParsedBackupFiles } = await import("@/lib/db/export-with-files");
+        // Simulate a silent partial write: writeUploadedFile did not throw, but
+        // uploadedFileExists reports upload-2.bin as absent on disk.
+        uploadedFileExistsMock.mockImplementation(async (storedName: string) =>
+          storedName !== "upload-2.bin"
+        );
 
-      const promise = restoreParsedBackupFiles([
-        { storedName: "upload-1.bin", buffer: Buffer.from("a") },
-        { storedName: "upload-2.bin", buffer: Buffer.from("b") },
-        { storedName: "upload-3.bin", buffer: Buffer.from("c") },
-      ]);
+        const paths = [
+          path.join(stagingDir, "upload-1.bin"),
+          path.join(stagingDir, "upload-2.bin"),
+          path.join(stagingDir, "upload-3.bin"),
+        ];
+        await Promise.all(paths.map((p, i) => writeFile(p, Buffer.from(String.fromCharCode(97 + i)))));
 
-      // The error must be the structured fileRestoreIncomplete signal and carry
-      // the missing names so the route's audit surfaces them. Revert-RED:
-      // removing the verification makes this resolve to 3 instead of throwing.
-      await expect(promise).rejects.toThrow("fileRestoreIncomplete");
-      await expect(promise).rejects.toMatchObject({
-        message: "fileRestoreIncomplete",
-        missing: ["upload-2.bin"],
-      });
+        const promise = restoreParsedBackupFiles([
+          { storedName: "upload-1.bin", stagedPath: paths[0], byteLength: 1 },
+          { storedName: "upload-2.bin", stagedPath: paths[1], byteLength: 1 },
+          { storedName: "upload-3.bin", stagedPath: paths[2], byteLength: 1 },
+        ]);
+
+        // The error must be the structured fileRestoreIncomplete signal and carry
+        // the missing names so the route's audit surfaces them. Revert-RED:
+        // removing the verification makes this resolve to 3 instead of throwing.
+        await expect(promise).rejects.toThrow("fileRestoreIncomplete");
+        await expect(promise).rejects.toMatchObject({
+          message: "fileRestoreIncomplete",
+          missing: ["upload-2.bin"],
+        });
+      } finally {
+        await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+      }
     });
   });
 });

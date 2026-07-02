@@ -13,11 +13,17 @@ import { importDatabase } from "@/lib/db/import";
 import { isSanitizedExport, validateExport, type JudgeKitExport } from "@/lib/db/export";
 import { MAX_IMPORT_BYTES, readUploadedJsonFileWithLimit } from "@/lib/db/import-transfer";
 import { parseBackupZip, restoreParsedBackupFiles } from "@/lib/db/export-with-files";
+import type { StagedUploadFile } from "@/lib/db/export-with-files";
 import { takePreRestoreSnapshot, snapshotIdFromPath } from "@/lib/db/pre-restore-snapshot";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
+  let stagingDir: string | undefined;
+
   try {
     const user = await getApiUser(request);
     if (!user) return unauthorized();
@@ -77,15 +83,16 @@ export async function POST(request: NextRequest) {
 
     let data: JudgeKitExport;
     let filesRestored = 0;
-    let pendingUploadedFiles: Array<{ storedName: string; buffer: Buffer }> = [];
+    let pendingUploadedFiles: StagedUploadFile[] = [];
 
     if (isZipFile) {
-      // ZIP archive: extract database.json + uploaded files
+      // ZIP archive: stream uploads/ to disk, validate checksums, then import.
       const arrayBuffer = await file.arrayBuffer();
       const zipBuffer = Buffer.from(arrayBuffer);
+      stagingDir = await mkdtemp(path.join(tmpdir(), "judgekit-restore-"));
 
       try {
-        const result = await parseBackupZip(zipBuffer);
+        const result = await parseBackupZip(zipBuffer, stagingDir);
         data = result.dbExport;
         pendingUploadedFiles = result.uploads;
       } catch (error) {
@@ -242,5 +249,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     logger.error({ err: error }, "Database restore error");
     return NextResponse.json({ error: "restoreFailed" }, { status: 500 });
+  } finally {
+    if (stagingDir) {
+      await rm(stagingDir, { recursive: true, force: true }).catch(() => {});
+    }
   }
 }
