@@ -190,13 +190,15 @@ describe("deployment security defaults", () => {
 
     expect(production).toContain("judgekit-app-data:/app/data");
     expect(production).toContain("judgekit-app-data:");
-    expect(production).toContain("- IMAGES=1");
+    expect(production).toContain("- IMAGES=0");
     // BUILD must stay 0 — image builds must not flow through the integrated
     // worker path. The proxy still allows POST/DELETE/ALLOW_START/ALLOW_STOP
     // because the worker needs them for `docker run` and per-submission
     // container cleanup; without these the proxy returns 403 for every
     // judge invocation (root cause of the 2026-05-16 silent compile_error
-    // sweep).
+    // sweep). IMAGES is set to 0 on the app host because listing/pulling
+    // images is not required there; worker hosts may enable it via the
+    // worker overlay.
     expect(production).toContain("- BUILD=0");
     expect(production).toContain("- POST=1");
     expect(production).toContain("- DELETE=1");
