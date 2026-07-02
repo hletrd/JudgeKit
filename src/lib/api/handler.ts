@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import type { ZodSchema } from "zod";
 import type { UserRole } from "@/types";
 import {
@@ -24,7 +25,45 @@ export type HandlerContext<T = undefined> = {
   user: AuthUser;
   body: T;
   params: Record<string, string>;
+  requestId: string;
 };
+
+/**
+ * Minimal error taxonomy for API responses. Known operational failures expose a
+ * machine-readable `code` field instead of being collapsed into a generic 500.
+ */
+export class ApiError extends Error {
+  code: string;
+  status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.code = code;
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
+
+export class OperationalError extends ApiError {
+  constructor(code: string, message: string, status: number = 500) {
+    super(code, message, status);
+    this.name = "OperationalError";
+  }
+}
+
+export class ValidationError extends ApiError {
+  constructor(message: string = "validationError") {
+    super("validationError", message, 400);
+    this.name = "ValidationError";
+  }
+}
+
+export class NotFoundError extends ApiError {
+  constructor(resource: string) {
+    super("notFound", `${resource} not found`, 404);
+    this.name = "NotFoundError";
+  }
+}
 
 /**
  * Auth config variants:
@@ -69,6 +108,27 @@ export type HandlerConfig<T = undefined> = {
 const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 type NextRouteContext = { params: Promise<Record<string, string>> };
 
+const REQUEST_ID_HEADER = "x-request-id";
+
+function getOrCreateRequestId(req: NextRequest): string {
+  return req.headers.get(REQUEST_ID_HEADER) ?? randomUUID();
+}
+
+function addRequestId(response: Response, requestId: string): Response {
+  response.headers.set("X-Request-Id", requestId);
+  return response;
+}
+
+function buildErrorBody(
+  code: string,
+  requestId: string,
+  message?: string
+): Record<string, unknown> {
+  const body: Record<string, unknown> = { error: code, requestId };
+  if (message) body.message = message;
+  return body;
+}
+
 /**
  * Factory that wraps a Next.js App Router route handler with common middleware:
  * auth, CSRF, rate limiting, body parsing + Zod validation, and error handling.
@@ -79,7 +139,7 @@ type NextRouteContext = { params: Promise<Record<string, string>> };
  *   auth: { roles: ["admin", "super_admin"] },
  *   rateLimit: "users:create",
  *   schema: userCreateSchema,
- *   handler: async (req, { user, body }) => {
+ *   handler: async (req, { user, body, requestId }) => {
  *     // body is fully typed and validated
  *     return NextResponse.json({ data: body });
  *   },
@@ -104,6 +164,9 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
     req: NextRequest,
     routeCtx?: NextRouteContext
   ): Promise<Response> {
+    const requestId = getOrCreateRequestId(req);
+    const requestLogger = logger.child?.({ requestId, route: req.nextUrl.pathname }) ?? logger;
+
     // Initialize per-request AsyncLocalStorage cache for recruiting context.
     // This ensures that getRecruitingAccessContext deduplicates DB queries
     // within a single API request, even though React cache() does not work
@@ -117,7 +180,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
       // --- Rate limiting ---
       if (rateLimit) {
         const rateLimitResponse = await consumeApiRateLimit(req, rateLimit);
-        if (rateLimitResponse) return rateLimitResponse;
+        if (rateLimitResponse) return addRequestId(rateLimitResponse, requestId);
       }
 
       // --- Auth check ---
@@ -125,11 +188,11 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
 
       if (auth !== false) {
         user = await getApiUser(req);
-        if (!user) return unauthorized();
+        if (!user) return addRequestId(unauthorized(), requestId);
 
         // Role check
         if (typeof auth === "object" && auth.roles && auth.roles.length > 0) {
-          if (!isUserRole(user.role) || !auth.roles.includes(user.role)) return forbidden();
+          if (!isUserRole(user.role) || !auth.roles.includes(user.role)) return addRequestId(forbidden(), requestId);
         }
 
         if (typeof auth === "object" && auth.capabilities && auth.capabilities.length > 0) {
@@ -137,7 +200,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
           const hasRequiredCapabilities = auth.requireAllCapabilities === false
             ? auth.capabilities.some((capability) => caps.has(capability))
             : auth.capabilities.every((capability) => caps.has(capability));
-          if (!hasRequiredCapabilities) return forbidden();
+          if (!hasRequiredCapabilities) return addRequestId(forbidden(), requestId);
         }
       }
 
@@ -150,7 +213,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
 
       if (shouldCheckCsrf) {
         const csrfError = csrfForbidden(req);
-        if (csrfError) return csrfError;
+        if (csrfError) return addRequestId(csrfError, requestId);
       }
 
       // --- Body parsing + Zod validation ---
@@ -161,18 +224,25 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         try {
           raw = await req.json();
         } catch {
-          return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+          return addRequestId(
+            NextResponse.json({ error: "invalidJson", requestId }, { status: 400 }),
+            requestId
+          );
         }
 
         const parsed = schema.safeParse(raw);
         if (!parsed.success) {
           const issues = parsed.error.issues;
-          return NextResponse.json(
-            {
-              error: issues[0]?.message ?? "validationError",
-              errors: issues.map((issue) => issue.message),
-            },
-            { status: 400 }
+          return addRequestId(
+            NextResponse.json(
+              {
+                error: issues[0]?.message ?? "validationError",
+                errors: issues.map((issue) => issue.message),
+                requestId,
+              },
+              { status: 400 }
+            ),
+            requestId
           );
         }
         body = parsed.data as T;
@@ -187,13 +257,14 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
       if (auth !== false && !user) {
         // This should never happen since we return unauthorized() above,
         // but guard against logic errors.
-        return unauthorized();
+        return addRequestId(unauthorized(), requestId);
       }
 
       const result = await handler(req, {
         user: user as AuthUser,
         body,
         params,
+        requestId,
       });
 
       // Prevent caching of authenticated API responses
@@ -206,10 +277,30 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         result.headers.set("X-Content-Type-Options", "nosniff");
       }
 
-      return result;
+      return addRequestId(result, requestId);
     } catch (error) {
-      logger.error({ err: error, method: req.method, path: req.nextUrl.pathname }, "Unhandled error");
-      return NextResponse.json({ error: "internalServerError" }, { status: 500 });
+      if (error instanceof ApiError) {
+        requestLogger.warn(
+          { err: error, code: error.code, status: error.status },
+          "Operational API error"
+        );
+        return addRequestId(
+          NextResponse.json(
+            buildErrorBody(error.code, requestId, error.message),
+            { status: error.status }
+          ),
+          requestId
+        );
+      }
+
+      requestLogger.error({ err: error, method: req.method, path: req.nextUrl.pathname }, "Unhandled error");
+      return addRequestId(
+        NextResponse.json(
+          buildErrorBody("internalServerError", requestId),
+          { status: 500 }
+        ),
+        requestId
+      );
     }
     }));
   };

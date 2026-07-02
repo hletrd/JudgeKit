@@ -12,6 +12,7 @@ const {
   isUserRoleMock,
   resolveCapabilitiesMock,
   loggerErrorMock,
+  loggerWarnMock,
 } = vi.hoisted(() => ({
   getApiUserMock: vi.fn(),
   unauthorizedMock: vi.fn(() =>
@@ -25,6 +26,7 @@ const {
   isUserRoleMock: vi.fn(() => true),
   resolveCapabilitiesMock: vi.fn(async () => new Set<string>()),
   loggerErrorMock: vi.fn(),
+  loggerWarnMock: vi.fn(),
 }));
 
 vi.mock("@/lib/api/auth", () => ({
@@ -53,6 +55,12 @@ vi.mock("@/lib/logger", () => ({
     info: vi.fn(),
     warn: vi.fn(),
     debug: vi.fn(),
+    child: vi.fn(() => ({
+      error: loggerErrorMock,
+      warn: loggerWarnMock,
+      info: vi.fn(),
+      debug: vi.fn(),
+    })),
   },
 }));
 
@@ -556,6 +564,56 @@ describe("createApiHandler", () => {
   });
 
   // -------------------------------------------------------
+  // Request ID observability
+  // -------------------------------------------------------
+  describe("request ID observability", () => {
+    it("returns a generated X-Request-Id header on success", async () => {
+      const handler = createApiHandler({
+        handler: async (_req, { requestId }) =>
+          NextResponse.json({ requestId }),
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+      const json = await res.json();
+
+      expect(res.headers.get("X-Request-Id")).toBe(json.requestId);
+      expect(json.requestId).toBeDefined();
+      expect(typeof json.requestId).toBe("string");
+    });
+
+    it("propagates an existing X-Request-Id request header", async () => {
+      const handler = createApiHandler({
+        handler: async (_req, { requestId }) =>
+          NextResponse.json({ requestId }),
+      });
+
+      const res = await handler(
+        makeRequest("GET", undefined, { "X-Request-Id": "existing-id-123" }),
+        { params: Promise.resolve({}) }
+      );
+      const json = await res.json();
+
+      expect(json.requestId).toBe("existing-id-123");
+      expect(res.headers.get("X-Request-Id")).toBe("existing-id-123");
+    });
+
+    it("returns X-Request-Id on unhandled errors", async () => {
+      const handler = createApiHandler({
+        handler: async () => {
+          throw new Error("boom");
+        },
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+      const json = await res.json();
+
+      expect(res.status).toBe(500);
+      expect(res.headers.get("X-Request-Id")).toBe(json.requestId);
+      expect(json.error).toBe("internalServerError");
+    });
+  });
+
+  // -------------------------------------------------------
   // Error handling
   // -------------------------------------------------------
   describe("error handling", () => {
@@ -571,6 +629,7 @@ describe("createApiHandler", () => {
 
       expect(res.status).toBe(500);
       expect(json.error).toBe("internalServerError");
+      expect(json.requestId).toBeDefined();
     });
 
     it("logs unhandled errors with method and path", async () => {
@@ -605,6 +664,40 @@ describe("createApiHandler", () => {
       const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
 
       expect(res.status).toBe(500);
+    });
+
+    it("returns a machine-readable code for known operational errors", async () => {
+      const { OperationalError } = await import("@/lib/api/handler");
+      const handler = createApiHandler({
+        handler: async () => {
+          throw new OperationalError("serviceUnavailable", "DB is down", 503);
+        },
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+      const json = await res.json();
+
+      expect(res.status).toBe(503);
+      expect(json.error).toBe("serviceUnavailable");
+      expect(json.message).toBe("DB is down");
+      expect(json.requestId).toBeDefined();
+      expect(loggerWarnMock).toHaveBeenCalledOnce();
+    });
+
+    it("returns a notFound code for NotFoundError", async () => {
+      const { NotFoundError } = await import("@/lib/api/handler");
+      const handler = createApiHandler({
+        handler: async () => {
+          throw new NotFoundError("contest");
+        },
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+      const json = await res.json();
+
+      expect(res.status).toBe(404);
+      expect(json.error).toBe("notFound");
+      expect(json.message).toBe("contest not found");
     });
   });
 
