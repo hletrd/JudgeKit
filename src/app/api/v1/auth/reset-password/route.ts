@@ -3,6 +3,7 @@ import { z } from "zod";
 import { resetPassword, validatePasswordResetToken } from "@/lib/email";
 import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
 import { FIXED_MIN_PASSWORD_LENGTH, getPasswordValidationError } from "@/lib/security/password";
+import { validateCsrf } from "@/lib/security/csrf";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -10,7 +11,16 @@ const resetPasswordSchema = z.object({
 });
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const body = await req.json().catch(() => ({}));
+  const csrfError = await validateCsrf(req);
+  if (csrfError) return csrfError;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+  }
+
   const parsed = resetPasswordSchema.safeParse(body);
 
   if (!parsed.success) {

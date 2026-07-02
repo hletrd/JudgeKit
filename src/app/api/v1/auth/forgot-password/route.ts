@@ -3,13 +3,23 @@ import { z } from "zod";
 import { sendPasswordResetEmail } from "@/lib/email";
 import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
 import { getPublicBaseUrl } from "@/lib/security/env";
+import { validateCsrf } from "@/lib/security/csrf";
 
 const forgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const body = await req.json().catch(() => ({}));
+  const csrfError = await validateCsrf(req);
+  if (csrfError) return csrfError;
+
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalidJson" }, { status: 400 });
+  }
+
   const parsed = forgotPasswordSchema.safeParse(body);
 
   if (!parsed.success) {
