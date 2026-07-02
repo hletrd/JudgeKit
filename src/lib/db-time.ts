@@ -15,12 +15,20 @@ import { rawQueryOne } from "@/lib/db/queries";
  * silently falling back to app-server time, which would defeat the purpose of
  * this utility.
  */
+function coerceDbTimestamp(value: unknown, label: string): Date {
+  if (value == null) {
+    throw new Error(`${label}: failed to fetch DB server time — SELECT NOW() returned null`);
+  }
+  const date = value instanceof Date ? value : new Date(value as string | number);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`${label}: failed to parse DB server time — SELECT NOW() returned an invalid timestamp`);
+  }
+  return date;
+}
+
 export const getDbNow = cache(async function getDbNow(): Promise<Date> {
   const row = await rawQueryOne<{ now: Date }>("SELECT NOW()::timestamptz AS now");
-  if (!row?.now) {
-    throw new Error("getDbNow: failed to fetch DB server time — SELECT NOW() returned null");
-  }
-  return row.now;
+  return coerceDbTimestamp(row?.now, "getDbNow");
 });
 
 /**
@@ -32,10 +40,7 @@ export const getDbNow = cache(async function getDbNow(): Promise<Date> {
  */
 export async function getDbNowUncached(): Promise<Date> {
   const row = await rawQueryOne<{ now: Date }>("SELECT NOW()::timestamptz AS now");
-  if (!row?.now) {
-    throw new Error("getDbNowUncached: failed to fetch DB server time — SELECT NOW() returned null");
-  }
-  return row.now;
+  return coerceDbTimestamp(row?.now, "getDbNowUncached");
 }
 
 /**

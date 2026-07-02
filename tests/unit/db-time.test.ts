@@ -22,6 +22,20 @@ describe("getDbNowUncached", () => {
     expect(result).toBe(dbTime);
   });
 
+  it("coerces an ISO-string DB server time to a Date", async () => {
+    const dbTime = new Date("2026-04-20T12:00:00Z");
+    mockRawQueryOne.mockResolvedValue({ now: dbTime.toISOString() });
+    const result = await getDbNowUncached();
+    expect(result.getTime()).toBe(dbTime.getTime());
+  });
+
+  it("throws when DB query returns an unparseable timestamp string", async () => {
+    mockRawQueryOne.mockResolvedValue({ now: "not-a-timestamp" });
+    await expect(getDbNowUncached()).rejects.toThrow(
+      "getDbNowUncached: failed to parse DB server time"
+    );
+  });
+
   it("throws when DB query returns null", async () => {
     mockRawQueryOne.mockResolvedValue(null);
     await expect(getDbNowUncached()).rejects.toThrow(
