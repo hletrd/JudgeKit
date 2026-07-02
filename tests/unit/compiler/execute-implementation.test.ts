@@ -33,6 +33,15 @@ describe("compiler execute implementation", () => {
     expect(source).not.toContain("await chmod(sourcePath, 0o666);");
   });
 
+  it("chowns the workspace back to the app user before cleanup", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+
+    expect(source).toContain("cleanupCompilerWorkspace(workspaceDir)");
+    expect(source).toContain("chownRecursive");
+    expect(source).toContain("process.getuid");
+    expect(source).toContain("process.getgid");
+  });
+
   it("keeps the legacy deploy path compatible with compiler workspace creation", () => {
     const source = readFileSync(join(process.cwd(), "deploy.sh"), "utf8");
 

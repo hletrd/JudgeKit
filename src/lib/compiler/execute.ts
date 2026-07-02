@@ -1,6 +1,15 @@
 import { spawn, execFile } from "child_process";
 import { promisify } from "util";
-import { chmod, chown, mkdir, writeFile, rm, mkdtemp, lstat } from "fs/promises";
+import {
+  chmod,
+  chown,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  writeFile,
+} from "fs/promises";
 import { join } from "path";
 import { tmpdir, cpus } from "os";
 import { randomUUID } from "crypto";
@@ -325,6 +334,49 @@ async function cleanupContainer(containerName: string): Promise<void> {
     await exec("docker", ["rm", "-f", containerName], { timeout: 5_000 });
   } catch (error) {
     logger.warn({ error, container: containerName }, "[compiler] Failed to remove container");
+  }
+}
+
+/**
+ * Recursively chown a directory tree back to the app user.
+ * Needed before cleanup because the sandbox runs as uid/gid 65534 and may
+ * create nested directories that the app user cannot otherwise remove.
+ */
+async function chownRecursive(dir: string, uid: number, gid: number): Promise<void> {
+  await chown(dir, uid, gid);
+  const entries = await readdir(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = join(dir, entry.name);
+    await chown(fullPath, uid, gid);
+    if (entry.isDirectory()) {
+      await chownRecursive(fullPath, uid, gid);
+    }
+  }
+}
+
+/**
+ * Clean up a compiler workspace after the sandbox run. The workspace and any
+ * nested files were chowned to SANDBOX_UID; chown them back to the app user
+ * first so Node can remove the tree.
+ */
+export async function cleanupCompilerWorkspace(workspaceDir: string): Promise<void> {
+  try {
+    const appUid = typeof process.getuid === "function" ? process.getuid() : null;
+    const appGid = typeof process.getgid === "function" ? process.getgid() : null;
+    if (appUid !== null && appGid !== null) {
+      await chownRecursive(workspaceDir, appUid, appGid);
+    }
+  } catch (error) {
+    logger.warn(
+      { error, workspaceDir },
+      "[compiler] Failed to chown workspace back to app user; cleanup may fail",
+    );
+  }
+
+  try {
+    await rm(workspaceDir, { recursive: true, force: true });
+  } catch (error) {
+    logger.warn({ error, workspaceDir }, "[compiler] Failed to clean up workspace");
   }
 }
 
@@ -856,12 +908,9 @@ export async function executeCompilerRun(
       compileOutput,
     };
   } finally {
-    // Clean up temp workspace
-    try {
-      await rm(workspaceDir, { recursive: true, force: true });
-    } catch (error) {
-      logger.warn({ error, workspaceDir }, "[compiler] Failed to clean up workspace");
-    }
+    // Clean up temp workspace. The sandbox user (65534) owns the tree after
+    // the chown step above, so chown it back to the app user before removal.
+    await cleanupCompilerWorkspace(workspaceDir);
   }
 }
 

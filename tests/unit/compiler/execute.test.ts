@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, readdirSync } from "node:fs";
+import { chmod, chown, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 vi.mock("@/lib/system-settings-config", () => ({
   getConfiguredSettings: () => ({
@@ -187,5 +191,48 @@ describe("executeCompilerRun", () => {
       stderr: "COMPILER_RUNNER_URL is set but RUNNER_AUTH_TOKEN is missing",
       exitCode: null,
     });
+  });
+});
+
+describe("workspace leak regression", () => {
+  const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
+
+  it("cleans up a sandbox-owned workspace tree", async () => {
+    if (!isRoot) {
+      // chown to the sandbox uid requires root/CAP_CHOWN; skip on normal dev hosts.
+      return;
+    }
+
+    const { cleanupCompilerWorkspace } = await import("@/lib/compiler/execute");
+    const base = await mkdtemp(join(tmpdir(), "compiler-"));
+    const nested = join(base, "build");
+    const sourcePath = join(base, "solution.py");
+    const artifactPath = join(nested, "out.o");
+
+    try {
+      await mkdir(nested);
+      await writeFile(sourcePath, "print(1)", { encoding: "utf8" });
+      await writeFile(artifactPath, "", { encoding: "utf8" });
+      await chown(nested, 65534, 65534);
+      await chown(artifactPath, 65534, 65534);
+      await chown(sourcePath, 65534, 65534);
+      await chown(base, 65534, 65534);
+      await chmod(base, 0o700);
+
+      await cleanupCompilerWorkspace(base);
+
+      expect(existsSync(base)).toBe(false);
+      const leftovers = readdirSync(tmpdir()).filter((name) =>
+        name.startsWith("compiler-"),
+      );
+      expect(leftovers).toHaveLength(0);
+    } finally {
+      // Best-effort cleanup if the test itself fails mid-way.
+      try {
+        await cleanupCompilerWorkspace(base);
+      } catch {
+        // ignore
+      }
+    }
   });
 });
