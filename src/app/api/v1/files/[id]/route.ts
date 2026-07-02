@@ -7,12 +7,18 @@ import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { recordAuditEvent } from "@/lib/audit/events";
-import { readUploadedFile, deleteUploadedFile } from "@/lib/files/storage";
+import {
+  resolveStoredPath,
+  deleteUploadedFile,
+  createUploadedFileReadStream,
+  getUploadedFileStats,
+} from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { isImageMimeType } from "@/lib/files/image-processing";
-import { verifyFileMagicBytes } from "@/lib/files/validation";
+import { verifyFileMagicBytesAtPath } from "@/lib/files/validation";
 import { getAccessibleProblemIds } from "@/lib/auth/permissions";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
+import { Readable } from "node:stream";
 
 async function canAccessFile(
   fileId: string,
@@ -64,6 +70,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
+    const rateLimitError = await consumeApiRateLimit(request, "files:download");
+    if (rateLimitError) {
+      return rateLimitError;
+    }
+
     const user = await getApiUser(request);
     if (!user) return unauthorized();
 
@@ -97,19 +108,20 @@ export async function GET(
       return new NextResponse(null, { status: 304 });
     }
 
-    let buffer: Buffer;
+    const filePath = resolveStoredPath(file.storedName);
+    let stats;
     try {
-      buffer = await readUploadedFile(file.storedName);
+      stats = await getUploadedFileStats(file.storedName);
     } catch (err) {
-      logger.warn({ err, fileId: file.id, storedName: file.storedName }, "[files] failed to read uploaded file");
+      logger.warn({ err, fileId: file.id, storedName: file.storedName }, "[files] failed to stat uploaded file");
       return apiError("notFound", 404);
     }
 
     const isImage = isImageMimeType(file.mimeType);
-    // Verify file content matches declared MIME type via magic bytes.
-    // If mismatched, fall back to application/octet-stream to prevent
-    // content-sniffing attacks from disguised file content.
-    const magicMatches = verifyFileMagicBytes(buffer, file.mimeType);
+    // Verify file content matches declared MIME type via magic bytes without
+    // loading the entire file into memory. If mismatched, fall back to
+    // application/octet-stream to prevent content-sniffing attacks.
+    const magicMatches = await verifyFileMagicBytesAtPath(filePath, file.mimeType);
     const contentType = magicMatches ? file.mimeType : "application/octet-stream";
 
     // Sanitize originalName: reject control characters and newlines that could
@@ -120,11 +132,14 @@ export async function GET(
       ? "inline"
       : contentDispositionAttachment(sanitizedName.replace(/\.[^.]+$/, ""), ext);
 
-    return new NextResponse(new Uint8Array(buffer), {
+    const nodeStream = createUploadedFileReadStream(file.storedName);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+
+    return new NextResponse(webStream, {
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Content-Length": String(buffer.length),
+        "Content-Length": String(stats.size),
         "Content-Disposition": disposition,
         "Cache-Control": "private, no-store, max-age=0",
         ETag: `"${file.id}"`,

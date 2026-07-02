@@ -1,4 +1,5 @@
-import { mkdir, writeFile, unlink, readFile, access } from "node:fs/promises";
+import { mkdir, writeFile, unlink, readFile, access, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { join, resolve } from "node:path";
 
 function getDataDir(): string {
@@ -48,4 +49,12 @@ export async function uploadedFileExists(storedName: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+export function createUploadedFileReadStream(storedName: string): import("node:fs").ReadStream {
+  return createReadStream(resolveStoredPath(storedName));
+}
+
+export async function getUploadedFileStats(storedName: string): Promise<import("node:fs").Stats> {
+  return stat(resolveStoredPath(storedName));
 }

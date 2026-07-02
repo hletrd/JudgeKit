@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { Readable } from "node:stream";
 
 const {
   getApiUserMock,
@@ -11,6 +12,10 @@ const {
   dbDeleteMock,
   readUploadedFileMock,
   deleteUploadedFileMock,
+  resolveStoredPathMock,
+  getUploadedFileStatsMock,
+  createUploadedFileReadStreamMock,
+  verifyFileMagicBytesAtPathMock,
   recordAuditEventMock,
   loggerWarnMock,
 } = vi.hoisted(() => ({
@@ -23,6 +28,10 @@ const {
   dbDeleteMock: vi.fn(),
   readUploadedFileMock: vi.fn(),
   deleteUploadedFileMock: vi.fn(),
+  resolveStoredPathMock: vi.fn(),
+  getUploadedFileStatsMock: vi.fn(),
+  createUploadedFileReadStreamMock: vi.fn(),
+  verifyFileMagicBytesAtPathMock: vi.fn(),
   recordAuditEventMock: vi.fn(),
   loggerWarnMock: vi.fn(),
 }));
@@ -60,6 +69,10 @@ vi.mock("@/lib/security/api-rate-limit", () => ({
   consumeApiRateLimit: consumeApiRateLimitMock,
 }));
 
+vi.mock("@/lib/files/validation", () => ({
+  verifyFileMagicBytesAtPath: verifyFileMagicBytesAtPathMock,
+}));
+
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
 }));
@@ -71,6 +84,9 @@ vi.mock("@/lib/auth/permissions", () => ({
 vi.mock("@/lib/files/storage", () => ({
   readUploadedFile: readUploadedFileMock,
   deleteUploadedFile: deleteUploadedFileMock,
+  resolveStoredPath: resolveStoredPathMock,
+  getUploadedFileStats: getUploadedFileStatsMock,
+  createUploadedFileReadStream: createUploadedFileReadStreamMock,
 }));
 
 vi.mock("@/lib/audit/events", () => ({
@@ -123,10 +139,18 @@ describe("GET /api/v1/files/[id]", () => {
     getAccessibleProblemIdsMock.mockReset();
     dbSelectMock.mockReset();
     readUploadedFileMock.mockReset();
+    resolveStoredPathMock.mockReset();
+    getUploadedFileStatsMock.mockReset();
+    createUploadedFileReadStreamMock.mockReset();
+    verifyFileMagicBytesAtPathMock.mockReset();
 
     csrfForbiddenMock.mockReturnValue(null);
     consumeApiRateLimitMock.mockResolvedValue(null);
     readUploadedFileMock.mockReturnValue(Buffer.from("hello"));
+    resolveStoredPathMock.mockImplementation((storedName: string) => `/tmp/uploads/${storedName}`);
+    getUploadedFileStatsMock.mockResolvedValue({ size: 5 } as import("node:fs").Stats);
+    createUploadedFileReadStreamMock.mockImplementation(() => Readable.from([Buffer.from("hello")]));
+    verifyFileMagicBytesAtPathMock.mockResolvedValue(true);
   });
 
   it("returns 401 when unauthenticated", async () => {
@@ -136,9 +160,29 @@ describe("GET /api/v1/files/[id]", () => {
     const res = await GET(makeRequest("file-1"), { params: Promise.resolve({ id: "file-1" }) });
 
     expect(res.status).toBe(401);
+    expect(consumeApiRateLimitMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      "files:download",
+    );
   });
 
-  it("allows the uploading owner to fetch the file with private cache headers", async () => {
+  it("returns 429 when the IP-keyed download rate limit is exhausted", async () => {
+    consumeApiRateLimitMock.mockResolvedValue(
+      NextResponse.json({ error: "rateLimited" }, { status: 429 })
+    );
+
+    const { GET } = await import("@/app/api/v1/files/[id]/route");
+    const res = await GET(makeRequest("file-1"), { params: Promise.resolve({ id: "file-1" }) });
+
+    expect(res.status).toBe(429);
+    expect(getApiUserMock).not.toHaveBeenCalled();
+    expect(consumeApiRateLimitMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      "files:download",
+    );
+  });
+
+  it("streams the file response instead of loading it into memory", async () => {
     getApiUserMock.mockResolvedValue(ownerUser);
     resolveCapabilitiesMock.mockResolvedValue(new Set(["files.upload"]));
     dbSelectMock.mockReturnValueOnce(
@@ -159,7 +203,9 @@ describe("GET /api/v1/files/[id]", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("private, no-store, max-age=0");
     expect(res.headers.get("Vary")).toBe("Cookie, Authorization");
+    expect(res.headers.get("Content-Length")).toBe("5");
     expect(getAccessibleProblemIdsMock).not.toHaveBeenCalled();
+    expect(createUploadedFileReadStreamMock).toHaveBeenCalledWith("stored.bin");
   });
 
   it("allows access when the file is explicitly linked to an accessible problem", async () => {

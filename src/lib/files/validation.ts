@@ -1,5 +1,6 @@
 import { isImageMimeType } from "./image-processing";
 import type { ConfiguredSettings } from "@/lib/system-settings-config";
+import { open } from "node:fs/promises";
 
 const ALLOWED_ATTACHMENT_TYPES = new Set([
   "application/pdf",
@@ -263,4 +264,89 @@ export function verifyFileMagicBytes(buffer: Buffer, declaredMimeType: string): 
   }
 
   return false;
+}
+
+const SAMPLE_SIZE = 8192;
+
+async function readFileSample(
+  handle: import("node:fs/promises").FileHandle,
+  fileSize: number,
+  position: number,
+  length: number,
+): Promise<Buffer> {
+  if (position >= fileSize || length <= 0) {
+    return Buffer.alloc(0);
+  }
+  const toRead = Math.min(length, fileSize - position);
+  const buffer = Buffer.alloc(toRead);
+  const { bytesRead } = await handle.read(buffer, 0, toRead, position);
+  return buffer.subarray(0, bytesRead);
+}
+
+/**
+ * Verify that the file content matches the declared MIME type by checking
+ * magic-byte signatures, without loading the entire file into memory.
+ *
+ * Images are trusted to the upload-time sharp verification (returns true).
+ * Text types sample up to 8 KiB at the start, middle, and end of the file
+ * to detect binary content disguised as text. Other types check their
+ * known binary signature at the start of the file.
+ */
+export async function verifyFileMagicBytesAtPath(
+  filePath: string,
+  declaredMimeType: string,
+): Promise<boolean> {
+  // Images are verified by sharp during processImage — skip here
+  if (isImageMimeType(declaredMimeType)) {
+    return true;
+  }
+
+  const handle = await open(filePath, "r");
+  try {
+    const stats = await handle.stat();
+    const fileSize = stats.size;
+
+    // Text types: sample start, middle, and end for null bytes.
+    if (declaredMimeType.startsWith("text/")) {
+      const start = await readFileSample(handle, fileSize, 0, SAMPLE_SIZE);
+      const slices: Buffer[] = [start];
+      if (fileSize > SAMPLE_SIZE) {
+        slices.push(await readFileSample(handle, fileSize, Math.max(0, fileSize - SAMPLE_SIZE), SAMPLE_SIZE));
+        if (fileSize > SAMPLE_SIZE * 3) {
+          const midStart = Math.floor(fileSize / 2) - Math.floor(SAMPLE_SIZE / 2);
+          slices.push(
+            await readFileSample(
+              handle,
+              fileSize,
+              Math.max(SAMPLE_SIZE, midStart),
+              Math.min(SAMPLE_SIZE, fileSize - SAMPLE_SIZE - Math.max(SAMPLE_SIZE, midStart)),
+            ),
+          );
+        }
+      }
+      return !slices.some((slice) => slice.includes(0x00));
+    }
+
+    // Check known magic-byte signatures at the start of the file.
+    const signatures = MAGIC_SIGNATURES[declaredMimeType];
+    if (!signatures) {
+      return false;
+    }
+
+    const maxSignatureLength = Math.max(...signatures.map((sig) => sig.offset + sig.bytes.length));
+    const header = await readFileSample(handle, fileSize, 0, maxSignatureLength);
+
+    for (const sig of signatures) {
+      const start = sig.offset;
+      const end = start + sig.bytes.length;
+      if (header.length < end) continue;
+      if (header.subarray(start, end).equals(sig.bytes)) {
+        return true;
+      }
+    }
+
+    return false;
+  } finally {
+    await handle.close();
+  }
 }
