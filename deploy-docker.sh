@@ -345,6 +345,7 @@ _cleanup_ssh_master() {
         fi
         rm -rf "$SSH_CONTROL_DIR"
     fi
+    rm -f "${NGINX_TMPFILE:-}"
 }
 trap _cleanup_ssh_master EXIT
 
@@ -389,7 +390,7 @@ _initial_ssh_check() {
 
 remote() {
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
-        sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+        SSHPASS="$SSH_PASSWORD" sshpass -e ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
     else
         ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
     fi
@@ -397,7 +398,7 @@ remote() {
 
 remote_copy() {
     if [[ -n "${SSH_PASSWORD:-}" ]]; then
-        sshpass -p "$SSH_PASSWORD" scp $SSH_OPTS "$@"
+        SSHPASS="$SSH_PASSWORD" sshpass -e scp $SSH_OPTS "$@"
     else
         scp $SSH_OPTS "$@"
     fi
@@ -455,8 +456,8 @@ prune_old_docker_artifacts() {
         info "SKIP_POST_DEPLOY_PRUNE set — leaving stale containers/images/build cache on ${host_label} (manual cleanup may be required to free disk)"
         return 0
     fi
-    info "Post-deploy cleanup on ${host_label}: stopped containers, dangling images, build cache..."
-    "$runner" "docker container prune -f 2>&1 | tail -1" || true
+    info "Post-deploy cleanup on ${host_label}: stopped containers older than 24h, dangling images, build cache..."
+    "$runner" "docker container prune -f --filter 'until=24h' 2>&1 | tail -1" || true
     # -f (NOT -af): dangling only — preserves judge-* language images that
     # are tagged but not currently attached to any running container.
     "$runner" "docker image prune -f 2>&1 | tail -1" || true
@@ -592,7 +593,7 @@ remote_sudo() {
         # OS sudo password independently of SSH credentials (cycle 6: closes
         # C3-AGG-2). sshpass continues to authenticate the SSH layer.
         local sudo_pw="${SUDO_PASSWORD:-${SSH_PASSWORD}}"
-        printf '%s\n' "$sudo_pw" | sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo -S -p '' bash -lc ${quoted_cmd}"
+        printf '%s\n' "$sudo_pw" | SSHPASS="$SSH_PASSWORD" sshpass -e ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo -S -p '' bash -lc ${quoted_cmd}"
     else
         ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "sudo bash -lc ${quoted_cmd}"
     fi
@@ -1464,12 +1465,14 @@ else
     info "No TLS certificate detected for ${DOMAIN}; generating HTTP-only nginx config"
 fi
 
-# Write nginx config to /tmp first (avoids heredoc + sudo + tee issues)
+# Write nginx config to a unique temp path first (avoids heredoc + sudo + tee issues
+# and prevents parallel deploys from clobbering the same /tmp file).
+NGINX_TMPFILE="$(mktemp /tmp/judgekit-nginx.XXXXXX.conf)"
 NGINX_HTTP2_MODE="$(detect_nginx_http2_mode)"
 info "Remote nginx HTTP/2 syntax mode: ${NGINX_HTTP2_MODE}"
 
 if [[ "${USE_TLS}" == "true" ]]; then
-cat > /tmp/judgekit-nginx.conf <<NGINX_EOF
+cat > "$NGINX_TMPFILE" <<NGINX_EOF
 server_tokens off;
 
 map \$http_upgrade \$connection_upgrade {
@@ -1492,19 +1495,19 @@ server {
 NGINX_EOF
 
 if [[ "${NGINX_HTTP2_MODE}" == "modern" ]]; then
-cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
+cat >> "$NGINX_TMPFILE" <<NGINX_EOF
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
 NGINX_EOF
 else
-cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
+cat >> "$NGINX_TMPFILE" <<NGINX_EOF
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
 NGINX_EOF
 fi
 
-cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
+cat >> "$NGINX_TMPFILE" <<NGINX_EOF
     server_name ${DOMAIN};
 
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
@@ -1566,7 +1569,7 @@ cat >> /tmp/judgekit-nginx.conf <<NGINX_EOF
 }
 NGINX_EOF
 else
-cat > /tmp/judgekit-nginx.conf <<NGINX_EOF
+cat > "$NGINX_TMPFILE" <<NGINX_EOF
 server_tokens off;
 
 map \$http_upgrade \$connection_upgrade {
@@ -1638,10 +1641,10 @@ NGINX_EOF
 fi
 
 # Transfer nginx config via scp, then sudo copy into place
-remote_copy /tmp/judgekit-nginx.conf "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/nginx-judgekit.conf"
+remote_copy "$NGINX_TMPFILE" "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_DIR}/nginx-judgekit.conf"
 remote_sudo "cp ${REMOTE_DIR}/nginx-judgekit.conf /etc/nginx/sites-available/judgekit"
 remote_sudo "ln -sf /etc/nginx/sites-available/judgekit /etc/nginx/sites-enabled/judgekit"
-rm -f /tmp/judgekit-nginx.conf
+rm -f "$NGINX_TMPFILE"
 
 # Test and reload nginx
 if remote_sudo "nginx -t 2>&1"; then
