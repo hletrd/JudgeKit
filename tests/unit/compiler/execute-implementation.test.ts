@@ -33,6 +33,12 @@ describe("compiler execute implementation", () => {
     expect(source).not.toContain("await chmod(sourcePath, 0o666);");
   });
 
+  it("uses phase-specific PID limits (64 run, 128 compile)", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+
+    expect(source).toContain('opts.phase === "run" ? "64" : "128"');
+  });
+
   it("chowns the workspace back to the app user before cleanup", () => {
     const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
 

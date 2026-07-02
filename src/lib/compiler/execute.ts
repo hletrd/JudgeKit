@@ -428,7 +428,7 @@ async function runDocker(opts: {
     "--cpus",
     "1",
     "--pids-limit",
-    "128",
+    opts.phase === "run" ? "64" : "128",
     "--read-only",
     "--tmpfs",
     opts.phase === "compile" ? COMPILE_TMPFS : RUN_TMPFS,

@@ -317,9 +317,13 @@ async fn run_docker_once(
 ) -> Result<DockerRunResult, DockerError> {
     let container_name = format!("oj-{}", Uuid::new_v4());
     let mem_limit = get_memory_limit_mb(options.memory_limit_mb);
-    // VM-based languages (JVM, BEAM, .NET, pwsh) spawn many threads even at
-    // runtime, so the run-phase limit must accommodate them.
-    let pids_limit = "128";
+    // Compile-phase toolchains may legitimately spawn many processes (e.g.
+    // C++ template instantiation, Java/Maven dependency resolution). Run phase
+    // gets a tighter limit because user code should not need many threads.
+    let pids_limit = match options.phase {
+        Phase::Compile => "128",
+        Phase::Run => "64",
+    };
 
     let workspace_volume = if options.read_only_workspace {
         format!("{}:/workspace:ro", options.workspace_dir)
@@ -722,6 +726,19 @@ mod tests {
     use super::{JudgeEnvironmentError, Phase, parse_timestamp_epoch_ms, resolve_seccomp_profile};
     use std::path::PathBuf;
     use tempfile::NamedTempFile;
+
+    #[test]
+    fn pids_limit_is_phase_specific() {
+        let src = include_str!("docker.rs");
+        assert!(
+            src.contains("Phase::Compile => \"128\""),
+            "compile phase must allow 128 PIDs"
+        );
+        assert!(
+            src.contains("Phase::Run => \"64\""),
+            "run phase must limit PIDs to 64"
+        );
+    }
 
     #[test]
     fn compile_phase_uses_custom_seccomp_by_default() {
