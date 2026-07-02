@@ -13,6 +13,7 @@ import { isAllowedMimeType, validateFileSize, getExtensionForMime, isZipMimeType
 import { writeUploadedFile, deleteUploadedFile } from "@/lib/files/storage";
 import { logger } from "@/lib/logger";
 import { escapeLikePattern } from "@/lib/db/like";
+import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
 
 export const POST = createApiHandler({
   auth: { capabilities: ["files.upload"] },
@@ -153,11 +154,18 @@ export const POST = createApiHandler({
 });
 
 export const GET = createApiHandler({
+  rateLimit: "files:list",
   handler: async (req, { user }) => {
     const caps = await resolveCapabilities(user.role);
     if (!caps.has("files.manage") && !caps.has("files.upload")) {
       return forbidden();
     }
+
+    // B3: user-keyed rate limit consumed only after authentication and
+    // authorization so unauthenticated or unauthorized requests do not exhaust
+    // the bucket and shared IPs cannot bypass per-user throttling.
+    const rateLimitResponse = await consumeUserApiRateLimit(req, user.id, "files:list");
+    if (rateLimitResponse) return rateLimitResponse;
 
     const searchParams = req.nextUrl.searchParams;
     const { page, limit, offset } = parsePagination(searchParams);
