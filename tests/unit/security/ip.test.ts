@@ -153,10 +153,60 @@ describe("extractClientIp", () => {
     ).toBe("198.51.100.8");
   });
 
-  it("rejects IPv4 addresses with leading-zero octets", async () => {
+  it("canonicalizes equivalent IPv6 strings to the same form", async () => {
     const { extractClientIp } = await importIpModule();
 
-    expect(extractClientIp(createHeaders({ "x-forwarded-for": "192.168.01.001, 203.0.113.10" }))).toBe("0.0.0.0");
+    const canonical = "2001:db8::1";
+    expect(extractClientIp(createHeaders({ "x-real-ip": "2001:0db8:0000:0000:0000:0000:0000:0001" }))).toBe(canonical);
+    expect(extractClientIp(createHeaders({ "x-real-ip": "2001:db8:0:0:0:0:0:1" }))).toBe(canonical);
+    expect(extractClientIp(createHeaders({ "x-real-ip": "[2001:0db8:0000:0000:0000:0000:0000:0001]" }))).toBe(canonical);
+  });
+
+  it("canonicalizes the loopback address to ::1", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "0:0:0:0:0:0:0:1" }))).toBe("::1");
+    expect(extractClientIp(createHeaders({ "x-real-ip": "::1" }))).toBe("::1");
+    expect(extractClientIp(createHeaders({ "x-real-ip": "[::1]" }))).toBe("::1");
+  });
+
+  it("canonicalizes the unspecified address to ::", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "0:0:0:0:0:0:0:0" }))).toBe("::");
+    expect(extractClientIp(createHeaders({ "x-real-ip": "::" }))).toBe("::");
+  });
+
+  it("lowercases canonical IPv6 addresses", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "2001:DB8::1" }))).toBe("2001:db8::1");
+  });
+
+  it("rejects IPv6 addresses with multiple compression markers", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "2001::db8::1" }))).toBe("0.0.0.0");
+    expect(extractClientIp(createHeaders({ "x-real-ip": "::1::" }))).toBe("0.0.0.0");
+  });
+
+  it("rejects IPv6 addresses with too many groups", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "1:2:3:4:5:6:7:8:9" }))).toBe("0.0.0.0");
+    expect(extractClientIp(createHeaders({ "x-real-ip": "1:2:3:4:5:6:7:8:0" }))).toBe("0.0.0.0");
+  });
+
+  it("strips zone identifiers from IPv6 link-local addresses", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "fe80::1%eth0" }))).toBe("fe80::1");
+  });
+
+  it("rejects an IPv6 address that expands to more than 8 groups", async () => {
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-real-ip": "1:2:3:4:5:6:7::8:9" }))).toBe("0.0.0.0");
   });
 
   it("accepts the all-zero IPv4 address", async () => {

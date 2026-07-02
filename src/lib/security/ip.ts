@@ -42,6 +42,90 @@ export function unwrapMappedIpv4(value: string): string | null {
   return isValidIpv4(match[1]) ? match[1] : null;
 }
 
+/**
+ * Canonicalize a valid IPv6 address to RFC 5952 form (lowercase hex, no
+ * leading zeros, `::` for the longest run of all-zero groups). Returns null
+ * for invalid or ambiguously compressed addresses so that spoofed/malformed
+ * strings cannot create multiple rate-limit buckets or allowlist bypasses.
+ */
+function canonicalizeIpv6(value: string): string | null {
+  // Strip optional brackets and zone identifier (e.g. [fe80::1%eth0]).
+  let cleaned = value.trim();
+  if (cleaned.startsWith("[") && cleaned.endsWith("]")) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  const zoneIndex = cleaned.indexOf("%");
+  if (zoneIndex >= 0) cleaned = cleaned.slice(0, zoneIndex);
+
+  if (!/^[0-9a-fA-F:]+$/.test(cleaned) || !cleaned.includes(":")) return null;
+
+  // RFC 5952: at most one "::".
+  const doubleColonCount = (cleaned.match(/::/g) ?? []).length;
+  if (doubleColonCount > 1) return null;
+
+  let head: string[];
+  let tail: string[];
+  if (doubleColonCount === 1) {
+    const [headRaw, tailRaw] = cleaned.split("::");
+    head = headRaw === "" ? [] : headRaw.split(":");
+    tail = tailRaw === "" ? [] : tailRaw.split(":");
+  } else {
+    head = cleaned.split(":");
+    tail = [];
+  }
+
+  const totalGroups = head.length + tail.length;
+  if (totalGroups > 8) return null;
+  if (doubleColonCount === 0 && totalGroups !== 8) return null;
+
+  const groups: string[] = [];
+  for (const segment of head) {
+    if (!/^[0-9a-fA-F]{1,4}$/.test(segment)) return null;
+    groups.push(parseInt(segment, 16).toString(16));
+  }
+  for (let i = totalGroups; i < 8; i++) groups.push("0");
+  for (const segment of tail) {
+    if (!/^[0-9a-fA-F]{1,4}$/.test(segment)) return null;
+    groups.push(parseInt(segment, 16).toString(16));
+  }
+  if (groups.length !== 8) return null;
+
+  // Find the longest run of zero groups for :: compression.
+  // Ties are broken by the first run, per RFC 5952 recommendation.
+  let bestStart = -1;
+  let bestLen = 0;
+  let curStart = -1;
+  let curLen = 0;
+  for (let i = 0; i < groups.length; i++) {
+    if (groups[i] === "0") {
+      if (curStart === -1) curStart = i;
+      curLen++;
+    } else {
+      if (curLen > bestLen) {
+        bestLen = curLen;
+        bestStart = curStart;
+      }
+      curStart = -1;
+      curLen = 0;
+    }
+  }
+  if (curLen > bestLen) {
+    bestLen = curLen;
+    bestStart = curStart;
+  }
+
+  if (bestLen >= 2 && bestStart !== -1) {
+    const prefix = groups.slice(0, bestStart).join(":");
+    const suffix = groups.slice(bestStart + bestLen).join(":");
+    if (prefix === "" && suffix === "") return "::";
+    if (prefix === "") return `::${suffix}`;
+    if (suffix === "") return `${prefix}::`;
+    return `${prefix}::${suffix}`;
+  }
+
+  return groups.join(":");
+}
+
 function isValidIp(value: string) {
   const candidate = value.trim();
   if (!candidate) return false;
@@ -52,20 +136,7 @@ function isValidIp(value: string) {
   if (unwrapMappedIpv4(candidate) !== null) {
     return true;
   }
-
-  const stripped = candidate.startsWith("[") && candidate.endsWith("]")
-    ? candidate.slice(1, -1)
-    : candidate;
-
-  if (!/^[0-9a-fA-F:]+$/.test(stripped) || !stripped.includes(":")) {
-    return false;
-  }
-
-  const segments = stripped.split(":");
-  if (segments.length > 8) return false;
-  const emptySegments = segments.filter((segment) => segment === "").length;
-  if (emptySegments > 2) return false;
-  return segments.every((segment) => segment === "" || /^[0-9a-fA-F]{1,4}$/.test(segment));
+  return canonicalizeIpv6(candidate) !== null;
 }
 
 export function extractClientIp(headers: HeaderCarrier): string | null {
@@ -103,9 +174,9 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
       const clientIndex = parts.length - (trustedHops + 1);
       const candidate = parts[clientIndex];
       if (isValidIp(candidate)) {
-        // Unwrap IPv4-mapped IPv6 to its dotted IPv4 so the allowlist matcher
-        // and rate-limit keys see a stable, canonical form.
-        return unwrapMappedIpv4(candidate) ?? candidate;
+        // Unwrap IPv4-mapped IPv6 to its dotted IPv4 and canonicalize pure
+        // IPv6 so rate-limit buckets and allowlist entries are stable.
+        return unwrapMappedIpv4(candidate) ?? canonicalizeIpv6(candidate) ?? candidate;
       }
     } else if (parts.length > 0 && process.env.NODE_ENV === "production") {
       logger.warn(
@@ -118,7 +189,7 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
   // Only trust X-Real-IP when XFF is absent (avoids bypassing hop validation).
   const realIp = headers.get("x-real-ip")?.trim();
   if (!forwardedFor && realIp && isValidIp(realIp)) {
-    return unwrapMappedIpv4(realIp) ?? realIp;
+    return unwrapMappedIpv4(realIp) ?? canonicalizeIpv6(realIp) ?? realIp;
   }
 
   if (process.env.NODE_ENV === "production" && !forwardedFor) {
