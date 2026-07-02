@@ -91,7 +91,7 @@ describe("executeCompilerRun", () => {
       })
     ).resolves.toMatchObject({
       stderr: "Invalid compile command",
-      exitCode: null,
+      exitCode: 1,
     });
 
     await expect(
@@ -104,7 +104,7 @@ describe("executeCompilerRun", () => {
       })
     ).resolves.toMatchObject({
       stderr: "Invalid run command",
-      exitCode: null,
+      exitCode: 1,
     });
   });
 
@@ -126,7 +126,7 @@ describe("executeCompilerRun", () => {
       })
     ).resolves.toMatchObject({
       stderr: "Invalid run command",
-      exitCode: null,
+      exitCode: 1,
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -144,7 +144,7 @@ describe("executeCompilerRun", () => {
       })
     ).resolves.toMatchObject({
       stderr: "Invalid run command",
-      exitCode: null,
+      exitCode: 1,
     });
 
     await expect(
@@ -157,8 +157,26 @@ describe("executeCompilerRun", () => {
       })
     ).resolves.toMatchObject({
       stderr: "Invalid run command",
-      exitCode: null,
+      exitCode: 1,
     });
+  });
+
+  it("accepts environment-variable prefixed compile commands", async () => {
+    const { validateShellCommandStrict } = await import("@/lib/compiler/execute");
+
+    expect(validateShellCommandStrict("CC=gcc gcc main.c")).toBe(true);
+    expect(validateShellCommandStrict("CFLAGS=-O2 gcc main.c")).toBe(true);
+  });
+
+  it("rejects shell interpreter invocations and -c smuggling", async () => {
+    const { validateShellCommandStrict } = await import("@/lib/compiler/execute");
+
+    expect(validateShellCommandStrict("bash -c 'id'")).toBe(false);
+    expect(validateShellCommandStrict("sh -c 'id'")).toBe(false);
+    expect(validateShellCommandStrict("powershell -c 'id'")).toBe(false);
+    expect(validateShellCommandStrict("pwsh -c 'id'")).toBe(false);
+    expect(validateShellCommandStrict("-c 'id'")).toBe(false);
+    expect(validateShellCommandStrict("bash /workspace/run.sh")).toBe(false);
   });
 
   it("fails closed with an explicit config error when a runner URL is set without any runner auth token", async () => {

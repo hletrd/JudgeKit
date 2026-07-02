@@ -185,6 +185,10 @@ function validateShellCommand(cmd: string): boolean {
  * Known compiler/tool prefixes that may appear as the first command in a
  * compile or run command string. Used by validateShellCommandStrict as a
  * secondary defense-in-depth check on top of validateShellCommand.
+ *
+ * Kept in lock-step with judge-worker-rs/src/runner.rs#ALLOWED_COMMAND_PREFIXES.
+ * Shell interpreters (bash, sh, powershell, pwsh) are intentionally excluded;
+ * allowing them would let admin-configured commands spawn nested shells.
  */
 const ALLOWED_COMMAND_PREFIXES = [
   "gcc", "g++", "clang", "clang++", "cc", "c++",
@@ -205,7 +209,6 @@ const ALLOWED_COMMAND_PREFIXES = [
   "vbnc", "vbc",
   "racket",
   "gs",
-  "bash", "sh",
   "csc",
   "octave",
   "Rscript",
@@ -214,8 +217,13 @@ const ALLOWED_COMMAND_PREFIXES = [
   "lua",
   "awk",
   "sed",
-  "powershell", "pwsh",
 ];
+
+/**
+ * Leading KEY=VALUE environment assignments (e.g. CC=gcc) are allowed before
+ * the real command. The key must be a valid shell identifier.
+ */
+const ENV_ASSIGNMENT_REGEX = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
 /**
  * Check whether a command basename matches an allowed prefix.
@@ -238,13 +246,21 @@ function isValidCommandPrefix(baseName: string): boolean {
 /**
  * Stricter shell command validation that also verifies the first command
  * in each chained segment starts with a known compiler/tool prefix.
+ * Leading environment-variable assignments are stripped before checking.
  * This is a defense-in-depth layer on top of validateShellCommand.
  */
-function validateShellCommandStrict(cmd: string): boolean {
+export function validateShellCommandStrict(cmd: string): boolean {
   if (!validateShellCommand(cmd)) return false;
   const segments = cmd.split(/&&|;/);
   return segments.every((segment) => {
-    const firstToken = segment.trim().split(/\s+/)[0] || "";
+    const tokens = segment.trim().split(/\s+/);
+    let firstToken = "";
+    for (const token of tokens) {
+      if (ENV_ASSIGNMENT_REGEX.test(token)) continue;
+      firstToken = token;
+      break;
+    }
+    if (!firstToken) return false;
     const baseName = firstToken.split("/").pop() || firstToken;
     return isValidCommandPrefix(baseName);
   });
@@ -668,7 +684,7 @@ export async function executeCompilerRun(
     return {
       stdout: "",
       stderr: "Invalid compile command",
-      exitCode: null,
+      exitCode: 1,
       executionTimeMs: 0,
       timedOut: false,
       oomKilled: false,
@@ -679,7 +695,7 @@ export async function executeCompilerRun(
     return {
       stdout: "",
       stderr: "Invalid run command",
-      exitCode: null,
+      exitCode: 1,
       executionTimeMs: 0,
       timedOut: false,
       oomKilled: false,
