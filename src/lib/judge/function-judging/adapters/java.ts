@@ -111,8 +111,12 @@ final class __FnJudge {
                     case '"': out.append('"'); break;
                     case '\\\\': out.append('\\\\'); break;
                     case 'u':
-                        out.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
-                        i += 4;
+                        if (i + 4 > s.length()) {
+                            out.append('\\\\').append('u');
+                        } else {
+                            out.append((char) Integer.parseInt(s.substring(i, i + 4), 16));
+                            i += 4;
+                        }
                         break;
                     default: out.append(e); break;
                 }
