@@ -168,14 +168,16 @@ describe("ipMatchesAllowlistEntry (low-level CIDR matching)", () => {
     expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.1.11")).toBe(false);
   });
 
-  it("canonicalizes leading-zero IPv4 octets in allowlist entries", () => {
-    expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.01.010")).toBe(true);
+  it("rejects leading-zero IPv4 octets in allowlist entries", () => {
+    expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.01.010")).toBe(false);
     expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.01.11")).toBe(false);
+    expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.1.10")).toBe(true);
   });
 
-  it("canonicalizes leading-zero IPv4 octets in CIDR network addresses", () => {
-    expect(ipMatchesAllowlistEntry("192.168.1.42", "192.168.01.0/24")).toBe(true);
-    expect(ipMatchesAllowlistEntry("192.169.1.42", "192.168.01.0/24")).toBe(false);
+  it("rejects leading-zero IPv4 octets in CIDR network addresses", () => {
+    expect(ipMatchesAllowlistEntry("192.168.1.42", "192.168.01.0/24")).toBe(false);
+    expect(ipMatchesAllowlistEntry("192.169.1.42", "192.168.1.0/24")).toBe(false);
+    expect(ipMatchesAllowlistEntry("192.168.1.42", "192.168.1.0/24")).toBe(true);
   });
 
   it("matches /16 CIDR ranges", () => {

@@ -131,14 +131,23 @@ function bytesEqualUnderPrefix(a: Uint8Array, b: Uint8Array, prefixLen: number):
 }
 
 /**
- * Parse a dotted IPv4 address, accepting and canonicalizing leading-zero octets
- * so allowlist entries such as "192.168.01.1" match the canonical client address
- * "192.168.1.1". Returns null if the input is not a valid IPv4 address.
+ * Parse a dotted IPv4 address, rejecting leading-zero octets so that
+ * ambiguous forms such as "192.168.01.1" are not treated as valid. The single
+ * digit "0" is the only allowed zero-prefixed octet. Returns null if the input
+ * is not a valid canonical IPv4 address.
  */
-function parseCanonicalIpv4(value: string): number[] | null {
+function parseValidIpv4(value: string): number[] | null {
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(value)) return null;
   const parts = value.split(".").map(Number);
-  if (parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return null;
+  if (
+    parts.some((n, i) => {
+      const part = value.split(".")[i];
+      if (part.length > 1 && part.startsWith("0")) return true;
+      return !Number.isInteger(n) || n < 0 || n > 255;
+    })
+  ) {
+    return null;
+  }
   return parts;
 }
 
@@ -173,8 +182,8 @@ export function ipMatchesAllowlistEntry(clientIp: string, entry: string): boolea
 
     // IPv4 path
     if (prefixLen > 32) return false;
-    const clientParts = parseCanonicalIpv4(clientIp);
-    const networkParts = parseCanonicalIpv4(network);
+    const clientParts = parseValidIpv4(clientIp);
+    const networkParts = parseValidIpv4(network);
     if (!clientParts || !networkParts) return false;
 
     const clientNum =
@@ -187,8 +196,8 @@ export function ipMatchesAllowlistEntry(clientIp: string, entry: string): boolea
   }
 
   // IPv4 exact match: compare canonical forms.
-  const clientParts = parseCanonicalIpv4(clientIp);
-  const entryParts = parseCanonicalIpv4(entry);
+  const clientParts = parseValidIpv4(clientIp);
+  const entryParts = parseValidIpv4(entry);
   if (!clientParts || !entryParts) return false;
   return clientParts.every((part, i) => part === entryParts[i]);
 }
