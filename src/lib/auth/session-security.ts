@@ -24,7 +24,7 @@ export function getTokenAuthenticatedAtSeconds(token: TokenTimeCarrier | null | 
 
 export function isTokenInvalidated(
   authenticatedAtSeconds: number | null,
-  tokenInvalidatedAt: Date | null | undefined
+  tokenInvalidatedAt: Date | string | number | null | undefined
 ) {
   if (authenticatedAtSeconds === null || authenticatedAtSeconds === undefined || !tokenInvalidatedAt) {
     return false;
@@ -33,7 +33,11 @@ export function isTokenInvalidated(
   // Compare at millisecond precision so a token issued one millisecond before
   // revocation is rejected. The token stores authentication time in whole
   // seconds, so convert back to milliseconds for the comparison.
-  return authenticatedAtSeconds * 1000 <= tokenInvalidatedAt.getTime();
+  const invalidatedAtMs =
+    tokenInvalidatedAt instanceof Date
+      ? tokenInvalidatedAt.getTime()
+      : new Date(tokenInvalidatedAt).getTime();
+  return authenticatedAtSeconds * 1000 <= invalidatedAtMs;
 }
 
 /**

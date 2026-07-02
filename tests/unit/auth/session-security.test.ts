@@ -85,6 +85,14 @@ describe("isTokenInvalidated", () => {
     expect(isTokenInvalidated(boundarySeconds - 1, invalidatedAt)).toBe(true);
   });
 
+  it("accepts an ISO-string revocation timestamp", () => {
+    expect(isTokenInvalidated(boundarySeconds - 1, invalidatedAt.toISOString())).toBe(true);
+  });
+
+  it("accepts a numeric revocation timestamp in milliseconds", () => {
+    expect(isTokenInvalidated(boundarySeconds - 1, invalidatedAt.getTime())).toBe(true);
+  });
+
   it("returns false when token was authenticated after the invalidation timestamp", () => {
     expect(isTokenInvalidated(boundarySeconds + 1, invalidatedAt)).toBe(false);
   });
