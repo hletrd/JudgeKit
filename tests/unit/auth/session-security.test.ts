@@ -89,8 +89,13 @@ describe("isTokenInvalidated", () => {
     expect(isTokenInvalidated(boundarySeconds + 1, invalidatedAt)).toBe(false);
   });
 
-  it("returns false when token was authenticated at exactly the invalidation boundary", () => {
-    expect(isTokenInvalidated(boundarySeconds, invalidatedAt)).toBe(false);
+  it("returns true when token was authenticated at exactly the invalidation boundary", () => {
+    expect(isTokenInvalidated(boundarySeconds, invalidatedAt)).toBe(true);
+  });
+
+  it("returns true when token was authenticated one millisecond before revocation", () => {
+    const oneMsBeforeSeconds = Math.trunc((invalidatedAt.getTime() - 1) / 1000);
+    expect(isTokenInvalidated(oneMsBeforeSeconds, invalidatedAt)).toBe(true);
   });
 
   it("returns false when tokenInvalidatedAt is null", () => {

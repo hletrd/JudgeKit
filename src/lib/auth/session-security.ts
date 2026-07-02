@@ -30,8 +30,10 @@ export function isTokenInvalidated(
     return false;
   }
 
-  const invalidatedAtSeconds = Math.floor(tokenInvalidatedAt.getTime() / 1000);
-  return authenticatedAtSeconds < invalidatedAtSeconds;
+  // Compare at millisecond precision so a token issued one millisecond before
+  // revocation is rejected. The token stores authentication time in whole
+  // seconds, so convert back to milliseconds for the comparison.
+  return authenticatedAtSeconds * 1000 <= tokenInvalidatedAt.getTime();
 }
 
 /**
