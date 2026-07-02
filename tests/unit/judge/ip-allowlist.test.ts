@@ -168,6 +168,16 @@ describe("ipMatchesAllowlistEntry (low-level CIDR matching)", () => {
     expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.1.11")).toBe(false);
   });
 
+  it("canonicalizes leading-zero IPv4 octets in allowlist entries", () => {
+    expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.01.010")).toBe(true);
+    expect(ipMatchesAllowlistEntry("192.168.1.10", "192.168.01.11")).toBe(false);
+  });
+
+  it("canonicalizes leading-zero IPv4 octets in CIDR network addresses", () => {
+    expect(ipMatchesAllowlistEntry("192.168.1.42", "192.168.01.0/24")).toBe(true);
+    expect(ipMatchesAllowlistEntry("192.169.1.42", "192.168.01.0/24")).toBe(false);
+  });
+
   it("matches /16 CIDR ranges", () => {
     expect(ipMatchesAllowlistEntry("192.168.100.50", "192.168.0.0/16")).toBe(true);
     expect(ipMatchesAllowlistEntry("192.169.1.1", "192.168.0.0/16")).toBe(false);
@@ -210,6 +220,12 @@ describe("ipMatchesAllowlistEntry (low-level CIDR matching)", () => {
     expect(ipMatchesAllowlistEntry("2001:db9::1", "2001:db8::/32")).toBe(false);
     // Mixed-family rejection (IPv4 client vs IPv6 CIDR and vice versa)
     // already covered in the preceding "rejects non-4-part" test.
+  });
+
+  it("canonicalizes equivalent IPv6 allowlist entries", () => {
+    expect(ipMatchesAllowlistEntry("2001:db8::1", "2001:0db8:0000:0000:0000:0000:0000:0001")).toBe(true);
+    expect(ipMatchesAllowlistEntry("2001:0db8:0000:0000:0000:0000:0000:0001", "2001:db8::1")).toBe(true);
+    expect(ipMatchesAllowlistEntry("2001:db8::1", "2001:db9::1")).toBe(false);
   });
 
   it("returns false for non-matching entry types", () => {
