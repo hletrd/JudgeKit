@@ -219,12 +219,14 @@ Deferred items below are non-security/non-correctness product, performance, acce
 - [x] B3 GET /api/v1/files rate limit added (IP + user keyed).
 - [x] B4 snapshot path removed from admin restore/import responses.
 - [x] B5 raw SQL secret_token backfill/drop block guarded by ALLOW_SECRET_TOKEN_BACKFILL.
-- Gates: [ ] lint, lint:bash, tsc, test:unit, cargo test, db:check, build, e2e — in progress.
-- Commits: [x] existing cycle-3 commits `429f27af`, `b2edee07`, `20c9e3c4`, `00ac107c`, `de694d45`, `f1dcefd8`, `10fd3420`, `323a231b`; [x] gate-status commit `46232a31` (residual nginx `-v` parsing fix + regression test).
+- Gates: [x] lint, lint:bash, tsc, test:unit (392 files, 3116 tests), cargo test, db:check, build passed; [x] e2e passed on rerun of one flaky profile login timeout (323 passed, 136 skipped in full run; profile.spec.ts 10/10 passed on retry).
+- Commits: [x] existing cycle-3 commits `429f27af`, `b2edee07`, `20c9e3c4`, `00ac107c`, `de694d45`, `f1dcefd8`, `10fd3420`, `323a231b`; [x] gate-status commit `46232a31` (residual nginx `-v` parsing fix + regression test); [x] post-deploy fix commits `f7db74b6` (default `ALLOW_SECRET_TOKEN_BACKFILL` to avoid unbound variable) and `fc2ae24f` (default `NETWORK_NAME` before guarded backfill block).
 - Deploy: [x] completed per-cycle deploy to `algo`, `worv`, and `auraedu`; `ALL_DEPLOYS_OK=1` confirmed in `.deploy.log`.
 
 ### Deploy outcome note
-The per-cycle deploy completed for all three targets. A residual version-detection bug surfaced during deploy: Ubuntu's `nginx -v` output (`nginx version: nginx/1.24.0 (Ubuntu)`) was not matched by the anchored `^nginx/` sed regex, causing a fallback warning for all targets. The regex was relaxed to `.*nginx/` and a regression test for real `nginx -v` output formats was added in commit `46232a31`; subsequent deploys will select the correct HTTP/2 syntax without warning.
+The per-cycle deploy completed for all three targets. A residual version-detection bug surfaced during deploy: Ubuntu's `nginx -v` output (`nginx version: nginx/1.24.0 (Ubuntu)`) was not matched by the anchored `^nginx/` sed regex, causing a fallback warning for all targets. The regex was relaxed to `.*nginx/` and a regression test for real `nginx -v` output formats was added in commit `46232a31`; subsequent deploys select the correct HTTP/2 syntax without warning.
+
+During the first post-fix re-run, the new `ALLOW_SECRET_TOKEN_BACKFILL` guard was missing a default for the unset case, which caused an `unbound variable` error under `set -u`. The second re-run also exposed that `NETWORK_NAME` was only set inside the opt-in backfill branch, so the skip path left it undefined for the subsequent drizzle-kit push container. Both defaults were added (`: "${ALLOW_SECRET_TOKEN_BACKFILL:=}"` and `NETWORK_NAME="${NETWORK_NAME:-judgekit_db}"`), the guard regression test was updated, and the final per-cycle deploy to all three targets completed cleanly with `ALL_DEPLOYS_OK=1` and no unbound-variable errors.
 
 ### Build/e2e retry note
 The first `npm run test:e2e` invocation failed because the Playwright webServer tried to build the app from scratch and exceeded the 600 s timeout. Since the gates already require `npm run build`, the fix is to run a clean production build first (`.next` removed to avoid lock corruption), then rerun `npm run test:e2e` so the webServer reuses the standalone output.
