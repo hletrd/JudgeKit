@@ -45,11 +45,7 @@ type AuthenticatedLoginUser = Omit<AuthUserRecord, "mustChangePassword"> & {
   mustChangePassword: boolean;
 } & LoginEventContextCarrier;
 
-// Pre-computed Argon2id hash of a random string, used for timing-safe
-// comparison when the requested user does not exist (prevents user-enumeration
-// via response-time differences).
-const DUMMY_PASSWORD_HASH =
-  "$argon2id$v=19$m=19456,t=2,p=1$Y2xhdWRlZHVtbXloYXNo$KQH6bMKH3t2fGK8qMJzrOGmG5bNRVZ0bQfO7aDVz0Zk";
+import { getDummyPasswordHash } from "@/lib/security/dummy-password-hash";
 
 /** Core (non-preference) auth fields returned by every auth query. */
 const AUTH_CORE_FIELDS = [
@@ -260,7 +256,7 @@ export const authConfig: NextAuthConfig = {
         }
 
         if (!user || !user.passwordHash || !user.isActive) {
-          await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+          await verifyPassword(password, user?.passwordHash ?? (await getDummyPasswordHash()));
           recordLoginEvent({
             outcome: "invalid_credentials",
             attemptedIdentifier: identifier,
