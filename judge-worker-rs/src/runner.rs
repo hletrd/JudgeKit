@@ -15,6 +15,7 @@ use crate::config::Config;
 use crate::docker::{self, DockerRunOptions, Phase};
 use crate::languages;
 use crate::types::Language;
+use crate::workspace::SandboxWorkspace;
 
 // Keep aligned with src/lib/compiler/execute.ts so the app-side compiler
 // fallback and Rust runner sidecar expose the same resource envelope.
@@ -832,9 +833,9 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         .is_some_and(|c| c.needs_exec_tmp);
 
     // Create temp workspace
-    let temp_dir =
-        tempfile::TempDir::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
-    let workspace_dir = temp_dir.path();
+    let workspace =
+        SandboxWorkspace::new().map_err(|e| format!("Failed to create temp dir: {e}"))?;
+    let workspace_dir = workspace.path();
 
     // Harden workspace permissions to mirror the executor/compiler paths.
     // Ownership transfer to the sandbox uid/gid must succeed before mounting;
@@ -1008,7 +1009,8 @@ async fn execute_run(config: &Config, req: &RunRequest) -> Result<RunResponse, S
         compile_output,
     })
 
-    // temp_dir dropped here, workspace cleaned up automatically
+    // `workspace` is dropped here, which chowns the tree back to the worker
+    // user and removes it so sandbox-created files do not leak.
 }
 
 pub fn create_router(state: Arc<RunnerState>) -> Router {

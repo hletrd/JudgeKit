@@ -4,6 +4,7 @@ use crate::config::Config;
 use crate::docker::{self, DockerRunOptions, Phase};
 use crate::languages;
 use crate::types::{Submission, TestResult, Verdict};
+use crate::workspace::SandboxWorkspace;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
@@ -301,8 +302,8 @@ async fn execute_inner(
     }
 
     // Create temp workspace directory
-    let temp_dir = match tempfile::TempDir::new() {
-        Ok(d) => d,
+    let workspace = match SandboxWorkspace::new() {
+        Ok(w) => w,
         Err(e) => {
             tracing::error!(error = %e, "Failed to create temp dir");
             report_error(
@@ -318,7 +319,7 @@ async fn execute_inner(
         }
     };
 
-    let workspace_dir = temp_dir.path();
+    let workspace_dir = workspace.path();
 
     // Tighten host-side workspace permissions. The judge container runs as
     // 65534:65534, so ownership transfer must succeed before the workspace is
@@ -688,7 +689,8 @@ async fn execute_inner(
     )
     .await;
 
-    // temp_dir is dropped here, cleaning up automatically
+    // `workspace` is dropped here, which chowns the tree back to the worker
+    // user and removes it so sandbox-created files do not leak.
 }
 
 #[cfg(test)]
