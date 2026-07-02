@@ -23,6 +23,7 @@ export type ConfiguredSettings = {
   defaultMemoryLimitMb: number;
   maxSourceCodeSizeBytes: number;
   staleClaimTimeoutMs: number;
+  maxJudgeClaimDurationMs: number;
   sessionMaxAgeSeconds: number;
   defaultPageSize: number;
   maxSseConnectionsPerUser: number;
@@ -50,6 +51,7 @@ const DEFAULTS: ConfiguredSettings = {
   defaultMemoryLimitMb: 256,
   maxSourceCodeSizeBytes: 256 * 1024,
   staleClaimTimeoutMs: 300_000,
+  maxJudgeClaimDurationMs: 600_000,
   sessionMaxAgeSeconds: 14 * 24 * 60 * 60,
   defaultPageSize: 25,
   maxSseConnectionsPerUser: 5,
@@ -74,6 +76,7 @@ const ENV_OVERRIDES: Partial<Record<keyof ConfiguredSettings, string>> = {
   submissionMaxPending: "SUBMISSION_MAX_PENDING",
   submissionGlobalQueueLimit: "SUBMISSION_GLOBAL_QUEUE_LIMIT",
   staleClaimTimeoutMs: "JUDGE_STALE_CLAIM_TIMEOUT_MS",
+  maxJudgeClaimDurationMs: "JUDGE_MAX_CLAIM_DURATION_MS",
   compilerTimeLimitMs: "COMPILER_TIME_LIMIT_MS",
   uploadMaxImageSizeBytes: "UPLOAD_MAX_IMAGE_SIZE_BYTES",
   uploadMaxFileSizeBytes: "UPLOAD_MAX_FILE_SIZE_BYTES",

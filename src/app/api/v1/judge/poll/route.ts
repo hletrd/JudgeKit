@@ -23,6 +23,8 @@ import { judgeStatusReportSchema } from "@/lib/validators/api";
 import { triggerAutoCodeReview } from "@/lib/judge/auto-review";
 import { logger } from "@/lib/logger";
 import { getDbNowUncached } from "@/lib/db-time";
+import { getConfiguredSettings } from "@/lib/system-settings-config";
+import { parseClaimToken } from "@/lib/judge/claim-token";
 import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
 
 export async function POST(request: NextRequest) {
@@ -81,6 +83,24 @@ export async function POST(request: NextRequest) {
 
     if (IN_PROGRESS_JUDGE_STATUSES.has(status)) {
       const dbNow = await getDbNowUncached();
+
+      // Reject in-progress reports that would extend a claim beyond the
+      // configured maximum total claim duration. The claim token embeds the
+      // original claim timestamp because `judgeClaimedAt` is refreshed by
+      // every in-progress report.
+      const { claimCreatedAt } = parseClaimToken(claimToken);
+      if (claimCreatedAt !== null) {
+        const elapsedMs = dbNow.getTime() - claimCreatedAt;
+        const maxDurationMs = getConfiguredSettings().maxJudgeClaimDurationMs;
+        if (elapsedMs > maxDurationMs) {
+          logger.warn(
+            { submissionId, elapsedMs, maxDurationMs },
+            "[judge/poll] Claim exceeded maximum duration; rejecting in-progress report",
+          );
+          return apiError("claimExpired", 403);
+        }
+      }
+
       // Mirror the final path: wrap the claim update so a stale/invalid claim
       // token yields a clean 403 instead of bubbling to the outer 500 handler.
       try {

@@ -5,11 +5,11 @@ import { db, execTransaction } from "@/lib/db";
 import { rawQueryOne } from "@/lib/db/queries";
 import { problems, testCases, languageConfigs, judgeWorkers, submissions, assignments } from "@/lib/db/schema";
 import { eq, asc, sql } from "drizzle-orm";
-import { nanoid } from "nanoid";
 import { z } from "zod";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorizedForWorker, hashToken } from "@/lib/judge/auth";
 import { buildClaimSql } from "@/lib/judge/claim-query";
+import { createClaimToken } from "@/lib/judge/claim-token";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
 import { logger } from "@/lib/logger";
 import { consumeUserApiRateLimit } from "@/lib/security/api-rate-limit";
@@ -211,13 +211,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const claimToken = nanoid();
-    claimTokenForCleanup = claimToken;
     // Use DB server time for claimCreatedAt to avoid clock skew between app
     // and DB servers. The stale claim detection compares judge_claimed_at
     // against NOW() in SQL, so the timestamp must be DB-consistent.
     const claimCreatedAt = (await getDbNowUncached()).getTime();
-
+    const claimToken = createClaimToken(claimCreatedAt);
+    claimTokenForCleanup = claimToken;
     const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
     const claimSql = buildClaimSql(Boolean(workerId));
 

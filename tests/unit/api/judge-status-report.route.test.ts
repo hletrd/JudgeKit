@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
+import { createClaimToken } from "@/lib/judge/claim-token";
 
 const {
   isJudgeAuthorizedMock,
@@ -77,6 +78,10 @@ vi.mock("@/lib/validators/api", () => ({
 
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn().mockResolvedValue(new Date("2026-04-20T12:00:00Z")),
+}));
+
+vi.mock("@/lib/system-settings-config", () => ({
+  getConfiguredSettings: vi.fn().mockReturnValue({ maxJudgeClaimDurationMs: 600_000 }),
 }));
 
 vi.mock("@/lib/db/schema", () => ({
@@ -335,5 +340,99 @@ describe("POST /api/v1/judge/poll", () => {
     await expect(response.json()).resolves.toEqual({ error: "invalidWorkerToken" });
     expect(execTransactionMock).not.toHaveBeenCalled();
     expect(dbTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects in-progress reports that exceed the maximum claim duration", async () => {
+    submissionsFindFirstMock.mockResolvedValue({
+      id: "submission-1",
+      status: "judging",
+      judgeClaimedAt: new Date("2026-04-20T11:00:00Z"),
+      judgeWorkerId: "worker-1",
+    });
+
+    const dbNow = new Date("2026-04-20T12:00:00Z");
+    const expiredToken = createClaimToken(dbNow.getTime() - 600_001);
+
+    const { POST } = await import("@/app/api/v1/judge/poll/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/judge/poll", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          submissionId: "submission-1",
+          claimToken: expiredToken,
+          status: "judging",
+          compileOutput: null,
+          results: [],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "claimExpired" });
+    expect(execTransactionMock).not.toHaveBeenCalled();
+    expect(dbTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts in-progress reports within the maximum claim duration", async () => {
+    submissionsFindFirstMock.mockResolvedValue({
+      id: "submission-1",
+      status: "judging",
+      judgeClaimedAt: new Date("2026-04-20T11:59:00Z"),
+      judgeWorkerId: "worker-1",
+    });
+
+    const dbNow = new Date("2026-04-20T12:00:00Z");
+    const validToken = createClaimToken(dbNow.getTime() - 30_000);
+
+    let updatePayload: Record<string, unknown> | null = null;
+    execTransactionMock.mockImplementation(async (callback: (tx: any) => Promise<unknown>) =>
+      callback({
+        update: () => ({
+          set: (payload: Record<string, unknown>) => {
+            updatePayload = payload;
+            return {
+              where: async () => ({ rowCount: 1 }),
+            };
+          },
+        }),
+        query: {
+          submissions: {
+            findFirst: vi.fn().mockResolvedValue({
+              id: "submission-1",
+              status: "judging",
+              judgeWorkerId: "worker-1",
+            }),
+          },
+        },
+      })
+    );
+
+    const { POST } = await import("@/app/api/v1/judge/poll/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/judge/poll", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          submissionId: "submission-1",
+          claimToken: validToken,
+          status: "judging",
+          compileOutput: null,
+          results: [],
+        }),
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(updatePayload).toMatchObject({
+      status: "judging",
+      judgeClaimedAt: expect.any(Date),
+    });
   });
 });
