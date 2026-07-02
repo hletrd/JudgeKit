@@ -43,10 +43,11 @@ describe("code similarity status reporting", () => {
     vi.clearAllMocks();
     dbDeleteMock.mockReturnValue({ where: vi.fn(async () => undefined) });
     dbInsertMock.mockReturnValue({ values: vi.fn(async () => undefined) });
-    dbTransactionMock.mockImplementation(async (callback: (tx: { delete: typeof dbDeleteMock; insert: typeof dbInsertMock }) => Promise<unknown>) =>
+    dbTransactionMock.mockImplementation(async (callback: (tx: { delete: typeof dbDeleteMock; insert: typeof dbInsertMock; execute: ReturnType<typeof vi.fn> }) => Promise<unknown>) =>
       callback({
         delete: dbDeleteMock,
         insert: dbInsertMock,
+        execute: vi.fn(),
       })
     );
   });
@@ -172,7 +173,7 @@ describe("code similarity status reporting", () => {
         sourceCode: "int solve() { int answer = alpha + beta; return answer; }",
       },
     ]);
-    computeSimilarityRustMock.mockResolvedValue(null);
+    computeSimilarityRustMock.mockResolvedValue("SIDECAR_UNAVAILABLE");
 
     const result = await runSimilarityCheck("assignment-1", 0.85, 3);
 

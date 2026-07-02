@@ -143,8 +143,7 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
           }), 31_000);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
-            const err = new Error("The operation was aborted");
-            err.name = "AbortError";
+            const err = new DOMException("The operation was aborted", "AbortError");
             reject(err);
           });
         });

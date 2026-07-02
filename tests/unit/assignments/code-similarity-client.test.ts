@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { computeSimilarityRust } from "@/lib/assignments/code-similarity-client";
 
+vi.mock("@/lib/logger", () => ({
+  logger: {
+    warn: vi.fn(),
+  },
+}));
+
 describe("computeSimilarityRust", () => {
   const originalFetch = globalThis.fetch;
 
@@ -31,7 +37,7 @@ describe("computeSimilarityRust", () => {
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("returns null on non-ok response (fail-open)", async () => {
+  it("returns SIDECAR_HTTP_ERROR on non-ok response", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 500,
@@ -43,10 +49,10 @@ describe("computeSimilarityRust", () => {
       3
     );
 
-    expect(result).toBeNull();
+    expect(result).toBe("SIDECAR_HTTP_ERROR");
   });
 
-  it("returns null on network error (fail-open)", async () => {
+  it("returns SIDECAR_UNAVAILABLE on network error", async () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
     const result = await computeSimilarityRust(
@@ -55,19 +61,37 @@ describe("computeSimilarityRust", () => {
       3
     );
 
-    expect(result).toBeNull();
+    expect(result).toBe("SIDECAR_UNAVAILABLE");
   });
 
-  it("returns null on timeout (fail-open)", async () => {
-    globalThis.fetch = vi.fn().mockRejectedValue(new DOMException("Aborted", "AbortError"));
+  it("returns SIDECAR_ABORTED when the caller signal aborts mid-flight", async () => {
+    const controller = new AbortController();
 
-    const result = await computeSimilarityRust(
-      [{ userId: "u1", problemId: "p1", language: "python", sourceCode: "code" }],
-      0.85,
-      3
+    globalThis.fetch = vi.fn((_url, init) =>
+      new Promise<Response>((_, reject) => {
+        const requestSignal = init?.signal as AbortSignal | undefined;
+        if (requestSignal?.aborted) {
+          reject(new DOMException("Aborted", "AbortError"));
+          return;
+        }
+        requestSignal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true }
+        );
+      })
     );
 
-    expect(result).toBeNull();
+    const resultPromise = computeSimilarityRust(
+      [{ userId: "u1", problemId: "p1", language: "python", sourceCode: "code" }],
+      0.85,
+      3,
+      controller.signal
+    );
+
+    controller.abort();
+
+    expect(await resultPromise).toBe("SIDECAR_ABORTED");
   });
 
   it("sends correct JSON payload with snake_case ngram_size", async () => {
