@@ -339,6 +339,7 @@ describe("deployment security defaults", () => {
 
     // The raw SQL backfill/drop is gated by an explicit opt-in flag.
     expect(deployDocker).toContain("ALLOW_SECRET_TOKEN_BACKFILL");
+    expect(deployDocker).toContain(': "${ALLOW_SECRET_TOKEN_BACKFILL:=}"');
     expect(deployDocker).toContain('if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then');
 
     // By default the block is skipped with a clear warning.

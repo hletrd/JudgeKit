@@ -1248,6 +1248,7 @@ success "Database is ready"
 # warning is emitted if the deprecated column is still present, preventing
 # accidental destructive changes during routine deploys.
 # ---------------------------------------------------------------------------
+: "${ALLOW_SECRET_TOKEN_BACKFILL:=}"
 if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then
     info "Running pre-drop secret_token backfill (idempotent)..."
 
