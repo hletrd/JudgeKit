@@ -125,9 +125,66 @@ Cycle constraints:
   3. Keep the schema/seed/language-sync steps because the webserver script is responsible for container lifecycle, not data lifecycle.
 - Progress: [x] Implemented in working tree (2026-07-01): removed the `Reset SQLite database` step from `.github/workflows/ci.yml`; `playwright.config.ts` already defaults `DATABASE_URL` to Postgres and passes it to the webServer command.
 
+## Phase B - Additional Findings from Updated Aggregate (2026-07-03)
+
+The refreshed Cycle 3 aggregate (`_aggregate.md`, 168 deduplicated findings) surfaced several CRITICAL/HIGH security, correctness, and data-loss items that were not covered by Phase A. Phase B schedules the subset that can be implemented and verified within the current cycle. Performance, UI/a11y, documentation-drift, and roadmap-gap findings remain deferred.
+
+### B1. Fix Workspace Cleanup Leaks in Production
+- **Findings:** C3-007, C3-008.
+- **Original severity/confidence:** CRITICAL/High.
+- **Files:** `src/lib/compiler/execute.ts`, `judge-worker-rs/src/workspace.rs`, `Dockerfile`, `Dockerfile.judge-worker`.
+- **Plan:**
+  1. In `cleanupCompilerWorkspace`, detect when the process is non-root and instead of `chownRecursive` + `rm`, spawn a short-lived privileged container (`docker run --rm --user root -v <parent-tmp>:/work alpine`) to `chown -R <app_uid>` and `rm -rf` the workspace.
+  2. In `SandboxWorkspace::drop`, do the equivalent: spawn a root-owned cleanup container to chown+remove the workspace before falling back to `remove_dir_all`.
+  3. Keep the existing root-path tests passing; add a non-root regression test or at least document the production Dockerfile non-root constraint.
+  4. Preserve the current workspace permission/owner semantics for the sandbox container.
+- **Progress:** [x] Implemented in working tree (2026-07-03): `cleanupCompilerWorkspace` now skips `chownRecursive` when non-root and falls back to `cleanupWorkspaceWithDocker`; `SandboxWorkspace::drop` falls back to `cleanup_with_docker` when `remove_dir_all` fails while running non-root; regression tests added.
+
+### B2. Fix Database Import Boolean Corruption
+- **Findings:** C3-009.
+- **Original severity/confidence:** HIGH/Medium.
+- **Files:** `src/lib/db/import.ts`, `tests/unit/db/import.test.ts` (or create one).
+- **Plan:**
+  1. Replace `Boolean(val)` in `convertValue` for boolean columns with an explicit string mapper that recognizes `"false"`, `"0"`, `"no"`, `"off"` as `false` and `"true"`, `"1"`, `"yes"`, `"on"` as `true`.
+  2. Add a round-trip test covering `false`, `"false"`, `0`, `"0"`, `true`, `"true"`, `1`.
+  3. Preserve non-boolean column behavior.
+- **Progress:** [x] Implemented in working tree (2026-07-03): `convertValue` for boolean columns now maps `"false"`, `"0"`, `"no"`, `"off"` to `false` and `"true"`, `"1"`, `"yes"`, `"on"` to `true` case-insensitively; round-trip tests added to `tests/unit/db/import-implementation.test.ts`.
+
+### B3. Add Rate Limit to `GET /api/v1/files`
+- **Findings:** C3-011, C3-022.
+- **Original severity/confidence:** HIGH/Medium to HIGH/High.
+- **Files:** `src/app/api/v1/files/route.ts`, `tests/unit/api/files.route.test.ts` (or create one).
+- **Plan:**
+  1. Add `rateLimit: "files:list"` to the `GET` handler config in `createApiHandler`.
+  2. Ensure the limit is consumed after authentication/authorization and uses the authenticated user as the key (consume user-keyed limit, not just IP).
+  3. Add a regression test proving repeated list requests are throttled with 429.
+- **Progress:** [x] Implemented in working tree (2026-07-03): `GET /api/v1/files` uses `rateLimit: "files:list"` for the config-level IP-keyed limit and calls `consumeUserApiRateLimit(req, user.id, "files:list")` after authorization; regression tests added in `tests/unit/api/files.route.test.ts`.
+
+### B4. Remove Server-Side Snapshot Path from Admin Restore/Import Responses
+- **Findings:** C3-021, C3-066.
+- **Original severity/confidence:** HIGH/High, MEDIUM/High.
+- **Files:** `src/app/api/v1/admin/restore/route.ts`, `src/app/api/v1/admin/migrate/import/route.ts`, related tests.
+- **Plan:**
+  1. Remove `preRestoreSnapshotPath` from all JSON success/error responses.
+  2. Return a stable snapshot ID or timestamp that operators can correlate with server logs.
+  3. Keep the full path in server-side logs and audit events.
+  4. Update existing route tests that assert on the path; add a negative test rejecting the path in the response body.
+- **Progress:** [x] Implemented in working tree (2026-07-03): `preRestoreSnapshotPath` removed from JSON responses in `/admin/restore` and `/admin/migrate/import`; responses now include `snapshotId` derived from the filename. Full paths remain in server logs and audit events. Regression tests updated/added in `tests/unit/api/admin-backup-security.route.test.ts` and `tests/unit/db/pre-restore-snapshot.test.ts`.
+
+### B5. Guard Raw SQL Backfill/Drop Block with Explicit Flag
+- **Findings:** C3-067.
+- **Original severity/confidence:** MEDIUM/High.
+- **Files:** `deploy-docker.sh`.
+- **Plan:**
+  1. Wrap the `secret_token` backfill/drop raw-SQL block behind `ALLOW_SECRET_TOKEN_BACKFILL=1`.
+  2. Default to skipping the block; print a clear warning if the block is skipped and the column still exists.
+  3. Add an infra test asserting the flag-guard pattern and that the block does not run by default.
+  4. Note the documented sunset date (2026-10-26) in the plan.
+- **Progress:** [x] Implemented in working tree (2026-07-03): the `secret_token` backfill/drop raw-SQL block in `deploy-docker.sh` is now wrapped behind `ALLOW_SECRET_TOKEN_BACKFILL=1`; skipped by default with a warning when the column is still present. Infra test added in `tests/unit/infra/deploy-security.test.ts`. Sunset date remains 2026-10-26.
+
 ## Deferred Register
 
-Deferred items below are non-security/non-correctness product, performance, accessibility, or documentation work. Security/correctness/data-loss items are either scheduled in Phase A or rejected with evidence in the next section.
+Deferred items below are non-security/non-correctness product, performance, accessibility, or documentation work. Security/correctness/data-loss items are either scheduled in Phase A/B or rejected with evidence in the next section.
 
 - **C3-10 / perf F1-F16**: performance hotspots in realtime/homepage/leaderboard paths. Original severity/confidence: High-to-Low, mostly confirmed; citations include `src/lib/realtime/realtime-coordination.ts:75`, `src/lib/homepage-insights.ts:17`, `src/lib/assignments/leaderboard.ts:21,61,74`, `src/app/api/v1/submissions/[id]/events/route.ts`, and `judge-worker-rs/src/docker.rs`. Reason: performance tuning touches shared contest/realtime behavior and needs load-test validation beyond this security/deploy cycle. Exit criterion: next performance cycle with query-count and SSE-concurrency benchmarks.
 - **C3-11 / designer H1-H4 and related UI findings**: accessibility defects in navigation, contrast, signup live-region feedback, and recruiting login error hint. Original severity/confidence: High/Medium (static review; browser runtime blocked). Citations are in `.context/reviews/designer.md` for the affected TSX/CSS regions. Reason: user-facing UI changes need browser verification and locale checks; current cycle is focused on deploy/security correctness. Exit criterion: UI/a11y cycle with Playwright or agent-browser runtime available and WCAG assertions added.
@@ -157,7 +214,12 @@ Deferred items below are non-security/non-correctness product, performance, acce
 - [x] A9 TA/instructor capability claims validated (similarity-check aligned; announcements/clarifications/exam-extension remain instructor/co-instructor gated by design).
 - [x] A10 storage/no-volume-prune contract verified before deploy.
 - [x] A11 CI E2E SQLite reset step removed.
-- Gates: [x] lint, lint:bash, tsc, test:unit, cargo test, db:check passed; [x] build passed after host load dropped and `.next` was cleared; [x] e2e passed (332 passed, 136 skipped); [x] deploy passed.
+- [x] B1 workspace cleanup leaks fixed (Node + Rust non-root docker fallback).
+- [x] B2 database import boolean coercion fixed.
+- [x] B3 GET /api/v1/files rate limit added (IP + user keyed).
+- [x] B4 snapshot path removed from admin restore/import responses.
+- [x] B5 raw SQL secret_token backfill/drop block guarded by ALLOW_SECRET_TOKEN_BACKFILL.
+- Gates: [ ] lint, lint:bash, tsc, test:unit, cargo test, db:check, build, e2e — in progress.
 - Commits: [x] existing cycle-3 commits `429f27af`, `b2edee07`, `20c9e3c4`, `00ac107c`, `de694d45`, `f1dcefd8`, `10fd3420`, `323a231b`; [x] gate-status commit `46232a31` (residual nginx `-v` parsing fix + regression test).
 - Deploy: [x] completed per-cycle deploy to `algo`, `worv`, and `auraedu`; `ALL_DEPLOYS_OK=1` confirmed in `.deploy.log`.
 
