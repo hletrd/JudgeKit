@@ -28,14 +28,25 @@ FROM alpine:3.21 AS runner
 
 RUN apk add --no-cache docker-cli ca-certificates
 
+# Run the worker as a dedicated non-root user. The binary and writable
+# workspace/dead-letter directories are owned by this user.
+RUN addgroup -g 1000 judge && \
+    adduser -D -u 1000 -G judge judge && \
+    mkdir -p /judge-workspaces /app/dead-letter
+
 WORKDIR /app
 
 COPY --from=builder /build/target/release/judge-worker /usr/local/bin/judge-worker
 COPY docker/seccomp-profile.json /etc/judge/seccomp-profile.json
 COPY docker ./docker
 
+RUN chown judge:judge /usr/local/bin/judge-worker && \
+    chown -R judge:judge /judge-workspaces /app/dead-letter
+
 # Verify the binary is executable on this platform
 RUN /usr/local/bin/judge-worker --help >/dev/null
+
+USER judge
 
 ENV RUST_LOG=info
 

@@ -59,6 +59,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+    networks:
+      - db
 
   # Restricted Docker socket proxy — only the judge worker talks to Docker.
   docker-proxy:
@@ -68,22 +70,29 @@ services:
     container_name: judgekit-docker-proxy
     restart: unless-stopped
     environment:
+      # CONTAINERS: required for `docker ps` (orphan sweep), `docker inspect`
+      # (exit-code/state recovery), and container metadata reads.
       - CONTAINERS=1
-      - IMAGES=1
-      - BUILD=0
-      # Worker needs POST/DELETE plus ALLOW_START/STOP to run and clean up
-      # submission containers via the proxy. With these set to 0 every
-      # `docker run` from the worker fails with
-      # `403 Forbidden — Request forbidden by administrative rules.`
-      # and gets mis-recorded as compile_error. BUILD stays 0 — image
-      # builds must not flow through the worker path.
+      # POST: required for `docker run` to create submission containers.
       - POST=1
+      # DELETE: required for `docker rm` / `docker rm -f` cleanup of finished
+      # submission containers. Image deletion is not enabled.
       - DELETE=1
+      # ALLOW_START: required because `docker run` creates and starts a
+      # container in one operation through the proxy.
       - ALLOW_START=1
+      # ALLOW_STOP: required for `docker kill` when a submission times out or
+      # for emergency orphan cleanup.
       - ALLOW_STOP=1
+      # BUILD/IMAGES stay 0 — image builds must not flow through the worker
+      # path, and the worker does not list or pull images.
+      - BUILD=0
+      - IMAGES=0
       - LOG_LEVEL=warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - judge
 
   app:
     build:
@@ -110,6 +119,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - frontend
+      - backend
+      - db
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3000/login"]
       interval: 30s
@@ -153,6 +166,9 @@ services:
         condition: service_started
       app:
         condition: service_healthy
+    networks:
+      - backend
+      - judge
 
   code-similarity:
     build:
@@ -172,6 +188,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    networks:
+      - backend
 
   rate-limiter:
     build:
@@ -191,6 +209,18 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5s
+    networks:
+      - backend
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+  judge:
+    driver: bridge
+  db:
+    driver: bridge
 
 volumes:
   judgekit-pgdata:

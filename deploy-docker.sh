@@ -1181,9 +1181,11 @@ success "Database is ready"
 # ---------------------------------------------------------------------------
 info "Running pre-drop secret_token backfill (idempotent)..."
 
-# Determine the Docker network name (compose project name + _default)
-NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep judgekit | head -1" 2>/dev/null)
-NETWORK_NAME="${NETWORK_NAME:-judgekit_default}"
+# Determine the Docker network name for the segmented DB network (compose
+# project name + _db). The migration and ANALYZE containers must attach to the
+# same network as the running judgekit-db container.
+NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep -E '^judgekit_db$' | head -1" 2>/dev/null)
+NETWORK_NAME="${NETWORK_NAME:-judgekit_db}"
 
 # Run the backfill + drop directly inside the running judgekit-db container
 # (same pattern as the pre-deploy backup step) rather than via a throwaway
