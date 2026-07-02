@@ -120,5 +120,11 @@ describe("judge report nginx body-size guardrails", () => {
     expect(nginxTemplate).toMatch(
       /location \/api\/v1\/judge\/ \{[\s\S]*?client_max_body_size 1m;[\s\S]*?\}/
     );
+    expect(nginxTemplate).toMatch(
+      /location \/ \{[\s\S]*?client_max_body_size 50M;[\s\S]*?\}/
+    );
+    expect(nginxTemplate).not.toMatch(
+      /location \/ \{[\s\S]*?client_max_body_size 1m;[\s\S]*?\}/
+    );
   });
 });
