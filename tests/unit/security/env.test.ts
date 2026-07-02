@@ -279,6 +279,13 @@ describe("shouldTrustAuthHost", () => {
     const { shouldTrustAuthHost } = await importEnv();
     expect(shouldTrustAuthHost()).toBe(false);
   });
+
+  it("returns false in production when AUTH_TRUST_HOST is empty", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    setEnv({ AUTH_TRUST_HOST: "" });
+    const { shouldTrustAuthHost } = await importEnv();
+    expect(shouldTrustAuthHost()).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

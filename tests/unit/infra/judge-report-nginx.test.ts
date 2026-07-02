@@ -126,5 +126,6 @@ describe("judge report nginx body-size guardrails", () => {
     expect(nginxTemplate).not.toMatch(
       /location \/ \{[\s\S]*?client_max_body_size 1m;[\s\S]*?\}/
     );
+    expect(nginxTemplate).toContain("proxy_set_header X-Forwarded-Host $host;");
   });
 });
