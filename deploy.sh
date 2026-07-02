@@ -55,7 +55,7 @@ SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 
 remote() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
-    sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+    SSHPASS="$SSH_PASSWORD" sshpass -e ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
   else
     ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
   fi
@@ -63,7 +63,7 @@ remote() {
 
 remote_copy() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
-    sshpass -p "$SSH_PASSWORD" scp $SSH_OPTS "$@"
+    SSHPASS="$SSH_PASSWORD" sshpass -e scp $SSH_OPTS "$@"
   else
     scp $SSH_OPTS "$@"
   fi
