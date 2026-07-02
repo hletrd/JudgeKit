@@ -84,6 +84,14 @@ describe("compiler execute implementation", () => {
     expect(source).toContain("const HAS_CUSTOM_SECCOMP_PROFILE = existsSync(SECCOMP_PROFILE_PATH);");
     expect(source).not.toContain("if (existsSync(SECCOMP_PROFILE_PATH))");
   });
+
+  it("fails closed in production when the custom seccomp profile is missing", () => {
+    const source = readFileSync(join(process.cwd(), "src/lib/compiler/execute.ts"), "utf8");
+
+    expect(source).toContain('process.env.NODE_ENV === "production"');
+    expect(source).toContain("!HAS_CUSTOM_SECCOMP_PROFILE");
+    expect(source).toContain("Seccomp profile not found; container execution disabled in production");
+  });
 });
 
 describe("compiler execute import-time misconfiguration (ARCH-1)", () => {

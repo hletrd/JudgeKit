@@ -781,6 +781,25 @@ export async function executeCompilerRun(
     };
   }
 
+  // In production the custom seccomp profile is a mandatory part of the
+  // sandbox. Fail closed with a clear error instead of silently falling back
+  // to Docker's default (weaker) seccomp policy.
+  if (process.env.NODE_ENV === "production" && !HAS_CUSTOM_SECCOMP_PROFILE) {
+    logger.error(
+      { path: SECCOMP_PROFILE_PATH },
+      "[compiler] Seccomp profile not found; refusing to run container in production"
+    );
+    return {
+      stdout: "",
+      stderr: "Seccomp profile not found; container execution disabled in production",
+      exitCode: null,
+      executionTimeMs: 0,
+      timedOut: false,
+      oomKilled: false,
+      compileOutput: null,
+    };
+  }
+
   const settings = getConfiguredSettings();
   const rawTimeLimitMs = options.timeLimitMs ?? settings.compilerTimeLimitMs;
   const timeLimitMs = Number.isFinite(rawTimeLimitMs) && rawTimeLimitMs > 0 ? rawTimeLimitMs : 5000;
