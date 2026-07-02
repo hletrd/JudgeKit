@@ -42,7 +42,7 @@ SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 
 remote() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
-    sshpass -p "$SSH_PASSWORD" ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
+    SSHPASS="$SSH_PASSWORD" sshpass -e ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
   else
     ssh $SSH_OPTS "${REMOTE_USER}@${REMOTE_HOST}" "$@"
   fi
@@ -50,7 +50,7 @@ remote() {
 
 remote_rsync() {
   if [[ -n "${SSH_PASSWORD:-}" ]]; then
-    sshpass -p "$SSH_PASSWORD" rsync -e "ssh $SSH_OPTS" "$@"
+    SSHPASS="$SSH_PASSWORD" rsync -e "sshpass -e ssh $SSH_OPTS" "$@"
   else
     rsync -e "ssh $SSH_OPTS" "$@"
   fi
@@ -215,38 +215,55 @@ seed_backend() {
       break
     fi
     if [[ $i -eq 60 ]]; then
-      warn "${label} not healthy after 60s, attempting seed anyway"
+      die "${label} not healthy after 60s — aborting deploy"
     fi
     sleep 2
   done
 
   info "Pushing schema for ${label}..."
+  local network_name
+  network_name=$(remote "docker inspect --format='{{range \$k, \$v := .NetworkSettings.Networks}}{{\$k}}{{end}}' ${container}")
+  [[ -z "${network_name}" ]] && die "Could not determine Docker network for ${container}"
+
   if [[ "$dialect" == "sqlite" ]]; then
-    remote "docker exec ${container} node -e \"
-const Database = require('better-sqlite3');
-const fs = require('fs');
-const path = require('path');
-const db = new Database('/app/data/judge.db');
-db.pragma('busy_timeout = 5000');
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-const dir = '/app/drizzle';
-const files = fs.readdirSync(dir).filter(f => f.endsWith('.sql')).sort();
-for (const file of files) {
-  const sql = fs.readFileSync(path.join(dir, file), 'utf8');
-  const stmts = sql.split('--> statement-breakpoint');
-  for (const stmt of stmts) {
-    const t = stmt.trim();
-    if (t) { try { db.exec(t); } catch(e) {} }
-  }
-}
-db.close();
-console.log('SQLite migration: ' + files.length + ' files');
-\""
-  else
-    # PG/MySQL: use drizzle-kit push via npx inside container
-    remote "docker exec -e DB_DIALECT=${dialect} ${container} npx drizzle-kit push" 2>&1 || \
-      warn "drizzle-kit push failed for ${label} — may need manual intervention"
+    # Apply the SQLite-compatible baseline SQL files with the sqlite3 CLI.
+    # Any error fails the deploy (no swallow).
+    remote "docker run --rm --network ${network_name} \
+      -v ${REMOTE_DIR}/drizzle:/migrations:ro \
+      -v judgekit-data:/app/data \
+      alpine:3.20 \
+      sh -c 'apk add --no-cache sqlite >/dev/null 2>&1 && \
+        for f in /migrations/*.sql; do
+          [ -f \"\$f\" ] || continue
+          echo \"Applying \$f...\" >&2
+          sqlite3 /app/data/judge.db < \"\$f\"
+        done'" \
+      || die "SQLite schema migration failed for ${label}"
+  elif [[ "$dialect" == "postgresql" ]]; then
+    # Run drizzle-kit push from a dedicated migration container that installs
+    # dev dependencies, so the app container does not need them.
+    local pg_pass
+    pg_pass=$(remote "grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2- || echo judgekit_test")
+    remote "docker run --rm --network ${network_name} \
+      -v ${REMOTE_DIR}:/app:ro \
+      -e DATABASE_URL=postgres://judgekit:${pg_pass}@db-postgres:5432/judgekit \
+      node:24-alpine \
+      sh -c 'cd /app && npm install --no-save drizzle-kit drizzle-orm pg nanoid 2>&1 | tail -1 && npx drizzle-kit push'" \
+      || die "drizzle-kit push failed for ${label}"
+  elif [[ "$dialect" == "mysql" ]]; then
+    # Apply the MySQL-specific migration files with the mysql client.
+    local mysql_pass
+    mysql_pass=$(remote "grep '^MYSQL_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2- || echo judgekit_test")
+    remote "docker run --rm --network ${network_name} \
+      -v ${REMOTE_DIR}/drizzle/mysql:/migrations:ro \
+      -e MYSQL_PWD=${mysql_pass} \
+      mysql:8.4 \
+      sh -c 'for f in /migrations/*.sql; do
+          [ -f \"\$f\" ] || continue
+          echo \"Applying \$f...\" >&2
+          mysql -h db-mysql -u judgekit judgekit < \"\$f\"
+        done'" \
+      || die "MySQL schema migration failed for ${label}"
   fi
   success "${label} schema ready"
 }
