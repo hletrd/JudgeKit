@@ -95,7 +95,10 @@ export type HandlerConfig<T = undefined> = {
    * Defaults to true for POST, PUT, PATCH, DELETE; false for GET, HEAD, OPTIONS.
    */
   csrf?: boolean;
-  /** Rate limit key (e.g. "users:create"). If omitted, no rate limiting is applied. */
+  /** Rate limit key (e.g. "users:create"). If omitted, no rate limiting is applied.
+   * The configured limit is IP-keyed and consumed before auth so unauthenticated
+   * requests are still throttled. For user-keyed limits, consume inside the
+   * handler after authentication. */
   rateLimit?: string;
   /** Zod schema to validate request body. Body is only parsed when schema is provided. */
   schema?: ZodSchema<T>;
@@ -178,6 +181,10 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
     withPermissionCache(async () => {
     try {
       // --- Rate limiting ---
+      // The configured rateLimit key is IP-keyed and checked before auth so that
+      // anonymous clients cannot bypass throttling. Endpoints that need a
+      // user-keyed limit should leave rateLimit unset and call
+      // consumeUserApiRateLimit inside the handler after auth/recruiting checks.
       if (rateLimit) {
         const rateLimitResponse = await consumeApiRateLimit(req, rateLimit);
         if (rateLimitResponse) return addRequestId(rateLimitResponse, requestId);
