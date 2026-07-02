@@ -4,7 +4,7 @@ Date: 2026-07-01
 Scope: AGENTS.md, README.md, SECURITY.md, docs/api.md, docs/deployment.md, docs/languages.md vs. implementation.
 Method: Compared documentation claims against `src/app/api/v1/**` route files, `src/lib/judge/languages.ts`, `src/types/index.ts`, `judge-worker-rs/src/{types,languages}.rs`, `src/lib/capabilities/types.ts`, `deploy-docker.sh`, `scripts/setup.sh`, `docker-compose.production.yml`, and `package.json`.
 
-Summary: **23 findings** across API docs, language/image inventory, deployment instructions, and capability claims. The largest drift class is `docs/api.md`, which omits 34 live endpoints. Language/image documentation contains the most cross-file contradictions (Docker image names, active vs. disabled languages, image counts, preset contents, and ARM64 claims).
+Summary: **24 findings** across API docs, language/image inventory, deployment instructions, capability claims, and data-retention mechanics. The largest drift class is `docs/api.md`, which omits 34 live endpoints. Language/image documentation contains the most cross-file contradictions (Docker image names, active vs. disabled languages, image counts, preset contents, and ARM64 claims).
 
 ---
 
@@ -35,6 +35,7 @@ Summary: **23 findings** across API docs, language/image inventory, deployment i
 | DOC-21 | Low | Missing | Medium | API docs | `docs/api.md` does not document response/request bodies for several admin/problem endpoints |
 | DOC-22 | Low | Inconsistent | Medium | Security | `SECURITY.md` scope mentions `code-similarity-rs/`; project root contains the sidecar at top-level, not under that path |
 | DOC-23 | Low | Outdated | Medium | API docs | `docs/api.md` internal cleanup endpoint uses `/api/internal/cleanup`; implementation is at `/api/internal/cleanup` but auth wiring references `CRON_SECRET` consistently |
+| DOC-24 | Low | Incorrect | High | Data retention | `docs/data-retention-policy.md` says legal hold requires an application restart; code re-reads `DATA_RETENTION_LEGAL_HOLD` every prune cycle so a restart is unnecessary |
 
 ---
 
@@ -290,6 +291,16 @@ Summary: **23 findings** across API docs, language/image inventory, deployment i
 - **Classification**: Clean
 - **Confidence**: High
 
+### DOC-24: `docs/data-retention-policy.md` incorrectly states legal hold requires a restart
+- **Doc**: `docs/data-retention-policy.md:38` — "No data is deleted until the variable is removed and the application is restarted."
+- **Code**: `src/lib/data-retention.ts:46-52` — `isDataRetentionLegalHold()` re-reads `process.env.DATA_RETENTION_LEGAL_HOLD` on every prune cycle; `src/lib/data-retention-maintenance.ts:131-134` calls it before each daily prune.
+- **What the doc says**: Removing the legal hold only takes effect after a process restart.
+- **What the code does**: The next scheduled prune (within 24 hours) will observe the changed env var and resume pruning without a restart.
+- **Consequence**: Operators may schedule unnecessary restarts, or — worse — assume pruning cannot be accidentally re-enabled by simply unsetting the variable and therefore fail to lift the hold promptly.
+- **Suggested fix**: Update `docs/data-retention-policy.md:38` to: "No data is deleted while the variable is set. Removing or unsetting it allows the next scheduled prune cycle to resume normal retention enforcement without requiring a process restart."
+- **Classification**: Incorrect
+- **Confidence**: High
+
 ---
 
 ## Final Sweep Notes
@@ -301,6 +312,7 @@ Summary: **23 findings** across API docs, language/image inventory, deployment i
 | `docs/languages.md` active language table | Mostly clean | 125 active rows match `src/types/index.ts`; contradictions around `flix`, `roc`, image counts, and E2E totals need fixing. |
 | `AGENTS.md` language table | Drift | 126 rows including inactive `roc`; `flix` image wrong; `haskell` base wrong; capability count wrong. |
 | `docs/deployment.md` env var table | Mostly clean | Port mapping and preset sizes are stale; otherwise matches `docker-compose.production.yml` and `deploy-docker.sh`. |
+| `docs/data-retention-policy.md` | Minor drift | Default windows and env var names match `src/lib/data-retention.ts`; the restart requirement claim is incorrect. |
 | `docs/judge-workers.md` | Not reviewed in depth | Spot checks match `docker-compose.worker.yml`; no findings. |
 | `docker-compose.production.yml` | Clean | PostgreSQL 18 pin, PGDATA, docker-proxy setup, sidecar env vars match AGENTS.md descriptions. |
 | `package.json` versions | Clean | Next.js 16, TypeScript 5.9, React 19, Tailwind v4, Auth.js v5 (beta.31) all match README/AGENTS.md. |
@@ -317,4 +329,5 @@ Summary: **23 findings** across API docs, language/image inventory, deployment i
 3. **Image counts and orphan Dockerfiles** — remove or integrate `judge-j`, `judge-malbolge`, `judge-roc`, `judge-simula`; update 102→98 claims (DOC-5, DOC-9, DOC-18).
 4. **Deployment accuracy** — fix internal port, preset sizes, and `setup.sh`/`deploy-docker.sh` `all` preset alignment (DOC-7, DOC-10, DOC-11).
 5. **Capability count** — update 43→46 in README/AGENTS.md (DOC-8).
-6. **Developer guide polish** — add Rust runner validation step and README `everything` preset mention (DOC-19, DOC-20).
+6. **Data retention mechanics** — correct the legal-hold restart claim (DOC-24).
+7. **Developer guide polish** — add Rust runner validation step and README `everything` preset mention (DOC-19, DOC-20).

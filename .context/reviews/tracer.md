@@ -1,9 +1,9 @@
 # Causal Tracer Review — /tmp/judgekit-local
 
-**Scope:** Suspicious or complex flows in JudgeKit: contest join, similarity check, compiler execute, IP security/rate limiting, judge claim/poll/heartbeat/deregister, and deployment scripts.  
+**Scope:** Suspicious or complex flows in JudgeKit: contest join, similarity check, compiler execute, IP security/rate limiting, judge claim/poll/heartbeat/deregister, file upload/download, API authorization, and deployment scripts.  
 **Constraints:** Read-only review; no fixes applied. All work performed only in `/tmp/judgekit-local`.  
-**Date:** 2026-07-01  
-**Evidence base:** Source code, project docs (`CLAUDE.md`, `AGENTS.md`), the previous tracer review in this file, and focused test runs (90 TypeScript unit tests passed across the target files; 80 Rust `cargo test` suites passed for `judge-worker-rs`).
+**Date:** 2026-07-02  
+**Evidence base:** Source code, project docs (`CLAUDE.md`, `AGENTS.md`), the previous tracer review, and focused test runs.
 
 ---
 
@@ -43,7 +43,16 @@
 - **Heartbeat:** `/tmp/judgekit-local/src/app/api/v1/judge/heartbeat/route.ts:22` updates `lastHeartbeatAt` and triggers stale-worker sweep; does **not** overwrite `active_tasks` from worker telemetry.
 - **Deregister:** `/tmp/judgekit-local/src/app/api/v1/judge/deregister/route.ts:18` atomically marks worker offline, resets `active_tasks` to 0, and releases claimed submissions.
 
-### 2.6 Deploy Scripts (`deploy-docker.sh`)
+### 2.6 File Upload / Download
+
+- **Upload:** `POST /api/v1/files` → validation → `writeUploadedFile` with mode `0o600`.
+- **Download:** `GET /api/v1/files/[id]` → auth, access check, full file read into memory, then response.
+
+### 2.7 API Authorization (`createApiHandler`)
+
+`createApiHandler` (`/tmp/judgekit-local/src/lib/api/handler.ts`) wraps routes with rate limiting, auth, CSRF, body parsing, Zod validation, and role/capability checks. The role check currently validates the user's role against a built-in enum before honoring the route's `auth.roles` array.
+
+### 2.8 Deploy Scripts (`deploy-docker.sh`)
 
 `/tmp/judgekit-local/deploy-docker.sh` → local env profile hardening (`chmod 600`) → app-only guard for `algo.xylolabs.com` → SSH multiplexing → pre-deploy DB backup + PG volume safety check → `secret_token` backfill/drop before `drizzle-kit push` → app-only compose up → dedicated worker sync/restart with HTTPS enforcement → nginx `client_max_body_size` scoped to `/api/v1/judge/poll` (50 M) and `/api/v1/judge/` (1 m).
 
@@ -51,26 +60,243 @@
 
 ## 3. Findings
 
-| ID | Flow | Observation | Classification | Confidence |
+| ID | Flow | Observation | Severity | Confidence |
 |---|---|---|---|---|
-| T-JOIN-1 | Contest join | Access codes stored as plaintext in `assignments.accessCode`. | Security / data-at-rest | High |
-| T-JOIN-2 | Contest join | Global IP rate-limit bucket (`:unknown`) when `X-Forwarded-For` is missing in production. | Security / availability | Medium |
-| T-JOIN-3 | Contest join | Per-user failure limiter runs before per-code limiter, giving multi-account attackers N independent budgets. | Security / rate limiting | Medium |
-| T-JOIN-4 | Contest join | `23505` recovery in `redeemAccessCode` assumes the conflict is `(assignmentId, userId)` without checking the constraint. | Reliability / future-proofing | Medium |
-| T-SIM-1 | Similarity check | No per-assignment concurrency lock; concurrent runs race and last-write-wins. | Reliability | Medium |
-| T-SIM-2 | Similarity check | TS fallback O(n²) with 500 cap and hard 30 s route timeout can return `timed_out` with no stored results. | Reliability | Medium |
-| T-SIM-3 | Similarity check | Capability check runs before group-TA check, leaving the pure-TA path untested and possibly dead. | Authorization / consistency | Medium |
-| T-IPRL-1 | IP / rate limit | Same IP-extraction logic is fail-open for rate limiting (`unknown`) but fail-closed for judge allowlist. | Security / consistency | Medium |
-| T-IPRL-2 | Rate limiter | In-memory sidecar resets counters on restart; DB path corrects only after the sidecar allows the request. | Security / reliability | Low |
-| T-COMP-1 | Compiler execute | `bash`/`sh` are in the allowed command-prefix whitelist, so admin-supplied `sh -c` scripts pass strict validation. | Security / trust boundary | High |
-| T-COMP-2 | Compiler execute | Validation failures return `exitCode: null`; consumers must handle null explicitly. | Reliability | Low |
-| T-COMP-3 | Compiler execute | `validateShellCommandStrict` rejects environment-variable-prefixed segments despite the trust-boundary comment claiming they are supported. | Reliability / consistency | Medium |
-| T-JUDGE-1 | Judge poll | Claim-token mismatch returns 403; no API-side dead-letter beyond the Rust worker's local file. | Reliability / observability | Low |
-| T-DEPLOY-1 | Deploy | `docker container prune -f` on the app host has no `--filter` and could delete other stopped containers on a shared host. | Operations | Low |
-| T-DEPLOY-2 | Deploy | `docker builder prune -af` under disk pressure wipes all unused build cache. | Operations | Low |
-| T-DEPLOY-3 | Deploy | Migration container runs unpinned `npm install --no-save drizzle-kit@latest pg`. | Security / supply chain | Medium |
-| T-DEPLOY-4 | Deploy | `.env.production` sets `AUTH_TRUST_HOST=true`; relies on nginx for host-header discipline. | Security | Low |
-| T-DEPLOY-5 | Deploy | `sshpass -p "$SSH_PASSWORD"` exposes the SSH password in the local process list. | Security | Low |
+| **T-JUDGE-2** | Judge poll | In-progress reports reset `judgeClaimedAt`, allowing a worker to extend a claim indefinitely. | **High** | High |
+| **T-AUTH-1** | API handler | `createApiHandler` role check rejects custom roles via `isUserRole()`, breaking `auth.roles` for non-built-in roles. | **High** | High |
+| **T-DEPLOY-6** | Deploy | `scripts/online-judge.nginx.conf` still uses `$remote_addr` for `X-Forwarded-For`, diverging from the fixed deploy script. | **High** | High |
+| **T-DEPLOY-7** | Deploy | Fresh production deployments set neither `JUDGE_ALLOWED_IPS` nor `JUDGE_STRICT_IP_ALLOWLIST`, so judge API allowlist is open to all IPs. | **High** | High |
+| **T-SIM-4** | Similarity check | Rust sidecar ignores the caller's `AbortSignal` and uses its own hard-coded 25 s timeout; aborts are swallowed and fall back to TS. | **High** | High |
+| **T-SIM-1** | Similarity check | No per-assignment concurrency lock; concurrent runs race and last-write-wins. | **High** | High |
+| T-JOIN-1 | Contest join | Access codes stored as plaintext in `assignments.accessCode`. | Medium | High |
+| T-JOIN-2 | Contest join | Global `:unknown` rate-limit bucket when `X-Forwarded-For` is missing in production. | Medium | Medium |
+| T-JOIN-3 | Contest join | Per-user failure limiter runs before per-code limiter, giving multi-account attackers N independent budgets. | Medium | Medium |
+| T-JOIN-4 | Contest join | `23505` recovery in `redeemAccessCode` assumes the conflict is `(assignmentId, userId)` without checking the constraint. | Medium | Medium |
+| **T-JOIN-5** | Contest join | Failure-rate-limit buckets are never reset on a successful redemption, so a user who fat-fingers a code may remain blocked after receiving the correct code. | Medium | Medium |
+| T-SIM-2 | Similarity check | TS fallback O(n²) with 500 cap and hard 30 s route timeout can return `timed_out` with no stored results. | Medium | Medium |
+| T-SIM-3 | Similarity check | Capability check runs before group-TA check, leaving the pure-TA path untested and possibly dead. | Medium | Medium |
+| **T-SIM-5** | Similarity check | Route timeout is armed before authorization and the expensive DB query; query slowness can masquerade as computation timeout. | Medium | Medium |
+| **T-FILES-1** | File download | No rate limit on `GET /api/v1/files/[id]` and the full file is read into memory before streaming. | Medium | High |
+| T-IPRL-1 | IP / rate limit | Same IP-extraction logic is fail-open for rate limiting (`unknown`) but fail-closed for judge allowlist. | Medium | Medium |
+| T-IPRL-2 | Rate limiter | In-memory sidecar resets counters on restart; DB path corrects only after the sidecar allows the request. | Low | Low |
+| T-COMP-1 | Compiler execute | `bash`/`sh` are in the allowed command-prefix whitelist, so admin-supplied `sh -c` scripts pass strict validation. | Medium | High |
+| T-COMP-2 | Compiler execute | Validation failures return `exitCode: null`; consumers must handle null explicitly. | Low | Low |
+| T-COMP-3 | Compiler execute | `validateShellCommandStrict` rejects environment-variable-prefixed segments despite the trust-boundary comment claiming they are supported. | Medium | Medium |
+| T-JUDGE-1 | Judge poll | Claim-token mismatch returns 403; no API-side dead-letter beyond the Rust worker's local file. | Low | Low |
+| **T-JUDGE-3** | Rust worker | Runner HTTP server handle is aborted during shutdown without draining in-flight `/run` requests. | Medium | Medium |
+| T-DEPLOY-1 | Deploy | `docker container prune -f` on the app host has no `--filter` and could delete other stopped containers on a shared host. | Low | Low |
+| T-DEPLOY-2 | Deploy | `docker builder prune -af` under disk pressure wipes all unused build cache. | Low | Low |
+| T-DEPLOY-3 | Deploy | Migration container runs unpinned `npm install --no-save drizzle-kit@latest pg`. | Medium | Medium |
+| T-DEPLOY-4 | Deploy | `.env.production` sets `AUTH_TRUST_HOST=true`; relies on nginx for host-header discipline. | Medium | High |
+| T-DEPLOY-5 | Deploy | `sshpass -p "$SSH_PASSWORD"` exposes the SSH password in the local process list. | Low | Low |
+| **T-SIM-6** | Similarity check | Timeout handler treats any error message containing "timed out" as a scan timeout. | Low | High |
+| **T-LOG-1** | Logging | `code-similarity-client.ts` logs a missing-auth warning with `console.warn` instead of the structured logger. | Low | High |
+
+---
+
+### T-JUDGE-2 — In-progress judging can extend a claim indefinitely
+
+**Observation:** In `/tmp/judgekit-local/src/app/api/v1/judge/poll/route.ts:82-145`, when a worker posts `status: "judging"` with a valid `claimToken`, the handler updates the submission status and resets `judgeClaimedAt` to the current DB time. There is no maximum-judging-time guard independent of these heartbeats.
+
+**Hypothesis A (benign/intended):** Workers are trusted; a long-running judgement is legitimate and resetting the timestamp is exactly how the stale-claim sweep knows the worker is still alive.
+
+**Hypothesis B (failure/exploit):** A buggy or compromised worker can keep a submission in `judging` forever by posting `judging` status before the stale timeout. The submission is never re-queued, so the user sees a stuck submission and no final verdict. This is an availability failure for the submitter and a denial of the queue slot.
+
+**Evidence:**
+- `poll/route.ts:95-108` resets `judgeClaimedAt` for every `IN_PROGRESS_JUDGE_STATUSES` update.
+- `claim-query.ts` / stale sweep compares `judge_claimed_at < NOW() - staleClaimTimeoutMs`.
+- No `maxJudgingDurationMs` or `judgeStartedAt` absolute ceiling exists in the poll path.
+
+**Confidence:** High.  
+**Next probe:** Add a `maxJudgingDurationMs` guard; reject in-progress updates when total time since the original claim exceeds the ceiling, and reset the submission to `pending`.
+
+---
+
+### T-AUTH-1 — `createApiHandler` rejects custom roles
+
+**Observation:** `createApiHandler` (`/tmp/judgekit-local/src/lib/api/handler.ts:131-132`) calls `isUserRole(user.role)` before checking whether the user's role is in the route's `auth.roles` array. `isUserRole()` only accepts the five built-in roles.
+
+**Hypothesis A (benign/intended):** Only built-in roles are expected; custom roles should be modeled as capabilities or role assignments.
+
+**Hypothesis B (failure/exploit):** A deployment introduces a custom role (e.g., `external_instructor`) and restricts an admin route to it. The route becomes unreachable for that role, or operators may misread the config and assume the role gate works. This silently breaks authorization policy.
+
+**Evidence:**
+- `handler.ts:131-132`: `if (!isUserRole(user.role)) return forbidden(...);`.
+- `permissions.ts` / role types define the built-in whitelist.
+
+**Confidence:** High.  
+**Next probe:** Remove the `isUserRole` guard from the role check, or allow any role string listed in the route's `auth.roles`.
+
+---
+
+### T-DEPLOY-6 — Template drift in `scripts/online-judge.nginx.conf`
+
+**Observation:** `deploy-docker.sh` now uses `$proxy_add_x_forwarded_for` for `X-Forwarded-For`, but the standalone template `scripts/online-judge.nginx.conf` still uses `$remote_addr` in every location block.
+
+**Hypothesis A (benign/intended):** The template is for local reference only; operators always use the deploy script.
+
+**Hypothesis B (failure/exploit):** An operator copies the template to a host. `extractClientIp` with `TRUSTED_PROXY_HOPS=1` requires `parts.length >= trustedHops + 1`; a single-element XFF returns `null`. Rate limits collapse into the shared `unknown` bucket, and judge IP allowlists would deny legitimate workers.
+
+**Evidence:**
+- `scripts/online-judge.nginx.conf` lines 63, 77, 88, 100 use `$remote_addr`.
+- `deploy-docker.sh` uses `$proxy_add_x_forwarded_for`.
+- `ip.test.ts` confirms `null` is returned for short chains.
+
+**Confidence:** High.  
+**Next probe:** Update the template to match the deploy script and add a regression test.
+
+---
+
+### T-DEPLOY-7 — Judge allowlist defaults to allow-all on fresh deploys
+
+**Observation:** `isJudgeIpAllowed` (`/tmp/judgekit-local/src/lib/judge/ip-allowlist.ts:17-25,182-210`) returns `true` for every IP when `JUDGE_ALLOWED_IPS` is unset and `JUDGE_STRICT_IP_ALLOWLIST` is not `1`. Neither variable is generated by `deploy-docker.sh` or set in `docker-compose.production.yml`.
+
+**Hypothesis A (benign/intended):** Backward compatibility; operators must opt into strict allowlisting.
+
+**Hypothesis B (failure/exploit):** A fresh production deployment is allow-all. A leaked `JUDGE_AUTH_TOKEN` allows any internet host to register fake workers, claim submissions (reading source code and hidden test cases), and inject arbitrary verdicts.
+
+**Evidence:**
+- `ip-allowlist.ts:207`: denies only when an allowlist is configured.
+- `deploy-docker.sh:696-720` generates `.env.production` but does not include `JUDGE_ALLOWED_IPS` or `JUDGE_STRICT_IP_ALLOWLIST`.
+
+**Confidence:** High.  
+**Next probe:** Generate `.env.production` with worker-subnet allowlists or set `JUDGE_STRICT_IP_ALLOWLIST=1` by default.
+
+---
+
+### T-SIM-4 — Rust sidecar ignores caller abort signal
+
+**Observation:** `computeSimilarityRust` (`/tmp/judgekit-local/src/lib/assignments/code-similarity-client.ts:35-62`) uses a hard-coded `AbortSignal.timeout(25_000)` and does not accept the caller's signal. It catches all exceptions and returns `null`.
+
+**Hypothesis A (benign/intended):** The sidecar has its own timeout; callers fall back to TS if it fails.
+
+**Hypothesis B (failure/exploit):** The route's 30-second controller cannot cancel the sidecar. A slow sidecar keeps consuming resources after the caller has moved on. A sidecar timeout returns `null`, the TS fallback runs, and the 30-second route timer may expire before any result is returned.
+
+**Evidence:**
+- `code-similarity-client.ts`: no `signal` parameter; hard-coded timeout; catch-all returns `null`.
+- `similarity-check/route.ts:44-64`: passes signal only as far as `runSimilarityCheck`.
+
+**Confidence:** High.  
+**Next probe:** Compose the caller's signal with the internal timeout and re-throw `AbortError` instead of returning `null`.
+
+---
+
+### T-SIM-1 — No concurrency guard for similarity scans
+
+**Observation:** `runAndStoreSimilarityCheck` (`/tmp/judgekit-local/src/lib/assignments/code-similarity.ts:404-454`) reads submissions, computes pairs (possibly via the Rust sidecar), then executes a transaction that deletes existing `code_similarity` events for the assignment and inserts the new set. There is no advisory lock, unique constraint, or row-level lock on an assignment-level coordinator row.
+
+**Hypothesis A (benign/intended):** Similarity checks are operator-initiated and infrequent; the chance of two authorized users triggering the same scan simultaneously is low.
+
+**Hypothesis B (failure/exploit):** Two concurrent scans for the same assignment can both read the same submission set, consume CPU, then race to delete/insert. The later transaction overwrites the earlier one; intermediate states may be invisible, and CPU/memory is wasted. Under the 30 s route timeout, a slow race could also tip one request into `timed_out`.
+
+**Evidence:**
+- `code-similarity.ts:442-453`: `tx.delete(...).where(assignmentId, eventType=code_similarity)` followed by `tx.insert(...)`.
+- No `pg_advisory_lock`, `SELECT ... FOR UPDATE`, or `assignment` row lock precedes the read.
+- Route timeout: `similarity-check/route.ts:48`.
+
+**Confidence:** High.  
+**Next probe:** Add `pg_advisory_xact_lock(hashtextextended(assignmentId, 1)::bigint)` around the compute-and-store path, or add an assignment-level version/timestamp guard.
+
+---
+
+### T-FILES-1 — File download lacks rate limiting and streams from memory
+
+**Observation:** `GET /api/v1/files/[id]` (`/tmp/judgekit-local/src/app/api/v1/files/[id]/route.ts:62-140`) performs auth and access checks but never calls `consumeApiRateLimit`. It reads the entire uploaded file into memory with `buffer = await readUploadedFile(file.storedName)`.
+
+**Hypothesis A (benign/intended):** File downloads are infrequent and files are small; auth is sufficient.
+
+**Hypothesis B (failure/exploit):** An authenticated user can enumerate file IDs and repeatedly download large test-case attachments, abusing bandwidth and probing hidden files. Concurrent large downloads can exhaust the Node.js heap.
+
+**Evidence:**
+- `[id]/route.ts`: no `rateLimit` config or manual rate-limit call; `readUploadedFile` returns a Buffer.
+- `handler.ts` applies rate limits only when configured.
+
+**Confidence:** High.  
+**Next probe:** Add `rateLimit: "files:download"` and stream files from disk instead of loading them into memory.
+
+---
+
+### T-JOIN-5 — Failure rate limits never reset on success
+
+**Observation:** On a failed redemption, `join/route.ts:28-37` consumes `contest:join:invalid` (per-user) and `contest:join:invalid-code` (per-code). A later successful redemption does not decrement or reset these buckets.
+
+**Hypothesis A (benign/intended):** Invalid attempts should remain penalized to discourage guessing.
+
+**Hypothesis B (failure/exploit):** A student who mistypes a code many times, then receives the correct code, may still be blocked by the per-user invalid bucket for the remainder of the window.
+
+**Evidence:**
+- `join/route.ts:28-37`: both failure buckets consumed; no success-path reset.
+- `api-rate-limit.ts:198-222`: no reset-on-success semantics for these keys.
+
+**Confidence:** Medium.  
+**Next probe:** Treat invalid-code attempts as part of the same `contest:join` bucket, or reset the invalid counters on a successful redemption.
+
+---
+
+### T-JUDGE-3 — Rust worker runner server aborts without draining
+
+**Observation:** `judge-worker-rs/src/main.rs:686-688` aborts the runner HTTP server handle during graceful shutdown.
+
+**Hypothesis A (benign/intended):** The runner is an internal sidecar; losing in-flight local runs is acceptable during restart.
+
+**Hypothesis B (failure/exploit):** In-flight verdict submissions may be lost or orphaned containers left running during a restart.
+
+**Evidence:**
+- `main.rs:686-688`: `handle.abort()` after the main loop exits.
+- No bounded drain of active `/run` requests.
+
+**Confidence:** Medium.  
+**Next probe:** Add a graceful shutdown handler that waits for active requests to complete within a bounded timeout.
+
+---
+
+### T-SIM-5 — Similarity timeout starts before expensive work
+
+**Observation:** The route arms a 30-second `AbortController` timeout, then awaits `getContestAssignment`, authorization checks, and the raw CTE query before starting `runAndStoreSimilarityCheck`. The CTE at `code-similarity.ts:330-339` has no `LIMIT` and is not abort-aware.
+
+**Hypothesis A (benign/intended):** The 30-second budget covers the whole request.
+
+**Hypothesis B (failure/exploit):** On a large assignment, the CTE query can consume most of the budget before similarity computation begins. The route returns `timed_out` and the operator cannot tell whether the engine or the database was slow.
+
+**Evidence:**
+- `similarity-check/route.ts:44-64`: timer starts early.
+- `code-similarity.ts:330-339`: unbounded `rawQueryAll` not observing the abort signal.
+
+**Confidence:** Medium.  
+**Next probe:** Start the timer closer to the computation, or add a separate query timeout with a distinct error status.
+
+---
+
+### T-SIM-6 — Broad "timed out" string match in timeout handler
+
+**Observation:** The similarity route catch block returns the `timed_out` envelope if `error.name === "AbortError"` OR `error.message.includes("timed out")`.
+
+**Hypothesis A (benign/intended):** Any downstream timeout should be reported as a scan timeout.
+
+**Hypothesis B (failure/exploit):** A database query timeout or other error whose message contains "timed out" is surfaced as a scan timeout, masking database health issues.
+
+**Evidence:**
+- `similarity-check/route.ts:51-62`: string-includes check.
+
+**Confidence:** High.  
+**Next probe:** Only treat `AbortError` as scan timeout; let other errors propagate to the generic handler.
+
+---
+
+### T-LOG-1 — `console.warn` in similarity client
+
+**Observation:** `code-similarity-client.ts:6` imports no project logger and uses `console.warn` for a missing-auth warning.
+
+**Hypothesis A (benign/intended):** It's a single diagnostic line.
+
+**Hypothesis B (failure/exploit):** In production, this warning bypasses the structured logger and may be lost or formatted inconsistently.
+
+**Evidence:**
+- `code-similarity-client.ts`: `console.warn("WARN: no auth token");`.
+- Other `src/lib` modules use `@/lib/logger`.
+
+**Confidence:** High.  
+**Next probe:** Replace with `logger.warn(...)`.
 
 ---
 
@@ -141,24 +367,6 @@
 
 **Confidence:** Medium — defensive future-proofing.  
 **Next probe:** In the recovery branch, assert the constraint name matches the expected `(assignmentId, userId)` index or re-run the existing-token check for the specific user.
-
----
-
-### T-SIM-1 — No concurrency guard for similarity scans
-
-**Observation:** `runAndStoreSimilarityCheck` (`/tmp/judgekit-local/src/lib/assignments/code-similarity.ts:404-454`) reads submissions, computes pairs (possibly via the Rust sidecar), then executes a transaction that deletes existing `code_similarity` events for the assignment and inserts the new set. There is no advisory lock, unique constraint, or row-level lock on an assignment-level coordinator row.
-
-**Hypothesis A (benign/intended):** Similarity checks are operator-initiated and infrequent; the chance of two authorized users triggering the same scan simultaneously is low.
-
-**Hypothesis B (failure/exploit):** Two concurrent scans for the same assignment can both read the same submission set, consume CPU, then race to delete/insert. The later transaction overwrites the earlier one; intermediate states may be invisible, and CPU/memory is wasted. Under the 30 s route timeout, a slow race could also tip one request into `timed_out`.
-
-**Evidence:**
-- `code-similarity.ts:442-453`: `tx.delete(...).where(assignmentId, eventType=code_similarity)` followed by `tx.insert(...)`.
-- No `pg_advisory_lock`, `SELECT ... FOR UPDATE`, or `assignment` row lock precedes the read.
-- Route timeout: `similarity-check/route.ts:48`.
-
-**Confidence:** Medium.  
-**Next probe:** Add a load test that fires two similarity-check POSTs concurrently and verify event count/duplication.
 
 ---
 
@@ -358,7 +566,7 @@
 
 ### T-DEPLOY-4 — `AUTH_TRUST_HOST=true` in production
 
-**Observation:** The deploy script writes `AUTH_TRUST_HOST=true` into `.env.production` (`/tmp/judgekit-local/deploy-docker.sh:856`).
+**Observation:** The deploy script writes `AUTH_TRUST_HOST=true` into `.env.production` (`/tmp/judgekit-local/deploy-docker.sh:856`). `src/lib/security/env.ts:260-266` returns `true` in production unless the env var is explicitly `"false"`.
 
 **Hypothesis A (benign/intended):** Auth.js needs this behind a reverse proxy because `X-Forwarded-Host` is intentionally not set for RSC navigation; Nginx enforces the canonical host.
 
@@ -367,9 +575,10 @@
 **Evidence:**
 - `deploy-docker.sh:856`: `upsert_env_literal AUTH_TRUST_HOST true`.
 - `CLAUDE.md` and nginx config enforce HTTPS/canonical domains.
+- The generated nginx config no longer sets `X-Forwarded-Host`, but it also does not strip a client-supplied one.
 
-**Confidence:** Low — contingent on nginx misconfiguration.  
-**Next probe:** Verify that Nginx rejects non-canonical `Host` headers and does not forward arbitrary `X-Forwarded-Host`.
+**Confidence:** Medium-High.  
+**Next probe:** Default `AUTH_TRUST_HOST=false` when `AUTH_URL` is set; have nginx explicitly overwrite or remove `X-Forwarded-Host`.
 
 ---
 
@@ -401,6 +610,7 @@ These are deliberate, well-implemented safeguards that mitigate the findings abo
 - **Deploy guards:** `algo.xylolabs.com` deploy enforces `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false` (`/tmp/judgekit-local/deploy-docker.sh:312`), uses pre-deploy DB backups, PG volume safety checks, and never runs `docker system prune --volumes`.
 - **Secret redaction:** `judgeClaimToken`, `workerSecret`, `RUNNER_AUTH_TOKEN`, etc. are listed in `LOGGER_REDACT_PATHS` (`/tmp/judgekit-local/src/lib/security/secrets.ts:48-73`).
 - **Rate-limiter fail-open:** Sidecar failures fall back to the authoritative DB path (`/tmp/judgekit-local/src/lib/security/rate-limiter-client.ts:53-108`).
+- **XFF chain preserved in deploy script:** Generated nginx config now uses `$proxy_add_x_forwarded_for`, correctly preserving the client IP chain behind trusted proxies.
 
 ---
 
@@ -413,7 +623,9 @@ Additional checks performed to surface missed issues:
 3. **JUDGE_AUTH_TOKEN leakage check** — the shared token is used only for `/register` in the app and for initial worker config validation in Rust; it is not honored on claim/poll/heartbeat/deregister.
 4. **Destructive Docker command audit** — `docker system prune --volumes` is absent; image prune uses dangling-only `-f`; volume prune is not called. The only unfiltered container prune is on the dedicated app host (T-DEPLOY-1).
 5. **Rate-limit key generation** — confirmed fallback to `unknown` bucket (T-JOIN-2, T-IPRL-1).
-6. **Tests run** — Focused unit-test files passed (`tests/unit/api/contests.route.test.ts`, `similarity-check.route.test.ts`, `compiler/execute.test.ts`, `security/ip.test.ts`, `infra/deploy-security.test.ts`, `infra/deploy-storage-safety.test.ts`, `infra/judge-report-nginx.test.ts`); `cargo test` in `judge-worker-rs` passed.
+6. **Cross-instance state audit** — rate-limiter buckets, capability cache, system-settings cache, and analytics cache are module-level singletons with no cross-instance invalidation. In a horizontally scaled deployment, changes propagate only to the replica that handled the write.
+7. **Template audit** — `scripts/online-judge.nginx.conf` still uses `$remote_addr`, creating regression risk (T-DEPLOY-6).
+8. **Tests run** — Focused unit-test files passed (`tests/unit/api/contests.route.test.ts`, `similarity-check.route.test.ts`, `compiler/execute.test.ts`, `security/ip.test.ts`, `infra/deploy-security.test.ts`, `infra/deploy-storage-safety.test.ts`, `infra/judge-report-nginx.test.ts`); `cargo test` in `judge-worker-rs` passed.
 
 No additional exploitable bugs beyond the findings above were identified in the traced flows.
 
@@ -421,14 +633,25 @@ No additional exploitable bugs beyond the findings above were identified in the 
 
 ## 6. Conclusion & Recommended Next Probes
 
-The traced flows are architecturally sound and show evidence of iterative hardening (per-worker secrets, atomic claim SQL, sandboxed compiler, deploy guards). The remaining risk is mostly residual design/operational rather than active vulnerabilities.
+The traced flows are architecturally sound and show evidence of iterative hardening (per-worker secrets, atomic claim SQL, sandboxed compiler, deploy guards). The remaining risk is mostly residual design/operational rather than active vulnerabilities, with a few new high-severity causal defects identified in this pass.
 
-**Highest-value probes:**
+**Highest-priority fixes:**
+1. Cap in-progress judging duration so a worker cannot extend a claim forever (T-JUDGE-2).
+2. Fix `createApiHandler` custom-role rejection (T-AUTH-1).
+3. Generate `JUDGE_ALLOWED_IPS` or enable strict allowlist by default in production env (T-DEPLOY-7).
+4. Update `scripts/online-judge.nginx.conf` to use `$proxy_add_x_forwarded_for` and add regression test (T-DEPLOY-6).
+5. Compose the caller's abort signal with the Rust sidecar's internal timeout (T-SIM-4).
+6. Add a per-assignment advisory lock to `runAndStoreSimilarityCheck` (T-SIM-1).
+7. Add rate limiting and streaming to file downloads (T-FILES-1).
+
+**Recommended next probes:**
 1. Verify production Nginx `X-Forwarded-For` handling and decide whether the `unknown` rate-limit bucket should be rejected or separately bounded (T-JOIN-2, T-IPRL-1).
 2. Reorder or clarify the join-route failure limiters so the per-code bucket is consumed unconditionally (T-JOIN-3).
-3. Add a concurrency lock or idempotency key to `runAndStoreSimilarityCheck` (T-SIM-1).
-4. Pin the migration container's `drizzle-kit`/`pg` versions or install from the project lockfile (T-DEPLOY-3).
-5. Add a route test for the pure group-TA similarity-check path and confirm intended policy (T-SIM-3).
-6. Benchmark the TS similarity fallback near the 500-submission cap under the 30 s timeout (T-SIM-2).
-7. Review the admin surface for `language_configs` writes to ensure the `sh -c` trust boundary cannot be crossed by lower-privilege users (T-COMP-1).
-8. Resolve the env-var-prefix documentation/implementation inconsistency in compiler validation (T-COMP-3).
+3. Reset invalid-code rate-limit counters on successful redemption (T-JOIN-5).
+4. Add a route test for the pure group-TA similarity-check path and confirm intended policy (T-SIM-3).
+5. Benchmark the TS similarity fallback near the 500-submission cap under the 30 s timeout (T-SIM-2).
+6. Review the admin surface for `language_configs` writes to ensure the `sh -c` trust boundary cannot be crossed by lower-privilege users (T-COMP-1).
+7. Resolve the env-var-prefix documentation/implementation inconsistency in compiler validation (T-COMP-3).
+8. Add graceful shutdown draining for the Rust worker runner HTTP server (T-JUDGE-3).
+9. Audit cross-instance caches for horizontal-scaling consistency.
+10. Pin migration container dependencies (T-DEPLOY-3).

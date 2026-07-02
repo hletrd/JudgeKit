@@ -1,96 +1,253 @@
-# Verifier Review — Cycle 1
+# Verifier Correctness Review
 
-**Date:** 2026-06-30
-**Scope:** entire repository
-**Reviewer angle:** evidence-based correctness checks — compare implemented code against documented behavior in AGENTS.md, docs/api.md, and inline comments.
-**Summary:** Cross-checked advertised API contracts, function-signature judging, contest access/scoring, anti-cheat similarity checks, and deployment-safety claims against the current implementation. Found one clear docs/behavior mismatch on the similarity-check endpoint, one unguarded limit on the Rust similarity sidecar, one precision risk in the Java function harness, one misleading field in the compute-expected route, and one worker-host command fallback inconsistency. All findings are supported by direct code reads and test cross-references.
-**Findings count:** 5
+Scope: `/tmp/judgekit-local` only. This review compares stated behavior in `CLAUDE.md`, `AGENTS.md`, `README.md`, `docs/api.md`, `docs/deployment.md`, `docs/judge-workers.md`, `docs/languages.md`, and inline comments/tests against the actual implementation in `src/**`, `judge-worker-rs/**`, `rate-limiter-rs/**`, `deploy-docker.sh`, `docker/**`, `scripts/**`, and `static-site/nginx.conf`.
 
----
+Review completed: 2026-07-02.
 
-## MEDIUM: `POST /api/v1/contests/:assignmentId/similarity-check` response contract differs from `docs/api.md` (confidence: High)
+## Summary
 
-- **Files:**
-  - `docs/api.md:1089-1099`
-  - `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:43-92`
-  - `tests/unit/api/similarity-check.route.test.ts:104-168`
-- **Problem:** `docs/api.md` documents the endpoint as returning a simple shape with only a flagged-pairs count and a `504` status on timeout:
-  ```
-  30-second timeout. Returns `504` on timeout.
-  Response: { "data": { "flaggedPairs": 5 } }
-  ```
-  The implementation does two things the docs omit:
-  1. On timeout it returns HTTP `200` with `data.status === "timed_out"`, `data.reason === "timeout"`, `flaggedPairs: 0`, `pairs: []` (route.ts:53-60).
-  2. On success it enriches every pair with `user1Name`, `user2Name`, and converts the raw `[0,1]` similarity to a percentage integer via `Math.round(p.similarity * 100)` (route.ts:82-87).
-- **Failure scenario:** An API consumer generated from `docs/api.md` will expect a `504` on timeout and will not handle the actual `200` + `status: "timed_out"` body. A dashboard or client that only reads `data.flaggedPairs` will also miss the `pairs` array, the `submissionCount`, the `maxSupportedSubmissions`, and the percentage-scaled `similarity` values.
-- **Suggested fix:** Update `docs/api.md` to match the implementation (preferred, because the tests at `similarity-check.route.test.ts:133-168` explicitly assert the `200` + `timed_out` shape and the enriched pairs are already shipped). Alternatively, change the route to return `504` and the minimal payload, but that would break the existing unit tests and dashboard callers.
-- **Cross-references:** `src/lib/assignments/code-similarity.ts:404-457` (storage of pairs), `src/lib/assignments/code-similarity.ts:236` (`maxSupportedSubmissions: 500`).
+Most high-visibility claims are implemented as documented (CSRF three-layer guard, API key `jk_` prefix, password minimum-length-only rule, function-judging double-comparison, per-language time-limit multiplier, IOI `runAllTestCases`, seccomp default-deny, PostgreSQL 18 + pinned PGDATA, worker claim auth, similarity-check timeout handling, output-only runner). However, several documented security and sandbox behaviors are still not realized in code, and there are material gaps between the committed nginx templates and the generated production config.
 
----
+The most consequential findings are:
 
-## MEDIUM: `MAX_SUBMISSIONS_FOR_SIMILARITY` limit is enforced only on the TypeScript fallback, not the Rust sidecar (confidence: High)
+1. **Nginx template/config mismatch**: `deploy-docker.sh` now correctly preserves the `X-Forwarded-For` chain, but the committed `scripts/online-judge.nginx.conf` and `scripts/online-judge.nginx-http.conf` still overwrite it with `$remote_addr`.
+2. **Upload body limit still broken in generated nginx**: the catch-all `location /` in `deploy-docker.sh` has no `client_max_body_size`, so it defaults to 1 MiB, breaking file uploads and restores that the app allows up to 50 MiB.
+3. **`AUTH_TRUST_HOST=true` remains the production default**, enabling Host-header attacks when `AUTH_URL` is configured.
+4. **Judge API IP allowlist remains allow-all by default** in generated `.env.production`.
+5. **PID limits** documented as 64 run / 128 compile are still 128 for both phases.
+6. **Judge-container DNS hardening** (Cloudflare DNS + immutable `resolv.conf`) is documented but absent.
+7. **`roc` language** is implemented in the Rust worker but missing from the TypeScript `Language` union and supported-language docs, making the "125 variants" claim inconsistent.
+8. **Many runtime env vars** are referenced in code but not documented in `.env.example`.
+9. **Deployment/infrastructure tests** continue to verify string presence rather than actual behavior.
+10. **`docs/api.md`** still shows an oversimplified similarity-check response shape.
 
-- **Files:**
-  - `src/lib/assignments/code-similarity.ts:236, 354-367, 379-388`
-- **Problem:** `runSimilarityCheck` first attempts the Rust sidecar (`computeSimilarityRust`) and only applies the 500-submission guard when falling back to the TypeScript implementation. The guard is explicitly commented as applying only to the fallback, but the constant name and the response field `maxSupportedSubmissions` advertise it as a general ceiling for the feature.
-- **Failure scenario:** On a deployment where the Rust sidecar is running, a contest with 700, 1,000, or more best submissions will be sent to the sidecar without any cap. If the sidecar is not bounded internally, this can cause excessive CPU/memory usage and a route timeout, degrading the API for all users. The documented/engineered limit of 500 is effectively bypassed in the common (sidecar-available) path.
-- **Suggested fix:** Move the `rows.length > MAX_SUBMISSIONS_FOR_SIMILARITY` check before the Rust sidecar attempt, or add an equivalent limit inside `computeSimilarityRust` / the sidecar itself. If the sidecar is intentionally allowed to handle larger contests, update the constant name, the response semantics, and the dashboard copy so operators understand the limit is fallback-only.
-- **Cross-references:** `src/lib/assignments/code-similarity-client.ts` (sidecar client), `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:43-65` (30-second timeout).
+## File inventory reviewed
 
----
+- Project context: `CLAUDE.md`, `AGENTS.md`, `README.md` (relevant sections)
+- API docs: `docs/api.md` (similarity-check, function-judging, auth, judge endpoints)
+- Deployment/ops docs: `docs/deployment.md`, `docs/judge-workers.md`, `docs/languages.md`
+- Config/env: `.env.example`, `.env.production`, `.env.production.example`, `.env.deploy*`
+- Next.js source: `src/lib/security/ip.ts`, `src/lib/security/rate-limit.ts`, `src/lib/security/api-rate-limit.ts`, `src/lib/security/env.ts`, `src/lib/security/password.ts`, `src/lib/security/csrf.ts`, `src/lib/judge/ip-allowlist.ts`, `src/lib/api/handler.ts`, `src/lib/compiler/execute.ts`, `src/lib/system-settings-config.ts`
+- API routes: `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts`, `src/app/api/v1/contests/join/route.ts`, `src/app/api/v1/judge/claim/route.ts`
+- Types/configs: `src/types/index.ts`, `src/lib/judge/languages.ts`, `src/lib/judge/function-judging/types.ts`, `src/lib/judge/function-judging/comparison.ts`, `src/lib/judge/function-judging/serialization.ts`
+- Rust worker: `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/languages.rs`
+- Docker: `docker/Dockerfile.judge-cpp`, `docker/Dockerfile.judge-python`, `docker/seccomp-profile.json`
+- Compose: `docker-compose.production.yml`, `docker-compose.worker.yml`
+- Deploy scripts: `deploy-docker.sh`, `deploy.sh`, `scripts/online-judge.nginx.conf`, `scripts/online-judge.nginx-http.conf`, `static-site/nginx.conf`
+- Tests: `tests/unit/security/ip.test.ts`, `tests/unit/compiler/execute.test.ts`, `tests/unit/api/contests.route.test.ts`, `tests/unit/api/similarity-check.route.test.ts`, `tests/unit/infra/deploy-security.test.ts`, `tests/unit/infra/deploy-storage-safety.test.ts`, `tests/unit/infra/judge-report-nginx.test.ts`
 
-## MEDIUM: Java function harness formats `double` returns with only 10 significant digits (confidence: Medium)
+## Findings
 
-- **Files:**
-  - `src/lib/judge/function-judging/adapters/java.ts:186`
-  - `src/lib/judge/function-judging/comparison.ts:32-48`
-  - `src/lib/judge/function-judging/serialization.ts:33-41, 68-74`
-- **Problem:** The Java adapter serializes `double` return values using `String.format(java.util.Locale.ROOT, "%.10g", v)`. `%.10g` prints at most 10 significant digits. The docs and comments state that `double`/`double[]` returns are judged with float comparison, so exact byte-match across languages is not required. However, a 10-significant-digit round-trip can lose enough precision that two mathematically identical results (or a result and its expected value) diverge by more than the default `1e-9` tolerance when the value needs more digits to round-trip exactly.
-- **Failure scenario:** A problem expecting `1.0000000001234567` could be serialized from the reference solution as `1.0000000001` (10 significant digits). The student's C# solution, which uses `double.ToString("R")`, might emit `1.00000000012346`. The float comparator uses tolerance, so this specific pair may still pass, but values near the tolerance boundary or with larger magnitudes can produce wrong verdicts. More importantly, `serialization.ts` already uses `String(Number(v))` (JavaScript's shortest round-trip, ~17 significant digits) for expected outputs, so the Java adapter's 10-digit form is the least precise adapter in the pipeline.
-- **Suggested fix:** Replace `%.10g` with a round-trip-safe format such as `%.17g` or `Double.toString(v)`, matching the precision contract used by `serialization.ts` and the other adapters (Python `repr(float)`, C# `"R"`).
-- **Cross-references:** `src/lib/judge/function-judging/adapters/python.ts:20-24` (`repr(float(...))`), `src/lib/judge/function-judging/adapters/csharp.ts:151` (`"R"` round-trip format), `src/lib/judge/function-judging/adapters/javascript.ts:15-16` (`String(__result)` — also low precision but documented as acceptable under tolerance).
+### 1. Nginx template/config mismatch: committed templates overwrite X-Forwarded-For
 
----
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `scripts/online-judge.nginx.conf:63,77,88,100`
+  - `scripts/online-judge.nginx-http.conf:33,44`
+  - `deploy-docker.sh:1520,1535,1547,1559,1590,1605,1617,1629`
+- **Claimed behavior:** Per `AGENTS.md` and recent RPF fixes, the production nginx config should preserve the full `X-Forwarded-For` chain.
+- **Actual behavior:** `deploy-docker.sh` correctly emits `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;` in generated configs, but the committed static templates `scripts/online-judge.nginx.conf` and `scripts/online-judge.nginx-http.conf` still use `proxy_set_header X-Forwarded-For $remote_addr;`.
+- **Concrete failure scenario:** An operator who copies the committed template to a new host, or a dev/CI path that uses the static file instead of running `deploy-docker.sh`, will collapse the XFF chain. `extractClientIp` with `TRUSTED_PROXY_HOPS=1` then sees only one hop and returns `null`, breaking rate-limit keys, audit attribution, and judge IP allowlists.
+- **Suggested fix:** Update the committed templates to use `$proxy_add_x_forwarded_for` and add a CI assertion that no committed nginx file contains `X-Forwarded-For $remote_addr`.
 
-## MEDIUM: `compute-expected` populates `expectedOutput` with stdout even when the reference solution exits non-zero (confidence: High)
+### 2. Generated nginx `location /` lacks `client_max_body_size`, breaking uploads >1 MiB
 
-- **Files:**
-  - `src/app/api/v1/problems/[id]/compute-expected/route.ts:162-170`
-  - `docs/api.md` (Function-Signature Problems section)
-- **Problem:** The route comment says "The produced stdout becomes each case's computed `expectedOutput`." For a successful run (`exitCode === 0`) this holds. For a run that exits non-zero, the route marks `ok: false` but still stores the captured stdout in the `expectedOutput` field (route.ts:166). The field name implies the value will be used as expected output; a UI that displays per-case results may let an author save a crashing reference solution's partial/empty stdout as the canonical expected output.
-- **Failure scenario:** An author writes a reference solution that segfaults on one test case. The `compute-expected` response for that case contains `ok: false, error: "exitCode 139", expectedOutput: ""` (or whatever garbage stdout was produced). If the authoring UI ignores `ok` and writes `expectedOutput` to the database, the test case will be judged against malformed expected output. The route does not currently persist anything itself, so the immediate bug is in the contract it presents to callers.
-- **Suggested fix:** When `exitCode !== 0`, set `expectedOutput: ""` so the field is unambiguously not usable, or rename the field to `output` for non-success cases. Alternatively, document that `expectedOutput` may contain partial stdout for debugging when `ok === false`.
-- **Cross-references:** `src/lib/judge/function-judging/serialization.ts:68-74` (canonical expected-output encoding), `src/lib/judge/function-judging/assemble.ts` (reference-solution assembly).
+- **Severity:** CRITICAL
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `deploy-docker.sh:1552-1563,1622-1633` (`location /` blocks)
+  - `src/app/api/v1/files/route.ts:35`
+  - `src/lib/system-settings-config.ts:61`
+- **Claimed behavior:** The application supports uploads up to the configured maximum (default 50 MiB).
+- **Actual behavior:** The generated nginx config sets `client_max_body_size 1m` only on `/api/auth/` and `/api/v1/judge/`, and `client_max_body_size 50M` only on `/api/v1/judge/poll`. The catch-all `location /` has no explicit limit, so nginx's default of 1 MiB applies to `/api/v1/files/`, admin restore/import, and any other large-body endpoint.
+- **Concrete failure scenario:** Instructors uploading 10 MiB PDFs or ZIP archives, or admins restoring backup exports >1 MiB, receive `413 Request Entity Too Large` before the application can validate the upload.
+- **Suggested fix:** Add `client_max_body_size 50M;` to the `location /` block (or scope it to `/api/v1/files/` and `/api/v1/admin/*`) and align it with `MAX_IMPORT_BYTES` / `uploadMaxFileSizeBytes`. Add an integration test that asserts the generated config's `location /` limit matches the configured upload maximum.
 
----
+### 3. `AUTH_TRUST_HOST=true` is the production default
 
-## LOW: Worker-host restart in `deploy-docker.sh` lacks the `docker-compose` fallback used for the app host (confidence: Medium)
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `deploy-docker.sh:700,828,894`
+  - `docker-compose.production.yml:106`
+  - `.env.production:4`
+  - `.env.production.example:9`
+  - `src/lib/security/env.ts:260-266`
+- **Claimed behavior:** `shouldTrustAuthHost()` should be safe in production.
+- **Actual behavior:** Fresh `.env.production` files set `AUTH_TRUST_HOST=true`. `shouldTrustAuthHost()` returns `true` in production whenever the env var is not explicitly `"false"`. NextAuth then derives canonical URLs from `Host` / `X-Forwarded-Host` headers. The generated nginx config does not strip a client-supplied `X-Forwarded-Host`.
+- **Concrete failure scenario:** An attacker sending direct HTTPS requests with `Host: attacker.com` or `X-Forwarded-Host: attacker.com` can cause Auth.js to generate session state, callback URLs, or password-reset links bound to an attacker-controlled domain.
+- **Suggested fix:** Default `AUTH_TRUST_HOST=false` in production when `AUTH_URL` is set; have nginx explicitly overwrite or remove `X-Forwarded-Host` before proxying; rely on `AUTH_URL` and DB `allowedHosts` as the trusted-host set.
 
-- **Files:**
-  - `deploy-docker.sh:1285`
-  - `deploy-docker.sh:1393-1396`
-- **Problem:** When starting containers on the app host, the script uses `docker compose ... || docker-compose ...` (line 1285) to tolerate either Docker Compose v2 or v1. When restarting the worker compose on a dedicated worker host, it uses only `docker compose` (lines 1393-1396) with no fallback.
-- **Failure scenario:** If a worker host is running an older Docker version that provides only the `docker-compose` Python plugin/standalone binary, the deploy will fail at the worker restart step even though the app host would have succeeded in the same environment.
-- **Suggested fix:** Apply the same fallback pattern on the worker host:
-  ```bash
-  docker compose -f docker-compose.worker.yml --env-file .env up -d || \
-  docker-compose -f docker-compose.worker.yml --env-file .env up -d
-  ```
-- **Cross-references:** `deploy-docker.sh:1309-1422` (entire `WORKER_HOSTS` block), `CLAUDE.md` (algo.xylolabs.com must not build worker images; worker images are built on dedicated worker hosts).
+### 4. Judge API IP allowlist defaults to allow-all in production
 
----
+- **Severity:** HIGH
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `src/lib/judge/ip-allowlist.ts:17-25,182-210`
+  - `docker-compose.production.yml`
+  - `deploy-docker.sh:658-700` (`.env.production` generation)
+  - `.env.production` (generated file)
+- **Claimed behavior:** `AGENTS.md` states the judge API is restricted to worker subnet(s).
+- **Actual behavior:** When `JUDGE_ALLOWED_IPS` is unset and `JUDGE_STRICT_IP_ALLOWLIST` is not `1`, `isJudgeIpAllowed()` returns `true` for every IP. The production compose file sets neither variable, and the generated `.env.production` does not set `JUDGE_ALLOWED_IPS`.
+- **Concrete failure scenario:** A leaked `JUDGE_AUTH_TOKEN` lets any internet host register fake workers, claim submissions (reading `sourceCode` and hidden `testCases`), and inject arbitrary judge verdicts.
+- **Suggested fix:** Generate `.env.production` with `JUDGE_ALLOWED_IPS` restricted to the worker subnet(s), or set `JUDGE_STRICT_IP_ALLOWLIST=1` and require operators to configure an explicit allowlist before workers can register.
 
-## Final sweep
+### 5. PID limits do not match the documented phase split
 
-- **Areas verified and found consistent:**
-  - Function-signature type system (`src/lib/judge/function-judging/types.ts`) correctly restricts to scalar + 1-D arrays and rejects void returns, matching AGENTS.md v1.
-  - `resolveComparisonMode` (comparison.ts:32-43) forces `"float"` for `double`/`double[]` returns and `"exact"` otherwise, matching the documented contract.
-  - `extractClientIp` (`src/lib/security/ip.ts:68-131`) correctly validates hop count, unwraps IPv4-mapped IPv6, and returns `null` in production when the chain is shorter than `TRUSTED_PROXY_HOPS`; callers in `ip-allowlist.ts:204-207`, `rate-limit.ts:46`, and `request-context.ts:20-27` handle the `null`/`"0.0.0.0"` sentinel safely.
-  - Contest access-token expiry (`src/lib/assignments/contest-access-tokens.ts:99-104`) now uses `lateDeadline ?? deadline`, matching the documented fix for late-submission windows.
-  - `deploy-docker.sh` never runs `docker volume prune` or `docker system prune --volumes` in automated paths, and uses `chmod 600` for `.env` files, consistent with safety claims.
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `AGENTS.md:313` — "`--pids-limit 64` for run phase and `--pids-limit 128` for compile phase"
+  - `judge-worker-rs/src/docker.rs:322` — `let pids_limit = "128";` used for every container
+  - `src/lib/compiler/execute.ts:362` — `"--pids-limit", "128"` used for both phases
+- **Claimed behavior:** Run phase should cap PIDs at 64; compile phase at 128.
+- **Actual behavior:** Both phases use 128 in production (Rust worker) and in local fallback (Node compiler).
+- **Concrete failure scenario:** A runaway runtime process in the run phase can create up to 128 processes instead of the documented 64, increasing blast radius if the sandbox is breached.
+- **Suggested fix:** Make `pids_limit` depend on `options.phase` in `judge-worker-rs/src/docker.rs` and on the `phase` parameter in `src/lib/compiler/execute.ts`.
 
-- **Items needing manual validation (cannot verify statically):**
-  - Whether the Rust similarity sidecar internally enforces its own submission limit or memory ceiling when the TS guard is skipped.
-  - Whether any dashboard/API client still relies on the documented `504`/minimal `flaggedPairs` response and will break on the actual implementation.
-  - Whether Java reference solutions emitting doubles near the tolerance boundary have produced wrong verdicts in production or E2E tests.
+### 6. Judge-container DNS hardening is documented but not implemented
 
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `AGENTS.md:314` — "DNS: Judge containers use Cloudflare DNS (1.1.1.1). `/etc/resolv.conf` is locked with `chattr +i`"
+  - `judge-worker-rs/src/docker.rs:330-373` (Docker arg construction)
+  - `src/lib/compiler/execute.ts:350-394` (Docker arg construction)
+- **Claimed behavior:** Judge containers are forced to 1.1.1.1 and `resolv.conf` is immutable.
+- **Actual behavior:** No Dockerfile, compose file, or worker code sets a custom DNS server or runs `chattr +i /etc/resolv.conf`. Containers inherit the host/Docker daemon resolver.
+- **Concrete failure scenario:** A malicious or buggy judge container that rewrites `/etc/resolv.conf` (or an upstream DNS change) can alter name resolution behavior; the documented defense is absent.
+- **Suggested fix:** Add `--dns 1.1.1.1` to the Docker run args in `judge-worker-rs/src/docker.rs` and `src/lib/compiler/execute.ts`, or document that the claim is no longer accurate and remove it from `AGENTS.md`.
+
+### 7. `roc` language support is inconsistent across the stack
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `docs/languages.md:206-210,225` — lists `roc` only in the **Disabled Languages** table
+  - `AGENTS.md:94` — `roc` appears as a supported table row
+  - `src/types/index.ts:30-156` — `Language` union has no `roc`
+  - `src/lib/judge/languages.ts` — no `roc` config
+  - `judge-worker-rs/src/types.rs:191` — `Roc` enum variant exists
+  - `judge-worker-rs/src/languages.rs:1758-1768,2029,2167` — `ROC_CONFIG` and match arms exist
+- **Claimed behavior:** Project claims "125 language variants". `AGENTS.md` says adding a language requires updating `src/types/index.ts` and `judge-worker-rs/src/types.rs`.
+- **Actual behavior:** The Rust worker has a full `roc` config, but the TypeScript `Language` type does not include it, and `docs/languages.md` does not list it in the supported table. `AGENTS.md` lists 126 rows including `roc`, contradicting the "125 variants" headline.
+- **Concrete failure scenario:** If an admin enables `roc` in `language_configs`, the worker can attempt to run it while the app layer treats the language identifier as invalid, leading to mismatched validation or UI errors.
+- **Suggested fix:** Either (a) remove `Roc` from the Rust worker and `AGENTS.md` to match the "125 variants" claim, or (b) add `roc` to `src/types/index.ts`, `src/lib/judge/languages.ts`, and the `docs/languages.md` supported table, updating the count to 126.
+
+### 8. Similarity-check API response is under-documented
+
+- **Severity:** LOW
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `docs/api.md:1089-1098` — documents response as `{ "data": { "flaggedPairs": 5 } }`
+  - `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:89-92` — returns `{ ...result, pairs: enrichedPairs }`
+  - `src/lib/assignments/code-similarity.ts:245-252` — `SimilarityRunResult` includes `status`, `reason`, `pairs`, `flaggedPairs`, `submissionCount`, `maxSupportedSubmissions`
+- **Claimed behavior:** API returns only `flaggedPairs`.
+- **Actual behavior:** API returns a rich object with `status`, `reason`, `pairs`, `submissionCount`, `maxSupportedSubmissions`, plus enriched `user1Name` / `user2Name` fields.
+- **Concrete failure scenario:** A client built against the documented contract may ignore `status`/`reason` and fail to handle `not_run` or `timed_out` states correctly.
+- **Suggested fix:** Update `docs/api.md` to show the full response schema, including the `pairs[]` enrichment and the `not_run` / `timed_out` statuses.
+
+### 9. Deployment/infrastructure tests verify string presence, not behavior
+
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Status:** Confirmed
+- **Files / lines:**
+  - `tests/unit/infra/deploy-security.test.ts`
+  - `tests/unit/infra/deploy-storage-safety.test.ts`
+  - `tests/unit/infra/judge-report-nginx.test.ts`
+- **Claimed behavior:** Tests assert deployment security/safety invariants.
+- **Actual behavior:** They catch accidental deletion of safety strings, but a change that includes the required substrings while bypassing the actual logic (e.g., a commented-out block, dead code path, or heredoc that is never executed) would still pass. `judge-report-nginx.test.ts` checks the script text, not the generated nginx config that actually reaches the server.
+- **Concrete failure scenario:** `deploy-docker.sh` could contain `docker image prune -f` inside an `if false; then ... fi` block and the storage-safety test would still pass. The XFF/body-size findings above are exactly the kind of drift these tests miss because they do not render and validate the generated config.
+- **Suggested fix:** Add a small integration check that renders the nginx template (or a dry-run of the deploy script) and verifies the actual directives are on reachable code paths. For shell scripts, consider `bash -n` plus a static analysis pass that confirms safety commands are reachable.
+
+### 10. Many env vars are referenced in code but missing from `.env.example`
+
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Status:** Confirmed
+- **Files / lines:**
+  - `.env.example` (documents 53 variables)
+  - Code references collected from `src/**`, `judge-worker-rs/src/**`, `scripts/**` (76 distinct `process.env.*` names)
+- **Claimed behavior:** `.env.example` is the canonical reference for available environment variables (`AGENTS.md:556-567`).
+- **Actual behavior:** The following runtime configuration variables are referenced in code but absent from `.env.example`:
+  - `ADMIN_PASSWORD`, `ADMIN_USERNAME`, `SEED_ADMIN_USERNAME`
+  - `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`
+  - `APP_VERSION`, `AUTH_CACHE_TTL_MS`
+  - `AWS_ACCESS_KEY_ID`, `AWS_REGION`, `AWS_SECRET_ACCESS_KEY`
+  - `CODE_SIMILARITY_AUTH_TOKEN`, `COMPILER_RUNNER_URL`, `COMPILER_WORKSPACE_DIR`
+  - `CRON_SECRET`, `DATA_DIR`, `DATA_RETENTION_LEGAL_HOLD`, `DATABASE_PATH`, `DATABASE_POOL_APP_NAME`
+  - `DISABLE_COMPILER_LOCAL_FALLBACK`, `DRIFT_AFTER`, `DRIFT_BEFORE`, `ENABLE_COMPILER_LOCAL_FALLBACK`, `ENABLE_CRON_CLEANUP`
+  - `JUDGE_API_KEY`, `JUDGE_WORKER_URL`, `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN`
+  - `LOG_LEVEL`, `NEXT_PUBLIC_GA_MEASUREMENT_ID`
+  - `NODE_ENCRYPTION_KEY_PREVIOUS`
+  - `PLAYWRIGHT_AUTH_TOKEN`, `PRIVACY_CONTACT_EMAIL`
+  - `RATE_LIMITER_AUTH_TOKEN`, `RATE_LIMITER_URL`
+  - `REALTIME_COORDINATION_BACKEND`, `REALTIME_SINGLE_INSTANCE_ACK`
+  - `RESEND_API_KEY`, `RESEND_FROM`
+  - `RUNNER_AUTH_DISABLED`, `RUNNER_AUTH_TOKEN`
+  - `SENDGRID_API_KEY`, `SENDGRID_FROM`, `SES_FROM`
+  - `SKIP_INSTRUMENTATION_SYNC`, `SMTP_*`
+  - `WEB_CONCURRENCY`
+- **Concrete failure scenario:** Operators and new contributors cannot discover these variables from `.env.example`, leading to misconfigured deployments (e.g., missing `RUNNER_AUTH_TOKEN`, missing `CODE_SIMILARITY_AUTH_TOKEN`, missing `REALTIME_COORDINATION_BACKEND`).
+- **Suggested fix:** Audit all `process.env` references and add documented entries (with defaults, required/optional status, and descriptions) to `.env.example`.
+
+### 11. `ip-allowlist.ts` accepts leading-zero IPv4 octets in allowlist entries
+
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Likely
+- **Files / lines:**
+  - `src/lib/judge/ip-allowlist.ts:155-160`
+  - `src/lib/security/ip.ts:18-27`
+- **Claimed behavior:** IP canonicalization should be consistent across the codebase.
+- **Actual behavior:** `src/lib/security/ip.ts` rejects leading-zero octets, but `src/lib/judge/ip-allowlist.ts` validates IPv4 octets with `Number(part)`, so `192.168.01.001` passes. The same client can be represented by multiple strings.
+- **Concrete failure scenario:** An operator who enters `192.168.01.0/24` in `JUDGE_ALLOWED_IPS` expects it to match `192.168.1.1`, but the bitwise math uses the literal numeric values and may fail to match, or may match unintended addresses.
+- **Suggested fix:** Reject leading-zero octets in `ip-allowlist.ts` (except the single digit `0`), or normalize octets before matching, to align with `src/lib/security/ip.ts`.
+
+### 12. Rate limiter runs before auth check in `createApiHandler`
+
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Status:** Risk
+- **Files / lines:**
+  - `src/lib/api/handler.ts:117-121,123-142`
+- **Claimed behavior:** Common middleware sequence: auth, CSRF, validation, then handler.
+- **Actual behavior:** `consumeApiRateLimit` is invoked before `getApiUser`. For endpoints keyed on IP (`getRateLimitKey` in `src/lib/security/rate-limit.ts:45-47`), this means unauthenticated requests still consume the shared IP bucket, potentially exhausting it for legitimate authenticated users behind the same proxy/NAT.
+- **Concrete failure scenario:** A botnet sends unauthenticated requests to a popular endpoint; the per-IP rate limit fills with `unknown`/spoofed keys and blocks legitimate users sharing the same proxy IP.
+- **Suggested fix:** Evaluate whether rate-limiting before auth is intentional. If not, move auth before rate limiting for per-user endpoints, or use separate buckets for authenticated vs unauthenticated callers.
+
+## Verified matches (selected)
+
+These claims are implemented as stated:
+
+- **CSRF three-layer guard** (`docs/api.md:79-95`, `src/lib/security/csrf.ts:35-79`): checks `X-Requested-With: XMLHttpRequest`, `Sec-Fetch-Site`, and `Origin` host.
+- **API key `jk_` prefix** (`docs/api.md:70`, `src/lib/api/api-key-auth.ts:12,40`).
+- **Password minimum length only** (`AGENTS.md:631-636`, `src/lib/security/password.ts`): checks only `password.length < 8`.
+- **Function-judging double comparison** (`docs/api.md:439-453`, `src/lib/judge/function-judging/comparison.ts:32-43`, `serialization.ts:68-74`): `double`/`double[]` returns force `comparisonMode = "float"` and emit whitespace-separated numeric tokens.
+- **Output-only runner** (`docs/languages.md:135-155`, `docker/output-only/runner.mjs:42-112`): extracts `$display`/`$write`/`$strobe` and `report` literal strings.
+- **Per-language time-limit multiplier** (`docs/languages.md:256`, `src/app/api/v1/judge/claim/route.ts:370-375`): applied at claim time, clamped to 0.1–50, rounded up to 1 ms.
+- **Seccomp default-deny** (`AGENTS.md:298-301`, `docker/seccomp-profile.json:3`): `"defaultAction": "SCMP_ACT_ERRNO"`.
+- **PostgreSQL 18 + pinned PGDATA** (`AGENTS.md:292`, `docker-compose.production.yml:18,50-55`).
+- **Worker claim auth** (`docs/api.md:1356-1361`, `src/app/api/v1/judge/claim/route.ts:106-212`): requires registered worker, online status, and matching `secretTokenHash`.
+- **`--no-cache` on app/worker builds** (`AGENTS.md:305`, `deploy-docker.sh:907,913,1388`).
+- **`runAllTestCases` for IOI** (`src/app/api/v1/judge/claim/route.ts:381`, `judge-worker-rs/src/executor.rs:661-665`, `judge-worker-rs/src/types.rs:246-247`).
+- **Static-site security headers** (`AGENTS.md` deploy hardening, `static-site/nginx.conf:11-13`): `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` are now present.
+- **Similarity-check timeout handling** (`src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:43-65`, `tests/unit/api/similarity-check.route.test.ts:133-168`): returns explicit `timed_out` status and clears the timeout in `finally`.
+- **Local compiler fallback disabled by default when runner URL is configured** (`README.md:239`, `src/lib/compiler/execute.ts:91-95`).
+
+## Final sweep notes
+
+- The `static-site/nginx.conf` is intentionally minimal and now matches its role as a static-site server (autoindex off, gzip, cache headers, baseline security headers).
+- `deploy-docker.sh` correctly generates `docker-compose.app-only.yml` at deploy time and enforces `SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false` for `algo.xylolabs.com`.
+- The raw `psql` additive repair block that previously bypassed the Drizzle journal has been removed; the deploy-security test confirms no `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` remains in `deploy-docker.sh`.
+- No additional unimplemented features or doc/comment lies were found beyond those listed above during the scanned areas.
