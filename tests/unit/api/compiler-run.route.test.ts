@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
+import { gateSandboxEndpoint } from "@/lib/security/sandbox-gate";
 
 const {
   getApiUserMock,
@@ -181,5 +182,28 @@ describe("POST /api/v1/compiler/run", () => {
       assignmentId: "assignment-2",
     });
     expect(loggerWarnMock).toHaveBeenCalledOnce();
+  });
+
+  it("returns 403 without consuming sandbox quota when user lacks content.submit_solutions", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+    const { POST } = await import("@/app/api/v1/compiler/run/route");
+
+    const request = new NextRequest("http://localhost:3000/api/v1/compiler/run", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      body: JSON.stringify({
+        language: "python",
+        sourceCode: "print(1)",
+        stdin: "",
+      }),
+    });
+
+    const response = await POST(request, { params: Promise.resolve({}) });
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "forbidden" });
+    expect(gateSandboxEndpoint).not.toHaveBeenCalled();
   });
 });

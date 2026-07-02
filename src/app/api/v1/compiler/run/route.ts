@@ -69,6 +69,13 @@ export const POST = createApiHandler({
       return apiError("compilerDisabledInCurrentMode", 403);
     }
 
+    // Capability gate must run before the sandbox-quota gate so callers without
+    // content.submit_solutions are rejected with 403 without consuming quota.
+    const caps = await resolveCapabilities(user.role);
+    if (!caps.has("content.submit_solutions")) {
+      return forbidden();
+    }
+
     // SEC H-1 / H-2: gate sandbox-heavy endpoint. Same shape as
     // /api/v1/playground/run. Compiler is reachable from assignment
     // workspaces (legitimate per-test debugging) so the daily ceiling
@@ -81,11 +88,6 @@ export const POST = createApiHandler({
       maxPerDay: 500,
     });
     if (sandboxGate) return sandboxGate;
-
-    const caps = await resolveCapabilities(user.role);
-    if (!caps.has("content.submit_solutions")) {
-      return forbidden();
-    }
 
     // Validate language exists in judge language definitions
     if (!isJudgeLanguage(body.language)) {
