@@ -49,7 +49,11 @@ export const POST = createApiHandler({
     try {
       result = await runAndStoreSimilarityCheck(assignmentId, undefined, controller.signal);
     } catch (error) {
-      if (error instanceof Error && (error.name === "AbortError" || error.message.includes("timed out"))) {
+      // Only caller-initiated aborts (route timeout) or intentional cancellation
+      // should be reported as timed_out. Arbitrary failures are re-thrown so the
+      // generic handler can surface them as operational errors instead of masking
+      // them as a timeout.
+      if (error instanceof DOMException && error.name === "AbortError") {
         return apiSuccess({
           status: "timed_out",
           reason: "timeout",
