@@ -45,9 +45,9 @@ export function LoginForm() {
 
       if (result.url) {
         const nextUrl = new URL(result.url, window.location.origin);
-        router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+        await router.push(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
       } else {
-        router.push(redirectTo);
+        await router.push(redirectTo);
       }
       router.refresh();
     } catch {
