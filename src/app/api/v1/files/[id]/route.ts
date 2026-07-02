@@ -154,7 +154,7 @@ export async function DELETE(
 
     const isApiKeyAuth = "_apiKeyAuth" in user;
     if (!isApiKeyAuth) {
-      const csrfError = csrfForbidden(request);
+      const csrfError = await csrfForbidden(request);
       if (csrfError) return csrfError;
     }
 

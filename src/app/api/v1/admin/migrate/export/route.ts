@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     // Skip CSRF for API key auth (no cookies involved)
     const isApiKeyAuth = "_apiKeyAuth" in user;
     if (!isApiKeyAuth) {
-      const csrfError = csrfForbidden(request);
+      const csrfError = await csrfForbidden(request);
       if (csrfError) return csrfError;
     }
 

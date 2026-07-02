@@ -212,7 +212,7 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         csrf !== undefined ? csrf : (!isApiKeyAuth && MUTATION_METHODS.has(req.method));
 
       if (shouldCheckCsrf) {
-        const csrfError = csrfForbidden(req);
+        const csrfError = await csrfForbidden(req);
         if (csrfError) return addRequestId(csrfError, requestId);
       }
 

@@ -63,9 +63,10 @@ export async function getApiUser(request: NextRequest) {
   // API-key-only clients (CI/CD, integrations) should not trigger an unnecessary
   // JWT token extraction + DB query on every request.
   const authHeader = request.headers.get("authorization");
+  let apiKeyResult: Awaited<ReturnType<typeof authenticateApiKey>> | undefined;
   if (authHeader?.startsWith("Bearer jk_")) {
-    const apiKeyUser = await authenticateApiKey(authHeader);
-    if (apiKeyUser) return apiKeyUser;
+    apiKeyResult = await authenticateApiKey(authHeader);
+    if (apiKeyResult) return apiKeyResult;
   }
 
   // 2. Try session cookie (standard web auth)
@@ -78,11 +79,16 @@ export async function getApiUser(request: NextRequest) {
   const sessionUser = await getActiveAuthUserById(getTokenUserId(token), getTokenAuthenticatedAtSeconds(token));
   if (sessionUser) return sessionUser;
 
-  // 3. Fallback: try API key without prefix match (handles non-standard Bearer tokens)
+  // 3. Fallback: try API key without prefix match (handles non-standard Bearer tokens).
+  // If we already attempted API key auth above and it failed, reuse that result
+  // instead of re-evaluating the same invalid bearer key.
+  if (apiKeyResult !== undefined) {
+    return apiKeyResult;
+  }
   return authenticateApiKey(authHeader);
 }
 
-export function csrfForbidden(request: NextRequest): NextResponse | null {
+export async function csrfForbidden(request: NextRequest): Promise<NextResponse | null> {
   return validateCsrf(request);
 }
 

@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   // createApiHandler. This is a public endpoint but CSRF protection prevents
   // cross-origin form submissions from triggering token validation in a
   // victim's browser.
-  const csrfError = validateCsrf(req);
+  const csrfError = await validateCsrf(req);
   if (csrfError) return csrfError;
 
   let body: unknown;

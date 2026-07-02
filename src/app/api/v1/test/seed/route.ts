@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
   const rateLimitResponse = await consumeApiRateLimit(req, "test:seed");
   if (rateLimitResponse) return rateLimitResponse;
 
-  const csrfError = csrfForbidden(req);
+  const csrfError = await csrfForbidden(req);
   if (csrfError) return csrfError;
 
   const contentType = req.headers.get("content-type");

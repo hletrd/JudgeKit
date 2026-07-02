@@ -13,96 +13,96 @@ function createRequest(
 
 describe("validateCsrf", () => {
   describe("safe methods bypass CSRF validation", () => {
-    it("passes GET requests without any CSRF headers", () => {
+    it("passes GET requests without any CSRF headers", async () => {
       const req = createRequest("GET");
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("passes HEAD requests without any CSRF headers", () => {
+    it("passes HEAD requests without any CSRF headers", async () => {
       const req = createRequest("HEAD");
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("passes OPTIONS requests without any CSRF headers", () => {
+    it("passes OPTIONS requests without any CSRF headers", async () => {
       const req = createRequest("OPTIONS");
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
   });
 
   describe("X-Requested-With header", () => {
-    it("accepts POST with X-Requested-With: XMLHttpRequest", () => {
+    it("accepts POST with X-Requested-With: XMLHttpRequest", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
     it("rejects POST missing X-Requested-With header", async () => {
       const req = createRequest("POST");
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
     it("rejects POST with empty X-Requested-With", async () => {
       const req = createRequest("POST", { "x-requested-with": "" });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
     it("rejects POST with wrong X-Requested-With value", async () => {
       const req = createRequest("POST", { "x-requested-with": "fetch" });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
     it("rejects PATCH missing X-Requested-With", async () => {
       const req = createRequest("PATCH");
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
     it("rejects PUT missing X-Requested-With", async () => {
       const req = createRequest("PUT");
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
     it("rejects DELETE missing X-Requested-With", async () => {
       const req = createRequest("DELETE");
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
   });
 
   describe("Sec-Fetch-Site header validation", () => {
-    it("accepts same-origin Sec-Fetch-Site", () => {
+    it("accepts same-origin Sec-Fetch-Site", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "same-origin",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("accepts same-site Sec-Fetch-Site", () => {
+    it("accepts same-site Sec-Fetch-Site", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "same-site",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("accepts none Sec-Fetch-Site (no navigation)", () => {
+    it("accepts none Sec-Fetch-Site (no navigation)", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "none",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
     it("rejects cross-site Sec-Fetch-Site", async () => {
@@ -110,24 +110,24 @@ describe("validateCsrf", () => {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "cross-site",
       });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
-    it("accepts request without Sec-Fetch-Site (older browsers)", () => {
+    it("accepts request without Sec-Fetch-Site (older browsers)", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("is case-insensitive for Sec-Fetch-Site values", () => {
+    it("is case-insensitive for Sec-Fetch-Site values", async () => {
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "Same-Origin",
       });
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
     it("rejects unknown Sec-Fetch-Site value", async () => {
@@ -135,14 +135,14 @@ describe("validateCsrf", () => {
         "x-requested-with": "XMLHttpRequest",
         "sec-fetch-site": "other-origin",
       });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
   });
 
   describe("Origin header validation", () => {
-    it("accepts matching Origin against x-forwarded-host", () => {
+    it("accepts matching Origin against x-forwarded-host", async () => {
       const req = createRequest(
         "POST",
         {
@@ -152,10 +152,10 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("accepts matching Origin against host header", () => {
+    it("accepts matching Origin against host header", async () => {
       const req = createRequest(
         "POST",
         {
@@ -165,7 +165,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
     it("rejects non-matching Origin", async () => {
@@ -178,7 +178,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
@@ -193,7 +193,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
@@ -208,12 +208,12 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
-    it("accepts missing Origin when expected host is known and Sec-Fetch-Site is absent", () => {
+    it("accepts missing Origin when expected host is known and Sec-Fetch-Site is absent", async () => {
       const req = createRequest(
         "POST",
         {
@@ -222,10 +222,10 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("accepts missing Origin when Sec-Fetch-Site explicitly proves same-origin", () => {
+    it("accepts missing Origin when Sec-Fetch-Site explicitly proves same-origin", async () => {
       const req = createRequest(
         "POST",
         {
@@ -235,10 +235,10 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
-    it("skips Origin check when no expected host can be determined", () => {
+    it("skips Origin check when no expected host can be determined", async () => {
       // No host or x-forwarded-host headers, no origin — should pass
       const req = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
@@ -249,10 +249,10 @@ describe("validateCsrf", () => {
       const reqNoOrigin = createRequest("POST", {
         "x-requested-with": "XMLHttpRequest",
       });
-      expect(validateCsrf(reqNoOrigin)).toBeNull();
+      expect(await validateCsrf(reqNoOrigin)).toBeNull();
     });
 
-    it("uses only the first value when x-forwarded-host contains multiple hosts", () => {
+    it("uses only the first value when x-forwarded-host contains multiple hosts", async () => {
       const req = createRequest(
         "POST",
         {
@@ -262,7 +262,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
   });
 
@@ -273,12 +273,12 @@ describe("validateCsrf", () => {
         "sec-fetch-site": "",
         origin: "",
       });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
 
-    it("passes with all valid headers present together", () => {
+    it("passes with all valid headers present together", async () => {
       const req = createRequest(
         "POST",
         {
@@ -289,7 +289,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      expect(validateCsrf(req)).toBeNull();
+      expect(await validateCsrf(req)).toBeNull();
     });
 
     it("rejects when Sec-Fetch-Site is valid but X-Requested-With is wrong", async () => {
@@ -297,7 +297,7 @@ describe("validateCsrf", () => {
         "x-requested-with": "XMLHttpRequest-fake",
         "sec-fetch-site": "same-origin",
       });
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });
@@ -311,7 +311,7 @@ describe("validateCsrf", () => {
         },
         "https://example.com/api/v1/resource"
       );
-      const res = validateCsrf(req);
+      const res = await validateCsrf(req);
       expect(res?.status).toBe(403);
       await expect(res?.json()).resolves.toEqual({ error: "csrfValidationFailed" });
     });

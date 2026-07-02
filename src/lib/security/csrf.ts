@@ -1,19 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAuthUrlObject } from "@/lib/security/env";
+import { getTrustedAuthHosts, normalizeHostForComparison } from "@/lib/security/env";
 import { logger } from "@/lib/logger";
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
-function getExpectedHost(request: NextRequest) {
-  const authUrl = getAuthUrlObject();
-  if (authUrl) {
-    return authUrl.host;
+async function getExpectedHosts(request: NextRequest) {
+  const trustedHosts = await getTrustedAuthHosts();
+  if (trustedHosts.size > 0) {
+    return trustedHosts;
   }
+
   // In production, refuse to fall back to request headers — AUTH_URL must be configured.
   if (process.env.NODE_ENV === "production") {
-    return null;
+    return new Set<string>();
   }
-  return request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ?? request.headers.get("host")?.trim() ?? null;
+
+  const host =
+    request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ??
+    request.headers.get("host")?.trim() ??
+    null;
+
+  if (host) {
+    const set = new Set<string>();
+    set.add(normalizeHostForComparison(host));
+    return set;
+  }
+
+  return new Set<string>();
 }
 
 /**
@@ -23,8 +36,9 @@ function getExpectedHost(request: NextRequest) {
  * REQUIRED (HTML forms cannot set custom headers, so this is the CSRF
  * boundary); a missing/mismatched value is rejected before the other checks
  * run. (2) When `Sec-Fetch-Site` is present, it must be same-origin/same-site/
- * none. (3) When `Origin` is present and AUTH_URL is configured, the origin
- * host must match. Applies to non-safe methods (POST, PATCH, PUT, DELETE).
+ * none. (3) When `Origin` is present, the origin host must match one of the
+ * trusted hosts (AUTH_URL plus the DB/system `allowedHosts` list). Applies to
+ * non-safe methods (POST, PATCH, PUT, DELETE).
  *
  * This prevents cross-origin form submissions while keeping the API usable
  * from JavaScript clients (fetch/XHR always allow setting custom headers;
@@ -32,7 +46,7 @@ function getExpectedHost(request: NextRequest) {
  *
  * Returns null if the request passes, or a 403 response if blocked.
  */
-export function validateCsrf(request: NextRequest): NextResponse | null {
+export async function validateCsrf(request: NextRequest): Promise<NextResponse | null> {
   if (SAFE_METHODS.has(request.method)) {
     return null;
   }
@@ -40,7 +54,7 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
   const xRequestedWith = request.headers.get("x-requested-with");
   const secFetchSite = request.headers.get("sec-fetch-site")?.trim().toLowerCase();
   const origin = request.headers.get("origin")?.trim();
-  const expectedHost = getExpectedHost(request);
+  const expectedHosts = await getExpectedHosts(request);
 
   if (xRequestedWith !== "XMLHttpRequest") {
     return NextResponse.json(
@@ -58,7 +72,7 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
     return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
   }
 
-  if (origin && expectedHost) {
+  if (origin && expectedHosts.size > 0) {
     // Reject origins that don't start with http:// or https:// — this blocks
     // protocol-relative origins and other malformed values before URL parsing.
     if (!/^https?:\/\//i.test(origin)) {
@@ -66,7 +80,7 @@ export function validateCsrf(request: NextRequest): NextResponse | null {
       return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
     }
     try {
-      if (new URL(origin).host !== expectedHost) {
+      if (!expectedHosts.has(normalizeHostForComparison(new URL(origin).host))) {
         return NextResponse.json({ error: "csrfValidationFailed" }, { status: 403 });
       }
     } catch (err) {
