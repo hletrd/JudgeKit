@@ -140,6 +140,17 @@ async function getVisibleProblemSetIds(userId: string, role: string) {
   return [...visibleIds];
 }
 
+type ProblemSetListQueryOptions = {
+  orderBy: ReturnType<typeof desc>[];
+  limit?: number;
+  offset?: number;
+  with: {
+    problems: { columns: { id: true } };
+    groupAccess: { columns: { id: true; groupId: true } };
+    creator: { columns: { id: true; name: true; username: true } };
+  };
+};
+
 function problemSetQueryOptions(options: ProblemSetListOptions = {}) {
   return {
     orderBy: [desc(problemSets.createdAt)],
@@ -156,7 +167,7 @@ function problemSetQueryOptions(options: ProblemSetListOptions = {}) {
         columns: { id: true, name: true, username: true },
       },
     },
-  };
+  } satisfies ProblemSetListQueryOptions;
 }
 
 export async function countVisibleProblemSetsForUser(userId: string, role: string) {
@@ -175,26 +186,24 @@ export async function listVisibleProblemSetsForUser(
 ): Promise<VisibleProblemSetListItem[]> {
   const visibleIds = await getVisibleProblemSetIds(userId, role);
   if (visibleIds === null) {
-    return db.query.problemSets.findMany(problemSetQueryOptions(options)) as unknown as Promise<
-      VisibleProblemSetListItem[]
-    >;
+    return db.query.problemSets.findMany(problemSetQueryOptions(options));
   }
   if (visibleIds.length === 0) return [];
 
   return db.query.problemSets.findMany({
     ...problemSetQueryOptions(options),
     where: inArray(problemSets.id, visibleIds),
-  }) as unknown as Promise<VisibleProblemSetListItem[]>;
+  });
 }
 
 export async function getVisibleProblemSetByIdForUser(
   id: string,
   userId: string,
   role: string
-): Promise<VisibleProblemSetDetail | null> {
+): Promise<VisibleProblemSetDetail | undefined> {
   const visibleIds = await getVisibleProblemSetIds(userId, role);
   if (visibleIds !== null && !visibleIds.includes(id)) {
-    return null;
+    return undefined;
   }
 
   return db.query.problemSets.findFirst({
@@ -218,7 +227,7 @@ export async function getVisibleProblemSetByIdForUser(
         columns: { id: true, name: true, username: true },
       },
     },
-  }) as Promise<VisibleProblemSetDetail | null>;
+  });
 }
 
 export async function getAvailableProblemsForProblemSetUser(
@@ -265,7 +274,7 @@ export async function getAvailableGroupsForProblemSetUser(
 ) {
   const manageableGroupIds = await getManageableProblemSetGroupIds(userId, role);
   if (manageableGroupIds.length === 0) {
-    return [] as Array<{ id: string; name: string }>;
+    return [];
   }
 
   return db.query.groups.findMany({
