@@ -30,8 +30,11 @@ describe("raw query usage implementation guards", () => {
     expect(namedParams).toContain("@([a-zA-Z_]\\w*)");
     expect(namedParams).toContain("return `$${idx + 1}`");
     // queries.ts must still route every raw query through the translator and
-    // execute it with parameterized values.
+    // execute it with parameterized values. Inside a transaction it uses the
+    // active transaction client; outside it falls back to the global pool.
     expect(helper).toContain("namedToPositional");
-    expect(helper).toContain("pool.query(text, values)");
+    expect(helper).toContain("transactionContext.getStore()");
+    expect(helper).toContain("tx.execute(buildSqlQuery(text, values))");
+    expect(helper).toContain("pool.query(sqlText, values)");
   });
 });
