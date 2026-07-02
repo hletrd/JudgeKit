@@ -152,7 +152,9 @@ impl ApiClient {
             .map_err(|e| format!("Deregister request failed: {e}"))?;
 
         if !response.status().is_success() {
-            tracing::warn!("Deregister returned non-success: {}", response.status());
+            let status = response.status();
+            let text = response.text().await.unwrap_or_default();
+            return Err(format!("Deregister failed: {status} {text}"));
         }
 
         Ok(())
@@ -265,6 +267,8 @@ impl ApiClient {
 mod tests {
     use super::ApiClient;
     use crate::types::SecretString;
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn make_client() -> ApiClient {
         ApiClient::new(
@@ -273,6 +277,18 @@ mod tests {
             "http://localhost/register".to_string(),
             "http://localhost/heartbeat".to_string(),
             "http://localhost/deregister".to_string(),
+            SecretString::new("shared-token".to_string()),
+        )
+        .expect("client")
+    }
+
+    fn make_client_with_base(base_url: &str) -> ApiClient {
+        ApiClient::new(
+            format!("{base_url}/claim"),
+            format!("{base_url}/report"),
+            format!("{base_url}/register"),
+            format!("{base_url}/heartbeat"),
+            format!("{base_url}/deregister"),
             SecretString::new("shared-token".to_string()),
         )
         .expect("client")
@@ -291,5 +307,50 @@ mod tests {
     fn falls_back_to_shared_bearer_auth_when_worker_secret_is_absent() {
         let client = make_client();
         assert_eq!(client.auth_header_for_worker(None), "Bearer shared-token");
+    }
+
+    #[tokio::test]
+    async fn deregister_succeeds_on_success_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/deregister"))
+            .and(header("Authorization", "Bearer shared-token"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let result = client.deregister("worker-1", None).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn deregister_returns_err_on_404() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/deregister"))
+            .respond_with(ResponseTemplate::new(404).set_body_string("not found"))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let result = client.deregister("worker-1", None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("404"));
+    }
+
+    #[tokio::test]
+    async fn deregister_returns_err_on_500() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/deregister"))
+            .respond_with(ResponseTemplate::new(500).set_body_string("server error"))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let result = client.deregister("worker-1", None).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("500"));
     }
 }
