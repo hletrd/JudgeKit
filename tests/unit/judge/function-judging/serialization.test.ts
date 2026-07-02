@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeValue, encodeArgs, decodeValue } from "@/lib/judge/function-judging/serialization";
+import { encodeValue, encodeArgs, decodeValue, FunctionJudgingDecodeError } from "@/lib/judge/function-judging/serialization";
 
 describe("function-judging serialization", () => {
   it("encodes scalars compactly", () => {
@@ -90,5 +90,81 @@ describe("function-judging serialization", () => {
     const encoded = encodeArgs([arr], [{ name: "xs", type: "string[]" }]);
     expect(encoded.includes("\n")).toBe(false);
     expect(JSON.parse(encoded)).toEqual([arr]);
+  });
+
+  // Contract/fuzz round-trip coverage for non-double scalar and array types.
+  // Double returns are intentionally space-separated and are NOT valid JSON,
+  // so they are covered by encoding-shape assertions instead.
+  it("round-trips every non-double scalar type through encodeValue/decodeValue", () => {
+    const cases: { value: unknown; type: import("@/lib/judge/function-judging/types").FunctionType }[] = [
+      { value: 42, type: "int" },
+      { value: -1, type: "int" },
+      { value: 0, type: "int" },
+      { value: true, type: "bool" },
+      { value: false, type: "bool" },
+      { value: "hello", type: "string" },
+      { value: "", type: "string" },
+      { value: "comma,sep", type: "string" },
+      { value: "line\nbreak", type: "string" },
+    ];
+    for (const { value, type } of cases) {
+      expect(decodeValue(encodeValue(value, type), type)).toEqual(value);
+    }
+  });
+
+  it("round-trips every non-double array type through encodeValue/decodeValue", () => {
+    const cases: { value: unknown; type: import("@/lib/judge/function-judging/types").FunctionType }[] = [
+      { value: [1, 2, 3], type: "int[]" },
+      { value: [true, false, true], type: "bool[]" },
+      { value: ["a", "b", "c,d"], type: "string[]" },
+      { value: [], type: "string[]" },
+    ];
+    for (const { value, type } of cases) {
+      expect(decodeValue(encodeValue(value, type), type)).toEqual(value);
+    }
+  });
+
+  it("encodes double return shapes that the Rust float comparator can tokenize", () => {
+    // Scalar: single token (still valid JSON, so decodeValue works too).
+    expect(encodeValue(0.5, "double")).toBe("0.5");
+    expect(decodeValue(encodeValue(0.5, "double"), "double")).toBe(0.5);
+
+    // Array: space-separated tokens (NOT JSON).
+    expect(encodeValue([0.5, 0.25, -3], "double[]")).toBe("0.5 0.25 -3");
+    expect(encodeValue([], "double[]")).toBe("");
+    expect(encodeValue([1e-7], "double[]")).toBe("1e-7");
+
+    // Each token must be a finite f64 string.
+    const tokens = encodeValue([0.5, 0.25, -3], "double[]").split(/\s+/);
+    expect(tokens).toHaveLength(3);
+    for (const token of tokens) {
+      expect(Number.isFinite(Number(token))).toBe(true);
+    }
+  });
+
+  it("round-trips an argument vector through JSON.parse", () => {
+    const args: unknown[] = [[1, 2, 3], 42, true, "hello", [0.5, -0.25]];
+    const params: { name: string; type: import("@/lib/judge/function-judging/types").FunctionType }[] = [
+      { name: "nums", type: "int[]" },
+      { name: "target", type: "int" },
+      { name: "flag", type: "bool" },
+      { name: "label", type: "string" },
+      { name: "scores", type: "double[]" },
+    ];
+    const encoded = encodeArgs(args, params);
+    expect(encoded.includes("\n")).toBe(false);
+    expect(JSON.parse(encoded)).toEqual(args);
+  });
+
+  it("throws a typed FunctionJudgingDecodeError on malformed JSON", () => {
+    expect(() => decodeValue("not-json", "int[]")).toThrow(FunctionJudgingDecodeError);
+    try {
+      decodeValue("not-json", "int[]");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FunctionJudgingDecodeError);
+      expect((error as FunctionJudgingDecodeError).code).toBe("DECODE_ERROR");
+      expect((error as FunctionJudgingDecodeError).source).toBe("not-json");
+    }
+    expect(() => decodeValue("[1,2", "int[]")).toThrow(FunctionJudgingDecodeError);
   });
 });

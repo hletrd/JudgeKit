@@ -100,7 +100,25 @@ export function encodeArgs(args: unknown[], params: { name: string; type: Functi
   return encoded;
 }
 
+export class FunctionJudgingDecodeError extends Error {
+  readonly code = "DECODE_ERROR";
+  constructor(
+    message: string,
+    public readonly source: string,
+  ) {
+    super(message);
+    this.name = "FunctionJudgingDecodeError";
+  }
+}
+
 export function decodeValue(s: string, _t: FunctionType): unknown {
-  const parsed = JSON.parse(s);
-  return parsed;
+  try {
+    return JSON.parse(s);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new FunctionJudgingDecodeError(
+      `failed to decode function-judging value: ${reason}`,
+      s,
+    );
+  }
 }
