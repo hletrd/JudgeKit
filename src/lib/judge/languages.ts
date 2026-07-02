@@ -853,7 +853,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
     dockerImage: "judge-postscript:latest",
     compiler: `Ghostscript ${JUDGE_TOOLCHAIN_VERSIONS.ghostscript}`,
     compileCommand: null,
-    runCommand: ["gs", "-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dNOSAFER", "/workspace/solution.ps"],
+    runCommand: ["gs", "-q", "-dNODISPLAY", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sPermitFileReading=/workspace", "/workspace/solution.ps"],
   },
   delphi: {
     language: "delphi",

@@ -118,6 +118,23 @@ function parseTsLanguageConfigs(source: string): Set<string> {
 }
 
 describe("language configuration contract (S8)", () => {
+  it("runs PostScript with -dSAFER in both TypeScript and Rust language configs", () => {
+    const tsSource = read("src/lib/judge/languages.ts");
+    const rustSource = read("judge-worker-rs/src/languages.rs");
+
+    const tsPostscript = tsSource.match(/postscript:\s*\{[\s\S]*?runCommand:\s*(\[[^\]]+\])/);
+    expect(tsPostscript).not.toBeNull();
+    expect(tsPostscript![1]).toContain("-dSAFER");
+    expect(tsPostscript![1]).not.toContain("-dNOSAFER");
+    expect(tsPostscript![1]).toContain("-sPermitFileReading=/workspace");
+
+    const rustPostscript = rustSource.match(/static\s+POSTSCRIPT_RUN:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/);
+    expect(rustPostscript).not.toBeNull();
+    expect(rustPostscript![1]).toContain("-dSAFER");
+    expect(rustPostscript![1]).not.toContain("-dNOSAFER");
+    expect(rustPostscript![1]).toContain("-sPermitFileReading=/workspace");
+  });
+
   it("has identical identifiers in TypeScript Language union, Rust Language enum, and language_configs seed", () => {
     const tsUnion = parseTsLanguageUnion(read("src/types/index.ts"));
     const rustEnum = parseRustLanguageEnum(read("judge-worker-rs/src/types.rs"));
