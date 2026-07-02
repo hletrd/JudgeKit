@@ -334,4 +334,43 @@ describe("deployment security defaults", () => {
     }
   });
 
+  it("guards the secret_token raw-SQL backfill/drop block with an explicit flag", () => {
+    const deployDocker = read("deploy-docker.sh");
+
+    // The raw SQL backfill/drop is gated by an explicit opt-in flag.
+    expect(deployDocker).toContain("ALLOW_SECRET_TOKEN_BACKFILL");
+    expect(deployDocker).toContain('if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then');
+
+    // By default the block is skipped with a clear warning.
+    expect(deployDocker).toContain(
+      "Skipping secret_token backfill/drop block because ALLOW_SECRET_TOKEN_BACKFILL is not set to 1.",
+    );
+    expect(deployDocker).toContain(
+      "judge_workers.secret_token column is still present but ALLOW_SECRET_TOKEN_BACKFILL is not set.",
+    );
+
+    // The destructive UPDATE/DROP only runs inside the opt-in branch.
+    const flagGuardIndex = deployDocker.indexOf(
+      'if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then',
+    );
+    const updateSqlIndex = deployDocker.indexOf(
+      "UPDATE judge_workers SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex')",
+    );
+    const dropSqlIndex = deployDocker.indexOf(
+      "ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token",
+    );
+    const elseIndex = deployDocker.indexOf(
+      "Skipping secret_token backfill/drop block because ALLOW_SECRET_TOKEN_BACKFILL is not set to 1.",
+    );
+
+    expect(flagGuardIndex).toBeGreaterThanOrEqual(0);
+    expect(updateSqlIndex).toBeGreaterThanOrEqual(0);
+    expect(dropSqlIndex).toBeGreaterThanOrEqual(0);
+    expect(elseIndex).toBeGreaterThanOrEqual(0);
+    expect(flagGuardIndex).toBeLessThan(updateSqlIndex);
+    expect(flagGuardIndex).toBeLessThan(dropSqlIndex);
+    expect(updateSqlIndex).toBeLessThan(elseIndex);
+    expect(dropSqlIndex).toBeLessThan(elseIndex);
+  });
+
 });

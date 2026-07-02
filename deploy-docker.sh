@@ -1242,55 +1242,72 @@ success "Database is ready"
 #   Target re-evaluation: 2026-10-26.
 #   See AGENTS.md "Database migration recovery (DRIZZLE_PUSH_FORCE)" >
 #   "Sunset criteria" subsection for the operator-facing version.
+#
+# Safety guard (B5): The raw SQL backfill/drop is gated by
+# ALLOW_SECRET_TOKEN_BACKFILL=1. By default the block is skipped and a
+# warning is emitted if the deprecated column is still present, preventing
+# accidental destructive changes during routine deploys.
 # ---------------------------------------------------------------------------
-info "Running pre-drop secret_token backfill (idempotent)..."
+if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then
+    info "Running pre-drop secret_token backfill (idempotent)..."
 
-# Determine the Docker network name for the segmented DB network (compose
-# project name + _db). The migration and ANALYZE containers must attach to the
-# same network as the running judgekit-db container.
-NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep -E '^judgekit_db$' | head -1" 2>/dev/null)
-NETWORK_NAME="${NETWORK_NAME:-judgekit_db}"
+    # Determine the Docker network name for the segmented DB network (compose
+    # project name + _db). The migration and ANALYZE containers must attach to the
+    # same network as the running judgekit-db container.
+    NETWORK_NAME=$(remote "docker network ls --format '{{.Name}}' | grep -E '^judgekit_db$' | head -1" 2>/dev/null)
+    NETWORK_NAME="${NETWORK_NAME:-judgekit_db}"
 
-# Run the backfill + drop directly inside the running judgekit-db container
-# (same pattern as the pre-deploy backup step) rather than via a throwaway
-# `postgres:*` container on ${NETWORK_NAME}. Hardening (2026-06, after the drop
-# silently failed on oj.auraedu.me and let drizzle-kit push abort on the
-# destructive secret_token diff):
-#   - `docker exec judgekit-db` avoids Docker-network/host-resolution ambiguity
-#     and the fragile nested-heredoc dollar-quoting that mangled the SQL.
-#   - The backfill UPDATE is guarded by a plain column-existence check instead
-#     of a DO/EXECUTE block (the UPDATE references secret_token, which only
-#     exists pre-drop), so the statements stay single-line and quote-safe.
-#   - `-v ON_ERROR_STOP=1` + no output suppression: a failed statement now
-#     aborts the deploy loudly instead of exiting 0 with the error hidden.
-#   - A post-drop verification re-reads the column and dies if it is still
-#     present — the real safety net against a silent no-op.
-HAS_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-    docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
-    psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
-
-if [[ "${HAS_SECRET_TOKEN}" == "1" ]]; then
-    info "judge_workers.secret_token present — backfilling hash and dropping the deprecated column..."
-    remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+    # Run the backfill + drop directly inside the running judgekit-db container
+    # (same pattern as the pre-deploy backup step) rather than via a throwaway
+    # `postgres:*` container on ${NETWORK_NAME}. Hardening (2026-06, after the drop
+    # silently failed on oj.auraedu.me and let drizzle-kit push abort on the
+    # destructive secret_token diff):
+    #   - `docker exec judgekit-db` avoids Docker-network/host-resolution ambiguity
+    #     and the fragile nested-heredoc dollar-quoting that mangled the SQL.
+    #   - The backfill UPDATE is guarded by a plain column-existence check instead
+    #     of a DO/EXECUTE block (the UPDATE references secret_token, which only
+    #     exists pre-drop), so the statements stay single-line and quote-safe.
+    #   - `-v ON_ERROR_STOP=1` + no output suppression: a failed statement now
+    #     aborts the deploy loudly instead of exiting 0 with the error hidden.
+    #   - A post-drop verification re-reads the column and dies if it is still
+    #     present — the real safety net against a silent no-op.
+    HAS_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
         docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
-        psql -v ON_ERROR_STOP=1 -U judgekit -d judgekit \
-        -c \"UPDATE judge_workers SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') WHERE secret_token_hash IS NULL AND secret_token IS NOT NULL\" \
-        -c \"ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token\"" \
-        || die "secret_token backfill/drop failed — aborting deploy (review the psql error above)"
-else
-    info "judge_workers.secret_token already absent — nothing to backfill or drop"
-fi
+        psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
 
-# Verify the column is actually gone before drizzle-kit push runs. A silent
-# failure here would let push detect the destructive diff and abort the whole
-# migration (the original failure mode on oj.auraedu.me).
-REMAINING_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-    docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
-    psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
-if [[ "${REMAINING_SECRET_TOKEN}" != "0" ]]; then
-    die "secret_token column still present after drop (count=${REMAINING_SECRET_TOKEN:-unknown}) — drizzle-kit push would abort on the destructive diff. Investigate manually before retrying."
+    if [[ "${HAS_SECRET_TOKEN}" == "1" ]]; then
+        info "judge_workers.secret_token present — backfilling hash and dropping the deprecated column..."
+        remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+            docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+            psql -v ON_ERROR_STOP=1 -U judgekit -d judgekit \
+            -c \"UPDATE judge_workers SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') WHERE secret_token_hash IS NULL AND secret_token IS NOT NULL\" \
+            -c \"ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token\"" \
+            || die "secret_token backfill/drop failed — aborting deploy (review the psql error above)"
+    else
+        info "judge_workers.secret_token already absent — nothing to backfill or drop"
+    fi
+
+    # Verify the column is actually gone before drizzle-kit push runs. A silent
+    # failure here would let push detect the destructive diff and abort the whole
+    # migration (the original failure mode on oj.auraedu.me).
+    REMAINING_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+        psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
+    if [[ "${REMAINING_SECRET_TOKEN}" != "0" ]]; then
+        die "secret_token column still present after drop (count=${REMAINING_SECRET_TOKEN:-unknown}) — drizzle-kit push would abort on the destructive diff. Investigate manually before retrying."
+    fi
+    success "secret_token backfill + idempotent column drop complete (column verified absent)"
+else
+    warn "Skipping secret_token backfill/drop block because ALLOW_SECRET_TOKEN_BACKFILL is not set to 1."
+
+    HAS_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
+        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+        psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
+
+    if [[ "${HAS_SECRET_TOKEN}" == "1" ]]; then
+        warn "judge_workers.secret_token column is still present but ALLOW_SECRET_TOKEN_BACKFILL is not set. The secret_token backfill/drop block was skipped. Set ALLOW_SECRET_TOKEN_BACKFILL=1 to run it, or remove the column manually. If left in place, drizzle-kit push may abort on the destructive diff."
+    fi
 fi
-success "secret_token backfill + idempotent column drop complete (column verified absent)"
 
 # ---------------------------------------------------------------------------
 # Step 6: Run database migrations before starting the app
