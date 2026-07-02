@@ -18,7 +18,7 @@ services:
   # Database Servers
   # ---------------------------------------------------------------------------
   db-postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     container_name: judgekit-db-postgres
     restart: unless-stopped
     volumes:
@@ -50,7 +50,7 @@ services:
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-judgekit_test}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-judgekit_root}
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "judgekit", "-pjudgekit_test"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "judgekit", "-p${MYSQL_PASSWORD:-judgekit_test}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -90,7 +90,7 @@ services:
       - DB_DIALECT=sqlite
       - DATABASE_PATH=/app/data/judge.db
       - HOSTNAME=0.0.0.0
-      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker:3001}
+      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-sqlite:3001}
       - CODE_SIMILARITY_URL=${CODE_SIMILARITY_URL:-http://code-similarity:3002}
       - DISABLE_COMPILER_LOCAL_FALLBACK=1
     healthcheck:
@@ -115,7 +115,7 @@ services:
       - DB_DIALECT=postgresql
       - DATABASE_URL=postgres://judgekit:${POSTGRES_PASSWORD:-judgekit_test}@db-postgres:5432/judgekit
       - HOSTNAME=0.0.0.0
-      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker:3001}
+      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-postgres:3002}
       - CODE_SIMILARITY_URL=${CODE_SIMILARITY_URL:-http://code-similarity:3002}
       - DISABLE_COMPILER_LOCAL_FALLBACK=1
       - AUTH_URL=http://oj-internal.maum.ai:3101
@@ -144,7 +144,7 @@ services:
       - DB_DIALECT=mysql
       - DATABASE_URL=mysql://judgekit:${MYSQL_PASSWORD:-judgekit_test}@db-mysql:3306/judgekit
       - HOSTNAME=0.0.0.0
-      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker:3001}
+      - COMPILER_RUNNER_URL=${COMPILER_RUNNER_URL:-http://judge-worker-mysql:3003}
       - CODE_SIMILARITY_URL=${CODE_SIMILARITY_URL:-http://code-similarity:3002}
       - DISABLE_COMPILER_LOCAL_FALLBACK=1
       - AUTH_URL=http://oj-internal.maum.ai:3102
@@ -159,11 +159,13 @@ services:
       start_period: 25s
 
   # ---------------------------------------------------------------------------
-  # Shared: Judge Worker (connects to SQLite app by default)
+  # Per-backend Judge Workers
+  # Each worker polls a single backend queue so PostgreSQL/MySQL submissions are
+  # actually judged, not left for the SQLite worker to pick up.
   # ---------------------------------------------------------------------------
-  judge-worker:
+  judge-worker-sqlite:
     image: judgekit-judge-worker:latest
-    container_name: judgekit-judge-worker
+    container_name: judgekit-judge-worker-sqlite
     restart: unless-stopped
     volumes:
       - /judge-workspaces:/judge-workspaces
@@ -188,6 +190,64 @@ services:
       docker-proxy:
         condition: service_started
       app-sqlite:
+        condition: service_healthy
+
+  judge-worker-postgres:
+    image: judgekit-judge-worker:latest
+    container_name: judgekit-judge-worker-postgres
+    restart: unless-stopped
+    volumes:
+      - /judge-workspaces:/judge-workspaces
+      - judgekit-dead-letter:/app/dead-letter
+    env_file:
+      - .env.production
+    environment:
+      - JUDGE_BASE_URL=http://app-postgres:3000/api/v1
+      - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
+      - DEAD_LETTER_DIR=/app/dead-letter
+      - TMPDIR=/judge-workspaces
+      - DOCKER_HOST=tcp://docker-proxy:2375
+      - RUNNER_PORT=3002
+      - RUNNER_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      docker-proxy:
+        condition: service_started
+      app-postgres:
+        condition: service_healthy
+
+  judge-worker-mysql:
+    image: judgekit-judge-worker:latest
+    container_name: judgekit-judge-worker-mysql
+    restart: unless-stopped
+    volumes:
+      - /judge-workspaces:/judge-workspaces
+      - judgekit-dead-letter:/app/dead-letter
+    env_file:
+      - .env.production
+    environment:
+      - JUDGE_BASE_URL=http://app-mysql:3000/api/v1
+      - JUDGE_SECCOMP_PROFILE=/etc/judge/seccomp-profile.json
+      - DEAD_LETTER_DIR=/app/dead-letter
+      - TMPDIR=/judge-workspaces
+      - DOCKER_HOST=tcp://docker-proxy:2375
+      - RUNNER_PORT=3003
+      - RUNNER_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:3003/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      docker-proxy:
+        condition: service_started
+      app-mysql:
         condition: service_healthy
 
   # ---------------------------------------------------------------------------
