@@ -61,26 +61,26 @@ describe("Query Helpers", () => {
     );
   });
 
-  it("rawQueryOne warns when called inside a transaction callback", async () => {
-    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
-    const warnSpy = vi.fn();
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => true } }));
-    vi.doMock("@/lib/logger", () => ({ logger: { warn: warnSpy } }));
+  it("rawQueryOne routes through the transaction client when inside execTransaction", async () => {
+    const txExecute = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
+    const tx = { execute: txExecute };
+    vi.doMock("@/lib/db/index", () => ({ pool: null, transactionContext: { getStore: () => tx } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
-    await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
-    expect(warnSpy).toHaveBeenCalledWith(
-      "[rawQueryOne] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead."
-    );
+    const result = await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
+    expect(txExecute).toHaveBeenCalledOnce();
+    expect(result).toEqual({ id: "1" });
+    // Ensure the global pool was not used
+    expect(txExecute).not.toHaveBeenCalledWith("SELECT * FROM users WHERE id = $1", ["1"]);
   });
 
-  it("rawQueryOne does not warn when called outside a transaction", async () => {
-    const mockQuery = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
-    const warnSpy = vi.fn();
-    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => undefined } }));
-    vi.doMock("@/lib/logger", () => ({ logger: { warn: warnSpy } }));
+  it("rawQueryOne does not use the pool when a transaction client is active", async () => {
+    const mockQuery = vi.fn();
+    const txExecute = vi.fn().mockResolvedValue({ rows: [{ id: "1" }] });
+    const tx = { execute: txExecute };
+    vi.doMock("@/lib/db/index", () => ({ pool: { query: mockQuery }, transactionContext: { getStore: () => tx } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
     await rawQueryOne("SELECT * FROM users WHERE id = @id", { id: "1" });
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(mockQuery).not.toHaveBeenCalled();
   });
 
   it("rawQueryOne fails closed when a named SQL parameter is missing", async () => {
@@ -94,7 +94,7 @@ describe("Query Helpers", () => {
     expect(mockQuery).not.toHaveBeenCalled();
   });
 
-  it("rawQueryOne throws when the PostgreSQL pool is missing", async () => {
+  it("rawQueryOne throws when the PostgreSQL pool is missing and no transaction is active", async () => {
     vi.doMock("@/lib/db/index", () => ({ pool: null, transactionContext: { getStore: () => undefined } }));
     const { rawQueryOne } = await import("@/lib/db/queries");
     await expect(rawQueryOne("SELECT 1")).rejects.toThrow("PostgreSQL pool not available");
@@ -108,6 +108,16 @@ describe("Query Helpers", () => {
     const result = await rawQueryAll("SELECT * FROM users WHERE team_id = @teamId", { teamId: "t-1" });
     expect(mockQuery).toHaveBeenCalledWith("SELECT * FROM users WHERE team_id = $1", ["t-1"]);
     expect(result).toEqual(rows);
+  });
+
+  it("rawQueryAll routes through the transaction client when inside execTransaction", async () => {
+    const txExecute = vi.fn().mockResolvedValue({ rows: [{ id: "1" }, { id: "2" }] });
+    const tx = { execute: txExecute };
+    vi.doMock("@/lib/db/index", () => ({ pool: null, transactionContext: { getStore: () => tx } }));
+    const { rawQueryAll } = await import("@/lib/db/queries");
+    const result = await rawQueryAll("SELECT * FROM users WHERE team_id = @teamId", { teamId: "t-1" });
+    expect(txExecute).toHaveBeenCalledOnce();
+    expect(result).toEqual([{ id: "1" }, { id: "2" }]);
   });
 
   it("rawQueryAll fails closed when a named SQL parameter is missing", async () => {

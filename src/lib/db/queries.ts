@@ -2,9 +2,10 @@
  * Raw SQL query helpers for PostgreSQL.
  */
 
+import { sql } from "drizzle-orm";
 import { pool, transactionContext } from "./index";
-import { logger } from "@/lib/logger";
 import { namedToPositional } from "./named-params";
+import type { TransactionClient } from "./index";
 
 /**
  * Returns a SQL expression for "current time in milliseconds since epoch".
@@ -28,12 +29,51 @@ export function countTablesQuery(): string {
 }
 
 /**
+ * Build a Drizzle `sql` tagged query from pre-translated positional SQL text
+ * and a value array. The result preserves parameterization (values are bound
+ * as Drizzle params, not interpolated) and can be executed against either the
+ * global pool or a transaction client.
+ */
+function buildSqlQuery(text: string, values: unknown[]) {
+  const strings: string[] = [];
+  const params: unknown[] = [];
+  const placeholderRe = /\$(\d+)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = placeholderRe.exec(text)) !== null) {
+    const idx = parseInt(match[1], 10) - 1;
+    strings.push(text.slice(lastIndex, match.index));
+    params.push(values[idx]);
+    lastIndex = placeholderRe.lastIndex;
+  }
+  strings.push(text.slice(lastIndex));
+
+  return sql(strings as unknown as TemplateStringsArray, ...params);
+}
+
+async function runRawQuery<T>(
+  sqlText: string,
+  values: unknown[],
+  tx: TransactionClient | undefined,
+): Promise<{ rows: T[] }> {
+  if (tx) {
+    const result = await tx.execute(buildSqlQuery(sqlText, values));
+    return result as { rows: T[] };
+  }
+
+  if (!pool) throw new Error("PostgreSQL pool not available");
+  const result = await pool.query(sqlText, values);
+  return result as { rows: T[] };
+}
+
+/**
  * Execute a raw SQL query that returns a single row.
  *
- * **WARNING:** This helper always runs on the global connection pool.
- * It cannot participate in Drizzle transactions. If you need raw SQL
- * inside a transaction, use Drizzle's `tx.execute()` or move the raw
- * query outside the transaction block.
+ * **WARNING:** When called outside of `execTransaction`, this helper runs on
+ * the global connection pool. Inside `execTransaction`, it is automatically
+ * routed through the active transaction client so it participates in the
+ * transaction.
  *
  * **WARNING:** This helper cannot validate at runtime that the returned
  * row actually matches `T`. The generic parameter is purely a developer
@@ -51,22 +91,19 @@ export async function rawQueryOne<T = Record<string, unknown>>(
   sql: string,
   params?: Record<string, unknown>
 ): Promise<T | undefined> {
-  if (!pool) throw new Error("PostgreSQL pool not available");
-  if (transactionContext.getStore() === true) {
-    logger.warn("[rawQueryOne] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
-  }
   const { text, values } = namedToPositional(sql, params);
-  const result = await pool.query(text, values);
-  return result.rows[0] as T | undefined;
+  const tx = transactionContext.getStore();
+  const result = await runRawQuery<T>(text, values, tx);
+  return result.rows[0];
 }
 
 /**
  * Execute a raw SQL query that returns multiple rows.
  *
- * **WARNING:** This helper always runs on the global connection pool.
- * It cannot participate in Drizzle transactions. If you need raw SQL
- * inside a transaction, use Drizzle's `tx.execute()` or move the raw
- * query outside the transaction block.
+ * **WARNING:** When called outside of `execTransaction`, this helper runs on
+ * the global connection pool. Inside `execTransaction`, it is automatically
+ * routed through the active transaction client so it participates in the
+ * transaction.
  *
  * **WARNING:** This helper cannot validate at runtime that the returned
  * rows actually match `T`. The generic parameter is purely a developer
@@ -81,13 +118,10 @@ export async function rawQueryAll<T = Record<string, unknown>>(
   sql: string,
   params?: Record<string, unknown>
 ): Promise<T[]> {
-  if (!pool) throw new Error("PostgreSQL pool not available");
-  if (transactionContext.getStore() === true) {
-    logger.warn("[rawQueryAll] Called inside a transaction callback — this runs on the global pool and does NOT participate in the Drizzle transaction. Use tx.execute() instead.");
-  }
   const { text, values } = namedToPositional(sql, params);
-  const result = await pool.query(text, values);
-  return result.rows as T[];
+  const tx = transactionContext.getStore();
+  const result = await runRawQuery<T>(text, values, tx);
+  return result.rows;
 }
 
 /**

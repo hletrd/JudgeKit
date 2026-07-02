@@ -66,11 +66,11 @@ if (isBuildPhase) {
 export const pool: Pool | null = _pool;
 
 /**
- * AsyncLocalStorage marker used to detect when rawQueryOne/rawQueryAll are
- * called inside a transaction callback (they run on the global pool and do
- * NOT participate in the Drizzle transaction). See rawQueryOne in queries.ts.
+ * AsyncLocalStorage that holds the active Drizzle transaction client when
+ * `execTransaction` is in progress. Raw query helpers read this store and
+ * route their SQL through the transaction client instead of the global pool.
  */
-export const transactionContext = new AsyncLocalStorage<boolean>();
+export const transactionContext = new AsyncLocalStorage<TransactionClient>();
 
 /**
  * Transaction client type inferred from Drizzle's transaction callback.
@@ -83,9 +83,7 @@ export type TransactionClient = Parameters<Parameters<DbType["transaction"]>[0]>
  * WARNING: During build/type-check phases (`NEXT_PHASE === "phase-production-build"`),
  * there is no live database connection. The callback runs against the build-phase
  * drizzle instance WITHOUT opening a transaction. Callers that require atomicity
- * (e.g., rate-limit checks with SELECT FOR UPDATE, advisory locks, or multi-table
- * writes) must not rely on transaction semantics during build. This fallback exists
- * only to allow type-checking of code paths that call `execTransaction`.
+ * must not rely on transaction semantics during build.
  */
 export function execTransaction<T>(
   fn: (tx: TransactionClient) => Promise<T> | T
@@ -94,7 +92,9 @@ export function execTransaction<T>(
     return Promise.resolve(fn(db as unknown as TransactionClient));
   }
 
-  return db.transaction(async (tx) => transactionContext.run(true, () => fn(tx as TransactionClient)));
+  return db.transaction(async (tx) =>
+    transactionContext.run(tx as TransactionClient, () => fn(tx as TransactionClient))
+  );
 }
 
 export { db };
