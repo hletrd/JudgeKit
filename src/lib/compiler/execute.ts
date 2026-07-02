@@ -279,11 +279,13 @@ export function validateShellCommandStrict(cmd: string): boolean {
 /**
  * Parse Docker RFC 3339 timestamp into epoch milliseconds.
  * Handles format like "2024-01-15T10:30:45.123456789Z".
- * Uses full date+time to avoid cross-midnight duration errors.
+ * Truncates fractional nanoseconds (or any sub-millisecond precision) to
+ * milliseconds before parsing so Date.parse reliably succeeds.
  */
-function parseTimestampEpochMs(s: string): number | null {
+export function parseTimestampEpochMs(s: string): number | null {
   try {
-    const ms = Date.parse(s);
+    const normalized = s.replace(/(\.\d{3})\d+/, "$1");
+    const ms = Date.parse(normalized);
     if (Number.isNaN(ms)) return null;
     return ms;
   } catch {

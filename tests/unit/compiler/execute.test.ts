@@ -194,6 +194,34 @@ describe("executeCompilerRun", () => {
   });
 });
 
+describe("parseTimestampEpochMs", () => {
+  it("parses standard millisecond RFC 3339 timestamps", async () => {
+    const { parseTimestampEpochMs } = await import("@/lib/compiler/execute");
+    expect(parseTimestampEpochMs("2024-01-15T10:30:45.123Z")).toBe(
+      Date.parse("2024-01-15T10:30:45.123Z"),
+    );
+    expect(parseTimestampEpochMs("2024-01-15T10:30:45Z")).toBe(
+      Date.parse("2024-01-15T10:30:45Z"),
+    );
+  });
+
+  it("truncates nanosecond Docker timestamps to milliseconds", async () => {
+    const { parseTimestampEpochMs } = await import("@/lib/compiler/execute");
+    expect(parseTimestampEpochMs("2024-01-15T10:30:45.123456789Z")).toBe(
+      Date.parse("2024-01-15T10:30:45.123Z"),
+    );
+    expect(parseTimestampEpochMs("2024-01-15T10:30:45.999999999Z")).toBe(
+      Date.parse("2024-01-15T10:30:45.999Z"),
+    );
+  });
+
+  it("returns null for malformed timestamps", async () => {
+    const { parseTimestampEpochMs } = await import("@/lib/compiler/execute");
+    expect(parseTimestampEpochMs("not-a-timestamp")).toBeNull();
+    expect(parseTimestampEpochMs("")).toBeNull();
+  });
+});
+
 describe("workspace leak regression", () => {
   const isRoot = typeof process.getuid === "function" && process.getuid() === 0;
 
