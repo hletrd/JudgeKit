@@ -317,11 +317,24 @@ async function buildDockerImageLocal(
   const MAX_TOTAL = 2 * 1024 * 1024;
   const TAIL_SIZE = MAX_TOTAL - HEAD_SIZE;
 
+  const BUILD_TIMEOUT_MS = 600_000;
+  const KILL_TIMEOUT_MS = 5_000;
+
   return new Promise((resolve) => {
     const proc = spawn("docker", ["build", "-t", imageName, "-f", dockerfilePath, contextDir]);
     let head = "";
     let headFinalized = false;
     let tail = "";
+    let resolved = false;
+    let killTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function finish(result: { success: boolean; error?: string; logs?: string }) {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      if (killTimer) clearTimeout(killTimer);
+      resolve(result);
+    }
 
     function appendOutput(chunk: string) {
       if (!headFinalized) {
@@ -345,29 +358,41 @@ async function buildDockerImageLocal(
     proc.stderr.on("data", (chunk: Buffer) => appendOutput(chunk.toString()));
 
     const timer = setTimeout(() => {
-      proc.kill();
-      resolve({ success: false, error: "docker build timed out after 600s" });
-    }, 600_000);
+      logger.warn({ imageName, dockerfilePath }, "[docker] Build timed out; sending SIGTERM");
+      proc.kill("SIGTERM");
+      // Destroy stdio streams so a hung build cannot keep the process alive
+      // via open file descriptors and so buffers are released promptly.
+      proc.stdout?.destroy();
+      proc.stderr?.destroy();
 
-    proc.on("close", (code) => {
-      clearTimeout(timer);
+      killTimer = setTimeout(() => {
+        logger.warn({ imageName, dockerfilePath }, "[docker] Build did not exit after SIGTERM; sending SIGKILL");
+        proc.kill("SIGKILL");
+      }, KILL_TIMEOUT_MS);
+    }, BUILD_TIMEOUT_MS);
+
+    proc.on("close", (code, signal) => {
+      if (resolved) return;
       if (code === 0) {
         const combined = headFinalized && tail.length > 0
           ? head + "\n... [truncated] ...\n" + tail
           : head + tail;
-        resolve({ success: true, logs: combined.trim() });
+        finish({ success: true, logs: combined.trim() });
       } else {
         // Do not expose Docker build stderr/stdout in the API response — it may
         // contain internal paths, env var names, or registry URLs. Full output
         // is already captured in the stdout/stderr handlers above for logging.
-        resolve({ success: false, error: "Docker build failed" });
+        if (signal === "SIGTERM" || signal === "SIGKILL") {
+          finish({ success: false, error: "docker build timed out after 600s" });
+        } else {
+          finish({ success: false, error: "Docker build failed" });
+        }
       }
     });
 
     proc.on("error", (err) => {
-      clearTimeout(timer);
       logger.error({ err, imageName, dockerfilePath }, "[docker] Build process spawn error");
-      resolve({ success: false, error: "Build process failed to start" });
+      finish({ success: false, error: "Build process failed to start" });
     });
   });
 }

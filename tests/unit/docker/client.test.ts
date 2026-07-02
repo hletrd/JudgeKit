@@ -1,6 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { EventEmitter } from "node:events";
+import { Readable } from "node:stream";
+
+const mockSpawn = vi.fn();
+
+vi.mock("child_process", () => ({
+  execFile: vi.fn((...args: unknown[]) => {
+    const cb = args.find((arg) => typeof arg === "function") as
+      | ((err: unknown, stdout: string, stderr: string) => void)
+      | undefined;
+    if (cb) cb(null, "", "");
+  }),
+  spawn: (...args: unknown[]) => mockSpawn(...args),
+}));
 
 describe("buildDockerImage implementation", () => {
   it("uses the repository root as the docker build context", () => {
@@ -15,7 +29,7 @@ describe("buildDockerImage implementation", () => {
 
     expect(source).toContain("timeoutMs = 30_000");
     expect(source).toContain("}, 600_000);");
-    expect(source).toContain('resolve({ success: false, error: "docker build timed out after 600s" })');
+    expect(source).toContain('finish({ success: false, error: "docker build timed out after 600s" })');
   });
 
   beforeEach(() => {
@@ -158,5 +172,117 @@ describe("validateDockerfilePath", () => {
       /if\s*\(!dockerfilePath\.startsWith\("docker\/Dockerfile\."\)\)/
     );
     expect(remoteBuildMatch).toBeNull();
+  });
+});
+
+function createFakeProcess({
+  autoClose = false,
+  exitCode = 0,
+  signal = null,
+  closeDelay = 0,
+  ignoreTerm = false,
+  killDelay = 0,
+}: {
+  autoClose?: boolean;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  closeDelay?: number;
+  ignoreTerm?: boolean;
+  killDelay?: number;
+} = {}) {
+  const proc = new EventEmitter() as any;
+  proc.stdout = new Readable({ read() {} });
+  proc.stderr = new Readable({ read() {} });
+  proc.pid = 12345;
+  let termSent = false;
+  let killSent = false;
+
+  proc.kill = vi.fn((sig: NodeJS.Signals = "SIGTERM") => {
+    if (sig === "SIGTERM" && !termSent) {
+      termSent = true;
+      if (!ignoreTerm) {
+        // Real ChildProcess emits code=null when killed by a signal.
+        setTimeout(() => proc.emit("close", null, signal ?? sig), closeDelay);
+      }
+    } else if (sig === "SIGKILL" && !killSent) {
+      killSent = true;
+      setTimeout(() => proc.emit("close", null, signal ?? sig), killDelay);
+    }
+    return true;
+  });
+
+  if (autoClose) {
+    setTimeout(() => proc.emit("close", exitCode, signal), closeDelay);
+  }
+
+  return proc;
+}
+
+describe("buildDockerImageLocal subprocess teardown", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    delete process.env.COMPILER_RUNNER_URL;
+    delete process.env.JUDGE_WORKER_URL;
+    delete process.env.RUNNER_AUTH_TOKEN;
+    mockSpawn.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
+  it("sends SIGTERM on timeout and waits for graceful exit", async () => {
+    vi.useFakeTimers();
+    const proc = createFakeProcess({ ignoreTerm: false, closeDelay: 0 });
+    mockSpawn.mockReturnValue(proc);
+
+    const { buildDockerImage } = await import("@/lib/docker/client");
+    const promise = buildDockerImage("judge-python:test", "docker/Dockerfile.judge-python");
+
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(proc.kill).toHaveBeenCalledTimes(1);
+    expect(proc.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(result).toEqual({ success: false, error: "docker build timed out after 600s" });
+  });
+
+  it("sends SIGKILL if the process ignores SIGTERM", async () => {
+    vi.useFakeTimers();
+    const proc = createFakeProcess({ ignoreTerm: true, killDelay: 0 });
+    mockSpawn.mockReturnValue(proc);
+
+    const { buildDockerImage } = await import("@/lib/docker/client");
+    const promise = buildDockerImage("judge-python:test", "docker/Dockerfile.judge-python");
+
+    await vi.runAllTimersAsync();
+    const result = await promise;
+
+    expect(proc.kill).toHaveBeenCalledTimes(2);
+    expect(proc.kill).toHaveBeenNthCalledWith(1, "SIGTERM");
+    expect(proc.kill).toHaveBeenNthCalledWith(2, "SIGKILL");
+    expect(result).toEqual({ success: false, error: "docker build timed out after 600s" });
+  });
+
+  it("destroys stdout and stderr streams after timeout", async () => {
+    vi.useFakeTimers();
+    const proc = createFakeProcess({ ignoreTerm: true, killDelay: 0 });
+    const stdoutDestroy = vi.spyOn(proc.stdout, "destroy");
+    const stderrDestroy = vi.spyOn(proc.stderr, "destroy");
+    mockSpawn.mockReturnValue(proc);
+
+    const { buildDockerImage } = await import("@/lib/docker/client");
+    const promise = buildDockerImage("judge-python:test", "docker/Dockerfile.judge-python");
+
+    vi.advanceTimersByTime(600_000);
+    expect(stdoutDestroy).toHaveBeenCalled();
+    expect(stderrDestroy).toHaveBeenCalled();
+
+    await vi.runAllTimersAsync();
+    await promise;
   });
 });
