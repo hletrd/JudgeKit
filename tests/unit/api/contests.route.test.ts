@@ -247,7 +247,7 @@ describe("POST /api/v1/contests/join", () => {
   });
 
   it("returns 429 when rate limited", async () => {
-    consumeApiRateLimitMock.mockReturnValue(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
+    consumeUserApiRateLimitMock.mockReturnValue(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
     const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
     expect(res.status).toBe(429);
   });
@@ -303,6 +303,11 @@ describe("POST /api/v1/contests/join", () => {
     expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       ADMIN_USER.id,
+      "contest:join",
+    );
+    expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
+      expect.any(NextRequest),
+      ADMIN_USER.id,
       "contest:join:invalid",
     );
     expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
@@ -314,9 +319,9 @@ describe("POST /api/v1/contests/join", () => {
 
   it("returns 429 when invalid access-code attempts hit the scoped limiter", async () => {
     redeemAccessCodeMock.mockResolvedValue({ ok: false, error: "invalidAccessCode" });
-    consumeUserApiRateLimitMock.mockReturnValueOnce(
-      NextResponse.json({ error: "rateLimited" }, { status: 429 }),
-    );
+    consumeUserApiRateLimitMock
+      .mockReturnValueOnce(null)
+      .mockReturnValueOnce(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
 
     const res = await joinPOST(makeJoinRequest({ code: "WRONG" }), { params: Promise.resolve({}) });
     const body = await res.json();
@@ -336,6 +341,7 @@ describe("POST /api/v1/contests/join", () => {
     expect(res.status).toBe(403);
     expect(body.error).toBe("forbidden");
     expect(redeemAccessCodeMock).not.toHaveBeenCalled();
+    expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
   });
 
   it("returns 500 on unexpected error", async () => {

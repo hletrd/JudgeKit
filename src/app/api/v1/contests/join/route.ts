@@ -14,13 +14,18 @@ function accessCodeAttemptScope(code: string) {
 
 export const POST = createApiHandler({
   auth: true,
-  rateLimit: "contest:join",
   schema: redeemAccessCodeSchema,
   handler: async (req: NextRequest, { user, body }) => {
     const recruitingAccess = await getRecruitingAccessContext(user.id);
     if (recruitingAccess.isRecruitingCandidate) {
       return apiError("forbidden", 403);
     }
+
+    // S11: consume the user-keyed contest-join rate limit only after auth and
+    // the recruiting-access rejection so recruiting candidates cannot exhaust
+    // the shared bucket.
+    const joinRateLimit = await consumeUserApiRateLimit(req, user.id, "contest:join");
+    if (joinRateLimit) return joinRateLimit;
 
     const ip = extractClientIp(req.headers);
     const result = await redeemAccessCode(body.code, user.id, ip ?? undefined);
