@@ -245,7 +245,7 @@ export async function updateSystemSettings(
       set: baseValues,
     });
 
-  invalidateSettingsCache();
+  await invalidateSettingsCache();
 
   const auditDetails = JSON.parse(JSON.stringify(
     Object.fromEntries(

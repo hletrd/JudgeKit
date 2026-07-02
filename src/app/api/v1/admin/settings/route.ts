@@ -60,6 +60,8 @@ export const PUT = createApiHandler({
       hcaptchaSiteKey,
       hcaptchaSecret,
       allowedHosts,
+      sessionMaxAgeSeconds,
+      emailVerificationRequired,
       ...restConfig
     } = body;
     // `currentPassword` stays in `restConfig`; the shared reconfirm helper reads
@@ -139,6 +141,12 @@ export const PUT = createApiHandler({
       baseValues.allowStandaloneCompilerInRestrictedModes =
         allowStandaloneCompilerInRestrictedModes ?? false;
     }
+    if (hasOwnInput("sessionMaxAgeSeconds")) {
+      baseValues.sessionMaxAgeSeconds = sessionMaxAgeSeconds ?? null;
+    }
+    if (hasOwnInput("emailVerificationRequired")) {
+      baseValues.emailVerificationRequired = emailVerificationRequired ?? false;
+    }
     if (hasOwnInput("publicSignupEnabled")) {
       baseValues.publicSignupEnabled = publicSignupEnabled ?? false;
     }
@@ -171,7 +179,7 @@ export const PUT = createApiHandler({
         set: baseValues,
       });
 
-    invalidateSettingsCache();
+    await invalidateSettingsCache();
 
     await recordAuditEventDurable({
       actorId: user.id,
@@ -198,6 +206,14 @@ export const PUT = createApiHandler({
         ...(hasOwnInput("hcaptchaSiteKey") ? { hcaptchaSiteKey: hcaptchaSiteKey ?? null } : {}),
         ...(hasOwnInput("hcaptchaSecret")
           ? { hcaptchaSecret: typeof hcaptchaSecret === "string" && hcaptchaSecret.length > 0 ? "••••••••" : null }
+          : {}),
+        ...(hasOwnInput("allowedHosts") ? { allowedHosts: allowedHosts ?? null } : {}),
+        ...(hasOwnInput("sessionMaxAgeSeconds") ? { sessionMaxAgeSeconds: sessionMaxAgeSeconds ?? null } : {}),
+        ...(hasOwnInput("emailVerificationRequired")
+          ? { emailVerificationRequired: emailVerificationRequired ?? false }
+          : {}),
+        ...(hasOwnInput("allowStandaloneCompilerInRestrictedModes")
+          ? { allowStandaloneCompilerInRestrictedModes: allowStandaloneCompilerInRestrictedModes ?? false }
           : {}),
       },
       request: req,

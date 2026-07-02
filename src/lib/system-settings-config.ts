@@ -85,6 +85,7 @@ let cached: ConfiguredSettings | null = null;
 let cachedAt = 0;
 let _initPromise: Promise<void> | null = null;
 let _initialized = false;
+let _refreshPromise: Promise<void> | null = null;
 
 function resolveValue(
   key: keyof ConfiguredSettings,
@@ -163,35 +164,44 @@ export function getConfiguredSettings(): ConfiguredSettings {
   if (cached && now - cachedAt < CACHE_TTL_MS) {
     return cached;
   }
-  // Trigger async reload in background; return cached or defaults until ready
-  if (!_refreshing) {
-    _refreshing = true;
-    loadFromDb()
-      .then((settings) => {
-        cached = settings;
-        cachedAt = Date.now();
-      })
-      .catch(() => {
-        // On error, use defaults
-        if (!cached) cached = { ...DEFAULTS };
-      })
-      .finally(() => {
-        _refreshing = false;
-      });
-  }
-  // Return current cache or defaults while async load is in progress
+  // Cache is stale. Trigger an async reload in the background so the next
+  // call sees fresh data, but return the last-known value (or defaults) now
+  // to keep the synchronous API usable for hot-path callers such as auth
+  // config and security constants.
+  refreshSettings();
   return cached ?? { ...DEFAULTS };
 }
 
 let _refreshing = false;
 
-/** Call after admin updates settings to force immediate reload. */
-export function invalidateSettingsCache(): void {
-  // Preserve the previous cached value so that concurrent requests between
-  // invalidation and async reload completion still see the last-known settings
-  // rather than falling back to hardcoded defaults. Setting cachedAt = 0
-  // forces the next getConfiguredSettings() call to trigger an async reload.
+async function refreshSettings(): Promise<void> {
+  if (_refreshing) return;
+  _refreshing = true;
+  try {
+    const settings = await loadFromDb();
+    cached = settings;
+    cachedAt = Date.now();
+  } catch {
+    if (!cached) cached = { ...DEFAULTS };
+  } finally {
+    _refreshing = false;
+  }
+}
+
+/**
+ * Force an immediate reload from the database and return a promise that settles
+ * once the cache has been refreshed. Callers that must observe writes
+ * synchronously (e.g. after updating settings) should `await` this call before
+ * reading `getConfiguredSettings()`.
+ */
+export function invalidateSettingsCache(): Promise<void> {
   cachedAt = 0;
+  if (!_refreshPromise) {
+    _refreshPromise = refreshSettings().finally(() => {
+      _refreshPromise = null;
+    });
+  }
+  return _refreshPromise;
 }
 
 /** Exposed for use in the admin UI to show defaults. */

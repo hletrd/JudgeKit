@@ -113,10 +113,7 @@ describe("getConfiguredSettings", () => {
     expect(getConfiguredSettings().loginRateLimitMaxAttempts).toBe(10);
 
     mockDbRow({ loginRateLimitMaxAttempts: 20 });
-    invalidateSettingsCache();
-    getConfiguredSettings();
-    await Promise.resolve();
-    await Promise.resolve();
+    await invalidateSettingsCache();
 
     const settings = getConfiguredSettings();
     expect(settings.loginRateLimitMaxAttempts).toBe(20);
@@ -133,10 +130,7 @@ describe("invalidateSettingsCache", () => {
     expect(selectMock).toHaveBeenCalledOnce();
 
     mockDbRow({ loginRateLimitMaxAttempts: 15 });
-    invalidateSettingsCache();
-    getConfiguredSettings();
-    await Promise.resolve();
-    await Promise.resolve();
+    await invalidateSettingsCache();
 
     expect(getConfiguredSettings().loginRateLimitMaxAttempts).toBe(15);
     expect(selectMock).toHaveBeenCalledTimes(2);
