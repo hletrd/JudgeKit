@@ -1463,6 +1463,382 @@ A focused pass over all routes under `src/app/api/v1/admin/` uncovered the follo
 
 ---
 
+---
+
+## Supplemental App-Server API Routes Findings
+
+A final focused pass over the remaining non-admin route files under `src/app/api/` uncovered the following additional issues. These are distinct from the findings already recorded above unless a new failure mode is described.
+
+### Findings Register
+
+| ID | Severity | Confidence | File(s) | Title |
+|---|---|---|---|---|
+| C4-NEW-API-01 | HIGH | High | `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:119-128`, `:216-234` | Active-contest problem-change guard is non-atomic with update |
+| C4-NEW-API-02 | HIGH | High | `src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts:101-121` | Score override upsert races and can throw 500 on unique constraint |
+| C4-NEW-API-03 | HIGH | High | `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:38` | Recruiting invitation creation uses wrong rate-limit bucket (`api-keys:create`) |
+| C4-NEW-API-04 | HIGH | High | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:50-53` | Anti-cheat POST bypasses enrollment/access check when anti-cheat is disabled |
+| C4-NEW-API-05 | HIGH | High | `src/app/api/v1/judge/deregister/route.ts:73-95` | Self-service deregister resets active `judging` submissions to `pending` |
+| C4-NEW-API-06 | HIGH | High | `src/app/api/v1/plugins/chat-widget/chat/route.ts:386-520` | Chat route does not propagate client disconnect / AbortSignal to LLM calls |
+| C4-NEW-API-07 | MEDIUM | High | Multiple user/group/assignment/member routes (see detail) | Security-critical mutations use buffered `recordAuditEvent` |
+| C4-NEW-API-08 | MEDIUM | High | Multiple GET/export/list routes (see detail) | No rate limits on read/export endpoints |
+| C4-NEW-API-09 | MEDIUM | High | `src/app/api/v1/users/[id]/route.ts:26-27`, `:41-54`, `:56-71` | Route schema allows `null` for `email`/`className` but inner validation rejects it |
+| C4-NEW-API-10 | MEDIUM | Medium | `src/app/api/v1/groups/[id]/route.ts:166-188` | PATCH returns HTTP 200 with `{data: null}` if group is deleted concurrently |
+| C4-NEW-API-11 | MEDIUM | Medium | `src/app/api/v1/groups/[id]/members/bulk/route.ts:52-55`, `:124` | Skipped-count math double-counts overlapping `userIds`/`usernames` |
+| C4-NEW-API-12 | MEDIUM | High | `src/app/api/v1/problems/import/route.ts:37-42` | Import route drops explicit `sortOrder` from test cases |
+| C4-NEW-API-13 | MEDIUM | High | `src/app/api/v1/problems/import/route.ts:8-47` | Import route creates problems without an audit event |
+| C4-NEW-API-14 | MEDIUM | High | `src/app/api/v1/submissions/[id]/events/route.ts:353-357` | SSE `close()` releases coordination slot without catching rejection |
+| C4-NEW-API-15 | MEDIUM | High | `src/app/api/v1/problems/[id]/route.ts:266-278`, `src/app/api/v1/submissions/[id]/rejudge/route.ts:116-133`, `src/app/api/v1/submissions/[id]/comments/route.ts:91-104` | Destructive/relevant mutations use buffered `recordAuditEvent` |
+| C4-NEW-API-16 | MEDIUM | High | Multiple recruiting-invitation routes (see detail) | Security-critical recruiting invitation mutations use buffered audit events |
+| C4-NEW-API-17 | MEDIUM | High | `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:121`; `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:134` | Recruiting invitation emails dispatched without rejection handling |
+| C4-NEW-API-18 | MEDIUM | High | Multiple community routes (see detail) | Moderation-critical community mutations use buffered audit events |
+| C4-NEW-API-19 | MEDIUM | High | `src/app/api/v1/contests/quick-create/route.ts:120-130` | Contest quick-create uses buffered audit event |
+| C4-NEW-API-20 | MEDIUM | High | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:274` | `eventTypeFilter` query param passed unvalidated to Drizzle enum column |
+| C4-NEW-API-21 | MEDIUM | High | `src/app/api/v1/contests/quick-create/route.ts:108-117` | Quick-create allows duplicate `problemIds`, causing unhandled unique-constraint 500 |
+| C4-NEW-API-22 | MEDIUM | High | Multiple recruiting-invitation sub-routes (see detail) | Recruiting invitation sub-routes lack rate limits |
+| C4-NEW-API-23 | MEDIUM | High | `src/app/api/v1/files/bulk-delete/route.ts:28-39` | Bulk delete reports success while disk artifacts may remain orphaned |
+| C4-NEW-API-24 | MEDIUM | High | `src/app/api/v1/files/route.ts:41` | File upload materializes the entire upload in memory |
+| C4-NEW-API-25 | MEDIUM | High | `src/app/api/v1/plugins/chat-widget/chat/route.ts:73`, `:386-520` | No ceiling on chat `maxTokens` configuration |
+| C4-NEW-API-26 | LOW | Medium | `src/app/api/v1/auth/forgot-password/route.ts`, `reset-password/route.ts`, `verify-email/route.ts`, `src/app/api/v1/groups/[id]/assignments/route.ts` | Manual handlers bypass `createApiHandler` standard error/request-ID contract |
+| C4-NEW-API-27 | LOW | Low | `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:54-58` | Assignment detail GET mutates typed response object to strip secret fields |
+| C4-NEW-API-28 | LOW | High | `src/app/api/v1/problems/[id]/route.ts:256-264` | Problem DELETE returns non-standard 409 body missing `requestId` |
+| C4-NEW-API-29 | LOW | High | `src/app/api/v1/problems/[id]/draft/route.ts:14-20` | Draft source-code cap is character-based, not byte-based |
+| C4-NEW-API-30 | LOW | High | `src/app/api/v1/code-snapshots/route.ts:15-20` | Snapshot source-code cap is character-based, not byte-based |
+| C4-NEW-API-31 | LOW | Medium | `src/app/api/v1/submissions/[id]/rejudge/route.ts:84-103`, `:135` | Rejudge can return 200 `{ data: null }` after concurrent deletion |
+| C4-NEW-API-32 | LOW | High | `src/app/api/v1/recruiting/validate/route.ts:27,32,58,80` | Public validate endpoint returns non-standard error bodies |
+| C4-NEW-API-33 | LOW | High | `src/app/api/v1/contests/[assignmentId]/participants/route.ts:59-63` | `totalCount` returns paged count, not total matching count |
+| C4-NEW-API-34 | LOW | Medium | `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:63-79` | Strict Origin check is silently skipped when `AUTH_URL` host is unset in production |
+
+### HIGH
+
+#### C4-NEW-API-01 — Active-contest problem-change guard is non-atomic with update
+- **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:119-128`, `:216-234`
+- **Confidence:** High
+- **Problem:** The PATCH handler checks whether a contest has already started (`now.getTime() >= startsAt`) **outside** the update transaction and rejects problem changes if so. The actual mutation in `updateAssignmentWithProblems` re-checks for existing submissions but does **not** re-check the active window.
+- **Failure scenario:** An admin edits problems just before a scheduled contest starts. Between the route-level check and the transaction commit, the contest becomes active and no submissions exist yet. The update succeeds, changing the problem set for an active exam.
+- **Fix:** Move the active-window guard into `updateAssignmentWithProblems` so it runs inside the same transaction that commits the mutation, using `getDbNowUncached()` and re-selecting the assignment row with `.for("update")` or checking it within the transaction.
+
+#### C4-NEW-API-02 — Score override upsert races and can throw 500 on unique constraint
+- **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts:101-121`
+- **Confidence:** High
+- **Problem:** The POST handler deletes the existing override and then inserts a new one. The schema defines a unique index on `(assignmentId, problemId, userId)`, but the handler does not lock the row and does not handle `23505` unique-violation errors.
+- **Failure scenario:** Two staff members submit an override for the same participant/problem concurrently. Both transactions pass the existence check, both delete, both insert, and one receives a PostgreSQL unique-violation error that bubbles up as an unhandled 500.
+- **Fix:** Either (a) select the existing row with `.for("update")` inside the transaction before delete+insert, or (b) replace the two-step delete/insert with a single `insert(...).onConflictDoUpdate(...)` so PostgreSQL serializes the writes safely.
+
+#### C4-NEW-API-03 — Recruiting invitation creation uses wrong rate-limit bucket
+- **File:** `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:38`
+- **Confidence:** High
+- **Problem:** `POST /api/v1/contests/:assignmentId/recruiting-invitations` configures `rateLimit: "api-keys:create"`. It should use a recruiting-specific limit such as `"recruiting:invitations:create"`.
+- **Failure scenario:** A user with the `recruiting.manage_invitations` capability can consume the API-key creation budget while creating invitations, potentially denying API-key creation to admins. Conversely, if `"api-keys:create"` is more permissive than the intended recruiting limit, the route allows more invitation creation than intended.
+- **Fix:** Change the rate-limit key to `"recruiting:invitations:create"` (or reuse the key already defined for the bulk route) and ensure the rate-limit configuration in `src/lib/security/rate-limit.ts` includes it.
+
+#### C4-NEW-API-04 — Anti-cheat POST bypasses enrollment/access check when anti-cheat is disabled
+- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:50-53`
+- **Confidence:** High
+- **Problem:** The handler returns `apiSuccess({ logged: false })` immediately when `assignment.enableAntiCheat` is false, **before** the enrollment/access-token check at lines 82-91. This allows any authenticated user to successfully call the endpoint for any existing windowed/standard contest, even if they are not enrolled and have no access token.
+- **Failure scenario:** An attacker iterates assignment IDs. A response of `{ logged: false }` vs `403 forbidden` leaks that the assignment exists, is not `examMode === "none"`, and has anti-cheat disabled. It also represents an authorization bypass on a student-facing endpoint.
+- **Fix:** Move the enrollment/access-token verification (lines 82-91) to occur **before** the `enableAntiCheat` short-circuit, or at minimum return `{ logged: false }` only after the access check passes.
+
+#### C4-NEW-API-05 — Self-service deregister resets active `judging` submissions to `pending`
+- **File:** `src/app/api/v1/judge/deregister/route.ts:73-95`
+- **Confidence:** High
+- **Problem:** The deregister transaction selects submissions whose status is `pending`, `queued`, **or `judging`** and resets them all to `pending`. `C4-NEW-A12` already identified the same flaw in the admin force-remove path; the worker's own deregister endpoint has the same behavior.
+- **Failure scenario:** A worker that is slow to complete but still alive shuts down (or is induced to deregister) while it holds a `judging` submission. The submission is returned to `pending` and immediately claimed by another worker, so the same source code is judged twice in parallel. The second result overwrites the first in the database, but side effects (leaderboard invalidation, auto-review triggers, resource usage) run twice.
+- **Fix:** In the deregister transaction, reset only `queued` submissions to `pending`. For submissions currently in `judging`, either leave them claimed and let the stale-claim timeout reap them, or transition them to `internal_error` so an admin can retry them explicitly.
+
+#### C4-NEW-API-06 — Chat route does not propagate client disconnect / AbortSignal to LLM calls
+- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:386-520`
+- **Confidence:** High
+- **Problem:** The route makes upstream LLM calls (`provider.stream`, `provider.chatWithTools`, `provider.stream` for the forced-final response) but never passes an `AbortSignal`. The provider interface does not accept a signal either. Next.js provides `req.signal`, which fires when the client disconnects.
+- **Failure scenario:** A user closes the browser tab or the request times out at the reverse proxy while a tool loop is mid-execution or while the LLM is still generating. The server continues to hold the HTTP connection, consume tokens, and run DB tool queries for up to the hard-coded 25-second provider timeout plus up to 5 × 10-second tool timeouts. Under load this leaks connections, memory, and API quota.
+- **Fix:** Add an optional `signal?: AbortSignal` field to the provider params, thread it into the underlying `fetch` calls, create an `AbortController` linked to `req.signal` in the route, and pass a combined signal to every `provider.stream` and `provider.chatWithTools` call.
+
+### MEDIUM
+
+#### C4-NEW-API-07 — Security-critical mutations use buffered `recordAuditEvent`
+- **Files/lines:**
+  - `src/app/api/v1/users/route.ts:156-170` (user create)
+  - `src/app/api/v1/users/bulk/route.ts:153-166` (bulk user create)
+  - `src/app/api/v1/users/[id]/route.ts:506` (permanent delete), `:514-526` (access deactivation)
+  - `src/app/api/v1/groups/[id]/route.ts:239-251` (group delete), `:171-186` (group update)
+  - `src/app/api/v1/groups/[id]/members/route.ts:144-158` (member add)
+  - `src/app/api/v1/groups/[id]/members/bulk/route.ts:126-145` (bulk member add)
+  - `src/app/api/v1/groups/[id]/members/[userId]/route.ts:80-94` (member remove)
+  - `src/app/api/v1/groups/[id]/instructors/route.ts` POST (`:55-113`) and DELETE (`:115-141`)
+  - `src/app/api/v1/groups/[id]/assignments/route.ts:183-198` (assignment create)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:255-273` (assignment update), `:317-329` (assignment delete)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts:130-146` (override upsert), `:218-232` (override delete)
+- **Confidence:** High
+- **Problem:** These routes call the batched `recordAuditEvent`, which can lose up to five seconds of events on a crash/OOM. The codebase already provides `recordAuditEventDurable` for exactly this class of action (`C4-NEW-A13` documented it for admin routes; the same reasoning applies to user/group/assignment access changes).
+- **Failure scenario:** A compromised admin session bulk-creates users, deletes a group, or removes members; the app process crashes before the audit buffer flushes, and the security-relevant action leaves no durable audit trail.
+- **Fix:** Replace `recordAuditEvent(...)` with `await recordAuditEventDurable(...)` for all of the calls above. Keep buffered logging only for high-frequency, low-stakes events.
+
+#### C4-NEW-API-08 — No rate limits on read/export endpoints
+- **Files/lines:**
+  - `src/app/api/v1/users/[id]/route.ts:279` (GET user)
+  - `src/app/api/v1/groups/route.ts:14` (GET groups list)
+  - `src/app/api/v1/groups/[id]/route.ts:17` (GET group detail + roster)
+  - `src/app/api/v1/groups/[id]/members/route.ts:15` (GET members)
+  - `src/app/api/v1/groups/[id]/instructors/route.ts:20` (GET instructors)
+  - `src/app/api/v1/groups/[id]/assignments/route.ts:19` (GET assignments list)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:20` (GET assignment detail)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-session/route.ts:93` (GET exam session — polled every 60 s by active examinees)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/exam-sessions/route.ts:10` (GET exam sessions list)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/overrides/route.ts:152` (GET overrides)
+  - `src/app/api/v1/groups/[id]/assignments/[assignmentId]/export/route.ts:16` (GET CSV export)
+- **Confidence:** High
+- **Problem:** These `createApiHandler` GET/list/export endpoints omit `rateLimit`. Several are cheap but enumerable; the export endpoint builds a CSV and the exam-session GET is polled by every active windowed participant.
+- **Failure scenario:** A script or compromised session enumerates user/group/roster endpoints in a tight loop, or a large group repeatedly hits the CSV export, consuming DB connections and Next.js workers.
+- **Fix:** Add conservative `rateLimit` keys to each `createApiHandler` config (e.g., `"users:view"`, `"groups:list"`, `"assignments:export"`, `"exam-session:view"`).
+
+#### C4-NEW-API-09 — Route schema allows `null` for `email`/`className` but inner validation rejects it
+- **File:** `src/app/api/v1/users/[id]/route.ts:26-27`, `:41-54`, `:56-71`
+- **Confidence:** High
+- **Problem:** `adminPatchUserSchema` declares `email` and `className` as `.optional().nullable()`. `getProfileFields` copies `body.email`/`body.className` into `profileFields` whenever they are not `undefined`, and then `validateProfileFields` validates against `adminUpdateUserSchema`/`updateProfileSchema`, whose `email` and `className` fields are `.optional()` but **not** `.nullable()`.
+- **Failure scenario:** An admin PATCHes `{ email: null }` or `{ className: null }`. The route schema accepts the body, but the inner `profileSchema.partial().safeParse(...)` fails with a Zod validation error and the route returns a generic 400 instead of clearing the field.
+- **Fix:** Align the schemas. Either remove `.nullable()` from `adminPatchUserSchema` if null is not intended, or add `.nullable()` to `adminUpdateUserSchema.email` and `updateProfileSchema.className` and explicitly handle `null` as a clear operation in the update logic.
+
+#### C4-NEW-API-10 — Group PATCH returns HTTP 200 with `{data: null}` on concurrent deletion
+- **File:** `src/app/api/v1/groups/[id]/route.ts:166-188`
+- **Confidence:** Medium
+- **Problem:** After updating the group row, the handler re-selects it and returns `apiSuccess(updated)`. If another request deletes the group between the `update` and the re-select, `updated` is `undefined` and the route returns 200 with null data.
+- **Failure scenario:** Two admins act concurrently; one deletes the group just as another saves an edit. The PATCH caller sees a 200 with empty data and may treat it as a successful update.
+- **Fix:** Guard the re-select:
+  ```ts
+  if (!updated) return notFound("Group");
+  return apiSuccess(updated);
+  ```
+
+#### C4-NEW-API-11 — Bulk member enrollment skipped-count is inaccurate when identifiers overlap
+- **File:** `src/app/api/v1/groups/[id]/members/bulk/route.ts:52-55`, `:124`
+- **Confidence:** Medium
+- **Problem:** `totalRequested = userIds.length + trimmedUsernames.length` counts raw request identifiers, while `enrolled` counts unique, valid, not-already-enrolled students. If the same user appears in both `userIds` and `usernames`, `totalRequested` is 2 but only 1 can ever be enrolled, so `skipped = totalRequested - enrolled` over-reports skips.
+- **Failure scenario:** A CSV paste list contains a username that is also in the `userIds` array. The response reports 1 enrolled and 1 skipped, even though only one unique identifier was requested.
+- **Fix:** Compute `skipped` from the count of unique requested identifiers minus `enrolled`, or track duplicates explicitly in the response.
+
+#### C4-NEW-API-12 — Import route drops explicit `sortOrder` from test cases
+- **File:** `src/app/api/v1/problems/import/route.ts:37-42`
+- **Confidence:** High
+- **Problem:** The import schema accepts `sortOrder` on each test case, but the handler maps cases to `{ input, expectedOutput, isVisible }` and discards `sortOrder`. `createProblemWithTestCases` then reassigns ordering by array index.
+- **Failure scenario:** An author exports a problem with carefully ordered visible/hidden test cases, imports it elsewhere, and the explicit ordering is silently replaced by positional order. For problems where visible cases are interleaved with hidden cases, this can change the judging presentation.
+- **Fix:** Preserve the imported value, falling back to the array index when absent:
+  ```ts
+  testCases: problem.testCases.map((tc, index) => ({
+    input: tc.input,
+    expectedOutput: tc.expectedOutput,
+    isVisible: tc.isVisible,
+    sortOrder: tc.sortOrder ?? index,
+  })),
+  ```
+
+#### C4-NEW-API-13 — Import route creates problems without an audit event
+- **File:** `src/app/api/v1/problems/import/route.ts:8-47`
+- **Confidence:** High
+- **Problem:** `POST /api/v1/problems/import` calls `createProblemWithTestCases(...)` but never records an audit event. The sibling `POST /api/v1/problems` route records `problem.created` with actor, visibility, and test-case count.
+- **Failure scenario:** An operator bulk-imports problems via the API; compliance and incident-response workflows have no durable record of who created the problem or when.
+- **Fix:** After `createProblemWithTestCases`, fetch the created problem and emit `await recordAuditEventDurable({ actorId: user.id, actorRole: user.role, action: "problem.created", resourceType: "problem", resourceId: created.id, resourceLabel: created.title, summary: `Imported problem "${created.title}"`, details: { visibility: created.visibility, testCaseCount: created.testCases.length }, request: req });`.
+
+#### C4-NEW-API-14 — SSE `close()` releases coordination slot without catching rejection
+- **File:** `src/app/api/v1/submissions/[id]/events/route.ts:353-357`
+- **Confidence:** High
+- **Problem:** Inside the `ReadableStream` `close()` callback, the shared-coordination branch uses `void releaseSharedSseConnectionSlot(sharedConnectionKey)`. If the DB delete throws, the promise rejection is unhandled.
+- **Failure scenario:** During a database connectivity blip, an aborting SSE connection triggers an unhandled rejection. In production Node configurations that treat unhandled rejections as fatal, this can crash the Next.js worker.
+- **Fix:** Mirror the defensive pattern already used in the outer `catch`:
+  ```ts
+  if (useSharedCoordination) {
+    releaseSharedSseConnectionSlot(sharedConnectionKey).catch((err) => {
+      logger.debug({ err }, "[sse] failed to release connection slot in close");
+    });
+  } else {
+    removeConnection(connId);
+  }
+  ```
+
+#### C4-NEW-API-15 — Destructive/relevant mutations use buffered audit events
+- **Files:**
+  - `src/app/api/v1/problems/[id]/route.ts:266-278` (problem DELETE)
+  - `src/app/api/v1/submissions/[id]/rejudge/route.ts:116-133` (submission rejudge)
+  - `src/app/api/v1/submissions/[id]/comments/route.ts:91-104` (comment creation)
+- **Confidence:** High
+- **Problem:** These routes call `recordAuditEvent` (fire-and-forget, batched). The codebase already provides `recordAuditEventDurable` for security-critical/admin actions, but these destructive or sensitive mutations do not use it.
+- **Failure scenario:** A crash or OOM within the 5-second audit batch window loses the record of a problem deletion, a rejudge (including the contest-finished warning), or a feedback comment added to a submission.
+- **Fix:** Replace `recordAuditEvent(...)` with `await recordAuditEventDurable(...)` in the three locations.
+
+#### C4-NEW-API-16 — Recruiting invitation security-critical mutations use buffered audit events
+- **Files/lines:**
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:75-84` (account password reset)
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:132-142` (token regeneration)
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:222-236` (update / revoke)
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:255-264` (delete)
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:106-120` (single create)
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/bulk/route.ts:106-116` (bulk create)
+- **Confidence:** High
+- **Problem:** All of these handlers call `recordAuditEvent` (in-memory, batched, fire-and-forget). The codebase already provides `recordAuditEventDurable` for security-critical actions because the buffered batch can lose up to ~5 s of events on a crash/OOM.
+- **Failure scenario:** A compromised or malicious admin creates/revokes/deletes recruiting invitations or resets a candidate account password; the app server crashes before the next audit flush and the action leaves no durable audit trail.
+- **Fix:** Replace each `recordAuditEvent(...)` call above with `await recordAuditEventDurable(...)`.
+
+#### C4-NEW-API-17 — Recruiting invitation emails dispatched without rejection handling
+- **Files/lines:**
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:121`
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/route.ts:134`
+- **Confidence:** High
+- **Problem:** Both sites call `void dispatchRecruitingInvitationEmail(...)`. The `void` operator ignores the returned promise; if the dispatcher throws, the rejection becomes an unhandled promise rejection.
+- **Failure scenario:** An admin regenerates a token or creates an invitation with a candidate email. A transient mail failure crashes the process or pollutes logs with an unhandled rejection instead of being logged gracefully.
+- **Fix:** Attach a `.catch((err) => logger.warn(...))` handler, or `await` the dispatch inside the `try` block when the response does not depend on it.
+
+#### C4-NEW-API-18 — Community moderation mutations use buffered audit events
+- **Files/lines:**
+  - `src/app/api/v1/community/threads/route.ts:53-66` (thread creation)
+  - `src/app/api/v1/community/threads/[id]/route.ts:50-63` (thread moderation)
+  - `src/app/api/v1/community/threads/[id]/route.ts:89-98` (thread deletion)
+  - `src/app/api/v1/community/threads/[id]/posts/route.ts:63-76` (reply creation)
+  - `src/app/api/v1/community/posts/[id]/route.ts:30-40` (reply deletion)
+- **Confidence:** High
+- **Problem:** These routes use `recordAuditEvent` for moderation/security actions. Thread/post deletion and moderation are destructive and should be durably audited.
+- **Failure scenario:** A moderator deletes harassing content or a thread; a server crash before the buffered flush loses the audit record, hampering compliance investigations.
+- **Fix:** Replace `recordAuditEvent` with `await recordAuditEventDurable(...)` for all community moderation/deletion actions.
+
+#### C4-NEW-API-19 — Contest quick-create uses buffered audit event
+- **File:** `src/app/api/v1/contests/quick-create/route.ts:120-130`
+- **Confidence:** High
+- **Problem:** `POST /api/v1/contests/quick-create` creates a hidden group, a windowed assignment, and associated problems, but audits the action with the buffered `recordAuditEvent`.
+- **Failure scenario:** A new contest/group is created by an admin; a crash immediately after the response loses the creation audit record.
+- **Fix:** Change to `await recordAuditEventDurable(...)`.
+
+#### C4-NEW-API-20 — Anti-cheat `eventTypeFilter` passed unvalidated to Drizzle enum column
+- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:274`
+- **Confidence:** High
+- **Problem:** `eventTypeFilter` from `req.nextUrl.searchParams` is concatenated directly into `eq(antiCheatEvents.eventType, eventTypeFilter)`. There is no check that the value is one of the known anti-cheat event types.
+- **Failure scenario:** An admin UI bug or a malicious caller passes `eventType=heartbeatX`. Drizzle/PostgreSQL rejects the value and the route returns a generic 500 instead of a clean `invalidEventType` 400.
+- **Fix:** Validate against the known event-type set before querying:
+  ```ts
+  const VALID_EVENT_TYPES = new Set([...CLIENT_EVENT_TYPES, "heartbeat"]);
+  if (eventTypeFilter && !VALID_EVENT_TYPES.has(eventTypeFilter)) {
+    return apiError("invalidEventType", 400);
+  }
+  ```
+
+#### C4-NEW-API-21 — Quick-create allows duplicate `problemIds`
+- **File:** `src/app/api/v1/contests/quick-create/route.ts:108-117`
+- **Confidence:** High
+- **Problem:** The schema validates that `problemPoints` length matches `problemIds` length, but it does not enforce that `problemIds` are unique. The `assignment_problems` table almost certainly has a unique index on `(assignment_id, problem_id)`.
+- **Failure scenario:** A UI/client bug submits `problemIds: ["p1", "p1"]`. The transaction aborts with a PostgreSQL unique-violation error that `createApiHandler` surfaces as a generic 500.
+- **Fix:** Add a uniqueness check after length validation in the Zod schema or handler and return `apiError("duplicateProblemIds", 400)`.
+
+#### C4-NEW-API-22 — Recruiting invitation sub-routes lack rate limits
+- **Files/lines:**
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/bulk/route.ts:14`
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/[invitationId]/route.ts:50,60,242`
+  - `src/app/api/v1/contests/[assignmentId]/recruiting-invitations/stats/route.ts:7`
+- **Confidence:** High
+- **Problem:** The single-create route has the wrong rate-limit key (C4-NEW-API-03); the bulk-create, per-invitation GET/PATCH/DELETE, and stats routes have **no** `rateLimit` config at all. Bulk creation in particular can insert many rows per request and is attractive for abuse.
+- **Failure scenario:** A compromised admin session repeatedly hits the bulk-create or stats endpoints, consuming DB connections and CPU.
+- **Fix:** Add appropriate `rateLimit` keys:
+  - bulk create: `"recruiting:invitations:bulk-create"`
+  - per-invitation GET/PATCH/DELETE: `"recruiting:invitations:read"` / `"recruiting:invitations:update"` / `"recruiting:invitations:delete"`
+  - stats: `"recruiting:invitations:stats"`
+
+#### C4-NEW-API-23 — Bulk delete reports success while disk artifacts may remain orphaned
+- **File:** `src/app/api/v1/files/bulk-delete/route.ts:28-39`
+- **Confidence:** High
+- **Problem:** The route deletes DB rows first and then best-effort deletes disk files one-by-one, swallowing errors. `C4-NEW-05` covers the same issue on the single-file `DELETE` handler; the bulk path repeats the pattern.
+- **Failure scenario:** An admin bulk-deletes 100 files. The DB transaction succeeds, but a permissions problem or transient I/O error prevents deletion of 10 of the on-disk artifacts. The API still returns `{ deleted: 100 }`, and the orphaned files are no longer referenced by any DB row.
+- **Fix:** Either (a) perform disk cleanup before the DB delete and abort the transaction if any file cannot be removed, or (b) collect per-file cleanup failures and return a partial-success response such as `{ deleted: 90, failed: ["id1", "id2"] }`.
+
+#### C4-NEW-API-24 — File upload materializes the entire upload in memory
+- **File:** `src/app/api/v1/files/route.ts:41`
+- **Confidence:** High
+- **Problem:** `const rawBuffer = Buffer.from(await file.arrayBuffer())` loads the complete uploaded file into the Next.js worker's heap before any validation or disk write. The route does enforce size limits and ZIP streaming, but the initial materialization applies to every upload regardless of type.
+- **Failure scenario:** With a configured non-image attachment limit of 50 MB and a modest number of concurrent uploads, the worker can hold hundreds of megabytes of upload buffers simultaneously, increasing GC pressure and the risk of OOM. The streaming ZIP slow path in `validation.ts` does not help here because the buffer is already allocated.
+- **Fix:** For non-image, non-ZIP attachments, stream `file.stream()` directly to a temporary file on disk and perform magic-byte checks on the stream. Materialize a `Buffer` only for the paths that require it (image processing via `sharp`, ZIP validation via `JSZip`). Cap the number of in-flight buffered uploads.
+
+#### C4-NEW-API-25 — No ceiling on chat `maxTokens` configuration
+- **File:** `src/app/api/v1/plugins/chat-widget/chat/route.ts:73`, `:386-520`
+- **Confidence:** High
+- **Problem:** `pluginConfigSchema` validates `maxTokens` only as `z.number().int().positive()`. The route passes this value straight to the LLM provider. There is no upper bound.
+- **Failure scenario:** A misconfigured or compromised admin plugin setting (e.g., `maxTokens: 1_000_000`) causes the chat route to request extremely long completions. This wastes API budget, increases response latency, and can exhaust memory when the provider streams back a multi-megabyte response.
+- **Fix:** Add a reasonable ceiling to the schema, e.g. `z.number().int().positive().max(8192)` (or the largest value supported by all configured providers), and document the cap in the plugin settings UI. Consider also bounding `rateLimitPerMinute`.
+
+### LOW
+
+#### C4-NEW-API-26 — Manual handlers bypass `createApiHandler` standard error/request-ID contract
+- **Files/lines:**
+  - `src/app/api/v1/auth/forgot-password/route.ts`
+  - `src/app/api/v1/auth/reset-password/route.ts`
+  - `src/app/api/v1/auth/verify-email/route.ts`
+  - `src/app/api/v1/groups/[id]/assignments/route.ts:19-94` (GET) and `:96-205` (POST)
+- **Confidence:** Medium
+- **Problem:** These routes implement auth, CSRF, rate limiting, and JSON parsing manually. Their error responses use ad-hoc shapes (`{ error: "..." }`) without the `requestId` field, `X-Request-Id` header, `X-Content-Type-Options: nosniff`, and standard `Cache-Control` that `createApiHandler` adds automatically.
+- **Failure scenario:** A client receiving a 400/429 from forgot-password cannot correlate the response with request logs via `requestId`, and monitoring that expects the standard `{ error, requestId }` shape misses the event.
+- **Fix:** Migrate the routes to `createApiHandler`, or at least wrap error responses with `buildErrorBody(code, requestId)` and add the `X-Request-Id`/`nosniff` headers.
+
+#### C4-NEW-API-27 — Assignment detail GET mutates typed response object to strip secret fields
+- **File:** `src/app/api/v1/groups/[id]/assignments/[assignmentId]/route.ts:54-58`
+- **Confidence:** Low
+- **Problem:** The handler deletes `accessCode` and `freezeLeaderboardAt` from the typed `assignment` object before returning it. This relies on the object being mutable and on the cast to `{ ... }` with optional keys.
+- **Failure scenario:** A future Drizzle version or cache layer returns a frozen/shared object; the `delete` throws or silently affects other callers. It also breaks type safety if the column names change.
+- **Fix:** Build a new response object with explicitly selected fields for non-managers instead of mutating the query result.
+
+#### C4-NEW-API-28 — Problem DELETE returns non-standard 409 body missing `requestId`
+- **File:** `src/app/api/v1/problems/[id]/route.ts:256-264`
+- **Confidence:** High
+- **Problem:** The conflict response is built with raw `NextResponse.json({ details: blockedDetails, error: "problemDeleteBlocked" }, { status: 409 })`, bypassing `apiError`/`buildErrorBody`. Consequently the response lacks the `requestId` field and the standard `{ error, requestId }` envelope.
+- **Failure scenario:** A client or test expecting the standard error envelope receives a different shape and cannot correlate the failure with request logs via `X-Request-Id`.
+- **Fix:** Use `apiError("problemDeleteBlocked", 409, undefined, { details: blockedDetails })`.
+
+#### C4-NEW-API-29 — Draft source-code cap is character-based, not byte-based
+- **File:** `src/app/api/v1/problems/[id]/draft/route.ts:14-20`
+- **Confidence:** High
+- **Problem:** `MAX_SOURCE_BYTES = 65536` and the schema uses `z.string().max(MAX_SOURCE_BYTES)`, which counts Unicode characters. The submission route enforces the same number as bytes (`Buffer.byteLength(..., "utf8")`). A draft containing many multi-byte characters can therefore exceed the submission byte cap while passing draft validation.
+- **Failure scenario:** A user saves a draft that is accepted by the autosave endpoint but later rejected on submit, producing a confusing UX.
+- **Fix:** Add a byte-length refine:
+  ```ts
+  sourceCode: z.string().max(MAX_SOURCE_BYTES).refine(
+    (v) => Buffer.byteLength(v, "utf8") <= MAX_SOURCE_BYTES,
+    "sourceCodeTooLarge"
+  ),
+  ```
+
+#### C4-NEW-API-30 — Snapshot source-code cap is character-based, not byte-based
+- **File:** `src/app/api/v1/code-snapshots/route.ts:15-20`
+- **Confidence:** High
+- **Problem:** The schema caps `sourceCode` at `256 * 1024` characters (`z.string().max(...)`). The intended storage/anti-cheat budget is presumably bytes; multi-byte source can exceed it.
+- **Failure scenario:** A single code snapshot can store more bytes than the 256 KiB budget intended for the `code_snapshots` table.
+- **Fix:** Add a byte-length refine or reuse a shared byte-aware validator consistent with the submission/draft routes.
+
+#### C4-NEW-API-31 — Rejudge can return 200 `{ data: null }` after concurrent deletion
+- **File:** `src/app/api/v1/submissions/[id]/rejudge/route.ts:84-103`, `:135`
+- **Confidence:** Medium
+- **Problem:** After the transaction resets the submission, the handler re-queries it. If the submission is deleted between the reset and the re-query, `updated` is `undefined` and `apiSuccess(updated)` returns HTTP 200 with `{ data: null }`.
+- **Failure scenario:** A concurrent admin or cleanup job deletes the submission during a rejudge. The caller receives a success response for a resource that no longer exists, and the audit event references an invalid submission ID.
+- **Fix:** Guard the re-query:
+  ```ts
+  if (!updated) return notFound("Submission");
+  return apiSuccess(updated);
+  ```
+
+#### C4-NEW-API-32 — Public recruiting validate endpoint returns non-standard error bodies
+- **File:** `src/app/api/v1/recruiting/validate/route.ts:27,32,58,80`
+- **Confidence:** High
+- **Problem:** The handler returns raw `NextResponse.json({ error: "..." }, { status: ... })` and `NextResponse.json({ data: { valid: true } })`. These shapes omit the `requestId` and the structured `{ error, message, requestId }` taxonomy used by `apiError`/`buildErrorBody` elsewhere.
+- **Failure scenario:** A client or monitoring script expecting the standard error shape cannot correlate failures with request logs.
+- **Fix:** Use `apiError("invalidJson", 400)`, `apiError("invalidToken", 400)`, and `apiSuccess({ valid: true })` / `apiSuccess({ valid: false })` (or a dedicated `apiError("tokenInvalid", 400)` if the public contract must hide validity).
+
+#### C4-NEW-API-33 — Participant list `totalCount` is actually the returned count
+- **File:** `src/app/api/v1/contests/[assignmentId]/participants/route.ts:59-63`
+- **Confidence:** High
+- **Problem:** The response returns `totalCount: participants.length`. Because the query is capped at `PARTICIPANT_LIST_LIMIT` (500), `totalCount` is at most 500 and does not reflect the true number of enrolled participants.
+- **Failure scenario:** A contest with 600 enrolled participants shows `totalCount: 500`, misleading the management UI and making it impossible to detect truncation without an extra count query.
+- **Fix:** Run a separate `COUNT(*)` query and return that as `totalCount`, while keeping `participants.length` or a separate `returnedCount` field if needed.
+
+#### C4-NEW-API-34 — Strict Origin check silently skipped when `AUTH_URL` host is unset
+- **File:** `src/app/api/v1/contests/[assignmentId]/anti-cheat/route.ts:63-79`
+- **Confidence:** Medium
+- **Problem:** In production, the handler fetches the expected host via `getAuthUrlObject()?.host`. If `AUTH_URL` is not configured, `expectedHost` is undefined and the entire strict-origin block is skipped, falling back to the weaker global CSRF check.
+- **Failure scenario:** A production deployment omits or misconfigures `AUTH_URL`. The anti-cheat endpoint's stricter origin requirement (intended to prevent scripted confederate attacks) is silently disabled.
+- **Fix:** When `process.env.NODE_ENV === "production"` and `expectedHost` is empty, fail closed with `apiError("forbidden", 403)` and log a configuration warning.
+
+---
+
 ## Prioritized Recommendations
 
 1. **Fix the ZIP metadata bypass** (`C4-NEW-01`) before any production restore/import or file-upload path is considered safe.
@@ -1475,12 +1851,13 @@ A focused pass over all routes under `src/app/api/v1/admin/` uncovered the follo
 8. **Fix the runner-auth opt-out** (`CQ4-A01`) so `RUNNER_AUTH_DISABLED=1` actually enables unauthenticated runner calls.
 9. **Add timeouts and graceful shutdown to the Rust runner** (`CQ4-R01`, `CQ4-R02`, `CQ4-R03`, `CQ4-R04`) to prevent hung Docker commands from wedging workers.
 10. **Harden the three new Rust worker HIGH findings** (`C4-NEW-R01`, `C4-NEW-R02`, `C4-NEW-R03`) for leaked CLI processes, timing-side-channel auth, and unbounded poll bodies.
-11. **Fix the admin MEDIUM correctness issues** (`C4-NEW-A03`–`A08`, `C4-NEW-A09`–`A18`) covering restore/import trust/atomicity, rate-limit gaps, tag/plugin/worker/language races and validation, and durable audit logging.
-12. **Fix the UI HIGH-severity correctness bugs** (`CQ4-U01`, `CQ4-U02`, `CQ4-U03`, `CQ4-U04`, `CQ4-U05`, `CQ4-U21`, `CQ4-U36`, `CQ4-U39`) before release.
-13. **Systematically eliminate `setState`-after-unmount leaks** (`CQ4-U06`–`U13`, `CQ4-U15`, `CQ4-U16`, `CQ4-U31`, `CQ4-U58`, `CQ4-U62`) by introducing a reusable `useMounted` hook and applying it consistently.
-14. **Harden deployment/infrastructure HIGH findings** (`CQ4-D01`–`CQ4-D05`) to prevent docs-induced operational errors, silent build failures, supply-chain drift, and non-fatal architecture mismatches.
-15. **Tighten API, admin, and Rust boundary-layer validation** (`CQ4-A02`, `CQ4-A04`, `CQ4-A06`, `C4-NEW-04`, `C4-NEW-05`, `C4-NEW-08`, `C4-NEW-R08`, `C4-NEW-R09`, `C4-NEW-R10`, `C4-NEW-R11`, `C4-NEW-A19`–`A26`) and fix the stale cache comment (`CQ4-A07`).
-16. **Address the still-open prior findings** (`createApiHandler` error taxonomy, global SSE advisory lock, per-mutation CSRF DB read, malformed integer parsing) in the next planning cycle.
+11. **Fix the app-server API HIGH findings** (`C4-NEW-API-01`–`C4-NEW-API-06`) before release — active-contest problem changes, score-override races, recruiting rate-limit misconfiguration, anti-cheat access bypass, judge deregister double-judging, and chat-widget client-disconnect leaks.
+12. **Fix the admin MEDIUM correctness issues** (`C4-NEW-A03`–`A08`, `C4-NEW-A09`–`A18`) covering restore/import trust/atomicity, rate-limit gaps, tag/plugin/worker/language races and validation, and durable audit logging.
+13. **Fix the UI HIGH-severity correctness bugs** (`CQ4-U01`, `CQ4-U02`, `CQ4-U03`, `CQ4-U04`, `CQ4-U05`, `CQ4-U21`, `CQ4-U36`, `CQ4-U39`) before release.
+14. **Systematically eliminate `setState`-after-unmount leaks** (`CQ4-U06`–`U13`, `CQ4-U15`, `CQ4-U16`, `CQ4-U31`, `CQ4-U58`, `CQ4-U62`) by introducing a reusable `useMounted` hook and applying it consistently.
+15. **Harden deployment/infrastructure HIGH findings** (`CQ4-D01`–`CQ4-D05`) to prevent docs-induced operational errors, silent build failures, supply-chain drift, and non-fatal architecture mismatches.
+16. **Tighten API, admin, app-route, and Rust boundary-layer validation** (`CQ4-A02`, `CQ4-A04`, `CQ4-A06`, `C4-NEW-04`, `C4-NEW-05`, `C4-NEW-08`, `C4-NEW-R08`, `C4-NEW-R09`, `C4-NEW-R10`, `C4-NEW-R11`, `C4-NEW-A19`–`A26`, `C4-NEW-API-07`–`C4-NEW-API-34`) and fix the stale cache comment (`CQ4-A07`).
+17. **Address the still-open prior findings** (`createApiHandler` error taxonomy, global SSE advisory lock, per-mutation CSRF DB read, malformed integer parsing) in the next planning cycle.
 
 ---
 
