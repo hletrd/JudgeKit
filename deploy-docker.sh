@@ -875,8 +875,8 @@ warn_judge_ip_allowlist() {
         return 0
     fi
     local allowed_ips allow_any
-    allowed_ips=$(grep '^JUDGE_ALLOWED_IPS=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
-    allow_any=$(grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]')
+    allowed_ips=$(grep '^JUDGE_ALLOWED_IPS=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+    allow_any=$(grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
     if [[ -z "${allowed_ips}" && "${allow_any}" != "1" ]]; then
         warn "JUDGE_ALLOWED_IPS is not configured and JUDGE_ALLOW_ANY_JUDGE_IP is not 1. Judge API routes will deny all requests in production. Set JUDGE_ALLOWED_IPS to the worker IP/CIDR, or set JUDGE_ALLOW_ANY_JUDGE_IP=1 only if network isolation is handled elsewhere."
     fi
