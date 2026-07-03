@@ -786,8 +786,6 @@ else
     info "Using existing .env.production"
 fi
 
-warn_judge_ip_allowlist "${SCRIPT_DIR}/.env.production"
-
 # ---------------------------------------------------------------------------
 # Step 1b: Backfill missing required secrets in the remote .env.production
 #
@@ -883,6 +881,8 @@ warn_judge_ip_allowlist() {
         warn "JUDGE_ALLOWED_IPS is not configured and JUDGE_ALLOW_ANY_JUDGE_IP is not 1. Judge API routes will deny all requests in production. Set JUDGE_ALLOWED_IPS to the worker IP/CIDR, or set JUDGE_ALLOW_ANY_JUDGE_IP=1 only if network isolation is handled elsewhere."
     fi
 }
+
+warn_judge_ip_allowlist "${SCRIPT_DIR}/.env.production"
 
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
 ensure_env_secret NODE_ENCRYPTION_KEY hex
