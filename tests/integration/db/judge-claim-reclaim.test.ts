@@ -17,7 +17,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
-import { createTestDb, hasPostgresIntegrationSupport, seedRoles, seedUser, seedProblem, seedSubmission, type TestDb } from "../support";
+import { createTestDb, seedRoles, seedUser, seedProblem, seedSubmission, type TestDb } from "../support";
 import { buildClaimSql } from "@/lib/judge/claim-query";
 // Import the translator from the pool-free module so this gated test never
 // pulls in the global pool (which throws when DATABASE_URL is unset) at
@@ -25,7 +25,7 @@ import { buildClaimSql } from "@/lib/judge/claim-query";
 import { namedToPositional } from "@/lib/db/named-params";
 import { judgeWorkers, submissions } from "@/lib/db/schema";
 
-describe.skipIf(!hasPostgresIntegrationSupport)("Judge claim reclaim after worker death (chaos)", () => {
+describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("Judge claim reclaim after worker death (chaos)", () => {
   let testDb: TestDb;
   let userId: string;
   let problemId: string;

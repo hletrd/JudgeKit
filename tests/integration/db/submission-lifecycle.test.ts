@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq, and } from "drizzle-orm";
 import {
   createTestDb,
-  hasPostgresIntegrationSupport,
   seedRoles,
   seedUser,
   seedProblem,
@@ -25,7 +24,7 @@ import {
 } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
 
-describe.skipIf(!hasPostgresIntegrationSupport)("Submission lifecycle (integration)", () => {
+describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("Submission lifecycle (integration)", () => {
   let ctx: TestDb;
   let userId: string;
   let problemId: string;

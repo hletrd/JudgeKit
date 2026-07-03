@@ -16,7 +16,7 @@ Integration tests exercise the full API request pipeline with a real database, w
 npm run test:integration
 ```
 
-Set `hasPostgresIntegrationSupport` (from `tests/integration/support/`) to run Postgres-specific tests when a local PG instance is available.
+Integration tests require a PostgreSQL database. Set `INTEGRATION_DATABASE_URL`, `TEST_DATABASE_URL`, or `DATABASE_URL` to a `postgres://` connection string. To skip the suite explicitly (e.g., in CI without Postgres), set `SKIP_INTEGRATION_TESTS=1`.
 
 ## Structure
 

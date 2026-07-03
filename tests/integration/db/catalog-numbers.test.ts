@@ -16,11 +16,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { nanoid } from "nanoid";
 import { eq } from "drizzle-orm";
-import { createTestDb, hasPostgresIntegrationSupport, type TestDb } from "../support";
+import { createTestDb, type TestDb } from "../support";
 import { getCatalogNumbersForIds } from "@/lib/problems/catalog-numbers";
 import { problems } from "@/lib/db/schema";
 
-describe.skipIf(!hasPostgresIntegrationSupport)("getCatalogNumbersForIds ranking semantics", () => {
+describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("getCatalogNumbersForIds ranking semantics", () => {
   let testDb: TestDb;
   // Inserted in scrambled order on purpose; expected catalog order is:
   //   seq 1 (oldest createdAt wins nothing — unique seq), seq 2, seq 5,

@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { eq } from "drizzle-orm";
 import {
   createTestDb,
-  hasPostgresIntegrationSupport,
   seedRoles,
   seedUser,
   seedGroup,
@@ -12,7 +11,7 @@ import {
 import { users, groups, enrollments } from "@/lib/db/schema";
 import { withUpdatedAt } from "@/lib/db/helpers";
 
-describe.skipIf(!hasPostgresIntegrationSupport)("User CRUD (integration)", () => {
+describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("User CRUD (integration)", () => {
   let ctx: TestDb;
 
   beforeEach(async () => {
