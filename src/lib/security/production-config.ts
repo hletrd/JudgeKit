@@ -87,3 +87,59 @@ export function assertProductionConfig(): void {
   // Throwing also works in Next.js's instrumentation hook but exit is more explicit.
   process.exit(1);
 }
+
+/**
+ * Fail closed in production when the operator has not explicitly configured the
+ * trusted reverse-proxy hop count. Without this, a missing or misconfigured XFF
+ * chain collapses all traffic into a shared `api:*:unknown` rate-limit bucket
+ * and pollutes audit logs with spoofable client IPs.
+ */
+export function assertTrustedProxyHops(): void {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  const value = process.env.TRUSTED_PROXY_HOPS;
+  if (value === undefined || value === "") {
+    console.error(
+      "[startup] TRUSTED_PROXY_HOPS is required in production. " +
+        "Set it to the number of trusted reverse-proxy hops between the client and the app " +
+        "(e.g., 1 for a single Nginx reverse proxy). Without this value the app cannot safely " +
+        "derive a client IP from X-Forwarded-For.",
+    );
+    process.exit(1);
+  }
+
+  const parsed = parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed < 0) {
+    console.error(
+      `[startup] TRUSTED_PROXY_HOPS="${value}" is not a valid non-negative integer. ` +
+        "Set it to the number of trusted reverse-proxy hops (e.g., 1).",
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * AUTH_TRUST_HOST=true in production bypasses JudgeKit's host-header allowlist.
+ * Require an explicit break-glass override so operators cannot flip this on by
+ * accident without understanding the spoofing risk.
+ */
+export function assertAuthTrustHostOverride(): void {
+  if (process.env.NODE_ENV !== "production") {
+    return;
+  }
+
+  if (
+    process.env.AUTH_TRUST_HOST === "true" &&
+    process.env.TRUST_HOST_OVERRIDE !== "1"
+  ) {
+    console.error(
+      "[startup] AUTH_TRUST_HOST=true in production requires TRUST_HOST_OVERRIDE=1. " +
+        "This combination is only safe when the reverse proxy strips untrusted X-Forwarded-Host " +
+        "values before they reach the app. Set TRUST_HOST_OVERRIDE=1 after confirming your " +
+        "proxy configuration, or leave AUTH_TRUST_HOST unset/false.",
+    );
+    process.exit(1);
+  }
+}

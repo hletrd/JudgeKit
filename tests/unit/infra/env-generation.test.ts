@@ -20,7 +20,7 @@ import { join } from "node:path";
 const REQUIRED_KEYS = [
   "AUTH_SECRET=",
   "AUTH_URL=",
-  "AUTH_TRUST_HOST=true",
+  "AUTH_TRUST_HOST=false",
   "POSTGRES_PASSWORD=",
   "PLUGIN_CONFIG_ENCRYPTION_KEY=",
   "JUDGE_AUTH_TOKEN=",

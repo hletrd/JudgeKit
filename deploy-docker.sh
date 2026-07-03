@@ -765,6 +765,10 @@ JUDGE_DISABLE_CUSTOM_SECCOMP=0
 # unless JUDGE_ALLOWED_IPS is set or JUDGE_ALLOW_ANY_JUDGE_IP=1.
 JUDGE_ALLOWED_IPS=
 JUDGE_ALLOW_ANY_JUDGE_IP=0
+# Number of trusted reverse proxies in front of the app. The production nginx
+# edge is one hop, so the default is 1. This value is required in production;
+# the app refuses to start if it is unset.
+TRUSTED_PROXY_HOPS=1
 RATE_LIMIT_MAX_ATTEMPTS=10
 RATE_LIMIT_WINDOW_MS=60000
 RATE_LIMIT_BLOCK_MS=900000
@@ -897,6 +901,9 @@ ensure_env_secret RATE_LIMITER_AUTH_TOKEN hex
 # X-Forwarded-Host to the canonical host, so the app sees the external domain
 # without trusting client-supplied forwarded-host headers.
 ensure_env_literal AUTH_TRUST_HOST false
+# TRUSTED_PROXY_HOPS is required in production; backfill the standard one-hop
+# default for deployments that predate the startup assertion.
+ensure_env_literal TRUSTED_PROXY_HOPS 1
 # JUDGE_ALLOW_ANY_JUDGE_IP defaults to 0 in production. Judge API routes fail
 # closed when JUDGE_ALLOWED_IPS is unset unless this override is set to 1.
 ensure_env_literal JUDGE_ALLOW_ANY_JUDGE_IP 0
@@ -974,6 +981,7 @@ if [[ "${INCLUDE_WORKER}" != "true" ]]; then
     fi
 fi
 upsert_env_literal AUTH_TRUST_HOST false
+upsert_env_literal TRUSTED_PROXY_HOPS 1
 upsert_env_literal JUDGE_ALLOW_ANY_JUDGE_IP 0
 
 # Warn if the remote production config leaves judge routes fail-closed.

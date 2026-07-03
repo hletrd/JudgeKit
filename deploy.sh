@@ -75,7 +75,7 @@ if [[ ! -f "${SCRIPT_DIR}/.env.production" ]]; then
   cat > "${SCRIPT_DIR}/.env.production" <<EOF
 AUTH_SECRET=$(openssl rand -base64 32)
 AUTH_URL=https://${DOMAIN}
-AUTH_TRUST_HOST=true
+AUTH_TRUST_HOST=false
 DB_DIALECT=postgresql
 DATABASE_URL=postgres://judgekit:\${POSTGRES_PASSWORD}@db:5432/judgekit
 POSTGRES_PASSWORD=$(openssl rand -hex 32)

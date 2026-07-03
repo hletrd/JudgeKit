@@ -49,6 +49,7 @@ jobs:
 
     env:
       INTEGRATION_DATABASE_URL: postgres://judgekit:judgekit@127.0.0.1:5432/judgekit_test
+      TEST_DATABASE_URL: postgres://judgekit:judgekit@127.0.0.1:5432/judgekit_test
 
     steps:
       - name: Check out repository
