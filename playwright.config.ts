@@ -103,6 +103,8 @@ export default defineConfig({
           ...process.env,
           AUTH_URL: localBaseUrl,
           AUTH_TRUST_HOST: "true",
+          TRUSTED_PROXY_HOPS: "1",
+          TRUST_HOST_OVERRIDE: "1",
           // Pass through the operator's JUDGE_AUTH_TOKEN only when it is a real
           // value. Never inject the placeholder fallback: it is byte-identical
           // to JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER, which
