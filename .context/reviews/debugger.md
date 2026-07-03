@@ -1,160 +1,235 @@
-# Latent-Bug Review — debugger perspective
+# Latent-Bug and Failure-Mode Review — debugger perspective
 
-**Scope:** `/tmp/judgekit-local` (Cycle 3 post-remediation)  
-**Focus:** root causes, failure modes, regressions, edge cases, hidden leaks — resource leaks, cleanup failures, off-by-one/null/undefined handling, async/await hazards, timeout errors, subprocess zombies, temp-file leaks, permission/cleanup interactions.  
+**Scope:** `/tmp/judgekit-local` (Cycle 3 post-remediation, current tree)  
+**Focus:** bugs not caught by happy-path tests, edge cases, resource leaks, timer leaks, cleanup failures, race conditions, permission issues, off-by-one / numeric / string parsing hazards.  
 **Date:** 2026-07-03
 
 ## Executive Summary
 
-Cycle 3 remediated most of the aggregate findings from Cycle 2, but one core cleanup fix is still broken in production: both the Node.js compiler fallback and the Rust judge worker attempt to `chown` sandbox-owned files back to the app/worker user before deletion, which fails when the process runs as a non-root user (the production configuration). The regression tests guard the root-only path and skip in the production-like non-root case, so the leak is not caught in CI. Beyond that, several medium/high issues remain around subprocess lifecycle, temp-directory permissions, backup restore memory pressure, and batch-delete semantics.
+Cycle 3 successfully fixed the production workspace-cleanup leaks that the prior debugger review flagged: both the Node.js local compiler fallback and the Rust `SandboxWorkspace::drop` now fall back to a privileged Docker cleanup container when the process is non-root, so sandbox-owned `nobody` (uid 65534) files are removed without requiring `CAP_CHOWN`.
+
+The remaining latent issues are concentrated in three areas:
+
+1. **Compiler / Docker subprocess lifecycle** — output memory accounting uses string length instead of byte length, `child.stdin.write` can throw synchronously outside the installed error handler, and `docker build` timeouts use `SIGTERM` without reaping the child.
+2. **Backup restore memory pressure** — the restore path materializes every uploaded file in the ZIP as a `Buffer` before writing anything to disk, risking OOM on large backups.
+3. **Batch-delete semantics** — the event pruners put `LIMIT` inside an `IN (SELECT ... LIMIT)` subquery, which PostgreSQL can flatten and ignore, causing unexpectedly large deletes.
+
+No CRITICAL issues remain in the current tree, but the HIGH items above are genuine production failure modes.
+
+## Previously Reported Issues — Status
+
+| # | Prior finding | Status in current tree | Evidence |
+|---|---|---|---|
+| 1 | Node workspace cleanup leaks because non-root cannot `chown` sandbox files | **Fixed** | `src/lib/compiler/execute.ts:382-427` now tries direct `rm` first, then `cleanupWorkspaceWithDocker` with `--user root`. |
+| 2 | Rust `SandboxWorkspace::drop` leaks for the same reason | **Fixed** | `judge-worker-rs/src/workspace.rs:43-77` adds `cleanup_with_docker` and invokes it from `Drop` when non-root. |
+| 3 | `buildDockerImageLocal` leaves running `docker build` on timeout | **Still present** | See Issue 4 below. |
+| 4 | Backup restore holds all uploads in memory | **Still present** | See Issue 5 below. |
+| 5 | Uploads dir default permissions | **Still present** | See Issue 6 below. |
+| 6 | `cleanupOldEvents` LIMIT semantics | **Still present** | See Issue 7 below. |
 
 ## Confirmed Issues
 
-### 1. Workspace cleanup still leaks in production — Node.js local fallback relies on impossible `chown`
+### 1. Compiler output cap measures UTF-16 string length, not byte length
 
-- **Files:** `src/lib/compiler/execute.ts:348-384`, `Dockerfile` (production app runs as `nextjs` uid 1001)
-- **Severity:** CRITICAL
-- **Confidence:** High
-- **Problem:** `cleanupCompilerWorkspace` calls `chownRecursive(workspaceDir, appUid, appGid)` and then `rm(...)`. In production the app runs as `nextjs` (uid 1001). The sandbox container writes files as uid 65534 (`nobody`). A non-root process cannot `chown` files owned by another uid unless it holds `CAP_CHOWN`, which the production `Dockerfile` does not grant. The `chownRecursive` call therefore throws `EPERM`, logs a warning, and the subsequent `rm` fails because it cannot delete files owned by uid 65534.
-- **Failure scenario:** Every local compiler fallback run in production leaves `/tmp/compiler-*` directories on disk. Over time `/tmp` fills up, causing new `mkdtemp` calls to fail with `ENOSPC` and breaking all submissions that fall back to local Docker execution.
-- **Evidence:** `tests/unit/compiler/execute.test.ts:225-266` explicitly skips the sandbox-owned cleanup test when `process.getuid() !== 0`.
-- **Suggested fix:** Run the cleanup container or a one-shot privileged sidecar with `--user root` (or `CAP_CHOWN`) to chown+rm the workspace. Alternatively, mount the workspace as a Docker volume and let a root-owned cleanup container remove it, or use `podman unshare`-style uid shifting if the runtime supports it. The current "chown then rm" logic only works when the app is root.
-
-### 2. Workspace cleanup still leaks in production — Rust worker `SandboxWorkspace::drop` has the same flaw
-
-- **Files:** `judge-worker-rs/src/workspace.rs:31-65`, `Dockerfile.judge-worker` (worker runs as `judge` uid 1000)
-- **Severity:** CRITICAL
-- **Confidence:** High
-- **Problem:** `SandboxWorkspace::drop` calls `chown_recursive(&path, uid, gid)` where `uid/gid` come from `libc::getuid/getgid`. The worker image runs as non-root `judge` (uid 1000). Sandbox runs create files owned by uid 65534, so the recursive chown fails with `EPERM` and `remove_dir_all` cannot delete the tree.
-- **Failure scenario:** Same as issue 1 but on the dedicated judge worker (`worker-0.algo.xylolabs.com`). Temporary workspace directories accumulate under `/tmp`, eventually exhausting disk space and causing all judging to fail.
-- **Evidence:** `judge-worker-rs/src/workspace.rs:89-94` skips the sandbox-owned cleanup test when not root.
-- **Suggested fix:** Same approach as issue 1 — run a privileged cleanup step. In Rust, consider spawning a short-lived `docker run --rm --user root -v <parent-tmp>:/work alpine chown -R <worker_uid> /work/<dir>` before `remove_dir_all`, or grant `CAP_CHOWN` to the worker process and keep the current logic.
-
-### 3. `buildDockerImageLocal` leaves a running `docker build` process on timeout
-
-- **Files:** `src/lib/docker/client.ts:320-372`
+- **Files:** `src/lib/compiler/execute.ts:27`, `src/lib/compiler/execute.ts:571-578`, `src/lib/compiler/execute.ts:612-613`
 - **Severity:** HIGH
-- **Confidence:** Medium
-- **Problem:** On the 600 s timeout path the code calls `proc.kill()` (no signal argument → `SIGTERM`) and immediately resolves `{ success: false, error: "docker build timed out after 600s" }`. It does not wait for process exit, close stdio, or kill with `SIGKILL`. A `docker build` child may ignore `SIGTERM` for a long time or become orphaned, leaving the build running and consuming CPU/disk on the worker.
-- **Failure scenario:** A long/hung image build hits the 600 s timeout. The API returns an error, but the `docker build` process continues in the background, possibly holding locks on the build context or producing intermediate layers until the next startup sweep or manual intervention.
-- **Suggested fix:** Use `proc.kill("SIGKILL")` (or `proc.kill("SIGTERM")` followed by a short wait then `SIGKILL`), drain/destroy stdout/stderr, and call `proc.unref()` only after confirming the process has exited. Prefer `await once(proc, "close")` with a short grace period.
+- **Confidence:** High
+- **Problem:** `MAX_OUTPUT_BYTES` is documented as a 128 MiB byte budget, but the checks use `stdout.length` and `stderr.length`, which are JavaScript UTF-16 code-unit counts. A chunk containing mostly 3-byte UTF-8 characters (e.g., CJK or emoji) occupies ~3 bytes per UTF-16 code unit, so the process can hold roughly 3× the intended memory before truncation. The final `slice(0, MAX_OUTPUT_BYTES)` also operates on code units, so the returned string may exceed 128 MiB when encoded.
+- **Failure scenario:** A sandboxed program prints a large amount of multi-byte output (e.g., Chinese characters). The Node process memory grows to ~384 MiB for stdout alone before the cap trips, increasing OOM risk on memory-constrained containers and skewing resource accounting.
+- **Suggested fix:** Track byte length using `Buffer.byteLength(stdout, "utf8")` (or accumulate `Buffer`s directly) and slice by byte boundaries. Alternatively, cap the accumulated `Buffer` size before `.toString("utf8")`.
 
-### 4. Backup restore keeps all uploaded files in memory before writing to disk
+### 2. Synchronous `child.stdin.write` can throw unhandled if stdin closes early
 
-- **Files:** `src/lib/db/export-with-files.ts:267-349`, `src/app/api/v1/admin/restore/route.ts:82-124`
-- **Severity:** HIGH
-- **Confidence:** Medium
-- **Problem:** `parseBackupZip` calls `entry.async("nodebuffer")` for every file in `uploads/` and stores the resulting `Buffer` objects in an in-memory array. The route already read the entire ZIP into memory as `Buffer.from(arrayBuffer)`. For a backup near the 512 MB decompressed limit with many uploaded files, the process can hold well over 1 GB of transient memory (ZIP buffer + extracted buffers + JSZip internal copies), risking OOM before the DB transaction even begins.
-- **Failure scenario:** An admin restores a large backup. The Node process OOMs during `parseBackupZip`. The DB is untouched (transaction has not started), but the app container restarts and the operator gets no useful error message.
-- **Suggested fix:** Stream uploads directly from the ZIP to disk in a staging directory, validate integrity incrementally (using the manifest checksums), and only after all files are staged and verified run the DB import. This removes the memory spike and also provides the atomic "stage-then-rename" behavior noted as deferred in `export-with-files.ts:366-367`.
-
-### 5. Uploads directory created with overly permissive default mode
-
-- **Files:** `src/lib/files/storage.ts:14-16`, `src/lib/files/storage.ts:27-30`
+- **Files:** `src/lib/compiler/execute.ts:552-559`
 - **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** `ensureUploadsDir()` calls `mkdir(..., { recursive: true })` without an explicit `mode`. The resulting directory permissions depend on the process umask (commonly `0o755`). Files inside are written with `0o600`, but directory listing is world-readable.
+- **Confidence:** High
+- **Problem:** The code installs an `"error"` listener on `child.stdin`, then calls `child.stdin.write(opts.stdin)` and `child.stdin.end()`. If the child process exits before or during the write, `stdin.write` can throw synchronously with `EPIPE` or `ERR_STREAM_WRITE_AFTER_END`. The listener only catches asynchronously emitted errors, so this synchronous throw becomes an unhandled exception that can crash the request (or, in some Node versions, the process).
+- **Failure scenario:** A very fast-exiting container (e.g., a binary that crashes immediately on startup) closes stdin while the app is still writing the problem input. The unhandled exception aborts the compiler execution path and surfaces as a 500 instead of a normal run result.
+- **Suggested fix:** Wrap `child.stdin.write(opts.stdin)` in a `try/catch` and treat a thrown error the same as an emitted stdin error (log and continue).
+
+### 3. `buildDockerImageLocal` resolves on timeout without killing or reaping the child
+
+- **Files:** `src/lib/docker/client.ts:347-365`
+- **Severity:** HIGH
+- **Confidence:** High
+- **Problem:** On the 600 s timeout path the code calls `proc.kill()` (no signal argument → `SIGTERM`) and immediately resolves `{ success: false, error: "docker build timed out after 600s" }`. It does not wait for process exit, close stdio, send `SIGKILL`, or call `proc.unref()`. A stuck `docker build` can ignore `SIGTERM` for a long time and continue consuming CPU, disk, and BuildKit locks.
+- **Failure scenario:** A hung image build hits the 600 s timeout. The API returns an error, but the `docker build` process keeps running in the background, possibly holding the build context and producing intermediate layers until manual intervention or container restart.
+- **Suggested fix:** Send `SIGTERM`, wait a short grace period, then send `SIGKILL`; drain/destroy stdout/stderr; and `await once(proc, "close")` (with a short secondary timeout) before resolving.
+
+### 4. Backup restore materializes every uploaded file in memory
+
+- **Files:** `src/lib/db/export-with-files.ts:267-349`, `src/app/api/v1/admin/restore/route.ts` (consumer)
+- **Severity:** HIGH
+- **Confidence:** High
+- **Problem:** `parseBackupZip` already receives the entire ZIP as a `Buffer`, then calls `entry.async("nodebuffer")` for each file in `uploads/` and stores all resulting `Buffer`s in an in-memory array. For a backup near the 512 MB decompressed limit with many uploads, the process can briefly hold well over 1 GB of transient memory (ZIP buffer + JSZip internal copies + extracted buffers), risking OOM before the DB transaction begins.
+- **Failure scenario:** An admin restores a large backup. Node OOMs during `parseBackupZip`. The DB is untouched, but the app container restarts and the operator gets no actionable error.
+- **Suggested fix:** Stream uploads directly from the ZIP to a staging directory on disk, validate manifest checksums incrementally, and only after all files are staged run the DB import. This also moves toward the deferred atomic "stage-then-rename" behavior noted at `export-with-files.ts:366-367`.
+
+### 5. Uploads directory created with umask-dependent permissions
+
+- **Files:** `src/lib/files/storage.ts:14-16`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Problem:** `ensureUploadsDir()` calls `mkdir(..., { recursive: true })` without an explicit `mode`. The resulting directory permissions depend on the process umask, commonly `0o755`. Files inside are written `0o600`, but the directory itself is world-listable.
 - **Failure scenario:** On a shared container host or if the data volume is mounted by another non-privileged container, another uid can list uploaded file names and infer upload activity, even though file contents are unreadable.
 - **Suggested fix:** Create the directory with `mode: 0o700` so only the app user can list or access it.
 
-### 6. `cleanupOldEvents` batch DELETE may not honor `LIMIT` under PostgreSQL optimization
+### 6. Batch DELETE `LIMIT` inside `IN` subquery may be ignored by PostgreSQL
 
-- **Files:** `src/lib/db/cleanup.ts:45-63`
+- **Files:** `src/lib/db/cleanup.ts:46-48`, `src/lib/db/cleanup.ts:56-58`; `src/lib/data-retention-maintenance.ts:28-30`
 - **Severity:** MEDIUM
 - **Confidence:** Medium
-- **Problem:** The pruner uses `DELETE ... WHERE id IN (SELECT id FROM ... WHERE createdAt < cutoff LIMIT 5000)`. PostgreSQL's planner can flatten/simple-unfold the `IN (SELECT ... LIMIT)` subquery, causing the `LIMIT` to be discarded and the entire eligible set to be deleted in one statement. This risks long locks, WAL bloat, and replication lag on large tables.
-- **Failure scenario:** The first run of the cleanup cron on a system with millions of old audit events deletes them all at once, blocking concurrent audit inserts for seconds to minutes and potentially filling the WAL.
-- **Suggested fix:** Use `DELETE FROM auditEvents WHERE id IN (SELECT id FROM auditEvents WHERE createdAt < cutoff ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 5000)` or use Drizzle/drizzle-raw with `ctid` and explicit loop termination on `rowCount === 0`.
+- **Problem:** Both pruners use `DELETE FROM t WHERE id IN (SELECT id FROM t WHERE ... LIMIT 5000)`. PostgreSQL’s planner can flatten/simple-unfold the `IN (SELECT ... LIMIT)` subquery, causing the `LIMIT` to be discarded and the entire eligible set to be deleted in one statement. This risks long locks, WAL bloat, and replication lag on large tables.
+- **Failure scenario:** The first run of the daily pruner on a system with millions of old audit events deletes them all at once, blocking concurrent audit inserts and potentially filling the WAL.
+- **Suggested fix:** Use `DELETE FROM t WHERE id IN (SELECT id FROM t WHERE ... ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 5000)`, or select a batch of ids in a CTE and delete by primary key in a separate statement.
+
+### 7. Compiler timeouts have no upper cap
+
+- **Files:** `src/lib/compiler/execute.ts:851-852`, `src/lib/compiler/execute.ts:915`, `src/lib/compiler/execute.ts:681`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Problem:** `compile` uses `Math.max(timeLimitMs * 2, 30_000)`, and `runDocker` uses `Math.max(timeLimitMs * 4, 120_000)`. If an admin configures a very large per-problem time limit (or if a malformed setting loads as a huge number), the compile/run containers can run for hours before being killed.
+- **Failure scenario:** A problem with a misconfigured time limit of, e.g., 3 hours spawns a compile container that runs for 6 hours, holding workspace disk and Docker resources.
+- **Suggested fix:** Cap the derived container timeouts at a sane global maximum (e.g., 10 minutes for compile, problem time limit + overhead for run) and clamp the raw configured value to a documented maximum.
+
+### 8. `parseTimestampEpochMs` regex is fragile for sub-millisecond forms
+
+- **Files:** `src/lib/compiler/execute.ts:285-294`
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** The regex `/\.\d{3}\d+/` only truncates fractional seconds when there are 3 or more digits. For 1–2 digit fractional seconds (e.g., `.1`, `.12`) the regex does not match, so the original string is passed to `Date.parse`. V8 currently accepts those forms, but the behavior is implementation-defined and the code comment claims to truncate "any sub-millisecond precision." The regex also lacks the `g` flag, but Docker timestamps have only one fractional part, so that is harmless in practice.
+- **Failure scenario:** A future Node runtime or non-V8 environment rejects `.12`, causing `inspectContainerState` to return `durationMs: null` and masking actual run duration telemetry.
+- **Suggested fix:** Use `/\.\d{1,3}/` and pad/truncate to three digits, or parse the ISO string with a dedicated parser instead of relying on `Date.parse` quirks.
+
+### 9. SSE shared poll timer interval may become `NaN`
+
+- **Files:** `src/app/api/v1/submissions/[id]/events/route.ts:190-193`
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** `startSharedPollTimer` computes `const pollIntervalMs = Math.max(1000, configuredInterval);`. If `configuredInterval` is `NaN` (e.g., a corrupted DB setting), `Math.max(1000, NaN)` evaluates to `NaN`. Passing `NaN` to `setInterval` produces implementation-defined behavior (often a very short interval), causing excessive DB polling.
+- **Failure scenario:** An admin saves a non-numeric poll interval in system settings. Every connected SSE client causes the shared timer to fire rapidly, spiking DB load.
+- **Suggested fix:** Validate with `Number.isFinite(configuredInterval)` and fall back to a default (e.g., 5000 ms) before calling `Math.max`.
+
+### 10. Real-time coordination serializes all SSE slot acquisitions on one advisory lock
+
+- **Files:** `src/lib/realtime/realtime-coordination.ts:73-78`, `src/lib/realtime/realtime-coordination.ts:101`
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Problem:** `acquireSharedSseConnectionSlot` uses a single advisory lock key `"realtime:sse:acquire"` for all users/connections. In multi-instance deployments with `REALTIME_COORDINATION_BACKEND=postgresql`, every SSE connection attempt serializes behind this one lock, creating a global bottleneck. Additionally, `withPgAdvisoryLock` hashes the key with MD5 and takes the first 64 bits; collision probability is low but non-zero.
+- **Failure scenario:** Under high SSE load (e.g., a popular contest start), connection acquisition queues up globally, increasing latency and tying up DB connections.
+- **Suggested fix:** Use a lock key scoped per user (e.g., `"realtime:sse:acquire:${userId}"`) so only concurrent attempts by the same user contend. Document the 64-bit advisory-lock collision risk and accept it for this use case.
+
+### 11. Contest-scoring background refresh swallows all errors silently
+
+- **Files:** `src/lib/assignments/contest-scoring.ts:150-180` (approximate; the leaderboard cache refresh IIFE followed by `.catch(() => {})`)
+- **Severity:** MEDIUM
+- **Confidence:** Medium
+- **Problem:** The stale-while-revalidate background refresh wraps the refresh IIFE with `.catch(() => {})`. Any unexpected failure (DB connectivity, logic error, etc.) is silently discarded. The outer `.catch` does catch errors from the inner `getDbNowMs()` in `catch`/`finally`, but it also masks all other failures.
+- **Failure scenario:** A code change introduces a runtime error in the refresh path. The leaderboard keeps serving stale data forever with no log noise, and operators only notice when users report stale standings.
+- **Suggested fix:** Log the error inside the `.catch` (e.g., `.catch((err) => logger.error(...))`) before swallowing, or only swallow specifically expected abort/timeout errors.
+
+### 12. `startRateLimitEviction` runs per instance and can cause write contention
+
+- **Files:** `src/lib/security/rate-limit.ts:67-81`
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** Each Next.js process starts its own 60-second eviction timer and deletes from `rateLimits` independently. In a multi-instance deployment, multiple processes can run `DELETE FROM rate_limits WHERE lastAttempt < cutoff` simultaneously, causing lock contention and replication writes even though the operation is idempotent.
+- **Failure scenario:** A 10-instance deployment produces a steady stream of overlapping full-table delete queries against `rate_limits`, amplifying write load.
+- **Suggested fix:** Use a single coordinator (e.g., the sidecar, a cron job, or advisory-lock-guarded eviction) so only one instance prunes at a time.
+
+### 13. Fire-and-forget login / audit events can be lost on shutdown or overload
+
+- **Files:** `src/lib/auth/login-events.ts:101-113`, `src/lib/audit/events.ts:252-261`
+- **Severity:** MEDIUM
+- **Confidence:** High
+- **Problem:** `recordLoginEvent` and `recordAuditEvent` enqueue or start an async DB write and do not await it. If the process receives `SIGTERM` before the write completes, the event is lost. The shutdown handler flushes the audit buffer, but login events have no equivalent flush, and both paths can race with process exit.
+- **Failure scenario:** A login attempt occurs just before a deploy restarts the container. The login event never reaches `login_events`, breaking audit trails and security analytics.
+- **Suggested fix:** For security-critical events, use `await recordLoginEventDurable(...)` (or an equivalent durable login-event path) at the call sites that can tolerate the latency, and register a shutdown flush for login events similar to the audit buffer flush.
+
+### 14. `consumeRateLimitAttemptMulti` does not refresh the window for an already-blocked key
+
+- **Files:** `src/lib/security/rate-limit.ts:178-191`
+- **Severity:** LOW
+- **Confidence:** High
+- **Problem:** When an active block exists (`entry.blockedUntil > now`), the function returns `true` immediately without recording the attempt. This is intentional but means a blocked IP stays blocked only until the original `blockedUntil`; repeated requests during the block do not extend or refresh the window. Once `blockedUntil` passes, the attacker gets a fresh window of attempts.
+- **Failure scenario:** An attacker with a botnet sends requests continuously while blocked. The moment the block expires, the full window of attempts is available again because no attempts were counted during the block.
+- **Suggested fix:** Record each blocked attempt as well (updating `lastAttempt` and possibly extending `blockedUntil` by a small amount), or document the intentional behavior.
+
+### 15. ICPC penalty can be negative under clock skew
+
+- **Files:** `src/lib/assignments/contest-scoring.ts` (penalty computation)
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** `computeIcpcPenalty` does not clamp `minutesToAc` to non-negative. If a submission’s `submittedAt` is earlier than the contest start (clock skew or backdated row), the penalty becomes negative, which can distort leaderboard ordering.
+- **Failure scenario:** A DB row is inserted with a timestamp slightly before the contest start due to app/DB clock skew. That participant receives a negative penalty and ranks above everyone else.
+- **Suggested fix:** Clamp `minutesToAc` with `Math.max(0, ...)` and add a guard/warning log when `submittedAt < startAt`.
+
+### 16. Similarity-check route can emit `NaN` similarity values
+
+- **Files:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts` (result serialization)
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** The route computes `similarity: Math.round(p.similarity * 100)`. If the Rust sidecar or fallback TS path returns malformed pair data where `similarity` is `NaN`/`undefined`, `Math.round` produces `NaN`, which is then serialized as `null` and may confuse the UI or downstream analytics.
+- **Failure scenario:** A sidecar bug or corrupted DB snapshot produces a pair with `similarity: NaN`. The API returns `similarity: null` without an error, and the admin UI shows a blank similarity score.
+- **Suggested fix:** Validate `p.similarity` with `Number.isFinite` before rounding; treat non-finite values as a processing error or filter them out.
 
 ## Likely Issues
 
-### 7. `withTimeout` + `cleanupWithTimeout` can leak timers if callers do not retain the combined signal
+### 17. `withTimeout` requires callers to retain the combined signal
 
-- **Files:** `src/lib/abort.ts:55-81`, `src/lib/docker/client.ts:178-191`, `src/lib/docker/client.ts:218-231`
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** `withTimeout` stores the timer-cleanup function in a `WeakMap` keyed by the combined `AbortSignal`. `cleanupWithTimeout` needs that signal reference to clear the timer. If a caller obtains the combined signal but passes it directly to `fetch` and never calls `cleanupWithTimeout`, the timer keeps running until it fires. `docker/client.ts` does call `cleanupWithTimeout(signal)` in a `finally`, so the known call sites are safe. Future call sites may forget, and the API design makes the leak easy.
-- **Failure scenario:** A future route composes a timeout signal for a long-running operation but omits the `finally { cleanupWithTimeout(...) }` call. Armed timers accumulate; each fires after its timeout even though the operation completed, wasting event-loop ticks and holding closures.
-- **Suggested fix:** Return a disposable object (e.g., `{ signal, cleanup }`) or use `using`/`Symbol.dispose` so the cleanup is syntactically required. Alternatively, use `AbortSignal.timeout(ms)` directly when the source signal is not needed, which avoids a custom timer entirely.
-
-### 8. `normalizeSource` leaks long unclosed string content after `MAX_STRING_LITERAL_LENGTH`
-
-- **Files:** `src/lib/assignments/code-similarity.ts:69-95`
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** When a string literal exceeds `MAX_STRING_LITERAL_LENGTH`, the inner `while` exits because `stringLength >= MAX`. The code then continues without checking whether it stopped at the closing delimiter. The remaining string characters are processed as ordinary code on subsequent iterations, so long string/blob content appears in the normalized output and pollutes the identifier-renaming map.
-- **Failure scenario:** A submission embeds a 20 KB base64 blob inside a string literal. After truncation the remaining base64 characters are emitted as fake identifiers, increasing the n-gram set and causing false-negative similarity matches with other submissions that have different blobs.
-- **Suggested fix:** When the loop exits due to length, scan to the end of the string (respecting escapes) without emitting the content, or emit a single sentinel placeholder. Ensure the loop always advances past the string.
-
-### 9. `normalizeSource` strips line-start `#` lines that are not C preprocessor directives
-
-- **Files:** `src/lib/assignments/code-similarity.ts:56-64`
+- **Files:** `src/lib/abort.ts:55-81`, `src/lib/api/client.ts:91-100`
 - **Severity:** LOW
 - **Confidence:** Medium
-- **Problem:** A `#` at the start of a line is preserved only if `startsWithPreprocessorDirective` returns true. For Python, Ruby, Shell, or YAML submissions, `#` comments at line start are discarded, but so are any code tokens on the same line if the line happens to start with `#` and is not a recognized directive. Shebangs and pragma-like comments disappear. This is a latent correctness issue for similarity scoring across non-C languages.
-- **Failure scenario:** Two Python solutions differ only in comments; the current code already strips `//` and `/* */` comments, so the bug is mostly cosmetic. However, a line like `# TODO: fix edge case` followed by real code on the same line cannot occur for Python because `#` starts a comment, but for other languages this branch may drop content unexpectedly.
-- **Suggested fix:** Scope the preprocessor-preservation logic to known C-family languages, or document that `#` line stripping is intentional for similarity purposes.
+- **Problem:** `withTimeout` stores the timer cleanup in a `WeakMap` keyed by the combined `AbortSignal`. `cleanupWithTimeout` needs that exact signal reference. The current callers (`api/client.ts`) correctly call it in `finally`, but future callers could pass the signal to `fetch` and then lose the reference, leaving the timer alive until it fires.
+- **Failure scenario:** A future route composes a timeout signal for a long-running operation but omits `cleanupWithTimeout`. Armed timers accumulate and fire after the operation completed, wasting event-loop ticks and holding closures.
+- **Suggested fix:** Return a disposable object or use `using`/`Symbol.dispose` so cleanup is syntactically tied to the signal’s lifetime.
 
-### 10. `block_persists_when_system_clock_jumps_backward` logic relies on `Instant`, but `record_failure` recomputes wall-clock expiry
+### 18. `callRateLimiter` circuit breaker uses wall-clock time
 
-- **Files:** `rate-limiter-rs/src/main.rs:277-346`
+- **Files:** `src/lib/security/rate-limiter-client.ts:43-116`
 - **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** Internal block decisions use monotonic `Instant`, which is correct. The `blocked_until` timestamp returned to callers is `now_unix_ms + block_duration`, where `now_unix_ms` is captured at the top of the handler. If the system clock is adjusted backward between computing the monotonic block and reading `now_unix_ms`, the returned timestamp can be earlier than it should be. The test only covers the monotonic side.
-- **Failure scenario:** Around an NTP step, a client receives a `blocked_until` that is a few milliseconds too early. It retries slightly before the real block expires and gets a fresh "blocked" response. Operational but slightly confusing.
-- **Suggested fix:** Return `now_unix_ms` at handler entry plus `blocked_until.saturating_duration_since(now_monotonic)` so both timestamps are anchored to the same instant.
-
-## Risks Requiring Manual Validation
-
-### 11. `AbortSignal.any` availability in the deployed Node.js runtime
-
-- **Files:** `src/lib/assignments/code-similarity-client.ts:58`
-- **Severity:** MEDIUM
 - **Confidence:** Low
-- **Problem:** `AbortSignal.any` was added in Node.js 20.3.0 / 18.17.0. The project targets Node.js 24 LTS, but if a production host runs an older interpreter or if a polyfilled environment is used, the similarity route will throw a runtime `TypeError`.
-- **Validation:** Run `node --version` on `algo.xylolabs.com` and the CI image. Add a feature-test at startup or a fallback that implements `any` with `AbortController` + listeners.
+- **Problem:** The circuit breaker opens/closes based on `Date.now()`. A backward system-clock jump could prematurely close the circuit, while a forward jump could keep it open longer than intended.
+- **Failure scenario:** Around an NTP step, the sidecar circuit state flips incorrectly, either sending extra traffic to a known-down sidecar or throttling a healthy one.
+- **Suggested fix:** Use `performance.now()` / `Instant`-style monotonic timing for the circuit-breaker deadline.
 
-### 12. `TRUSTED_PROXY_HOPS` default may be unset in production
+### 19. `transformSSE` in chat-widget providers can buffer unbounded partial lines
 
-- **Files:** `src/lib/security/ip.ts` (assumed, not re-read in this pass)
-- **Severity:** HIGH
+- **Files:** `src/lib/plugins/chat-widget/providers.ts:444-500`
+- **Severity:** LOW
 - **Confidence:** Low
-- **Problem:** `extractClientIp` falls back to `0.0.0.0` (dev sentinel) when `TRUSTED_PROXY_HOPS` is not configured. Several rate-limit and audit paths key off this sentinel. If production nginx is not explicitly setting `TRUSTED_PROXY_HOPS`, rate limits will be keyed on `0.0.0.0`, allowing all clients to share a single bucket and effectively disabling per-IP throttling.
-- **Validation:** Inspect production environment files and the generated nginx config for `TRUSTED_PROXY_HOPS`. Add an assertion at startup that refuses to start in production without a valid proxy-hop count when `NODE_ENV=production`.
-
-### 13. Docker build context includes the entire repo root
-
-- **Files:** `src/lib/docker/client.ts:310`, `judge-worker-rs` build endpoints (assumed)
-- **Severity:** MEDIUM
-- **Confidence:** Low
-- **Problem:** `buildDockerImageLocal` passes `.` as the build context. If this function is ever invoked from the app server by mistake (despite `BUILD_WORKER_IMAGE=false`), it would transmit the entire application source tree and possibly secrets to the Docker daemon/buildkit.
-- **Validation:** Confirm that app-server builds are disabled in `deploy-docker.sh` and that the worker host uses a narrow context. Consider validating that the context path is within `docker/`.
+- **Problem:** The SSE transformer accumulates incomplete lines in `buffer` until a newline arrives. If an upstream provider sends a very long line without newlines, the buffer grows unbounded.
+- **Failure scenario:** A misbehaving LLM provider streams a huge single JSON blob without line breaks; the Node process memory grows until OOM.
+- **Suggested fix:** Cap `buffer` length and emit an error or reset when it exceeds a reasonable threshold.
 
 ## Final Sweep — Commonly Missed Bug Surfaces
 
 | Surface | Finding | Severity | Files |
 |---|---|---|---|
-| **Subprocess zombies** | `buildDockerImageLocal` does not wait for process exit after timeout; `stopContainer` uses `spawn` without waiting. | HIGH | `src/lib/docker/client.ts:347-372`, `src/lib/compiler/execute.ts:389-395` |
-| **Temp-file leaks** | Confirmed: sandbox-owned workspace trees leak in production (issues 1 and 2). | CRITICAL | `src/lib/compiler/execute.ts:365-384`, `judge-worker-rs/src/workspace.rs:42-65` |
-| **Timer leaks** | `withTimeout` requires explicit cleanup; known call sites are correct but API is fragile. | MEDIUM | `src/lib/abort.ts:55-81` |
-| **Off-by-one / loop exit** | `normalizeSource` can re-emit truncated string content. | MEDIUM | `src/lib/assignments/code-similarity.ts:69-95` |
-| **Null/undefined** | `callWorkerJson` response JSON parse failure path throws generic error; no structured code. | LOW | `src/lib/docker/client.ts:197-199` |
-| **Async/await hazards** | `parseBackupZip` holds all file buffers in memory; crash before DB import leaves no audit but consumes memory. | HIGH | `src/lib/db/export-with-files.ts:267-349` |
+| **Subprocess zombies** | `buildDockerImageLocal` does not reap child after timeout; `stopContainer` uses `spawn` without waiting. | HIGH | `src/lib/docker/client.ts:347-365`, `src/lib/compiler/execute.ts:433-439` |
+| **Temp-file leaks** | Node and Rust workspace cleanup now use privileged Docker fallback — fixed for non-root. | — | `src/lib/compiler/execute.ts:382-427`, `judge-worker-rs/src/workspace.rs:43-77` |
+| **Timer leaks** | SSE poll timer can be created with `NaN` interval; `withTimeout` cleanup is fragile for future callers. | LOW/MEDIUM | `src/app/api/v1/submissions/[id]/events/route.ts:190-193`, `src/lib/abort.ts:55-81` |
+| **Memory pressure** | Backup restore holds all uploads in memory. | HIGH | `src/lib/db/export-with-files.ts:267-349` |
+| **Off-by-one / loop exit** | `normalizeSource` can re-emit truncated string content after `MAX_STRING_LITERAL_LENGTH`. | MEDIUM | `src/lib/assignments/code-similarity.ts:69-95` |
+| **Batch-delete semantics** | `LIMIT` inside `IN` subquery may be optimized away by PostgreSQL. | MEDIUM | `src/lib/db/cleanup.ts:46-63`, `src/lib/data-retention-maintenance.ts:28-30` |
 | **Permission/cleanup interaction** | `ensureUploadsDir` uses default umask-dependent permissions. | MEDIUM | `src/lib/files/storage.ts:14-16` |
-| **Batch-delete semantics** | `cleanupOldEvents` `LIMIT` inside `IN` subquery may be ignored by PostgreSQL. | MEDIUM | `src/lib/db/cleanup.ts:45-63` |
-| **Timeout errors** | Similarity-check route only surfaces `AbortError` as `timed_out`; other errors become 500. This is intentional but means sidecar `SIDECAR_HTTP_ERROR` is not distinguishable to callers. | LOW | `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts:51-67` |
-| **Abort composition** | `code-similarity-client.ts` correctly composes caller signal with sidecar timeout; no leak found there. | — | `src/lib/assignments/code-similarity-client.ts:51-113` |
+| **Async/await hazards** | Login/audit events are fire-and-forget and can be lost on shutdown. | MEDIUM | `src/lib/auth/login-events.ts:101-113`, `src/lib/audit/events.ts:252-261` |
+| **Numeric parsing** | Compiler timeouts lack an upper cap; SSE poll interval lacks finite validation. | MEDIUM | `src/lib/compiler/execute.ts:851-852,915`, `src/app/api/v1/submissions/[id]/events/route.ts:190-193` |
+| **String parsing** | `parseTimestampEpochMs` relies on `Date.parse` for 1–2 digit fractional seconds. | LOW | `src/lib/compiler/execute.ts:285-294` |
+| **Concurrency** | Global SSE advisory lock serializes all connection acquisitions. | MEDIUM | `src/lib/realtime/realtime-coordination.ts:73-78,101` |
 
 ## Recommendations
 
-1. **Fix workspace cleanup for non-root production users** (issues 1 and 2) before the next deploy. This is the only CRITICAL item and will cause production outages if local fallback or the Rust worker is exercised heavily.
-2. Harden `buildDockerImageLocal` subprocess teardown (issue 3).
-3. Stream backup uploads to disk instead of materializing them in memory (issue 4).
-4. Tighten uploads directory permissions to `0o700` (issue 5).
-5. Rewrite the event pruner to use a stable batched delete pattern (issue 6).
-6. Add runtime validation for `TRUSTED_PROXY_HOPS` in production and `AbortSignal.any` availability.
+1. **Fix compiler output byte accounting** (Issue 1) to enforce the documented 128 MiB byte budget.
+2. **Harden `child.stdin.write` and `buildDockerImageLocal` subprocess teardown** (Issues 2 and 3) to prevent unhandled exceptions and zombie builds.
+3. **Stream backup uploads to disk** (Issue 4) to remove the OOM risk on large restores.
+4. **Tighten uploads directory permissions** to `0o700` (Issue 5).
+5. **Rewrite batch deletes** to use `FOR UPDATE SKIP LOCKED` or a stable CTE pattern (Issue 6).
+6. **Cap derived container timeouts** and validate poll intervals (Issues 7 and 9).
+7. **Scope SSE advisory locks per user** and log swallowed background errors (Issues 10 and 11).
+8. **Add durable shutdown flush for login events** (Issue 13).
 
 ## Notes on Prior Findings
 
-- Cycle 2 aggregate items related to nginx `client_max_body_size`, `X-Forwarded-For` trust, CSRF allowed-hosts, millisecond-precision token revocation, rate-limiter monotonic clock, similarity-check serialization, and Docker network segmentation are all validated as implemented in the current tree.
-- The workspace-leak "fix" added in Cycle 3 works only when the process is root. The regression tests correctly document this limitation by skipping on non-root, but production runs non-root, so the fix is incomplete.
+- Cycle 2/Cycle 3 aggregate items related to nginx `client_max_body_size`, `X-Forwarded-For` trust, CSRF allowed-hosts, millisecond-precision token revocation, rate-limiter monotonic clock, similarity-check serialization, Docker network segmentation, non-root workspace cleanup, and IPv4/IPv6 canonicalization are all validated as implemented in the current tree.
+- The workspace-leak "fix" from Cycle 3 now correctly handles non-root production users via privileged Docker cleanup in both Node and Rust.

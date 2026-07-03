@@ -8,7 +8,7 @@
 
 ## Summary
 
-JudgeKit's architecture has been substantially hardened since the Cycle 2 aggregate review: Docker networks are now segmented, the worker container runs as a non-root user, the Docker socket proxy no longer permits image deletion, the DB raw-query helpers participate in active transactions, CSRF origin checks integrate the DB `allowedHosts` list, and token revocation now uses millisecond precision.  These fixes close several acute risks.
+JudgeKit's architecture has been substantially hardened through the recent remediation cycles: Docker networks are segmented, the worker container runs as a non-root user, the Docker socket proxy no longer permits image deletion, the DB raw-query helpers participate in active transactions, CSRF origin checks integrate the DB `allowedHosts` list, token revocation uses millisecond precision, and the Rust sidecars (`rate-limiter-rs`, `code-similarity-rs`) now fail closed when their auth tokens are missing.  These fixes close several acute risks.
 
 However, the design still carries structural debt that will limit scale and operational safety:
 
@@ -18,8 +18,11 @@ However, the design still carries structural debt that will limit scale and oper
 - **Configuration resolution is scattered** across environment variables, a single-row `system_settings` table, and hardcoded defaults, with a 15-second in-memory cache that can serve stale values after invalidation.
 - **Internal service traffic is still unencrypted HTTP** on Docker bridge networks; bearer tokens, hidden test cases, and source code cross the wire in plaintext between app, worker, rate-limiter, and code-similarity.
 - **Two deliberate back-compat defaults** remain architecturally risky: `AUTH_TRUST_HOST=true` in production and a judge API IP allowlist that defaults to allow-all.
+- **The app server can still be coaxed into local Docker work.**  `src/lib/docker/client.ts` and `src/lib/compiler/execute.ts` both contain local-fallback paths that violate the documented algo/app vs worker role split.
+- **The web server process owns too much operational state.**  Startup validation, background maintenance timers, and worker staleness sweeps all run inside Next.js `instrumentation.ts`.
+- **File uploads are tied to local filesystem storage** with no abstraction, quota, or replication story for horizontal scale.
 
-The highest-priority architectural fixes are: replace PostgreSQL advisory-lock coordination with a purpose-built state store, establish a single source of truth for language configuration with a contract test, decompose the deploy script into phase modules with rollback, and add TLS/mTLS or at least strict network segmentation between internal services.
+The highest-priority architectural fixes are: replace PostgreSQL advisory-lock coordination with a purpose-built state store, establish a single source of truth for language configuration with a contract test, decompose the deploy script into phase modules with rollback, add TLS/mTLS or at least strict network segmentation between internal services, and close the local-Docker-admin fallback on the app server.
 
 ---
 
@@ -27,21 +30,21 @@ The highest-priority architectural fixes are: replace PostgreSQL advisory-lock c
 
 | Layer | Path(s) | Notes |
 |---|---|---|
-| Aggregate baseline | `.context/reviews/_aggregate.md` | Cycle 2 multi-agent findings used as the validation baseline. |
+| Aggregate baseline | `.context/reviews/_aggregate.md` | Prior multi-agent findings used as the validation baseline. |
 | Production topology | `docker-compose.production.yml`, `docker-compose.worker.yml` | App, worker, db, docker-proxy, code-similarity, rate-limiter, networks. |
 | App build | `Dockerfile`, `next.config.ts` | Standalone output, security headers. |
 | Worker build | `Dockerfile.judge-worker` | Non-root `USER judge` final stage. |
-| Deployment | `deploy-docker.sh`, `static-site/nginx.conf` | Monolithic deploy script and committed static nginx template. |
-| API handler | `src/lib/api/handler.ts` | Common auth/CSRF/rate-limit/validation/error wrapper. |
-| Auth | `src/lib/auth/config.ts`, `src/lib/security/env.ts`, `src/lib/security/csrf.ts`, `src/lib/auth/session-security.ts`, `src/lib/auth/permissions.ts` | NextAuth config, env validation, CSRF, token revocation, permission checks. |
+| Deployment | `deploy-docker.sh`, `deploy.sh`, `static-site/nginx.conf` | Monolithic deploy script, deprecated legacy script, committed static nginx template. |
+| API handler / auth | `src/lib/api/handler.ts`, `src/lib/api/auth.ts`, `src/lib/auth/config.ts`, `src/lib/security/env.ts`, `src/lib/security/csrf.ts`, `src/lib/auth/session-security.ts`, `src/lib/auth/permissions.ts` | Common route wrapper, user resolution, NextAuth config, env validation, CSRF, token revocation, permission checks. |
 | DB / ORM | `src/lib/db/index.ts`, `src/lib/db/queries.ts`, `src/lib/db/schema.pg.ts`, `src/lib/db-time.ts` | Drizzle pool, AsyncLocalStorage transaction context, raw query helpers, schema. |
-| Judge orchestration | `src/lib/judge/languages.ts`, `src/lib/judge/ip-allowlist.ts`, `src/lib/judge/auth.ts` | Language config, worker IP allowlist, worker token auth. |
+| Judge orchestration | `src/lib/judge/languages.ts`, `src/lib/judge/ip-allowlist.ts`, `src/lib/judge/auth.ts`, `src/lib/judge/worker-staleness-sweep.ts` | Language config, worker IP allowlist, worker token auth, stale-worker reap scheduler. |
 | Compiler / execution | `src/lib/compiler/execute.ts`, `src/lib/docker/client.ts` | Local Docker fallback, shell-command validation, worker Docker API client. |
-| Code similarity | `src/lib/assignments/code-similarity.ts`, `src/lib/assignments/code-similarity-client.ts`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts` | O(n²) TS fallback, Rust sidecar client, route handler. |
+| Code similarity | `src/lib/assignments/code-similarity.ts`, `src/lib/assignments/code-similarity-client.ts`, `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts`, `code-similarity-rs/src/main.rs`, `code-similarity-rs/src/similarity.rs` | O(n²) TS fallback, Rust sidecar client, route handler, Rust implementation. |
 | Rate limiting | `src/lib/security/rate-limit.ts`, `src/lib/security/rate-limiter-client.ts`, `rate-limiter-rs/src/main.rs` | DB authoritative path, Rust sidecar fast path. |
 | Real-time | `src/lib/realtime/realtime-coordination.ts` | SSE slot acquisition and heartbeat dedup via advisory locks. |
-| Rust worker | `judge-worker-rs/src/main.rs`, `judge-worker-rs/src/api.rs`, `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/runner.rs`, `judge-worker-rs/src/languages.rs` | Worker lifecycle, registration/deregistration, sandbox execution, runner API. |
-| Settings | `src/lib/system-settings-config.ts` | Single-row DB settings with env overrides and in-memory cache. |
+| Rust worker | `judge-worker-rs/src/main.rs`, `judge-worker-rs/src/api.rs`, `judge-worker-rs/src/executor.rs`, `judge-worker-rs/src/runner.rs`, `judge-worker-rs/src/languages.rs`, `judge-worker-rs/src/docker.rs`, `judge-worker-rs/src/workspace.rs` | Worker lifecycle, registration/deregistration, sandbox execution, runner API, workspace cleanup. |
+| File storage | `src/lib/files/storage.ts` | Local-filesystem upload backend. |
+| Instrumentation / startup | `src/instrumentation.ts`, `src/lib/system-settings-config.ts` | Next.js registration, background jobs, single-row DB settings with env overrides and in-memory cache. |
 
 Dependency direction check: `src/lib/**` does not import from `src/app/**`; the graph remains top-down.
 
@@ -219,8 +222,8 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 - **Files / Regions:**
   - `src/lib/api/handler.ts:116-121` (request ID generated and added to response)
   - `src/lib/docker/client.ts:167-204` (worker Docker API calls do not set `X-Request-Id`)
-  - `src/lib/assignments/code-similarity-client.ts` (sidecar calls; need to verify header propagation)
-  - `src/lib/security/rate-limiter-client.ts` (sidecar calls; need to verify header propagation)
+  - `src/lib/assignments/code-similarity-client.ts:51-113` (sidecar calls; no request/correlation ID header)
+  - `src/lib/security/rate-limiter-client.ts` (sidecar calls; no request/correlation ID header)
 - **Problem:** `createApiHandler` generates a `requestId` and returns it in the response, but outgoing calls to the worker Docker API, rate-limiter sidecar, and code-similarity sidecar do not appear to propagate this ID.  Cross-service logs therefore cannot be correlated for a single user request.
 - **Failure scenario:** A submission result is slow.  Operators must correlate timestamps across app, worker, rate-limiter, and code-similarity logs manually because no shared ID links the app claim, worker execution, and result report.
 - **Fix:** Store the request ID in AsyncLocalStorage at the edge and pass it in outgoing HTTP calls as `X-Request-Id` / `traceparent`.  Include it in all structured logs on both the TypeScript and Rust sides.
@@ -279,6 +282,76 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 - **Failure scenario:** A Drizzle minor upgrade starts resolving the connection string during construction; production builds fail because `localhost:5432` is unreachable in the builder container.
 - **Fix:** Build a stub drizzle instance that does not parse a connection string at all, or guard the import so that build-time code paths never instantiate a database client.
 
+### 23. Docker admin client can fall back to local Docker on the app server
+
+- **Severity:** High  
+- **Confidence:** High  
+- **Files / Regions:**
+  - `src/lib/docker/client.ts:13-21` (`JUDGE_WORKER_URL` alias and `RUNNER_AUTH_TOKEN`)
+  - `src/lib/docker/client.ts:49-50` (`ALLOW_LOCAL_DOCKER_ADMIN`)
+  - `src/lib/docker/client.ts:97-148` (`getDockerManagementCapabilities`)
+  - `src/lib/docker/client.ts:407-438`, `:504-545` (image list/build paths)
+- **Problem:** The Docker management client chooses among "worker", "local", and "unavailable" modes based solely on environment variables at module load.  In production, setting `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN=1` enables local Docker CLI admin even though the project topology says the app server (`algo.xylolabs.com`) must never build or manage images.  The `JUDGE_WORKER_URL` alias for `COMPILER_RUNNER_URL` also blurs the runner/admin boundary.
+- **Failure scenario:** An operator temporarily enables `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN=1` on `algo.xylolabs.com` to debug an image and forgets to unset it.  A missing `COMPILER_RUNNER_URL` later causes the admin UI to silently switch to local Docker mode and build images on the app server, violating the role split and exposing the host Docker socket to the app container.
+- **Fix:** Remove the local-admin capability in production regardless of `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN`.  Restrict that flag to `NODE_ENV !== "production"`.  Rename or remove the `JUDGE_WORKER_URL` alias so admins cannot accidentally point image management at the submission API endpoint.
+
+### 24. File uploads use local filesystem storage with no backend abstraction
+
+- **Severity:** Medium  
+- **Confidence:** High  
+- **Files / Regions:** `src/lib/files/storage.ts:1-51`
+- **Problem:** Uploaded files are stored in a local directory derived from `DATABASE_PATH` or the current working directory.  There is no storage abstraction, no content-addressability, no quota enforcement, no virus scanning hook, no encryption-at-rest, and no replication.  In production the app container must bind-mount a host directory, making file locality a hard constraint on horizontal scaling.
+- **Failure scenario:** The app is scaled to two replicas behind a load balancer.  A user uploads a file to replica A and later requests it from replica B; the request fails because the file exists only on replica A's local disk.
+- **Fix:** Introduce a `StorageBackend` interface with an S3-compatible implementation for production and a local-filesystem implementation for dev/tests.  Add size/quota checks and optional scan hooks.  Migrate production deployments to object storage so app servers remain stateless.
+
+### 25. Next.js instrumentation bundles startup validation and background jobs into the web process
+
+- **Severity:** Medium  
+- **Confidence:** High  
+- **Files / Regions:** `src/instrumentation.ts:1-47`
+- **Problem:** `register()` runs environment validation, DB settings loading, language-config sync, and starts five background timers (rate-limit eviction, audit pruning, sensitive-data pruning, worker staleness sweep, audit flush-on-shutdown) inside the Next.js web server process.  A failure in any startup import or the first DB call can prevent the app from serving requests, and background work competes with request handling for CPU, memory, and event-loop time.
+- **Failure scenario:** `syncLanguageConfigsOnStartup` fails because the DB is briefly unreachable during a rolling restart.  The web pods crash-loop and the site is down until the DB recovers, even though ordinary page/API requests do not require a language-config sync to succeed.
+- **Fix:** Separate startup into "must succeed to serve" (env/secret validation) and "best effort" (settings refresh, language sync, background maintenance).  Run maintenance timers in a dedicated worker process or as external cron jobs.  Expose a `/health/ready` endpoint that reports which subsystems are healthy.
+
+### 26. Worker API client falls back to the shared auth token when per-worker secret is missing
+
+- **Severity:** Medium  
+- **Confidence:** High  
+- **Files / Regions:**
+  - `judge-worker-rs/src/api.rs:45-62` (`auth_header_for_worker`)
+  - `judge-worker-rs/src/api.rs:101-132` (heartbeat)
+  - `judge-worker-rs/src/api.rs:163-197` (poll)
+  - `judge-worker-rs/src/api.rs:230-263` (report_result)
+- **Problem:** Worker-scoped endpoints (heartbeat, poll, report) are supposed to use a per-worker secret issued at registration, but the client silently falls back to the shared `JUDGE_AUTH_TOKEN` whenever the per-worker secret is absent.  A single log line is emitted once per process.  This collapses the privilege boundary between workers: compromise of one worker's state is equivalent to compromise of the shared judge token.
+- **Failure scenario:** An attacker gains read access to one worker container's environment.  The per-worker secret is missing because the worker was misconfigured, so the attacker uses the shared token to poll submissions and report fake results for any worker ID.
+- **Fix:** Require the per-worker secret for all worker-scoped requests after registration.  Return 401 on heartbeat/poll/report if the shared token is used.  Store worker secrets as salted hashes in the DB so a DB read does not reveal the plaintext secret.
+
+### 27. Compiler execution layer allows local Docker fallback even in production
+
+- **Severity:** High  
+- **Confidence:** High  
+- **Files / Regions:**
+  - `src/lib/compiler/execute.ts:104-105` (`SHOULD_ALLOW_LOCAL_FALLBACK`)
+  - `src/lib/compiler/execute.ts:808-819` (fallback branch)
+  - `src/lib/compiler/execute.ts:652-736` (runner delegation)
+  - `src/lib/compiler/execute.ts:28-29` (`MAX_SOURCE_CODE_BYTES`)
+  - `src/lib/compiler/execute.ts:962` (`DOCKER_RUN_OVERHEAD_BUDGET_MS`)
+- **Problem:** When `COMPILER_RUNNER_URL` is unset or `ENABLE_LOCAL_FALLBACK` is enabled, the TypeScript compiler path falls back to running Docker containers locally.  The project topology explicitly states that `algo.xylolabs.com` must never run judge/worker images.  The fallback is gated only by environment variables, not by the deployment role, so a misconfigured production app server can execute untrusted code locally.
+- **Failure scenario:** A production deploy omits `COMPILER_RUNNER_URL` because of a typo in the env file.  The first submission triggers `execute.ts` to spawn a local Docker compiler container on the app server.  A sandbox escape or resource exhaustion event now affects the app server instead of the isolated worker host.
+- **Fix:** Disable the local Docker fallback entirely when `NODE_ENV === "production"`.  If the runner is unreachable, return a `configError` and queue/retry the submission rather than executing locally.  Make `deploy-docker.sh` reject production app configs that do not set `COMPILER_RUNNER_URL` and `RUNNER_AUTH_TOKEN`.
+
+### 28. API auth resolver eagerly loads the full active-user record for every request
+
+- **Severity:** Medium  
+- **Confidence:** High  
+- **Files / Regions:**
+  - `src/lib/api/auth.ts:28-59` (`getActiveAuthUserById`)
+  - `src/lib/api/auth.ts:61-89` (`getApiUser`)
+  - `src/lib/api/handler.ts:73-109` (handler calls `getApiUser` unconditionally)
+- **Problem:** `createApiHandler` resolves the full active user from the database for every authenticated request, even when the route only needs to know that a valid token exists.  There is no per-route opt-out for lightweight endpoints.  This adds a DB round-trip to every API call and couples every handler to the availability of the `users` table.
+- **Failure scenario:** A public telemetry endpoint that merely checks whether the caller is logged in still performs a `SELECT` on `users` with role/active checks.  During a DB overload incident, the telemetry endpoint fails alongside critical submission paths, broadening the blast radius.
+- **Fix:** Decompose auth into a lightweight "token is valid" check and an optional "enrich with user record" step.  Let handlers declare their auth needs (e.g., `needsUser: false`, `needsRole`, `needsCapabilities`) so the wrapper can skip the DB lookup when it is not needed.
+
 ---
 
 ## Validated / Upgraded Findings from Cycle 2 Aggregate
@@ -297,6 +370,7 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 | Raw queries ignored active transaction | **Fixed** | `src/lib/db/queries.ts:55-68` routes through `transactionContext.getStore()`. |
 | CSRF allowedHosts not integrated | **Fixed** | `src/lib/security/csrf.ts:7-30` and `src/lib/security/env.ts:213-241` use `getTrustedAuthHosts()`. |
 | Similarity check not serialized | **Improved** | `src/lib/assignments/code-similarity.ts:424-438` uses `pg_advisory_xact_lock`; still a DB-lock anti-pattern. |
+| Sidecar auth failed open on missing env | **Fixed** | `code-similarity-rs/src/main.rs:206-220` and `rate-limiter-rs/src/main.rs:448-471` now refuse to start without a token or explicit `ALLOW_UNAUTHENTICATED=1`. |
 
 ---
 
@@ -307,6 +381,7 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 3. **Production network segmentation effectiveness.** Confirm that `code-similarity` and `rate-limiter` cannot reach `docker-proxy:2375` from their respective networks.
 4. **Real-time coordination contention.** Load-test `acquireSharedSseConnectionSlot` with >500 concurrent connections to quantify advisory-lock wait time.
 5. **Language config drift.** Run a one-time comparison of `src/lib/judge/languages.ts`, `judge-worker-rs/src/types.rs`, `judge-worker-rs/src/languages.rs`, and the DB `languageConfigs` defaults to detect any existing mismatches.
+6. **Local-fallback surface.** Audit all production deployments for `JUDGEKIT_ALLOW_LOCAL_DOCKER_ADMIN`, `ENABLE_LOCAL_FALLBACK`, or missing `COMPILER_RUNNER_URL`/`RUNNER_AUTH_TOKEN`.
 
 ---
 
@@ -314,10 +389,11 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 
 - **Wrong-way dependencies:** None found from `src/lib/**` into `src/app/**`.
 - **God objects:** `src/lib/compiler/execute.ts` still mixes local fallback, Docker execution, shell validation, and cleanup; it is a refactor candidate.  `src/lib/security/env.ts` is large but cohesive.
-- **Missing abstraction boundaries:** Language config triplication and settings cache are the most prominent.
+- **Missing abstraction boundaries:** Language config triplication, settings cache, local filesystem storage, and Docker admin mode selection are the most prominent.
 - **Observability gaps:** Distributed request ID exists inside `createApiHandler` but is not propagated to sidecars or the Rust worker.  No structured trace context (`traceparent`) was observed.
 - **Migration discipline:** Raw SQL additive patches in `deploy-docker.sh` remain the single biggest threat to journal reproducibility.
-- **Scalability ceilings:** PostgreSQL advisory locks for real-time coordination and similarity checks are the primary horizontal-scaling ceiling.
+- **Scalability ceilings:** PostgreSQL advisory locks for real-time coordination and similarity checks are the primary horizontal-scaling ceiling.  Local filesystem uploads are the second.
+- **Positive architectural choices:** Rust sidecars fail closed on missing auth tokens; `AbortSignal.any` in `code-similarity-client.ts:57-58` properly composes caller and sidecar timeouts; `SandboxWorkspace` RAII cleanup reduces workspace leaks.
 
 ---
 
@@ -329,17 +405,21 @@ Dependency direction check: `src/lib/**` does not import from `src/app/**`; the 
 2. Establish a single source of truth for language configuration with a generated contract and CI test.
 3. Decompose `deploy-docker.sh` into phase scripts with captured state and `--rollback` support.
 4. Add TLS/mTLS or strict network segmentation for internal service traffic; rotate static bearer tokens.
+5. Disable local Docker fallback in production for both `src/lib/compiler/execute.ts` and `src/lib/docker/client.ts`.
 
 ### Short term (scalability / operability)
 
-5. Flip `AUTH_TRUST_HOST` and judge IP allowlist defaults to fail-closed in production.
-6. Fix the settings cache to reload synchronously on invalidation or use an atomic swap.
-7. Propagate request IDs / trace context across all internal service calls.
-8. Move DB lookups out of the Edge Runtime middleware.
+6. Flip `AUTH_TRUST_HOST` and judge IP allowlist defaults to fail-closed in production.
+7. Fix the settings cache to reload synchronously on invalidation or use an atomic swap.
+8. Propagate request IDs / trace context across all internal service calls.
+9. Move DB lookups out of the Edge Runtime middleware and make API handler user enrichment opt-in.
+10. Introduce a storage backend abstraction and move production uploads to object storage.
+11. Separate background maintenance tasks from the web server process.
 
 ### Medium term (maintainability)
 
-9. Add API versioning machinery and backwards-compatibility tests.
-10. Unify configuration schema with env overrides for all production knobs.
-11. Refactor `src/lib/compiler/execute.ts` into smaller, testable modules.
-12. Add database CHECK constraints for all enum-like text columns.
+12. Add API versioning machinery and backwards-compatibility tests.
+13. Unify configuration schema with env overrides for all production knobs.
+14. Refactor `src/lib/compiler/execute.ts` into smaller, testable modules.
+15. Add database CHECK constraints for all enum-like text columns.
+16. Require per-worker secrets and reject shared-token use for worker-scoped endpoints.

@@ -1,23 +1,25 @@
 # Critic Review — JudgeKit Multi-Perspective Critique
 
-Date: 2026-07-03  
+Date: 2026-07-03 (refreshed for current tree, commit `ea8620be`)  
 Scope: entire repository (`/tmp/judgekit-local`) — `src/`, `judge-worker-rs/`, `rate-limiter-rs/`, `code-similarity-rs/`, `docker/`, `scripts/`, `deploy-docker.sh`, `deploy.sh`, `deploy-test-backends.sh`, `docker-compose*.yml`, `Dockerfile*`, `static-site/`, `docs/`, `tests/`.
 
 ## Verdict
 
-REVISE. Cycle 3 remediation resolved many pointed correctness and security bugs, but four CRITICAL systemic risks remain untouched, and several HIGH/MEDIUM design and operational hazards persist. The remaining issues are architectural rather than one-line fixes.
+REVISE. Cycle 3 remediation resolved many pointed correctness and security bugs, and a post-review hotfix gated the raw SQL schema repair behind an explicit opt-in flag. However, four CRITICAL systemic risks remain untouched, and several HIGH/MEDIUM design and operational hazards persist. The remaining issues are architectural rather than one-line fixes.
 
 ## Summary
 
-I validated every Cycle 2 aggregate finding against the current tree and searched for fresh cross-cutting issues. Cycle 3 fixed the majority of immediate correctness problems: workspace leaks, similarity-check concurrency, CSRF on public auth routes, monotonic rate-limiter clock, request/correlation IDs, nginx body size and XFF chain, security headers, non-root worker user, language contract test, and others.
+I validated every Cycle 2 aggregate finding against the current tree and searched for fresh cross-cutting issues. Cycle 3 fixed the majority of immediate correctness problems: workspace leaks, similarity-check concurrency, CSRF on public auth routes, monotonic rate-limiter clock, request/correlation IDs, nginx body size and XFF chain, security headers, non-root worker user, language contract test, `GET /api/v1/files` rate limit, snapshot-path removal from restore/import JSON responses, and others.
 
-However, the highest-severity systemic risks are still present: production defaults to `AUTH_TRUST_HOST=true` without stripping `X-Forwarded-Host`, internal service traffic is unencrypted HTTP, the judge API allowlist defaults to allow-all, and raw SQL additive schema patches bypass the Drizzle migration journal. In addition, a fresh discrepancy was found between the generated app nginx (50 MiB catch-all) and the committed standalone template (1 MiB catch-all), and the real-time coordination layer remains a hard PostgreSQL lock bottleneck.
+A post-Cycle-3 hotfix (commits `f7db74b6`, `fc2ae24f`) added `ALLOW_SECRET_TOKEN_BACKFILL` gating around the raw SQL `judge_workers.secret_token` backfill/drop block and fixed an unbound-variable regression. This is a material safety improvement, but it does not remove the untracked schema mutation from the deployment path.
+
+However, the highest-severity systemic risks are still present: production defaults to `AUTH_TRUST_HOST=true` without stripping `X-Forwarded-Host`, internal service traffic is unencrypted HTTP, the judge API allowlist defaults to allow-all, and raw SQL additive schema patches bypass the Drizzle migration journal. In addition, the real-time coordination layer remains a hard PostgreSQL lock bottleneck.
 
 For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist defaults, and the raw SQL patch must be resolved. For ACCEPT, internal service encryption/mTLS and a scalable real-time coordination backend must also be addressed.
 
 ## Validated Cycle 3 fixes (brief)
 
-- `client_max_body_size 50M` is in the generated catch-all `location /` (`deploy-docker.sh:1629`, `1707`).
+- `client_max_body_size 50M` is in the generated catch-all `location /` (`deploy-docker.sh:1648`).
 - XFF chain preserved via `$proxy_add_x_forwarded_for` in generated and committed nginx templates.
 - Security headers added to generated, static-site, and committed nginx configs.
 - Docker networks segmented (`frontend/backend/judge/db`) in `docker-compose.production.yml`.
@@ -38,6 +40,9 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - `SecretString` zeroizes on drop.
 - Worker `deregister` returns `Err` on non-2xx responses.
 - `sshpass -p` removed from deploy scripts.
+- `GET /api/v1/files` now has `rateLimit: "files:list"` (`src/app/api/v1/files/route.ts:157`).
+- Restore/import JSON responses now return `snapshotId` instead of the raw filesystem path.
+- Raw SQL `secret_token` backfill/drop is gated by `ALLOW_SECRET_TOKEN_BACKFILL=1` (`deploy-docker.sh:1251-1253`).
 
 ---
 
@@ -49,11 +54,11 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - **Confidence:** High
 - **Status:** Confirmed
 - **Files / Lines:** `deploy-docker.sh:750`, `docker-compose.production.yml:115`, `src/lib/security/env.ts:260-266`, `src/lib/auth/config.ts:317`
-- **Problem:** `deploy-docker.sh` generates `.env.production` with `AUTH_TRUST_HOST=true` and enforces the literal value during backfill; `docker-compose.production.yml` defaults it to `true`; `shouldTrustAuthHost()` returns `true` whenever the env var is set to `"true"`. The generated nginx templates overwrite `Host` but deliberately do **not** set or clear `X-Forwarded-Host` because of a comment that it breaks Next.js 16 RSC navigation (`deploy-docker.sh:1598`, `1613`, `1625`, `1638`, `1676`, `1691`, `1703`).
+- **Problem:** `deploy-docker.sh` generates `.env.production` with `AUTH_TRUST_HOST=true` and enforces the literal value during backfill; `docker-compose.production.yml` defaults it to `true`; `shouldTrustAuthHost()` returns `true` whenever the env var is set to `"true"`. The generated nginx templates overwrite `Host` but deliberately do **not** set or clear `X-Forwarded-Host` because of a comment that it breaks Next.js 16 RSC navigation (`deploy-docker.sh:1617`, `1632`, `1644`, `1657`).
 - **Failure scenario:** An attacker sending direct requests to the origin with `Host: attacker.com` or `X-Forwarded-Host: attacker.com` can cause Auth.js to generate callback URLs, password-reset links, email magic links, or session state bound to an attacker-controlled host. If OAuth providers or magic-link flows are enabled later, this becomes an account-takeover vector. Today it weakens CSRF origin checks that rely on `AUTH_URL`.
 - **Suggested fix:** Default `AUTH_TRUST_HOST=false` in production when `AUTH_URL` is explicitly set; derive canonical URLs only from `AUTH_URL` and DB `allowedHosts`. In nginx, explicitly overwrite `X-Forwarded-Host` with the canonical host before proxying to the app, and verify that RSC navigation still works under that canonical host.
 
-### CRITICAL-2: Internal service traffic is unencrypted HTTP on a segmented but flat Docker network
+### CRITICAL-2: Internal service traffic is unencrypted HTTP on a segmented but flat Docker Network
 
 - **Severity:** CRITICAL
 - **Confidence:** High
@@ -73,14 +78,14 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - **Failure scenario:** A leaked `JUDGE_AUTH_TOKEN` (via env backup, CI log, container inspect, or unencrypted backup) lets any internet host register fake workers, claim submissions (reading `sourceCode` and hidden `testCases`), and inject arbitrary judge verdicts.
 - **Suggested fix:** Generate `.env.production` with `JUDGE_ALLOWED_IPS` restricted to the worker subnet(s), or set `JUDGE_STRICT_IP_ALLOWLIST=1` and require operators to configure an explicit allowlist before workers can register. Document the break-the-glass override for legacy deployments.
 
-### CRITICAL-4: Raw SQL additive schema patch bypasses the Drizzle migration journal
+### CRITICAL-4: Raw SQL additive schema patch bypasses the Drizzle migration journal (now gated, still untracked)
 
 - **Severity:** CRITICAL
 - **Confidence:** High
 - **Status:** Confirmed
-- **Files / Lines:** `deploy-docker.sh:1207-1293`; `src/lib/db/migrate.ts:1-7`; `src/lib/judge/auth.ts:75-82`
-- **Problem:** Step 5b inlines a `psql` backfill/drop for `judge_workers.secret_token` (`UPDATE ... SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') ...; ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token`). This runs before `drizzle-kit push` and is not captured in the Drizzle journal. The file acknowledges that drizzle-kit ignores SQL files in the journal.
-- **Failure scenario:** A disaster-recovery replay from the journal produces a schema still containing `secret_token` or missing the hash cleanup; `src/lib/judge/auth.ts` rejects workers with `secret_token IS NOT NULL AND secret_token_hash IS NULL`, causing all worker registrations to fail after DR. Conversely, a fresh environment stood up from backups and migrations may lack the column cleanup and queries fail at runtime.
+- **Files / Lines:** `deploy-docker.sh:1240-1312`; `src/lib/db/migrate.ts:1-7`; `src/lib/judge/auth.ts:75-82`
+- **Problem:** Step 5b inlines a `psql` backfill/drop for `judge_workers.secret_token` (`UPDATE ... SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') ...; ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token`). The block is now gated by `ALLOW_SECRET_TOKEN_BACKFILL=1` and uses `docker exec` inside the running `judgekit-db` container with post-drop verification, which prevents accidental destructive changes during routine deploys. However, when enabled the patch still runs before `drizzle-kit push` and is not captured in the Drizzle journal.
+- **Failure scenario:** A disaster-recovery replay from the journal produces a schema still containing `secret_token` or missing the hash cleanup; `src/lib/judge/auth.ts` rejects workers with `secret_token IS NOT NULL AND secret_token_hash IS NULL`, causing all worker registrations to fail after DR. Conversely, a fresh environment stood up from backups and migrations may lack the column cleanup and queries fail at runtime. The new gate also means an operator who forgets to set `ALLOW_SECRET_TOKEN_BACKFILL=1` during DR may hit the destructive diff abort that the block was designed to prevent.
 - **Suggested fix:** Move the transition into a tracked Drizzle migration, or remove the backfill entirely once all environments are verified clean and add a journal-only migration for the final drop. Add a CI step that replays migrations from an empty database and asserts the schema matches what `deploy-docker.sh` would produce after its raw SQL step.
 
 ---
@@ -140,30 +145,30 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - **Severity:** HIGH
 - **Confidence:** High
 - **Status:** Confirmed
-- **Files / Lines:** `scripts/online-judge.nginx.conf:60`, `85`, `95`; contrast `deploy-docker.sh:1629`
+- **Files / Lines:** `scripts/online-judge.nginx.conf:60`, `85`, `95`; contrast `deploy-docker.sh:1648`
 - **Problem:** While the generated `deploy-docker.sh` nginx now sets 50 MiB in the catch-all `location /`, the committed standalone template `scripts/online-judge.nginx.conf` still sets `client_max_body_size 1m` in the catch-all block (`location /`) and in `/api/v1/judge/`. The aggregate finding was that uploads, restore, and imports larger than 1 MiB would be rejected. The HTTP-only template (`scripts/online-judge.nginx-http.conf`) has 50 MiB already.
 - **Failure scenario:** An operator using the committed standalone HTTPS template (manual install, dev/CI, or a host not using `deploy-docker.sh`) will see 413 errors on file uploads, backup restore ZIPs, and JSON imports larger than 1 MiB.
 - **Suggested fix:** Align the standalone HTTPS template's catch-all `client_max_body_size` with the generated config (50 MiB) or with the system setting. Remove the stale 1 MiB defaults from `/api/v1/judge/` unless they are intentionally scoped.
 
-### HIGH-7: Admin restore/import responses still leak server-side snapshot path
+### HIGH-7: Admin restore/import durable audit logs still contain server-side snapshot path
 
 - **Severity:** HIGH
 - **Confidence:** High
 - **Status:** Confirmed
-- **Files / Lines:** `src/app/api/v1/admin/restore/route.ts:170`, `196`, `207`, `229`, `239`; `src/app/api/v1/admin/migrate/import/route.ts:115-142`
-- **Problem:** The `preRestoreSnapshotPath` filesystem path is returned verbatim in JSON responses to authenticated admin callers and is also included in the durable audit log details sent to the client.
-- **Failure scenario:** A compromised admin account, malicious browser extension, or accidentally shared API response reveals the exact host path layout (e.g., `/home/deployer/data/pre-restore-snapshots/...`), which aids lateral movement and targeted file access.
-- **Suggested fix:** Return only a snapshot ID or timestamp that operators can correlate with server logs; log the full path server-side. Remove `preRestoreSnapshotPath` from user-facing error and success payloads.
+- **Files / Lines:** `src/app/api/v1/admin/restore/route.ts:197`, `230`; `src/app/api/v1/admin/migrate/import/route.ts:132`
+- **Problem:** The JSON responses now return only a `snapshotId` (a welcome fix), but the `details` payload of `recordAuditEventDurable` for both restore and import still stores the literal `preRestoreSnapshotPath` filesystem path. If audit-log details are later exposed to admin callers via an audit viewer or export, the host path layout leaks.
+- **Failure scenario:** A compromised admin account, malicious browser extension, or accidentally shared audit export reveals the exact host path layout (e.g., `/home/deployer/data/pre-restore-snapshots/...`), which aids lateral movement and targeted file access.
+- **Suggested fix:** Store only `snapshotId` in the durable audit `details`; keep the full path exclusively in server-side logs. Verify that any audit-log retrieval endpoint does not return the raw path.
 
-### HIGH-8: `GET /api/v1/files` has no rate limit
+### HIGH-8: `GET /api/v1/files` now has a rate limit — fix verified
 
 - **Severity:** HIGH
 - **Confidence:** High
-- **Status:** Confirmed
-- **Files / Lines:** `src/app/api/v1/files/route.ts:155-208`
-- **Problem:** The file-list endpoint is wrapped with `createApiHandler` but omits a `rateLimit` key. It performs a `LEFT JOIN` against `users`, a `COUNT(*) OVER()` window function, pagination, and optional `LIKE` search over filenames.
-- **Failure scenario:** An authenticated attacker can scrape or brute-force paginated file lists without throttling, driving unnecessary database load and potentially enumerating every uploaded file's metadata.
-- **Suggested fix:** Add `rateLimit: "files:list"` (or reuse `files:upload`) to the `GET` handler config.
+- **Status:** Fixed
+- **Files / Lines:** `src/app/api/v1/files/route.ts:157`
+- **Problem (previous):** The file-list endpoint was wrapped with `createApiHandler` but omitted a `rateLimit` key. It performs a `LEFT JOIN` against `users`, a `COUNT(*) OVER()` window function, pagination, and optional `LIKE` search over filenames.
+- **Current state:** `rateLimit: "files:list"` is now present, and the handler also consumes a user-keyed `files:list` bucket after authz (`src/app/api/v1/files/route.ts:167`).
+- **Suggested follow-up:** Ensure the `files:list` limit is documented in ops runbooks and is not inadvertently much looser than `files:upload`.
 
 ### HIGH-9: Language configuration remains triplicated with only a partial contract test
 
@@ -197,15 +202,15 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - **Failure scenario:** `deploy-docker.sh` could contain a header inside an `if false; then ... fi` block and the storage-safety test would still pass. The XFF/body-size findings above are exactly the kind of drift these tests miss because they do not render and validate the generated config.
 - **Suggested fix:** Add tests that run `deploy-docker.sh --dry-run` and parse the emitted nginx config with `nginx -t` or a real syntax check. Assert the rendered values, not source substrings.
 
-### MEDIUM-2: Deprecated migrate/import JSON path still accepts password in request body
+### MEDIUM-2: Deprecated migrate/import JSON password path is now disabled by default
 
 - **Severity:** MEDIUM
 - **Confidence:** High
-- **Status:** Confirmed
-- **Files / Lines:** `src/app/api/v1/admin/migrate/import/route.ts:145-185`
-- **Problem:** The endpoint still supports a JSON body of `{ password, data }` and validates the admin password from the request body. It logs a deprecation warning and adds `Deprecation`/`Sunset` headers, but the path remains functional until November 2026.
-- **Failure scenario:** Any reverse proxy, WAF, or debug middleware that logs request bodies will capture the admin password in plaintext. This is exactly the scenario the multipart path was introduced to avoid.
-- **Suggested fix:** Remove the JSON path, or gate it behind an env flag that defaults to off before the stated sunset. Emit a rate-limited `SECURITY_ALERT` log if the legacy path is used.
+- **Status:** Mitigated
+- **Files / Lines:** `src/app/api/v1/admin/migrate/import/route.ts:149-154`
+- **Problem (previous):** The endpoint supported a JSON body of `{ password, data }` and validated the admin password from the request body. It logged a deprecation warning and added `Deprecation`/`Sunset` headers, but the path remained functional until November 2026.
+- **Current state:** The JSON path now returns `jsonImportDisabled` unless `ALLOW_JSON_IMPORT_PASSWORD=1` is set. The sunset headers are still emitted, preserving the migration signal.
+- **Suggested fix:** Keep the default-off posture; add a `SECURITY_ALERT` audit event if the legacy path is invoked while explicitly enabled, and schedule removal for the stated sunset date.
 
 ### MEDIUM-3: Unit of work / transaction boundary discipline is inconsistent
 
@@ -284,20 +289,23 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 1. **Standalone HTTPS nginx template body-size regression.** `scripts/online-judge.nginx.conf:95` sets `client_max_body_size 1m` in the catch-all `location /`, contradicting the generated `deploy-docker.sh` value of 50 MiB. This creates a manual-install/dev regression.
 2. **`AUTH_TRUST_HOST` documentation is misleading.** The deploy comment frames the setting as required for reverse-proxy use rather than as a dangerous fallback, increasing the risk it remains enabled.
 3. **`APP_INSTANCE_COUNT=1` hides the realtime bottleneck.** `docker-compose.production.yml:114` sets the instance count to 1, so the single-instance guard is not triggered and operators may not realize the PostgreSQL advisory-lock path is the only shared backend.
+4. **Raw SQL backfill gate improves safety but does not fix tracking.** `ALLOW_SECRET_TOKEN_BACKFILL=1` prevents accidental runs, yet the migration is still outside Drizzle's journal.
 
 ---
 
 ## Distinguishing confirmed, likely, and validation-needed
 
-**Confirmed issues** (directly observable in current source/config): CRITICAL-1 through CRITICAL-4, HIGH-1 through HIGH-9, MEDIUM-1 through MEDIUM-3, MEDIUM-5, MEDIUM-7, MEDIUM-8.
+**Confirmed issues** (directly observable in current source/config): CRITICAL-1 through CRITICAL-4, HIGH-1 through HIGH-7, HIGH-9, MEDIUM-1, MEDIUM-3, MEDIUM-5, MEDIUM-7, MEDIUM-8.
 
 **Likely issues / design risks** (consequences follow from confirmed architecture but require load or incident to observe): HIGH-10, MEDIUM-4, MEDIUM-6, MEDIUM-9.
+
+**Mitigated/Fixed since last review:** HIGH-8 (`GET /api/v1/files` rate limit), MEDIUM-2 (JSON import password path disabled by default).
 
 **Risks needing manual validation:**
 - Whether `scripts/online-judge.nginx.conf` is still used by `deploy.sh` or any production host.
 - Whether the `judge_workers.secret_token` column is verified absent in all production environments so the raw SQL backfill can be removed per its sunset criterion.
 - Observed p99 latency of `acquireSharedSseConnectionSlot` under multi-instance load.
-- Whether any WAF, reverse proxy, or debug middleware logs request bodies to the deprecated `/api/v1/admin/migrate/import` JSON path.
+- Whether any WAF, reverse proxy, or debug middleware logs request bodies to the deprecated `/api/v1/admin/migrate/import` JSON path when `ALLOW_JSON_IMPORT_PASSWORD=1`.
 
 ---
 
@@ -308,7 +316,7 @@ For ACCEPT-WITH-RESERVATIONS, at minimum `AUTH_TRUST_HOST`, judge IP allowlist d
 - **No documented rate-limiter sidecar failure mode.** When the sidecar is unreachable, behavior is unspecified beyond "fall through to DB."
 - **No migration path from PostgreSQL advisory locks to Redis.** The realtime module lists Redis as unsupported (`UNSUPPORTED_BACKENDS = new Set(["redis"])`).
 - **No container-operation audit log.** The Docker socket proxy is a silent high-privilege component.
-- **File-upload rate-limit parity is broken.** `POST /api/v1/files` has a rate limit while `GET /api/v1/files` does not, and the GET endpoint is more expensive.
+- **Audit details still leak snapshot paths.** Even though JSON responses were sanitized, durable audit records retain the literal filesystem path.
 
 ---
 
