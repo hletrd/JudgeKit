@@ -267,6 +267,27 @@ describe("POST /api/v1/contests/[assignmentId]/similarity-check", () => {
     });
   });
 
+  it("returns 500 with error taxonomy when the enrichment query fails", async () => {
+    runAndStoreSimilarityCheckMock.mockResolvedValue({
+      status: "completed",
+      reason: null,
+      flaggedPairs: 1,
+      submissionCount: 2,
+      maxSupportedSubmissions: 500,
+      pairs: [{ userId1: "user-a", userId2: "user-b", similarity: 0.85 }],
+    });
+    dbWhereMock.mockRejectedValue(new Error("enrichment query failed"));
+
+    const { POST } = await import("@/app/api/v1/contests/[assignmentId]/similarity-check/route");
+    const res = await POST(createRequest(), { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(500);
+    expect(body.error).toBe("internalServerError");
+    expect(body.requestId).toBeTruthy();
+    expect(res.headers.get("X-Request-Id")).toBe(body.requestId);
+  });
+
   it("allows assigned assistants with anti_cheat.run_similarity to run the scan", async () => {
     canManageContestMock.mockResolvedValue(false);
     resolveCapabilitiesMock.mockResolvedValue(new Set(["anti_cheat.run_similarity"]));

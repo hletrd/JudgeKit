@@ -254,18 +254,27 @@ describe("POST /api/v1/contests/join", () => {
   it("returns 429 when rate limited", async () => {
     consumeUserApiRateLimitMock.mockReturnValue(NextResponse.json({ error: "rateLimited" }, { status: 429 }));
     const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
+    const body = await res.json();
     expect(res.status).toBe(429);
+    expect(body.error).toBe("rateLimited");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
   });
 
   it("returns 401 when not authenticated", async () => {
     getApiUserMock.mockResolvedValue(null);
     const res = await joinPOST(makeJoinRequest({ code: "ABC" }), { params: Promise.resolve({}) });
+    const body = await res.json();
     expect(res.status).toBe(401);
+    expect(body.error).toBe("unauthorized");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
   });
 
   it("returns 400 when code is missing", async () => {
     const res = await joinPOST(makeJoinRequest({}), { params: Promise.resolve({}) });
+    const body = await res.json();
     expect(res.status).toBe(400);
+    expect(body.error).toBeTruthy();
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
   });
 
   it("returns 400 when code is empty string", async () => {
@@ -273,6 +282,7 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.error).toBe("accessCodeRequired");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
   });
 
   it("successfully joins a contest and returns assignment info", async () => {
@@ -305,6 +315,7 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(400);
     expect(body.error).toBe("invalidAccessCode");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
     expect(consumeUserApiRateLimitMock).toHaveBeenCalledWith(
       expect.any(NextRequest),
       ADMIN_USER.id,
@@ -345,6 +356,7 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(403);
     expect(body.error).toBe("forbidden");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
     expect(redeemAccessCodeMock).not.toHaveBeenCalled();
     expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
   });
@@ -403,6 +415,7 @@ describe("POST /api/v1/contests/join", () => {
 
     expect(res.status).toBe(403);
     expect(body.error).toBe("forbidden");
+    expect(res.headers.get("X-Request-Id")).toBeTruthy();
     expect(redeemAccessCodeMock).not.toHaveBeenCalled();
     expect(consumeUserApiRateLimitMock).not.toHaveBeenCalled();
   });
@@ -429,6 +442,8 @@ describe("POST /api/v1/contests/join", () => {
     const body = await res.json();
     expect(res.status).toBe(500);
     expect(body.error).toBe("internalServerError");
+    expect(body.requestId).toBeTruthy();
+    expect(res.headers.get("X-Request-Id")).toBe(body.requestId);
   });
 });
 
