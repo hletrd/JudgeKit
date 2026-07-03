@@ -150,28 +150,29 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
       .map((part) => part.trim())
       .filter(Boolean);
 
-    // Extract the Nth-from-last value based on trusted proxy hop count.
-    // With TRUSTED_PROXY_HOPS=1 (one reverse proxy), the client IP is
-    // the last-but-one entry; the final entry is the proxy itself.
+    // Extract the client IP from the end of the X-Forwarded-For chain based on
+    // the number of trusted proxy hops. Each trusted proxy appends the IP of
+    // the peer that connected to it, so with N trusted proxies the client IP is
+    // the Nth-from-last entry (i.e. the entry added by the first trusted proxy).
     //
-    // SEC H-5: If the chain has fewer entries than expected (e.g. a single
-    // element when we expect at least 2), the missing hop is client-
-    // controllable — Nginx normally appends the connecting IP, but if XFF
-    // is forwarded through and Nginx is misconfigured (no
-    // `set_real_ip_from` + `real_ip_recursive on`), the attacker's claim
-    // is at parts[0] and we'd trust it. Refuse to fall back; the caller
-    // gets null and downstream code can degrade to per-IP rate-limit by
-    // request socket or treat the request as unknown.
+    // Examples with standard nginx (`$proxy_add_x_forwarded_for`):
+    //   - client -> nginx -> app (TRUSTED_PROXY_HOPS=1):
+    //     XFF = "client" => client index = 0
+    //   - client -> cdn -> nginx -> app (TRUSTED_PROXY_HOPS=2):
+    //     XFF = "client, cdn" => client index = 0
+    //   - attacker spoofs XFF="evil", then cdn -> nginx -> app (TRUSTED_PROXY_HOPS=2):
+    //     XFF = "evil, client, cdn" => client index = 1 (the real client)
+    //
+    // SEC H-5: If the chain has fewer entries than expected, the missing entries
+    // are client-controllable. Refuse to trust the header; callers get null (or
+    // the dev sentinel) so rate-limit / audit code does not key on spoofable data.
     const trustedHops = getTrustedProxyHops();
-    // SEC-8: TRUSTED_PROXY_HOPS=0 means "no trusted proxies" — every XFF
-    // entry is client-controlled, so we must not trust any of them. Without
-    // this guard, `parts.length >= 0 + 1` is true for any XFF and
-    // `clientIndex = parts.length - 1` selects the last (spoofable) entry.
-    // Because X-Real-IP is also header-provided in this abstraction, a present
-    // but untrusted XFF chain must return unknown rather than falling through
-    // to another spoofable header.
-    if (trustedHops > 0 && parts.length >= trustedHops + 1) {
-      const clientIndex = parts.length - (trustedHops + 1);
+    // SEC-8: TRUSTED_PROXY_HOPS=0 means "no trusted proxies" — every XFF entry
+    // is client-controlled, so we must not trust any of them. Without this guard,
+    // `parts.length >= 0` is true for any XFF and `parts.length - 0` would select
+    // the last (spoofable) entry.
+    if (trustedHops > 0 && parts.length >= trustedHops) {
+      const clientIndex = parts.length - trustedHops;
       const candidate = parts[clientIndex];
       if (isValidIp(candidate)) {
         // Unwrap IPv4-mapped IPv6 to its dotted IPv4 and canonicalize pure
@@ -180,7 +181,7 @@ export function extractClientIp(headers: HeaderCarrier): string | null {
       }
     } else if (parts.length > 0 && process.env.NODE_ENV === "production") {
       logger.warn(
-        { xffHopsExpected: trustedHops + 1, xffHopsObserved: parts.length, xff: forwardedFor },
+        { xffHopsExpected: trustedHops, xffHopsObserved: parts.length, xff: forwardedFor },
         "[security] X-Forwarded-For has fewer hops than TRUSTED_PROXY_HOPS expects — refusing to trust client-supplied IP (possible spoofing)",
       );
     }

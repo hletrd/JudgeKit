@@ -33,37 +33,46 @@ afterEach(() => {
 });
 
 describe("extractClientIp", () => {
-  it("uses the client IP before the trusted proxy by default", async () => {
+  it("returns the client IP appended by a single trusted proxy (standard nginx)", async () => {
+    // With one trusted reverse proxy, nginx's $proxy_add_x_forwarded_for
+    // produces a chain containing only the client IP (the proxy appends the
+    // peer that connected to it, not its own address).
+    const { extractClientIp } = await importIpModule();
+
+    expect(extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8" }))).toBe(
+      "198.51.100.8"
+    );
+  });
+
+  it("ignores spoofed leading entries when a single trusted proxy appended the real client", async () => {
     const { extractClientIp } = await importIpModule();
 
     expect(
-      extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8, 203.0.113.10" }))
+      extractClientIp(createHeaders({ "x-forwarded-for": "1.2.3.4, 198.51.100.8" }))
     ).toBe("198.51.100.8");
   });
 
   it("walks back through multiple trusted proxies", async () => {
+    // client -> cdn -> nginx -> app: the first proxy appends the client,
+    // the second appends the first proxy, so the client is N hops from the end.
     const { extractClientIp } = await importIpModule("2");
 
     expect(
       extractClientIp(
         createHeaders({
-          "x-forwarded-for": "198.51.100.8, 203.0.113.10, 203.0.113.11",
+          "x-forwarded-for": "198.51.100.8, 203.0.113.10",
         })
       )
     ).toBe("198.51.100.8");
   });
 
   it("refuses to fall back to a client-controllable XFF entry when the chain has fewer hops than expected (SEC H-5)", async () => {
-    // Previously the helper indexed Math.max(0, len - (hops+1)) and
-    // happily returned parts[0] whenever the chain was shorter than
-    // TRUSTED_PROXY_HOPS expected — which is exactly the client-supplied
-    // first entry. Now we degrade to null (or the dev sentinel) so
-    // downstream rate-limit / audit code does not key on a spoofable
-    // value.
-    const { extractClientIp } = await importIpModule("3");
+    // With TRUSTED_PROXY_HOPS=2 we expect at least two entries (client +
+    // one proxy). A shorter chain means some entries are attacker-controlled.
+    const { extractClientIp } = await importIpModule("2");
 
     expect(
-      extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8, 203.0.113.10" }))
+      extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8" }))
     ).toBe(process.env.NODE_ENV === "production" ? null : "0.0.0.0");
   });
 
@@ -93,12 +102,12 @@ describe("extractClientIp", () => {
   });
 
   it("does not fall back to X-Real-IP when XFF has fewer hops than configured", async () => {
-    const { extractClientIp } = await importIpModule("3");
+    const { extractClientIp } = await importIpModule("2");
 
     expect(
       extractClientIp(
         createHeaders({
-          "x-forwarded-for": "198.51.100.8, 203.0.113.10",
+          "x-forwarded-for": "198.51.100.8",
           "x-real-ip": "198.51.100.20",
         })
       )
@@ -113,7 +122,7 @@ describe("extractClientIp", () => {
     // extractClientIp returned the dev sentinel / null in prod, locking
     // judge workers out when JUDGE_ALLOWED_IPS was configured.
     expect(
-      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:198.51.100.8, 203.0.113.10" }))
+      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:198.51.100.8" }))
     ).toBe("198.51.100.8");
   });
 
@@ -130,7 +139,7 @@ describe("extractClientIp", () => {
 
     // 999 is not a valid octet — the mapped form must not be accepted.
     expect(
-      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:999.1.1.1, 203.0.113.10" }))
+      extractClientIp(createHeaders({ "x-forwarded-for": "::ffff:999.1.1.1" }))
     ).toBe("0.0.0.0");
   });
 
@@ -149,7 +158,7 @@ describe("extractClientIp", () => {
       extractClientIp(
         createHeaders({
           "x-real-ip": "203.0.113.10",
-          "x-forwarded-for": "198.51.100.8, 203.0.113.10",
+          "x-forwarded-for": "198.51.100.8",
         })
       )
     ).toBe("198.51.100.8");
@@ -263,7 +272,7 @@ describe("extractClientIp", () => {
       const { extractClientIp } = await importIpModule();
       const { logger } = await import("@/lib/logger");
 
-      extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8, 203.0.113.10" }));
+      extractClientIp(createHeaders({ "x-forwarded-for": "198.51.100.8" }));
 
       expect(logger.warn).not.toHaveBeenCalled();
     } finally {
