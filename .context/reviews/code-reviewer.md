@@ -1839,6 +1839,284 @@ A final focused pass over the remaining non-admin route files under `src/app/api
 
 ---
 
+---
+
+## Supplemental Judge/Submissions/Files API Routes Findings
+
+A focused review of the remaining `src/app/api/v1/judge/`, `src/app/api/v1/submissions/`, and `src/app/api/v1/files/` route files uncovered the additional issues below. These are distinct from the findings already recorded above (e.g., `C4-NEW-03`, `C4-NEW-04`, `C4-NEW-05`, `C4-NEW-10`, `C4-NEW-API-05`, `C4-NEW-API-14`, `C4-NEW-API-15`, `C4-NEW-API-23`, `C4-NEW-API-24`, `C4-NEW-API-31`).
+
+### Findings Register
+
+| ID | Severity | Confidence | File(s) | Title |
+|---|---|---|---|---|
+| C4-NEW-API-35 | HIGH | High | `src/app/api/v1/files/[id]/route.ts:72-79` | File download rate limit is consumed before authentication |
+| C4-NEW-API-36 | MEDIUM | High | `src/app/api/v1/submissions/[id]/rejudge/route.ts:36-71` | Rejudge resets an active `judging` submission without stopping the owning worker |
+| C4-NEW-API-37 | MEDIUM | High | `src/app/api/v1/judge/heartbeat/route.ts:22-87` | Judge heartbeat has no rate limit |
+| C4-NEW-API-38 | LOW | High | `src/app/api/v1/files/[id]/route.ts:138-150` | File download success response omits standard request-ID/contract headers |
+| C4-NEW-API-39 | MEDIUM | High | `src/app/api/v1/submissions/[id]/route.ts:12`, `src/app/api/v1/submissions/[id]/queue-status/route.ts:12`, `src/app/api/v1/submissions/[id]/comments/route.ts:13`, `src/app/api/v1/judge/poll/route.ts:30` | Read/worker-reporting endpoints in scope lack rate limits |
+| C4-NEW-API-40 | LOW | High | `src/app/api/v1/submissions/route.ts:35-38`, `:51-53`, `:144-149`; `src/app/api/v1/files/route.ts:170-173` | Unvalidated list-query parameters can cause 500s |
+| C4-NEW-API-41 | LOW | High | `src/app/api/v1/judge/poll/route.ts:229-261` | Judge poll final path can return 200 `{ data: null }` after concurrent deletion |
+| C4-NEW-API-42 | MEDIUM | High | `src/app/api/v1/files/[id]/route.ts:204-213`, `src/app/api/v1/files/bulk-delete/route.ts:41-51` | File deletion audit events are buffered, not durable |
+| C4-NEW-API-43 | LOW | High | `src/app/api/v1/files/route.ts:170-174`, `src/lib/validators/files.ts:9-14` | Files list route ignores its own `fileListQuerySchema` validator |
+| C4-NEW-API-44 | LOW | Medium | `src/app/api/v1/judge/register/route.ts:58-78` | Worker registration does not emit an audit event |
+
+### HIGH
+
+#### C4-NEW-API-35 — File download rate limit is consumed before authentication
+- **File:** `src/app/api/v1/files/[id]/route.ts:72-79`
+- **Confidence:** High
+- **Problem:** `GET /api/v1/files/:id` calls `consumeApiRateLimit(request, "files:download")` before `getApiUser`. The limiter key is IP-based, so every unauthenticated request consumes the per-IP bucket.
+- **Failure scenario:** An attacker or misconfigured client hammers file-download URLs without credentials. The shared IP bucket fills, and legitimate authenticated users behind the same IP (or NAT/proxy) receive 429 even though they have not yet been identified.
+- **Fix:** Move the rate-limit check to after `getApiUser` and switch to per-user limiting, mirroring the list route:
+  ```ts
+  const user = await getApiUser(request);
+  if (!user) return unauthorized();
+  const rateLimitResponse = await consumeUserApiRateLimit(request, user.id, "files:download");
+  if (rateLimitResponse) return rateLimitResponse;
+  ```
+
+### MEDIUM
+
+#### C4-NEW-API-36 — Rejudge resets an active `judging` submission without stopping the owning worker
+- **File:** `src/app/api/v1/submissions/[id]/rejudge/route.ts:36-71`
+- **Confidence:** High
+- **Problem:** The rejudge transaction resets `queued` **and `judging`** submissions to `pending`, clears the claim token, and decrements `activeTasks`. It does not coordinate with the worker that currently owns the `judging` claim. `C4-NEW-API-05` already identified the same flaw in the worker deregister path.
+- **Failure scenario:** An admin clicks "rejudge" on a slow submission while a worker is still running it. The worker continues to execute the same source code in its container. The submission is immediately reclaimable by another worker, so two workers can run the identical source concurrently until the first worker's poll is rejected. This wastes CPU, memory, and judge capacity, and can produce confusing worker logs.
+- **Fix:** Either (a) reject rejudge when `current.status === "judging"` unless a force flag is provided and an explicit cancel signal is sent to the owning worker, or (b) transition `judging` rejudges to an `internal_error` status so an admin can retry after confirming the original worker has stopped.
+
+#### C4-NEW-API-37 — Judge heartbeat has no rate limit
+- **File:** `src/app/api/v1/judge/heartbeat/route.ts:22-87`
+- **Confidence:** High
+- **Problem:** The heartbeat handler does not call any rate-limit helper. It authenticates the worker via `isJudgeAuthorizedForWorker` and the per-worker secret, then updates the worker row and awaits `sweepStaleWorkers(now)`.
+- **Failure scenario:** A compromised worker secret is used to POST heartbeats in a tight loop. Each call writes to `judge_workers` and runs the staleness sweep over all workers, driving DB load and potentially delaying legitimate worker heartbeats.
+- **Fix:** Add a per-worker rate limit after authentication:
+  ```ts
+  const rateLimitResponse = await consumeUserApiRateLimit(request, workerId, "judge:heartbeat");
+  if (rateLimitResponse) return rateLimitResponse;
+  ```
+  Ensure `"judge:heartbeat"` is configured in the rate-limit map.
+
+#### C4-NEW-API-39 — Read/worker-reporting endpoints in scope lack rate limits
+- **Files:**
+  - `src/app/api/v1/submissions/[id]/route.ts:12` (submission detail GET)
+  - `src/app/api/v1/submissions/[id]/queue-status/route.ts:12` (queue status GET)
+  - `src/app/api/v1/submissions/[id]/comments/route.ts:13` (comments GET)
+  - `src/app/api/v1/judge/poll/route.ts:30` (judge result POST)
+- **Confidence:** High
+- **Problem:** These routes either use `createApiHandler` without `rateLimit` or are manual handlers without any limiter call. The detail/queue/comments endpoints are cheap to enumerate; `judge/poll` accepts a worker result and writes to the DB, so a leaked worker secret could be used to flood fake verdicts.
+- **Failure scenario:** A script iterates submission IDs to scrape details/queue status/comments, or a compromised worker spams fabricated judge results, consuming DB connections and Next.js workers.
+- **Fix:** Add `rateLimit` configs (or `consumeUserApiRateLimit` calls) keyed on user/worker ID:
+  - `submissions:detail`, `submissions:queue_status`, `comments:read`
+  - `judge:poll` per `submission.judgeWorkerId`
+
+#### C4-NEW-API-42 — File deletion audit events are buffered, not durable
+- **Files:** `src/app/api/v1/files/[id]/route.ts:204-213`, `src/app/api/v1/files/bulk-delete/route.ts:41-51`
+- **Confidence:** High
+- **Problem:** Both deletion routes call the batched `recordAuditEvent`. The codebase provides `recordAuditEventDurable` for actions that must survive a crash, but file deletions use the buffered path.
+- **Failure scenario:** An admin deletes sensitive files; the app server crashes before the audit batch flushes; the deletion leaves no durable audit trail.
+- **Fix:** Replace both calls with `await recordAuditEventDurable(...)`.
+
+### LOW
+
+#### C4-NEW-API-38 — File download success response omits standard request-ID/contract headers
+- **File:** `src/app/api/v1/files/[id]/route.ts:138-150`
+- **Confidence:** High
+- **Problem:** The route is a manual handler (not `createApiHandler`). Its streaming 200 response is built with `new NextResponse(webStream, { headers: ... })`, so it does not include the `X-Request-Id` header or the standard response envelope used by `apiSuccess`. Error paths do use `apiError`, which adds the request ID, so success and error responses have different contracts.
+- **Failure scenario:** A client or observability pipeline cannot correlate a successful file download with request logs via `X-Request-Id`.
+- **Fix:** Add the request ID to the manual response headers (e.g., reuse the correlation ID already computed by the edge middleware), or refactor the route to use a streaming-compatible helper that preserves the standard contract.
+
+#### C4-NEW-API-40 — Unvalidated list-query parameters can cause 500s
+- **Files:**
+  - `src/app/api/v1/submissions/route.ts:35-38`, `:51-53`, `:144-149`
+  - `src/app/api/v1/files/route.ts:170-173`
+- **Confidence:** High
+- **Problem:** `problemId`, `assignmentId`, `category`, and `search` are read from `req.nextUrl.searchParams` and passed directly to Drizzle. Only `status` is validated. Invalid UUIDs (`assignmentId=not-a-uuid`) or unknown category strings reach PostgreSQL and surface as generic 500s.
+- **Failure scenario:** A malformed query string causes an internal server error instead of a clean 400, triggering alerts and hiding the real client error.
+- **Fix:** Validate query parameters with Zod before building the `where` clause. For files, use the existing `fileListQuerySchema`; for submissions, add a similar `submissionListQuerySchema`.
+
+#### C4-NEW-API-41 — Judge poll final path can return 200 `{ data: null }` after concurrent deletion
+- **File:** `src/app/api/v1/judge/poll/route.ts:229-261`
+- **Confidence:** High
+- **Problem:** After the final-status transaction commits, the handler re-queries the submission and returns `apiSuccess(updated)`. If the submission is deleted between the transaction and the re-query, `updated` is `undefined`.
+- **Failure scenario:** A concurrent cleanup job deletes the submission just as the worker reports the final verdict. The worker receives HTTP 200 with `{ data: null }` instead of a 404, and the audit event references a missing submission ID.
+- **Fix:** Guard the re-query:
+  ```ts
+  if (!updated) return apiError("submissionNotFound", 404);
+  return apiSuccess(updated);
+  ```
+
+#### C4-NEW-API-43 — Files list route ignores its own `fileListQuerySchema` validator
+- **File:** `src/app/api/v1/files/route.ts:170-174`, `src/lib/validators/files.ts:9-14`
+- **Confidence:** High
+- **Problem:** `fileListQuerySchema` already exists and covers `page`, `limit`, `category`, and `search`, but the GET handler reads these values manually from `searchParams` and only coerces `page`/`limit` via `parsePagination`. Invalid `category` values therefore bypass the schema.
+- **Failure scenario:** Same as `C4-NEW-API-40` for the files list: an invalid category yields a 500 from PostgreSQL.
+- **Fix:** Apply `fileListQuerySchema.parse(Object.fromEntries(searchParams))` (or `safeParse` with a 400 response) and use the parsed `category` and `search` values.
+
+#### C4-NEW-API-44 — Worker registration does not emit an audit event
+- **File:** `src/app/api/v1/judge/register/route.ts:58-78`
+- **Confidence:** Medium
+- **Problem:** Registering a new judge worker is a security-relevant provisioning action (it creates credentials that can claim submissions), yet the route logs an info message and returns the plaintext secret without recording an audit event.
+- **Failure scenario:** A leaked shared `JUDGE_AUTH_TOKEN` is used to register a rogue worker; there is no durable record of when the worker was created or which IP did it.
+- **Fix:** Emit `await recordAuditEventDurable({ actorRole: "system", action: "judge.worker.registered", resourceType: "judge_worker", resourceId: worker.id, resourceLabel: hostname, details: { ipAddress, concurrency, version }, request });` after the insert. Since the caller is token-authenticated rather than user-authenticated, omit or null `actorId` if the schema allows.
+
+## Supplemental Security/Auth/API/CSRF/Rate-Limit/IP/Compiler/Capability Library Findings
+
+A focused review of the core boundary libraries (`src/lib/api/*`, `src/lib/auth/*`, `src/lib/security/*`, `src/lib/capabilities/*`, and `src/lib/compiler/execute.ts`) uncovered the additional issues below. These are distinct from the route-level findings already recorded above.
+
+### Findings Register
+
+| ID | Severity | Confidence | File(s) | Title |
+|---|---|---|---|---|
+| C4-NEW-45 | MEDIUM | High | `src/lib/auth/permissions.ts:79-85`, `:99-111` | `assertRole` and `assertGroupAccess` reject custom roles |
+| C4-NEW-46 | MEDIUM | Medium | `src/lib/auth/config.ts:337-342`, `:357-364` | Login event recording is fire-and-forget without rejection handling |
+| C4-NEW-47 | MEDIUM | High | `src/lib/api/api-key-auth.ts:96-104` | API-key `lastUsedAt` update is unawaited and failures are only logged |
+| C4-NEW-48 | MEDIUM | High | `src/lib/api/handler.ts:116-122` | `createApiHandler` accepts and reflects arbitrary client request IDs |
+| C4-NEW-49 | LOW | High | `src/lib/security/api-rate-limit.ts:131-143` | Rate-limit 429 headers report `now + windowMs` instead of the bucket reset time |
+| C4-NEW-50 | LOW | High | `src/lib/security/sandbox-gate.ts:77-82` | Sandbox email-verification bypass only recognizes built-in staff roles |
+| C4-NEW-51 | LOW | High | `src/lib/auth/sign-out.ts:80-94` | `handleSignOutWithCleanup` can call `setIsSigningOut` after unmount |
+| C4-NEW-52 | LOW | Medium | `src/lib/compiler/execute.ts:564-580` | Compiler output truncation can split multi-byte UTF-8 characters |
+| C4-NEW-53 | LOW | High | `src/lib/security/sensitive-settings.ts:57-61` | `touchesSensitiveSettingsKey` treats `undefined` values as sensitive-key presence |
+
+### MEDIUM
+
+#### C4-NEW-45 — `assertRole` and `assertGroupAccess` reject custom roles
+- **File:** `src/lib/auth/permissions.ts:79-85`, `:99-111`
+- **Confidence:** High
+- **Problem:** Both helpers guard with `isUserRole(session.user.role)`, which only accepts the five built-in role strings. Custom roles that exist in the DB and hold the required capabilities are rejected with "Forbidden", even though `createApiHandler` supports custom roles via capability checks. This creates an authz inconsistency: a server action or page using these helpers cannot be accessed by a custom role, while an API route using the wrapper with the same capabilities can.
+- **Failure scenario:** An operator creates a custom role with the same capabilities as `instructor`. A user with that role can access problems/groups through API routes but receives 403 from server actions or pages that call `assertGroupAccess` or `assertRole`.
+- **Fix:** Replace the `isUserRole` guard with a capability or level check that understands custom roles (e.g., `resolveCapabilities(role)` or `getRoleLevel(role)`), or provide a dedicated `canManageRoleAsync`-style helper.
+
+#### C4-NEW-46 — Login event recording is fire-and-forget without rejection handling
+- **File:** `src/lib/auth/config.ts:337-342`, `:357-364`
+- **Confidence:** Medium
+- **Problem:** The `signIn` event and callback call `recordLoginEventWithContext(...)` without `await` and without `.catch(...)`. If the audit insert throws (DB overload, serialization failure, disk full), the resulting promise rejection is unhandled and can crash the Node process or pollute logs.
+- **Failure scenario:** A login surge causes audit inserts to fail. The login succeeds but the unhandled rejection takes down the Next.js worker, denying subsequent requests.
+- **Fix:** `await` the call inside a try/catch, or at minimum attach `.catch((err) => logger.error(...))` so a failed audit never propagates as an unhandled rejection.
+
+#### C4-NEW-47 — API-key `lastUsedAt` update is unawaited and failures are only logged
+- **File:** `src/lib/api/api-key-auth.ts:96-104`
+- **Confidence:** High
+- **Problem:** After a successful API-key authentication, the `lastUsedAt` UPDATE is started with `void db.update(...).catch(...)` and never awaited. The request returns success while the update is still in flight, and a failure produces only a warn log.
+- **Failure scenario:** Under heavy API-key traffic, many concurrent UPDATEs race for the same key; `lastUsedAt` becomes unreliable for compromise investigations. A failed update is invisible to metrics and alerting.
+- **Fix:** Await the update before returning, or move it to a bounded background writer with failure metrics. If latency is critical, at least increment a failure counter and expose it in health/metrics.
+
+#### C4-NEW-48 — `createApiHandler` accepts and reflects arbitrary client request IDs
+- **File:** `src/lib/api/handler.ts:116-122`
+- **Confidence:** High
+- **Problem:** `getOrCreateRequestId` reads the `x-request-id` header verbatim and uses it for the request lifecycle. There is no length limit, format validation, or sanitization. A client can inject any string (including newlines, high-unicode, or very long values) into logs, error bodies, and the response `X-Request-Id` header.
+- **Failure scenario:** A malicious client sends `x-request-id: <script>…` or a multi-kilobyte value. The value appears in structured logs and is reflected back in the response header, breaking log parsers and creating a log-injection vector.
+- **Fix:** Validate the header against a UUID/v4 or nanoid format, cap length (e.g., 64 characters), and fall back to `randomUUID()` when invalid.
+
+### LOW
+
+#### C4-NEW-49 — Rate-limit 429 headers report `now + windowMs` instead of the bucket reset time
+- **File:** `src/lib/security/api-rate-limit.ts:131-143`
+- **Confidence:** High
+- **Problem:** `rateLimitedResponse` sets `Retry-After` to the full window and `X-RateLimit-Reset` to `nowMs + windowMs` for every blocked request. For a bucket opened 59 seconds ago with a 60-second window, a client is told to wait 60 seconds instead of 1 second.
+- **Failure scenario:** A legitimate client limited early in the window backs off far longer than necessary, reducing throughput and producing confusing observability data.
+- **Fix:** Return `windowStartedAt + windowMs` (or `blockedUntil`, whichever is later) in the headers.
+
+#### C4-NEW-50 — Sandbox email-verification bypass only recognizes built-in staff roles
+- **File:** `src/lib/security/sandbox-gate.ts:77-82`
+- **Confidence:** High
+- **Problem:** The staff bypass is a hard-coded list of built-in role strings (`instructor`, `admin`, `super_admin`, `assistant`). A custom role with equivalent or higher privileges does not bypass the verified-email requirement, even though the capability system treats custom roles uniformly.
+- **Failure scenario:** An operator creates a custom `senior_instructor` role with `system.settings` and `problems.create`. A user with that role cannot use the compiler/playground without verifying email, while a built-in instructor can.
+- **Fix:** Use capability or level checks (`resolveCapabilities`/`getRoleLevel`) instead of string matching for the staff bypass.
+
+#### C4-NEW-51 — `handleSignOutWithCleanup` can call `setIsSigningOut` after unmount
+- **File:** `src/lib/auth/sign-out.ts:80-94`
+- **Confidence:** High
+- **Problem:** The helper awaits `signOut`, which triggers a navigation. The component may unmount before the promise resolves, yet `setIsSigningOut(false)` is called in the catch path.
+- **Failure scenario:** A user with a slow network clicks sign out and navigates away before `signOut` resolves. React logs a warning and a state leak may occur.
+- **Fix:** Use a mounted ref or `AbortController` and guard the setter; better, return the promise and let the caller manage loading state.
+
+#### C4-NEW-52 — Compiler output truncation can split multi-byte UTF-8 characters
+- **File:** `src/lib/compiler/execute.ts:564-580`
+- **Confidence:** Medium
+- **Problem:** `stdout += chunk.toString("utf8", 0, remaining)` truncates at a byte boundary. If a multi-byte UTF-8 code point straddles the boundary, the output contains a malformed partial character.
+- **Failure scenario:** A program emits non-ASCII output near the 128 MiB cap. The returned output ends with a replacement character or truncated bytes, confusing diff-based checkers and corrupting logs.
+- **Fix:** Buffer the final chunk, decode it as a complete string, and slice by Unicode code points (or characters) rather than raw bytes.
+
+#### C4-NEW-53 — `touchesSensitiveSettingsKey` treats `undefined` values as sensitive-key presence
+- **File:** `src/lib/security/sensitive-settings.ts:57-61`
+- **Confidence:** High
+- **Problem:** The check returns true whenever a sensitive key exists as an own property, regardless of value. A request that explicitly sets a sensitive key to `undefined` triggers password reconfirmation even though no value is being changed.
+- **Failure scenario:** A UI form serializes all fields and sends `undefined` for unchanged sensitive keys. Every settings save demands the user's password, degrading UX and training users to ignore the prompt.
+- **Fix:** Treat `undefined` as absent; only require reconfirmation when the value is not `undefined`.
+
+## Supplemental Admin Docker and Language API Routes Findings
+
+A focused review of the admin Docker image routes (`src/app/api/v1/admin/docker/images/build/route.ts`, `prune/route.ts`, `route.ts`) and the admin language config routes (`src/app/api/v1/admin/languages/[language]/route.ts`, `route.ts`) uncovered the additional issues below. These are distinct from the findings already recorded above (e.g., `C4-NEW-A15`–`C4-NEW-A18`, `C4-NEW-A25`, `C4-NEW-A26`, `C4-NEW-API-08`).
+
+### Findings Register
+
+| ID | Severity | Confidence | File(s) | Title |
+|---|---|---|---|---|
+| C4-NEW-API-45 | MEDIUM | High | `src/app/api/v1/admin/docker/images/build/route.ts:19`, `prune/route.ts:11`, `route.ts:55,93,165`; `src/app/api/v1/admin/languages/route.ts:24,50`, `[language]/route.ts:21,35` | Admin Docker and language routes lack rate limits |
+| C4-NEW-API-46 | MEDIUM | Medium | `src/app/api/v1/admin/docker/images/build/route.ts:119` | Docker build route has no in-progress lock, allowing overlapping builds |
+| C4-NEW-API-47 | MEDIUM | Medium | `src/app/api/v1/admin/docker/images/build/route.ts:119`, `route.ts:131`, `prune/route.ts:63` | Long-running Docker build/pull/prune operations do not cancel on client disconnect |
+| C4-NEW-API-48 | LOW | High | `src/app/api/v1/admin/docker/images/prune/route.ts:36,44` | Prune stale check skips trusted-registry images because Dockerfile path contains `/` |
+| C4-NEW-API-49 | LOW | High | `src/app/api/v1/admin/languages/route.ts:91-106`, `[language]/route.ts:69-79` | Language audit events record untrimmed input values |
+| C4-NEW-API-50 | LOW | Medium | `src/app/api/v1/admin/docker/images/route.ts:60` | Docker image list filter regex allows path-like reference values |
+| C4-NEW-API-51 | LOW | Medium | `src/app/api/v1/admin/languages/[language]/route.ts:52-58` | PATCH language builds an untyped `Record<string, unknown>` update object |
+
+### MEDIUM
+
+#### C4-NEW-API-45 — Admin Docker and language routes lack rate limits
+- **Files:** `src/app/api/v1/admin/docker/images/build/route.ts:19`, `prune/route.ts:11`, `route.ts:55,93,165`; `src/app/api/v1/admin/languages/route.ts:24,50`, `[language]/route.ts:21,35`
+- **Confidence:** High
+- **Problem:** None of the admin Docker routes use `rateLimit` in their `createApiHandler` config. The language GET and PATCH handlers also omit `rateLimit` (only the POST handler already has `"languages:create"`). Build and pull can run for minutes and consume worker/network resources; prune/delete are destructive bulk operations; the list endpoints are enumerable.
+- **Failure scenario:** A compromised admin session or a runaway script repeatedly triggers build/pull/prune/list, exhausting the Docker socket, DB connections, or Next.js workers. Without per-route keys, monitoring cannot distinguish abuse from legitimate admin activity.
+- **Fix:** Add conservative `rateLimit` keys:
+  - Docker: `"docker:images:build"`, `"docker:images:prune"`, `"docker:images:list"`, `"docker:images:pull"`, `"docker:images:delete"`
+  - Languages: `"languages:view"` (GET list/detail), `"languages:update"` (PATCH)
+
+#### C4-NEW-API-46 — Docker build route has no in-progress lock, allowing overlapping builds
+- **File:** `src/app/api/v1/admin/docker/images/build/route.ts:119`
+- **Confidence:** Medium
+- **Problem:** After validating the Dockerfile, the route immediately awaits `buildDockerImage(langConfig.dockerImage, dockerfilePath)`. There is no check for an in-progress build for the same image tag, so concurrent POSTs (or rapid admin UI clicks) launch overlapping builds.
+- **Failure scenario:** Two overlapping builds of `judge-python:latest` run concurrently. They contend for the same tag, waste worker CPU/memory, and may produce inconsistent layers or interleaved build logs. The audit trail also records two separate `docker_image.built` events for the same tag.
+- **Fix:** Maintain an in-memory (or distributed) set of in-progress builds keyed by image tag. Return `409` with code `"buildInProgress"` when a build for the same tag is already running, or await the existing build and return its result.
+
+#### C4-NEW-API-47 — Long-running Docker build/pull/prune operations do not cancel on client disconnect
+- **Files:** `src/app/api/v1/admin/docker/images/build/route.ts:119`, `route.ts:131` (POST pull), `prune/route.ts:63`
+- **Confidence:** Medium
+- **Problem:** The handlers await `buildDockerImage`, `pullDockerImage`, and `removeDockerImages` without passing the request's `AbortSignal` to the Docker client helpers. `buildDockerImage` and `pullDockerImage` in `src/lib/docker/client.ts` do not currently accept a `signal` option. If the client disconnects, the long-running Docker work continues.
+- **Failure scenario:** An admin starts a multi-minute image build or pull and closes the browser/tab. The build/pull keeps consuming network and Docker resources; the worker may still be running stale work when a newer request arrives.
+- **Fix:** Add an optional `signal?: AbortSignal` parameter to `buildDockerImage`, `pullDockerImage`, and the bulk remove helper, and pass `req.signal` from the route handlers. Wire the signal into the local `spawn`/`execFile` calls and the remote `fetch` calls so the operation aborts promptly on disconnect.
+
+### LOW
+
+#### C4-NEW-API-48 — Prune stale check skips trusted-registry images
+- **File:** `src/app/api/v1/admin/docker/images/prune/route.ts:36,44`
+- **Confidence:** High
+- **Problem:** The route calls `isAllowedJudgeDockerImage(img.repository)`, which can return `true` for trusted-registry images such as `registry.example.com/judge-python`. It then builds `dockerfilePath = join("docker", `Dockerfile.${img.repository}`)`, so the path contains the registry slash. The file `docker/Dockerfile.registry.example.com/judge-python` does not exist, `stat` throws, and the catch block silently skips the image.
+- **Failure scenario:** A deployment pulls judge images from a private registry configured in `TRUSTED_DOCKER_REGISTRIES`. The prune endpoint never flags those images as stale, leaving outdated images in place even after their Dockerfiles are updated.
+- **Fix:** Either restrict prune to local judge images by calling `isLocalJudgeDockerImage(img.repository)`, or normalize the repository to a safe file stem (e.g., replace `/` and `:` with underscores) before looking up `docker/Dockerfile.<stem>`.
+
+#### C4-NEW-API-49 — Language audit events record untrimmed input values
+- **Files:** `src/app/api/v1/admin/languages/route.ts:91-106`, `[language]/route.ts:69-79`
+- **Confidence:** High
+- **Problem:** `POST /admin/languages` stores trimmed values but records `body.displayName`, `body.dockerImage`, and `body.extension` in the audit details before trimming. `PATCH /admin/languages/[language]` spreads `...body` into the audit details, which includes any untrimmed strings. The audit trail can therefore disagree with the persisted row.
+- **Failure scenario:** An admin PATCHes `{ dockerImage: "  judge-python:latest  " }`. The database stores the trimmed value, but the audit event records the surrounding whitespace, making later forensic correlation harder.
+- **Fix:** Build a normalized `auditDetails` object from the trimmed values actually written. For PATCH, use the trimmed `updateValues` object rather than the raw `body`.
+
+#### C4-NEW-API-50 — Docker image list filter regex allows path-like reference values
+- **File:** `src/app/api/v1/admin/docker/images/route.ts:60`
+- **Confidence:** Medium
+- **Problem:** The filter validator `^[a-zA-Z0-9*][a-zA-Z0-9._\-/*:]*$` permits `/` after the first character, so a value like `a/../../etc` passes validation. Although the value is passed to Docker via `--filter reference=...` rather than shell interpolation, it is not a valid image reference and can produce unexpected matches.
+- **Failure scenario:** A UI bug or a malicious caller passes `filter=a/../../evil`. The route forwards the path-like value to Docker, potentially listing images outside the intended `judge-*` namespace.
+- **Fix:** Reuse `isValidImageReference` from `src/lib/docker/client.ts:150-156`, or tighten the regex to reject `..`, consecutive delimiters, and leading/trailing delimiters.
+
+#### C4-NEW-API-51 — PATCH language builds an untyped update object
+- **File:** `src/app/api/v1/admin/languages/[language]/route.ts:52-58`
+- **Confidence:** Medium
+- **Problem:** `updateValues` is declared as `Record<string, unknown>`, so the compiler does not enforce that only known `languageConfigs` columns are assigned. A typo, a missing field, or a future schema change can introduce runtime errors that TypeScript would otherwise catch.
+- **Failure scenario:** A future refactor adds a new updatable field to the Zod schema but forgets to copy it into `updateValues`, or accidentally assigns it under the wrong key. The route silently ignores the field or fails at the database layer.
+- **Fix:** Use a typed partial object such as `Partial<typeof languageConfigs.$inferInsert>` and assign each field explicitly. This keeps the schema, the update object, and the audit details in sync.
+
+---
+
 ## Prioritized Recommendations
 
 1. **Fix the ZIP metadata bypass** (`C4-NEW-01`) before any production restore/import or file-upload path is considered safe.
@@ -1852,12 +2130,17 @@ A final focused pass over the remaining non-admin route files under `src/app/api
 9. **Add timeouts and graceful shutdown to the Rust runner** (`CQ4-R01`, `CQ4-R02`, `CQ4-R03`, `CQ4-R04`) to prevent hung Docker commands from wedging workers.
 10. **Harden the three new Rust worker HIGH findings** (`C4-NEW-R01`, `C4-NEW-R02`, `C4-NEW-R03`) for leaked CLI processes, timing-side-channel auth, and unbounded poll bodies.
 11. **Fix the app-server API HIGH findings** (`C4-NEW-API-01`–`C4-NEW-API-06`) before release — active-contest problem changes, score-override races, recruiting rate-limit misconfiguration, anti-cheat access bypass, judge deregister double-judging, and chat-widget client-disconnect leaks.
-12. **Fix the admin MEDIUM correctness issues** (`C4-NEW-A03`–`A08`, `C4-NEW-A09`–`A18`) covering restore/import trust/atomicity, rate-limit gaps, tag/plugin/worker/language races and validation, and durable audit logging.
-13. **Fix the UI HIGH-severity correctness bugs** (`CQ4-U01`, `CQ4-U02`, `CQ4-U03`, `CQ4-U04`, `CQ4-U05`, `CQ4-U21`, `CQ4-U36`, `CQ4-U39`) before release.
-14. **Systematically eliminate `setState`-after-unmount leaks** (`CQ4-U06`–`U13`, `CQ4-U15`, `CQ4-U16`, `CQ4-U31`, `CQ4-U58`, `CQ4-U62`) by introducing a reusable `useMounted` hook and applying it consistently.
-15. **Harden deployment/infrastructure HIGH findings** (`CQ4-D01`–`CQ4-D05`) to prevent docs-induced operational errors, silent build failures, supply-chain drift, and non-fatal architecture mismatches.
-16. **Tighten API, admin, app-route, and Rust boundary-layer validation** (`CQ4-A02`, `CQ4-A04`, `CQ4-A06`, `C4-NEW-04`, `C4-NEW-05`, `C4-NEW-08`, `C4-NEW-R08`, `C4-NEW-R09`, `C4-NEW-R10`, `C4-NEW-R11`, `C4-NEW-A19`–`A26`, `C4-NEW-API-07`–`C4-NEW-API-34`) and fix the stale cache comment (`CQ4-A07`).
-17. **Address the still-open prior findings** (`createApiHandler` error taxonomy, global SSE advisory lock, per-mutation CSRF DB read, malformed integer parsing) in the next planning cycle.
+12. **Fix the judge/submissions/files boundary-layer findings** (`C4-NEW-API-35`–`C4-NEW-API-44`) — rate-limit ordering before auth, active rejudge races, missing heartbeat/poll rate limits, unvalidated query parameters, and durable deletion audits.
+13. **Fix the admin MEDIUM correctness issues** (`C4-NEW-A03`–`A08`, `C4-NEW-A09`–`A18`) covering restore/import trust/atomicity, rate-limit gaps, tag/plugin/worker/language races and validation, and durable audit logging.
+14. **Fix the UI HIGH-severity correctness bugs** (`CQ4-U01`, `CQ4-U02`, `CQ4-U03`, `CQ4-U04`, `CQ4-U05`, `CQ4-U21`, `CQ4-U36`, `CQ4-U39`) before release.
+15. **Systematically eliminate `setState`-after-unmount leaks** (`CQ4-U06`–`U13`, `CQ4-U15`, `CQ4-U16`, `CQ4-U31`, `CQ4-U58`, `CQ4-U62`) by introducing a reusable `useMounted` hook and applying it consistently.
+16. **Harden deployment/infrastructure HIGH findings** (`CQ4-D01`–`CQ4-D05`) to prevent docs-induced operational errors, silent build failures, supply-chain drift, and non-fatal architecture mismatches.
+17. **Tighten API, admin, app-route, and Rust boundary-layer validation** (`CQ4-A02`, `CQ4-A04`, `CQ4-A06`, `C4-NEW-04`, `C4-NEW-05`, `C4-NEW-08`, `C4-NEW-R08`, `C4-NEW-R09`, `C4-NEW-R10`, `C4-NEW-R11`, `C4-NEW-A19`–`A26`, `C4-NEW-API-07`–`C4-NEW-API-44`) and fix the stale cache comment (`CQ4-A07`).
+18. **Address the still-open prior findings** (`createApiHandler` error taxonomy, global SSE advisory lock, per-mutation CSRF DB read, malformed integer parsing) in the next planning cycle.
+19. **Fix the core library boundary findings** (`C4-NEW-45`–`C4-NEW-53`) — custom-role authz consistency in `assertRole`/`assertGroupAccess`, rejection handling for login audit events, bounded/validated request IDs, awaited API-key `lastUsedAt` updates, accurate rate-limit reset headers, capability-based sandbox staff bypass, async cleanup in sign-out, UTF-8-safe compiler output truncation, and `undefined` handling in sensitive-settings reconfirmation.
+20. **Add rate limits to admin Docker and language routes** (`C4-NEW-API-45`) so expensive, destructive, or enumerable admin operations cannot be abused or accidentally retried in a tight loop.
+21. **Prevent overlapping Docker builds and cancel long-running operations on client disconnect** (`C4-NEW-API-46`, `C4-NEW-API-47`) to conserve worker resources and avoid build races.
+22. **Tighten Dockerfile-path lookup and image-filter validation** (`C4-NEW-API-48`, `C4-NEW-API-50`) and record normalized values in language audit events (`C4-NEW-API-49`) for consistency.
 
 ---
 
