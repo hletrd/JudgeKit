@@ -233,6 +233,25 @@ describe("createApiHandler", () => {
       expect(res.status).toBe(200);
     });
 
+    it("returns 403 for a custom role on a roles-only gate (no capability fallback)", async () => {
+      // Regression: a custom role (isUserRole=false) previously fell through the
+      // roles check entirely, and with no capability gate configured it reached
+      // the handler — a fail-open. It must now be denied.
+      isUserRoleMock.mockReturnValue(false);
+      const customUser = { ...fakeUser, role: "grader" };
+      getApiUserMock.mockResolvedValue(customUser);
+
+      const handler = createApiHandler({
+        auth: { roles: ["admin"] },
+        handler: async () => NextResponse.json({ ok: true }),
+      });
+
+      const res = await handler(makeRequest("GET"), { params: Promise.resolve({}) });
+
+      expect(res.status).toBe(403);
+      expect(forbiddenMock).toHaveBeenCalledOnce();
+    });
+
     it("allows access when required capabilities are present", async () => {
       const handler = createApiHandler({
         auth: { capabilities: ["system.settings"] },

@@ -158,6 +158,25 @@ export function enforceBackupZipSizeLimits(entries: LoadedZipEntry[]) {
   }
 }
 
+/**
+ * Validate the storedName derived from a ZIP upload entry (the entry name with
+ * the leading "uploads/" stripped). Mirrors the manifest rule in
+ * parseBackupIntegrityManifest: a single flat path segment with no directory
+ * separators, parent-directory traversal, or NUL bytes. Throws on anything that
+ * could escape the staging directory (zip-slip). Exported for unit testing.
+ */
+export function assertSafeUploadStoredName(storedName: string): void {
+  if (
+    storedName.length === 0 ||
+    storedName.includes("/") ||
+    storedName.includes("\\") ||
+    storedName.includes("..") ||
+    storedName.includes("\0")
+  ) {
+    throw new Error("invalidUploadPath");
+  }
+}
+
 async function streamEntryToStaging(
   entry: {
     name: string;
@@ -167,7 +186,19 @@ async function streamEntryToStaging(
   expected?: BackupIntegrityEntry & { storedName: string }
 ): Promise<StagedUploadFile> {
   const storedName = entry.name.slice("uploads/".length);
-  const stagedPath = path.join(stagingDir, storedName);
+
+  // Zip-slip guard: entry.name comes from the archive's central directory, which
+  // is attacker-controllable and is NOT covered by the manifest validation
+  // (parseBackupIntegrityManifest). The `startsWith("uploads/")` filter alone
+  // still admits a crafted "uploads/../../etc/…" entry, so validate the derived
+  // storedName here and confirm the resolved target is a direct child of
+  // stagingDir before opening any write stream.
+  assertSafeUploadStoredName(storedName);
+  const stagingRoot = path.resolve(stagingDir);
+  const stagedPath = path.join(stagingRoot, storedName);
+  if (path.dirname(stagedPath) !== stagingRoot) {
+    throw new Error("invalidUploadPath");
+  }
 
   const hash = createHash("sha256");
   let byteLength = 0;
