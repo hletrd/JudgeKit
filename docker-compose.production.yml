@@ -142,6 +142,14 @@ services:
       dockerfile: Dockerfile.judge-worker
     image: judgekit-judge-worker:latest
     container_name: judgekit-judge-worker
+    # Run as root: the worker chowns each per-run sandbox workspace to uid/gid
+    # 65534 before mounting it into the judge container (see runner.rs /
+    # executor.rs). That chown needs CAP_CHOWN, which the image's non-root
+    # `USER judge` (uid 1000) lacks — without this override the worker fails
+    # every run/judge with "Operation not permitted". The spawned judge
+    # containers still run `--user 65534` with the full sandbox, so the trust
+    # boundary is unchanged; only the worker's own process is root.
+    user: "0:0"
     restart: unless-stopped
     volumes:
       - /judge-workspaces:/judge-workspaces  # Identity-mapped so sibling containers see the same path
