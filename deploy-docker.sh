@@ -945,6 +945,7 @@ remote_rsync -az --delete \
     --exclude='data/' \
     --exclude='.env*' \
     --exclude='*.db' \
+    --exclude='target/' \
     --exclude='judge-worker-rs/target/' \
     --exclude='rate-limiter-rs/target/' \
     --exclude='code-similarity-rs/target/' \
@@ -1528,6 +1529,7 @@ chmod 600 ${q_file}"
             --exclude='data/' \
             --exclude='.env*' \
             --exclude='*.db' \
+            --exclude='target/' \
             --exclude='judge-worker-rs/target/' \
             --exclude='rate-limiter-rs/target/' \
             --exclude='code-similarity-rs/target/' \
