@@ -264,6 +264,27 @@ describe("export-with-files integrity manifests", () => {
     expect(writeUploadedFileMock).toHaveBeenCalledWith("upload-1.bin", Buffer.from("hello upload"));
   });
 
+  it("rejects zip-slip upload entry names in the extraction guard", async () => {
+    // JSZip.file() normalizes "uploads/../escape.bin" away, so the skip test
+    // above never exercises a real traversal name reaching the writer. This
+    // covers the guard directly with names a crafted archive could carry.
+    const { assertSafeUploadStoredName } = await import("@/lib/db/export-with-files");
+    for (const bad of [
+      "../../etc/passwd",
+      "../escape.bin",
+      "nested/child.bin",
+      "a\\b.bin",
+      "with..dots",
+      "",
+      "bad\0.bin",
+    ]) {
+      expect(() => assertSafeUploadStoredName(bad)).toThrow("invalidUploadPath");
+    }
+    // Legitimate flat storedNames are accepted.
+    expect(() => assertSafeUploadStoredName("upload-1.bin")).not.toThrow();
+    expect(() => assertSafeUploadStoredName("a1b2c3d4.png")).not.toThrow();
+  });
+
   it("rejects ZIP backups with too many expanded entries", async () => {
     const {
       MAX_BACKUP_ZIP_ENTRIES,
