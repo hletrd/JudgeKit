@@ -198,11 +198,21 @@ export function createApiHandler<T = undefined>(config: HandlerConfig<T>) {
         if (!user) return addRequestId(unauthorized(), requestId);
 
         // Role check: built-in roles must be explicitly listed. Custom roles are
-        // not rejected here; they are validated through the capability check below
-        // so that deployments with custom roles can still enforce required capabilities.
+        // deferred to the capability check below ONLY when the route declares a
+        // capability gate; a roles-only route must not silently admit a custom
+        // role (that was a fail-open — an unknown role bypassed the gate entirely).
         if (typeof auth === "object" && auth.roles && auth.roles.length > 0) {
-          if (isUserRole(user.role) && !auth.roles.includes(user.role)) {
-            return addRequestId(forbidden(), requestId);
+          const roleExplicitlyAllowed = isUserRole(user.role) && auth.roles.includes(user.role);
+          if (!roleExplicitlyAllowed) {
+            const hasCapabilityGate =
+              Array.isArray(auth.capabilities) && auth.capabilities.length > 0;
+            // Deny unless a custom role can still be governed by the capability
+            // check. A built-in role not in the allowlist is always denied
+            // (preserves strict role AND-semantics); a custom role with no
+            // capability gate is denied too (closes the fail-open).
+            if (isUserRole(user.role) || !hasCapabilityGate) {
+              return addRequestId(forbidden(), requestId);
+            }
           }
         }
 
