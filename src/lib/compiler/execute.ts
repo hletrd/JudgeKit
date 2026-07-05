@@ -271,6 +271,13 @@ export function validateShellCommandStrict(cmd: string): boolean {
       break;
     }
     if (!firstToken) return false;
+    // A compiled artifact is executed by its path inside the mounted workspace
+    // (e.g. "/workspace/solution", "/workspace/bin/solution"). Such run commands
+    // have no interpreter prefix; accept them because execution is confined to the
+    // sandboxed --network=none, read-only, --user 65534 container. Reject
+    // parent-dir traversal defensively. Kept in lock-step with
+    // judge-worker-rs/src/runner.rs#validate_shell_command_strict.
+    if (firstToken.startsWith("/workspace/") && !firstToken.includes("..")) return true;
     const baseName = firstToken.split("/").pop() || firstToken;
     return isValidCommandPrefix(baseName);
   });

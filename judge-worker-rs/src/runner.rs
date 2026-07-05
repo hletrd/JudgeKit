@@ -258,6 +258,15 @@ fn validate_shell_command_strict(cmd: &str) -> bool {
         match first {
             None => return false,
             Some(token) => {
+                // A compiled artifact is executed by its path inside the mounted
+                // workspace (e.g. "/workspace/solution", "/workspace/bin/solution").
+                // Such run commands have no interpreter prefix; accept them because
+                // execution is confined to the sandboxed --network=none, read-only,
+                // --user 65534 container. Reject parent-dir traversal defensively.
+                // Keep in lock-step with src/lib/compiler/execute.ts.
+                if token.starts_with("/workspace/") && !token.contains("..") {
+                    continue;
+                }
                 let base = token.rsplit('/').next().unwrap_or(token);
                 if !is_valid_command_prefix(base) {
                     return false;
@@ -1165,5 +1174,18 @@ mod tests {
         assert!(validate_shell_command_strict("python3 /workspace/main.py"));
         assert!(validate_shell_command_strict("java -cp /workspace Main"));
         assert!(validate_shell_command_strict("gcc -c foo.c && gcc -o foo foo.o"));
+    }
+
+    #[test]
+    fn strict_allows_workspace_binary_run_commands() {
+        // Compiled languages run their artifact by its workspace path; these have
+        // no interpreter prefix and must be accepted.
+        assert!(validate_shell_command_strict("/workspace/solution"));
+        assert!(validate_shell_command_strict("/workspace/bin/solution"));
+        assert!(validate_shell_command_strict("/workspace/build/exec/solution"));
+        // Parent-dir traversal is rejected even under /workspace.
+        assert!(!validate_shell_command_strict("/workspace/../bin/sh"));
+        // A non-workspace absolute binary is still rejected (unknown prefix).
+        assert!(!validate_shell_command_strict("/usr/bin/id"));
     }
 }
