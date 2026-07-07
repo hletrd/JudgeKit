@@ -1,4 +1,4 @@
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, execTransaction, type TransactionClient } from "@/lib/db";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -12,7 +12,7 @@ import {
 } from "@/lib/db/schema";
 import type { ProblemSetMutationInput } from "@/lib/validators/problem-sets";
 
-type DatabaseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete">;
+type DatabaseExecutor = Pick<typeof db, "select" | "insert" | "update" | "delete" | "execute">;
 
 function mapProblemSetProblems(problemSetId: string, problemIds: string[]) {
   return problemIds.map((problemId, index) => ({
@@ -31,6 +31,18 @@ export async function syncGroupAccessRows(
   groupId: string,
   executor: DatabaseExecutor | TransactionClient = db
 ) {
+  // Serialize concurrent syncs for the same group. This function is
+  // check-then-act (read required + existing sets, then delete/insert):
+  // two overlapping syncs either 23505-failed on pga_problem_group_idx or
+  // deleted access rows the other had just granted, cutting students off
+  // from problems (RPF cycle-1 PR-M3). All callers run inside a
+  // transaction, so a transaction-scoped advisory lock keyed on the group
+  // serializes them; the ON CONFLICT DO NOTHING below is the second line of
+  // defense for any future non-transactional caller.
+  await executor.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${`group-access:${groupId}`}))`
+  );
+
   // 1. Collect problem IDs from assignments
   const assignmentRows = await executor
     .select({ problemId: assignmentProblems.problemId })
@@ -77,7 +89,12 @@ export async function syncGroupAccessRows(
   }
 
   if (rowsToInsert.length > 0) {
-    await executor.insert(problemGroupAccess).values(rowsToInsert);
+    await executor
+      .insert(problemGroupAccess)
+      .values(rowsToInsert)
+      .onConflictDoNothing({
+        target: [problemGroupAccess.problemId, problemGroupAccess.groupId],
+      });
   }
 }
 

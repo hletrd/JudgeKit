@@ -54,8 +54,22 @@ export function parseProblemStatementBlocks(description: string): ProblemStateme
     structuredBlock = null;
   };
 
+  // Code-fence tracking (RPF cycle-1 PR-M4): `#`-prefixed lines inside a
+  // ``` / ~~~ fence are code (e.g. Python comments, shell prompts), not
+  // section headings. Without this, a fenced `# Input` line split the
+  // statement mid-code-block and corrupted the rendered problem.
+  let insideFence = false;
+
   for (const line of lines) {
-    const headingMatch = line.match(/^(#{1,6})\s+(.+?)\s*$/);
+    const isFenceDelimiter = /^\s{0,3}(?:`{3,}|~{3,})/.test(line);
+    if (isFenceDelimiter) {
+      insideFence = !insideFence;
+    }
+
+    const headingMatch =
+      insideFence || isFenceDelimiter
+        ? null
+        : line.match(/^(#{1,6})\s+(.+?)\s*$/);
     const structuredKind = headingMatch ? getStructuredBlockKind(headingMatch[2]) : null;
 
     if (structuredKind && headingMatch) {

@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { db } from "@/lib/db";
 import { rawQueryAll } from "@/lib/db/queries";
+import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 import { antiCheatEvents } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { getDbNowUncached } from "@/lib/db-time";
@@ -332,9 +333,14 @@ export async function runSimilarityCheck(
   const rows = await rawQueryAll<SubmissionRow>(
     `WITH best AS (
       SELECT user_id AS "userId", problem_id AS "problemId", language, source_code AS "sourceCode",
-             ROW_NUMBER() OVER (PARTITION BY user_id, problem_id, language ORDER BY score DESC, submitted_at DESC) AS rn
+             -- score DESC alone is NULLS FIRST in Postgres, so an unjudged
+             -- (score IS NULL) submission outranked every judged one and the
+             -- similarity check ran against a scratch attempt; terminal-status
+             -- filter keeps in-flight rows out entirely (RPF cycle-1 CQ-M2).
+             ROW_NUMBER() OVER (PARTITION BY user_id, problem_id, language ORDER BY score DESC NULLS LAST, submitted_at DESC) AS rn
       FROM submissions
       WHERE assignment_id = @assignmentId
+        AND status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
     )
     SELECT "userId", "problemId", "language", "sourceCode" FROM best WHERE rn = 1`,
     { assignmentId }

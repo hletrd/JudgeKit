@@ -31,6 +31,34 @@ describe("parseProblemStatementBlocks", () => {
     ]);
   });
 
+  it("ignores # lines inside code fences (fence-aware parsing)", () => {
+    // RPF cycle-1 PR-M4: a `# Input`-looking line inside a ``` fence is code
+    // (Python comment / shell prompt), not a section heading. The parser
+    // previously split the statement mid-code-block.
+    const blocks = parseProblemStatementBlocks(`Intro text.
+
+\`\`\`python
+# Input
+x = int(input())
+\`\`\`
+
+## Input
+One integer x.`);
+
+    expect(blocks).toEqual([
+      {
+        type: "markdown",
+        content: "Intro text.\n\n```python\n# Input\nx = int(input())\n```",
+      },
+      expect.objectContaining({
+        type: "structured",
+        kind: "input",
+        title: "Input",
+        content: "One integer x.",
+      }),
+    ]);
+  });
+
   it("treats non-matching headings as regular markdown content", () => {
     const blocks = parseProblemStatementBlocks(`# 제목
 
