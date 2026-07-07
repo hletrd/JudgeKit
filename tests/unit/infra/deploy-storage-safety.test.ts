@@ -49,7 +49,12 @@ describe("deploy storage and target safety contracts", () => {
 
     expect(deployDocker).toContain('DEPLOY_TARGET="auraedu"');
     expect(deployDocker).toContain("Unknown DEPLOY_TARGET");
-    expect(deployDocker).toContain("Expected one of: algo, worv, auraedu (alias: oj)");
+    // worv (test.worv.ai) was retired from the roster on 2026-07-06 (RPF
+    // cycle-1 U1): it must be explicitly rejected, and the accepted list
+    // must not include it.
+    expect(deployDocker).toContain("Expected one of: algo, auraedu (alias: oj)");
+    expect(deployDocker).toContain("DEPLOY_TARGET='worv' (test.worv.ai) was retired");
+    expect(deployDocker).not.toContain("Expected one of: algo, worv");
 
     if (defaultEnv) {
       expect(defaultEnv).not.toContain("DOMAIN=oj-internal.maum.ai");

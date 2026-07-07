@@ -1629,6 +1629,51 @@ NGINX_TMPFILE="$(mktemp /tmp/judgekit-nginx.XXXXXX.conf)"
 NGINX_HTTP2_MODE="$(detect_nginx_http2_mode)"
 info "Remote nginx HTTP/2 syntax mode: ${NGINX_HTTP2_MODE}"
 
+# ---------------------------------------------------------------------------
+# default_server catch-alls (RPF cycle-1 M9). Without them nginx routes ANY
+# Host header to the JudgeKit server block, and because the app trusts
+# X-Forwarded-Host = \$host (the 2026-07-05 AUTH_TRUST_HOST fix), an attacker
+# could steer host-derived URLs. The checked-in template
+# (scripts/online-judge.nginx.conf) already rejects unknown hosts (444/421);
+# mirror it in the generated config. Emission is skipped when another enabled
+# nginx config on the host already declares default_server for these ports —
+# a duplicate would fail nginx -t and abort the deploy late.
+# ---------------------------------------------------------------------------
+NGINX_EMIT_CATCHALL=1
+if [[ "${DRY_RUN}" != "1" ]]; then
+    EXISTING_DEFAULT_SERVER=$(remote "grep -rls 'default_server' /etc/nginx/nginx.conf /etc/nginx/sites-enabled/ /etc/nginx/conf.d/ 2>/dev/null | grep -v 'judgekit' || true" 2>/dev/null || true)
+    if [[ -n "${EXISTING_DEFAULT_SERVER}" ]]; then
+        warn "Skipping default_server catch-all: another nginx config already declares one:"
+        warn "  ${EXISTING_DEFAULT_SERVER}"
+        warn "Unknown-Host requests will reach the JudgeKit server block unless that config rejects them."
+        NGINX_EMIT_CATCHALL=0
+    fi
+fi
+
+NGINX_CATCHALL_HTTP=""
+NGINX_CATCHALL_TLS=""
+if [[ "${NGINX_EMIT_CATCHALL}" == "1" ]]; then
+NGINX_CATCHALL_HTTP="# Reject requests for unknown Host names outright (no response).
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
+    return 444;
+}"
+NGINX_CATCHALL_TLS="# Reject TLS requests for unknown Host names (421 Misdirected Request).
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+
+    ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    return 421;
+}"
+fi
+
 if [[ "${USE_TLS}" == "true" ]]; then
 cat > "$NGINX_TMPFILE" <<NGINX_EOF
 server_tokens off;
@@ -1640,6 +1685,10 @@ map \$http_upgrade \$connection_upgrade {
 
 limit_req_zone \$binary_remote_addr zone=judgekit_login:10m rate=5r/s;
 limit_req_zone \$binary_remote_addr zone=judgekit_judge:1m rate=10r/s;
+
+${NGINX_CATCHALL_HTTP}
+
+${NGINX_CATCHALL_TLS}
 
 server {
     listen 80;
@@ -1690,7 +1739,9 @@ cat >> "$NGINX_TMPFILE" <<NGINX_EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     # Final judge result reports can legitimately exceed 1 MiB because the
@@ -1706,7 +1757,9 @@ cat >> "$NGINX_TMPFILE" <<NGINX_EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     location /api/v1/judge/ {
@@ -1719,7 +1772,9 @@ cat >> "$NGINX_TMPFILE" <<NGINX_EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     location / {
@@ -1733,7 +1788,9 @@ cat >> "$NGINX_TMPFILE" <<NGINX_EOF
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
         proxy_cache_bypass \$http_upgrade;
     }
 }
@@ -1749,6 +1806,8 @@ map \$http_upgrade \$connection_upgrade {
 
 limit_req_zone \$binary_remote_addr zone=judgekit_login:10m rate=5r/s;
 limit_req_zone \$binary_remote_addr zone=judgekit_judge:1m rate=10r/s;
+
+${NGINX_CATCHALL_HTTP}
 
 server {
     listen 80;
@@ -1772,7 +1831,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     # Final judge result reports can legitimately exceed 1 MiB because the
@@ -1788,7 +1849,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     location /api/v1/judge/ {
@@ -1801,7 +1864,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
     }
 
     location / {
@@ -1815,7 +1880,9 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        # NOTE: Do NOT set X-Forwarded-Host — it breaks Next.js 16 RSC client-side navigation
+        # X-Forwarded-Host is intentionally pinned to \$host above (2026-07-05
+        # AUTH_TRUST_HOST fix) — do not remove it. The default_server
+        # catch-alls reject unknown Host names, so \$host is the canonical domain.
         proxy_cache_bypass \$http_upgrade;
     }
 }
