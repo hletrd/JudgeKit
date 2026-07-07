@@ -351,7 +351,17 @@ export async function GET(
           unsubscribeFromPoll(id, onPollResult);
           clearTimeout(timeoutTimer);
           if (useSharedCoordination) {
-            void releaseSharedSseConnectionSlot(sharedConnectionKey);
+            // Must swallow rejections: close() runs outside any request
+            // handler, so a transient DB error here becomes an unhandled
+            // promise rejection that can terminate the whole Node process
+            // (RPF cycle-1 CQ-M1). The slot row is reaped by the periodic
+            // sweep if the release is lost.
+            releaseSharedSseConnectionSlot(sharedConnectionKey).catch((err) => {
+              logger.warn(
+                { err, sharedConnectionKey },
+                "[sse] failed to release shared connection slot on close",
+              );
+            });
           } else {
             removeConnection(connId);
           }
