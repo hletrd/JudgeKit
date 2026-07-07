@@ -133,6 +133,21 @@ export async function isRecruitingCandidateUser(userId: string): Promise<boolean
  * in the past. If any invitation is still in the open window, login
  * remains allowed.
  */
+/**
+ * Access window for invitations against DEADLINE-LESS assignments. A null
+ * cutoff previously meant "candidate can log in forever" (RPF cycle-1
+ * SR-M7); staleness for those is now N days after the invitation was
+ * redeemed (default 30, override via RECRUITING_DEADLINELESS_ACCESS_DAYS).
+ */
+function deadlinelessAccessWindowMs(): number {
+  const parsed = Number.parseInt(
+    process.env.RECRUITING_DEADLINELESS_ACCESS_DAYS ?? "",
+    10
+  );
+  const days = Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+  return days * 24 * 60 * 60 * 1000;
+}
+
 export async function isStaleRecruitingCandidate(userId: string): Promise<boolean> {
   const ctx = await getRecruitingAccessContext(userId);
   if (!ctx.isRecruitingCandidate) return false;
@@ -148,15 +163,47 @@ export async function isStaleRecruitingCandidate(userId: string): Promise<boolea
     .where(inArray(assignments.id, ctx.assignmentIds));
 
   const now = Date.now();
+  const deadlinelessIds: string[] = [];
   for (const row of rows) {
     const cutoff = row.lateDeadline ?? row.deadline;
     if (!cutoff) {
-      // No deadline = open-ended, treat as active.
-      return false;
+      // No schedule cutoff — staleness is decided by redeem age below.
+      deadlinelessIds.push(row.id);
+      continue;
     }
     if (new Date(cutoff).getTime() > now) {
       return false;
     }
   }
+
+  if (deadlinelessIds.length > 0) {
+    const invitationRows = await db
+      .select({
+        redeemedAt: recruitingInvitations.redeemedAt,
+        createdAt: recruitingInvitations.createdAt,
+      })
+      .from(recruitingInvitations)
+      .where(
+        and(
+          eq(recruitingInvitations.userId, userId),
+          eq(recruitingInvitations.status, "redeemed"),
+          inArray(recruitingInvitations.assignmentId, deadlinelessIds)
+        )
+      );
+
+    const windowMs = deadlinelessAccessWindowMs();
+    for (const invitation of invitationRows) {
+      const anchor = invitation.redeemedAt ?? invitation.createdAt;
+      if (!anchor) {
+        // Defensive: a redeemed invitation without any timestamp should not
+        // exist; do not lock the candidate out on missing data.
+        return false;
+      }
+      if (new Date(anchor).getTime() + windowMs > now) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
