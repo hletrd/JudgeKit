@@ -169,13 +169,35 @@ impl Config {
         };
         let auth_token = SecretString::new(auth_token_raw);
 
-        let disable_custom_seccomp = match env::var("JUDGE_DISABLE_CUSTOM_SECCOMP") {
-            Ok(val) => {
-                let lower = val.trim().to_lowercase();
-                matches!(lower.as_str(), "1" | "true" | "yes" | "on")
+        let env_flag = |name: &str| -> bool {
+            match env::var(name) {
+                Ok(val) => {
+                    let lower = val.trim().to_lowercase();
+                    matches!(lower.as_str(), "1" | "true" | "yes" | "on")
+                }
+                Err(_) => false,
             }
-            Err(_) => false,
         };
+
+        let disable_custom_seccomp = env_flag("JUDGE_DISABLE_CUSTOM_SECCOMP");
+        let allow_default_compile_seccomp = env_flag("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP");
+
+        // Fail closed (RPF cycle-1 M5): a lone env var silently weakening the
+        // sandbox is exactly the kind of setting that leaks from a debug
+        // session into production. Weakening now requires the explicit
+        // confirmation var JUDGE_ALLOW_SECCOMP_WEAKENING=1; without it the
+        // worker refuses to start instead of running with reduced isolation.
+        if (disable_custom_seccomp || allow_default_compile_seccomp)
+            && !env_flag("JUDGE_ALLOW_SECCOMP_WEAKENING")
+        {
+            return Err(
+                "JUDGE_DISABLE_CUSTOM_SECCOMP / JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP weaken the \
+                judge sandbox and now require JUDGE_ALLOW_SECCOMP_WEAKENING=1 to confirm. \
+                Refusing to start with a weakened seccomp configuration (fail-closed). \
+                Unset the weakening variable(s) or set the confirmation explicitly."
+                    .to_string(),
+            );
+        }
 
         if disable_custom_seccomp {
             tracing::warn!(
@@ -183,14 +205,6 @@ impl Config {
                 This reduces sandboxing security and should only be used in trusted environments."
             );
         }
-
-        let allow_default_compile_seccomp = match env::var("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP") {
-            Ok(val) => {
-                let lower = val.trim().to_lowercase();
-                matches!(lower.as_str(), "1" | "true" | "yes" | "on")
-            }
-            Err(_) => false,
-        };
 
         if allow_default_compile_seccomp {
             tracing::warn!(
