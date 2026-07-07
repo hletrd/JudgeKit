@@ -649,8 +649,11 @@ export async function redeemRecruitingToken(
         }
 
         // Verify assignment still exists and isn't closed. Use SQL NOW() for
-        // the deadline check to avoid clock skew between app and DB servers,
-        // consistent with the atomic claim step in the initial redeem path.
+        // the deadline check to avoid clock skew between app and DB servers.
+        // The effective close is COALESCE(lateDeadline, deadline) — gating on
+        // the bare deadline locked candidates out during a configured
+        // late-submission window (RPF cycle-1 L11), diverging from
+        // redeemAccessCode and contestAccessTokenExpiry.
         const [assignment] = await tx
           .select({
             id: assignments.id,
@@ -661,7 +664,7 @@ export async function redeemRecruitingToken(
           .where(
             and(
               eq(assignments.id, invitation.assignmentId),
-              sql`(${assignments.deadline} IS NULL OR ${assignments.deadline} > NOW())`
+              sql`(COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) IS NULL OR COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) > NOW())`
             )
           )
           .limit(1);
@@ -698,6 +701,10 @@ export async function redeemRecruitingToken(
           examMode: assignments.examMode,
           deadline: assignments.deadline,
           lateDeadline: assignments.lateDeadline,
+          // Effective close evaluated by the DB clock (NOW()) to avoid app/DB
+          // clock skew. COALESCE(lateDeadline, deadline) matches
+          // contestAccessTokenExpiry and the re-entry path above.
+          isOpen: sql<boolean>`(COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) IS NULL OR COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) > NOW())`,
         })
         .from(assignments)
         .where(eq(assignments.id, invitation.assignmentId))
@@ -705,11 +712,14 @@ export async function redeemRecruitingToken(
 
       if (!assignment) return { ok: false as const, error: "assignmentNotFound" };
       if (assignment.examMode === "none") return { ok: false as const, error: "notAContest" };
-      // Deadline is not checked on the JS side to avoid clock skew between app
-      // server and DB server. The atomic SQL claim step below validates the
-      // deadline using NOW() which is authoritative. If the contest has closed
-      // between the read and claim, the SQL WHERE clause will return no rows
-      // and the transaction will roll back with an appropriate error.
+      // Closed-assignment gate (RPF cycle-1 H4): previously nothing on this
+      // path checked the assignment deadline at all — the atomic claim below
+      // only validated the invitation's own expiresAt — so a pending invite
+      // with a null/far-future expiry for a closed assignment still created a
+      // real user account + enrollment. The `isOpen` flag above is computed by
+      // the DB (NOW()), and the atomic claim re-checks it via EXISTS so the
+      // race between this read and the claim stays closed.
+      if (!assignment.isOpen) return { ok: false as const, error: "assignmentClosed" };
 
       if (!accountPassword) return { ok: false as const, error: "accountPasswordRequired" };
 
@@ -779,7 +789,16 @@ export async function redeemRecruitingToken(
           and(
             eq(recruitingInvitations.id, invitation.id),
             eq(recruitingInvitations.status, "pending"),
-            sql`(${recruitingInvitations.expiresAt} IS NULL OR ${recruitingInvitations.expiresAt} > NOW())`
+            sql`(${recruitingInvitations.expiresAt} IS NULL OR ${recruitingInvitations.expiresAt} > NOW())`,
+            // Authoritative closed-assignment gate (RPF cycle-1 H4): the
+            // invitation's own expiresAt says nothing about the assignment
+            // schedule, so re-validate the effective close atomically here.
+            sql`EXISTS (
+              SELECT 1 FROM ${assignments}
+              WHERE ${assignments.id} = ${invitation.assignmentId}
+                AND (COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) IS NULL
+                     OR COALESCE(${assignments.lateDeadline}, ${assignments.deadline}) > NOW())
+            )`
           )
         )
         .returning({ id: recruitingInvitations.id });

@@ -90,6 +90,7 @@ vi.mock("@/lib/db/schema", () => ({
     groupId: "assignments.groupId",
     examMode: "assignments.examMode",
     deadline: "assignments.deadline",
+    lateDeadline: "assignments.lateDeadline",
   },
 }));
 
@@ -170,12 +171,15 @@ describe("recruiting token DB-time consistency", () => {
         createdAt: new Date("2026-04-19T00:00:00Z"),
         updatedAt: new Date("2026-04-19T00:00:00Z"),
       }])
-      // 2. Assignment exists
+      // 2. Assignment exists (isOpen is the DB-computed effective-close flag
+      // added by the RPF cycle-1 H4 closed-assignment gate)
       .mockResolvedValueOnce([{
         id: "assignment-1",
         groupId: "group-1",
         examMode: "scheduled",
         deadline: null,
+        lateDeadline: null,
+        isOpen: true,
       }]);
 
     // Atomic claim returns success
@@ -206,6 +210,48 @@ describe("recruiting token DB-time consistency", () => {
     // The key assertion: getDbNowUncached was called inside the transaction
     // to ensure all timestamps use DB server time rather than new Date()
     expect(getDbNowUncachedMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("redeemRecruitingToken rejects initial redeem when the assignment's effective close has passed (H4)", async () => {
+    const tx = {
+      select: txSelectMock,
+      insert: txInsertMock,
+      update: txUpdateMock,
+    };
+
+    txLimitMock
+      .mockResolvedValueOnce([{
+        id: "invitation-1",
+        assignmentId: "assignment-1",
+        candidateName: "Test Candidate",
+        candidateEmail: "test@example.com",
+        status: "pending",
+        metadata: {},
+        userId: null,
+        expiresAt: null, // never-expiring invitation must NOT bypass the assignment deadline
+        redeemedAt: null,
+        ipAddress: null,
+        createdBy: "admin-1",
+        createdAt: new Date("2026-04-19T00:00:00Z"),
+        updatedAt: new Date("2026-04-19T00:00:00Z"),
+      }])
+      .mockResolvedValueOnce([{
+        id: "assignment-1",
+        groupId: "group-1",
+        examMode: "scheduled",
+        deadline: new Date("2026-04-01T00:00:00Z"),
+        lateDeadline: null,
+        isOpen: false, // DB-computed effective close already passed
+      }]);
+
+    dbTransactionMock.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const { redeemRecruitingToken } = await import("@/lib/assignments/recruiting-invitations");
+
+    const result = await redeemRecruitingToken("fake-token", "127.0.0.1", "Password123!");
+    expect(result).toMatchObject({ ok: false, error: "assignmentClosed" });
+    // No user account, enrollment, or access token may be created past close.
+    expect(txInsertMock).not.toHaveBeenCalled();
   });
 
   it("redeemRecruitingToken uses DB-sourced time for updatedAt in the already-redeemed password-reset path", async () => {
