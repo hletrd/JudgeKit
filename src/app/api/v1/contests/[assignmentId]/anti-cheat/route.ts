@@ -60,14 +60,20 @@ export const POST = createApiHandler({
     // ("curl every 30s while a confederate handles the exam") meaningfully
     // harder — the attacker now has to spoof the browser environment
     // closely enough to pin Origin.
-    if (process.env.NODE_ENV === "production") {
-      const originHeader = req.headers.get("origin")?.trim();
-      if (!originHeader) {
-        return apiError("forbidden", 403);
-      }
+    // The check is gated on a canonical host being configured (AUTH_URL),
+    // NOT on NODE_ENV: env-name gating meant any non-"production" deployment
+    // (staging, misconfigured prod) silently dropped the requirement
+    // (RPF cycle-1 SR-M6). When AUTH_URL is unset (local dev/unit tests)
+    // there is nothing to pin Origin against, so the strict check is skipped
+    // and the global CSRF helper remains the baseline.
+    {
       const { getAuthUrlObject } = await import("@/lib/security/env");
       const expectedHost = getAuthUrlObject()?.host;
       if (expectedHost) {
+        const originHeader = req.headers.get("origin")?.trim();
+        if (!originHeader) {
+          return apiError("forbidden", 403);
+        }
         try {
           if (new URL(originHeader).host !== expectedHost) {
             return apiError("forbidden", 403);
