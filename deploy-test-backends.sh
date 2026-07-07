@@ -248,7 +248,7 @@ seed_backend() {
       -v ${REMOTE_DIR}:/app:ro \
       -e DATABASE_URL=postgres://judgekit:${pg_pass}@db-postgres:5432/judgekit \
       node:24-alpine \
-      sh -c 'cd /app && npm install --no-save drizzle-kit drizzle-orm pg nanoid 2>&1 | tail -1 && npx drizzle-kit push'" \
+      sh -c 'cd /app && npm install --no-save drizzle-kit@0.31.10 drizzle-orm@0.45.2 pg@8.20.0 nanoid@5.1.9 2>&1 | tail -1 && npx drizzle-kit push'" \
       || die "drizzle-kit push failed for ${label}"
   elif [[ "$dialect" == "mysql" ]]; then
     # Apply the MySQL-specific migration files with the mysql client.
