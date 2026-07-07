@@ -60,9 +60,15 @@ const MAX_SOURCE_CODE_BYTES: usize = 256 * 1024; // 256KB
 use crate::validation::validate_docker_image;
 
 fn compile_timeout_ms_for_submission(time_limit_ms: u64) -> u64 {
-    time_limit_ms
-        .saturating_mul(2)
-        .clamp(MIN_COMPILE_TIMEOUT_MS, compilation_timeout_ms())
+    clamp_compile_timeout(time_limit_ms.saturating_mul(2), compilation_timeout_ms())
+}
+
+fn clamp_compile_timeout(scaled_ms: u64, cap_ms: u64) -> u64 {
+    // `clamp` panics when min > max, so a configured JUDGE_COMPILE_TIMEOUT_MS
+    // below MIN_COMPILE_TIMEOUT_MS turned every compiled-language submission
+    // into a catch_unwind runtime_error (RPF cycle-1 M1). Raise the upper
+    // bound to at least the floor instead (same pattern as runner.rs).
+    scaled_ms.clamp(MIN_COMPILE_TIMEOUT_MS, cap_ms.max(MIN_COMPILE_TIMEOUT_MS))
 }
 
 fn reported_memory_used_kb(
@@ -845,6 +851,22 @@ mod tests {
         assert_eq!(
             compile_timeout_ms_for_submission(400_000),
             COMPILATION_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn compile_timeout_does_not_panic_when_env_cap_is_below_the_floor() {
+        // RPF cycle-1 M1: JUDGE_COMPILE_TIMEOUT_MS < MIN_COMPILE_TIMEOUT_MS
+        // made clamp(min, max) panic (min > max) and mis-verdicted every
+        // compiled-language submission as runtime_error.
+        assert_eq!(
+            super::clamp_compile_timeout(2_000, 10_000),
+            MIN_COMPILE_TIMEOUT_MS
+        );
+        // A sub-floor cap must also bound scaled values at the floor.
+        assert_eq!(
+            super::clamp_compile_timeout(100_000, 10_000),
+            MIN_COMPILE_TIMEOUT_MS
         );
     }
 
