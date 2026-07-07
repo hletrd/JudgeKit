@@ -1,11 +1,15 @@
 use memchr::memchr;
 
-/// Trim trailing ASCII whitespace (space, tab, carriage return) from a byte slice.
+/// Trim trailing ASCII whitespace (space, tab, carriage return, vertical
+/// tab, form feed) from a byte slice. The set matches JavaScript's
+/// `String.prototype.trim()` for ASCII input — the Node compiler runner
+/// trims with JS semantics, and excluding VT (0x0B) / FF (0x0C) here made
+/// the two runners disagree on the same output (RPF cycle-1 L3).
 /// Returns a subslice with no heap allocation.
 #[inline]
 fn trim_end(line: &[u8]) -> &[u8] {
     let mut end = line.len();
-    while end > 0 && matches!(line[end - 1], b' ' | b'\t' | b'\r') {
+    while end > 0 && matches!(line[end - 1], b' ' | b'\t' | b'\r' | b'\x0B' | b'\x0C') {
         end -= 1;
     }
     &line[..end]
@@ -73,7 +77,9 @@ pub fn compare_output(expected: &[u8], actual: &[u8]) -> bool {
 
 #[inline]
 fn is_ascii_trim_byte(byte: u8) -> bool {
-    matches!(byte, b' ' | b'\t' | b'\r' | b'\n')
+    // Mirrors JS String.prototype.trim() for ASCII (includes VT/FF —
+    // RPF cycle-1 L3); keep in sync with trim_end above.
+    matches!(byte, b' ' | b'\t' | b'\r' | b'\n' | b'\x0B' | b'\x0C')
 }
 
 fn normalize_exact_output(data: &[u8]) -> Vec<u8> {
