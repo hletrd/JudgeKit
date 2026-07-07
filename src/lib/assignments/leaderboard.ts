@@ -124,14 +124,29 @@ export async function computeSingleUserLiveRank(
   // Returns null when the user has no scored submissions (they are not on the
   // leaderboard, so "rank 1" would be misleading).
   if (scoringModel === "icpc") {
-    // ICPC: rank = 1 + count of users ranked higher using the same tie-breakers
-    // as the main leaderboard (contest-scoring.ts):
+    // ICPC: rank = 1 + count of users ranked higher using the same tie
+    // definition as the main leaderboard (contest-scoring.ts):
     //   1. More problems solved
     //   2. Less penalty
-    //   3. Earlier last AC time
-    //   4. userId lexicographic order (deterministic tie-break)
+    // Equal (solved, penalty) is the SAME rank on the board, so no further
+    // discriminators here — the previous last_ac_at/user_id tie-breaks made
+    // this live rank disagree with the board by one for tied users
+    // (RPF cycle-1 M11).
+    // Penalty is minutes from contest start (same as computeIcpcPenalty),
+    // not absolute epoch minutes, and a null startsAt returns no rank to
+    // match the board's empty-ranking guard (RPF cycle-1 L13).
     // Uses wrong_before_ac (window-function-based, same as contest-scoring.ts) instead of
     // attempt_count - has_ac to correctly exclude post-AC wrong submissions from penalty.
+    const startRow = await rawQueryOne<{ startsAt: Date | null }>(
+      `SELECT starts_at AS "startsAt" FROM assignments WHERE id = @assignmentId`,
+      { assignmentId },
+    );
+    if (!startRow?.startsAt) {
+      // computeContestRanking returns an empty ranking for ICPC without a
+      // start time; a live rank computed from absolute epoch minutes would
+      // contradict that.
+      return null;
+    }
     type IcpcRankRow = { rank: number | null; hasSubmissions: boolean };
     const result = await rawQueryOne<IcpcRankRow>(
       `WITH base AS (
@@ -165,15 +180,14 @@ export async function computeSingleUserLiveRank(
           SUM(us.has_ac) AS solved_count,
           SUM(
             CASE WHEN us.has_ac = 1 THEN
-              EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60 + 20 * us.wrong_before_ac
+              FLOOR(EXTRACT(EPOCH FROM (us.first_ac_at - @startsAt::timestamptz)) / 60)::bigint + 20 * us.wrong_before_ac
             ELSE 0 END
-          ) AS total_penalty,
-          MAX(CASE WHEN us.has_ac = 1 THEN us.first_ac_at ELSE NULL END) AS last_ac_at
+          ) AS total_penalty
         FROM user_score us
         GROUP BY us.user_id
       ),
       target AS (
-        SELECT solved_count, total_penalty, last_ac_at, user_id FROM user_totals WHERE user_id = @userId
+        SELECT solved_count, total_penalty, user_id FROM user_totals WHERE user_id = @userId
       )
       SELECT
         CASE WHEN t.solved_count IS NULL THEN NULL ELSE COALESCE(1 + COUNT(*), 1) END AS rank,
@@ -181,10 +195,8 @@ export async function computeSingleUserLiveRank(
       FROM user_totals ut, target t
       WHERE ut.solved_count > t.solved_count
          OR (ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty)
-         OR (ut.solved_count = t.solved_count AND ut.total_penalty = t.total_penalty AND ut.last_ac_at < t.last_ac_at)
-         OR (ut.solved_count = t.solved_count AND ut.total_penalty = t.total_penalty AND ut.last_ac_at = t.last_ac_at AND ut.user_id < t.user_id)
       GROUP BY t.solved_count, t.total_penalty`,
-      { assignmentId, userId },
+      { assignmentId, userId, startsAt: startRow.startsAt },
     );
     // When the cross-join target is empty (user has no submissions), the query
     // returns no rows — result is undefined. Fall back to an explicit check.
@@ -234,11 +246,31 @@ export async function computeSingleUserLiveRank(
       WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
       GROUP BY s.user_id, s.problem_id, so.override_score
     ),
+    -- Overrides on problems the participant never submitted to: per_problem is
+    -- FROM submissions, so those rows were invisible and the live total came
+    -- out lower than the board, which overlays overrides for row-less problems
+    -- (RPF cycle-1 M12). Only participants (users present in per_problem) get
+    -- the extra rows — the board also excludes override-only non-participants.
+    override_extra AS (
+      SELECT so.user_id, so.problem_id, so.override_score AS best
+      FROM score_overrides so
+      WHERE so.assignment_id = @assignmentId
+        AND EXISTS (SELECT 1 FROM per_problem pp WHERE pp.user_id = so.user_id)
+        AND NOT EXISTS (
+          SELECT 1 FROM per_problem pp2
+          WHERE pp2.user_id = so.user_id AND pp2.problem_id = so.problem_id
+        )
+    ),
+    all_per_problem AS (
+      SELECT user_id, problem_id, best FROM per_problem
+      UNION ALL
+      SELECT user_id, problem_id, best FROM override_extra
+    ),
     user_scores AS (
       SELECT
         user_id,
         ROUND(SUM(COALESCE(best, 0)), 2) AS total_score
-      FROM per_problem
+      FROM all_per_problem
       GROUP BY user_id
     ),
     target AS (

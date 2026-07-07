@@ -80,17 +80,21 @@ describe("computeSingleUserLiveRank implementation", () => {
       expect(source).toContain("ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty");
     });
 
-    it("breaks ties by earlier last AC (smaller timestamp ranks better)", () => {
-      // Earlier last_ac_at = better rank, so ut.last_ac_at < t.last_ac_at means ut ranks higher
-      expect(source).toContain("ut.last_ac_at < t.last_ac_at");
+    it("treats equal (solved, penalty) as the same rank — no extra tie discriminators", () => {
+      // The full board (contest-scoring.ts) gives tied (solved, penalty)
+      // entries the SAME rank; last_ac_at/user_id discriminators here made
+      // the live rank disagree with the board by one for tied users
+      // (RPF cycle-1 M11).
+      expect(source).not.toContain("ut.last_ac_at < t.last_ac_at");
+      expect(source).not.toContain("ut.user_id < t.user_id");
     });
 
-    it("uses user_id lexicographic order as final tie-breaker", () => {
-      expect(source).toContain("ut.last_ac_at = t.last_ac_at AND ut.user_id < t.user_id");
-    });
-
-    it("computes penalty as first_ac_time_in_minutes + 20 * wrong_before_ac (matching main leaderboard)", () => {
-      expect(source).toContain("EXTRACT(EPOCH FROM us.first_ac_at)::bigint / 60");
+    it("computes penalty as minutes from contest start + 20 * wrong_before_ac (matching main leaderboard)", () => {
+      // Minutes are measured FROM startsAt (computeIcpcPenalty), not absolute
+      // epoch minutes, and a null startsAt yields no live rank to match the
+      // board's empty-ranking guard (RPF cycle-1 L13).
+      expect(source).toContain("FLOOR(EXTRACT(EPOCH FROM (us.first_ac_at - @startsAt::timestamptz)) / 60)::bigint");
+      expect(source).toContain("if (!startRow?.startsAt)");
       // wrong_before_ac uses a window function to count only pre-AC wrongs,
       // not all wrongs (which attempt_count - has_ac would do).
       expect(source).toContain("20 * us.wrong_before_ac");
