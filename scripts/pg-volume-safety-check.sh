@@ -282,8 +282,18 @@ if [[ -z "$NAMED_SRC" ]]; then
   info "Created/using named volume: ${NAMED_VOLUME} -> ${NAMED_SRC}"
 fi
 
+# SAFETY GUARD: NAMED_SRC is re-derived from `docker volume inspect
+# --format '{{.Mountpoint}}'` above. If that ever returned an empty string,
+# the clear below would expand to `rm -rf /*` under sudo — catastrophic,
+# unrecoverable host data loss (RPF cycle-1 H3). Refuse to proceed unless
+# NAMED_SRC is a non-empty, existing directory under the Docker volumes root.
+[[ -n "${NAMED_SRC}" && -d "${NAMED_SRC}" ]] \
+  || fatal "NAMED_SRC ('${NAMED_SRC}') is empty or not a directory; refusing to clear"
+[[ "${NAMED_SRC}" == /*/volumes/*/_data ]] \
+  || fatal "NAMED_SRC ('${NAMED_SRC}') does not look like a Docker volume mountpoint; refusing to clear"
+
 info "Clearing named volume ${NAMED_SRC}..."
-sudo bash -c "shopt -s dotglob; rm -rf ${NAMED_SRC}/*" \
+sudo bash -c "shopt -s dotglob; rm -rf -- \"\${1:?}\"/*" _ "${NAMED_SRC}" \
   || fatal "Failed to clear named volume"
 
 info "Copying cluster from ${CLUSTER_SRC} to ${NAMED_SRC}..."
