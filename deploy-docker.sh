@@ -1188,7 +1188,7 @@ if remote "docker inspect judgekit-db >/dev/null 2>&1 && docker inspect --format
     BACKUP_NAME="judgekit-predeploy-${BACKUP_TS}.dump"
     if remote "mkdir -p /home/${REMOTE_USER}/backups && \
         PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
+        export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
         docker cp judgekit-db:/tmp/${BACKUP_NAME} /home/${REMOTE_USER}/backups/${BACKUP_NAME} && \
         docker exec judgekit-db rm -f /tmp/${BACKUP_NAME}"; then
         success "Pre-deploy backup saved: ~/backups/${BACKUP_NAME}"
@@ -1348,13 +1348,13 @@ if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then
     #   - A post-drop verification re-reads the column and dies if it is still
     #     present — the real safety net against a silent no-op.
     HAS_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+        export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db \
         psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
 
     if [[ "${HAS_SECRET_TOKEN}" == "1" ]]; then
         info "judge_workers.secret_token present — backfilling hash and dropping the deprecated column..."
         remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-            docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+            export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db \
             psql -v ON_ERROR_STOP=1 -U judgekit -d judgekit \
             -c \"UPDATE judge_workers SET secret_token_hash = encode(sha256(secret_token::bytea), 'hex') WHERE secret_token_hash IS NULL AND secret_token IS NOT NULL\" \
             -c \"ALTER TABLE judge_workers DROP COLUMN IF EXISTS secret_token\"" \
@@ -1367,7 +1367,7 @@ if [[ "${ALLOW_SECRET_TOKEN_BACKFILL}" == "1" ]]; then
     # failure here would let push detect the destructive diff and abort the whole
     # migration (the original failure mode on oj.auraedu.me).
     REMAINING_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+        export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db \
         psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
     if [[ "${REMAINING_SECRET_TOKEN}" != "0" ]]; then
         die "secret_token column still present after drop (count=${REMAINING_SECRET_TOKEN:-unknown}) — drizzle-kit push would abort on the destructive diff. Investigate manually before retrying."
@@ -1377,7 +1377,7 @@ else
     warn "Skipping secret_token backfill/drop block because ALLOW_SECRET_TOKEN_BACKFILL is not set to 1."
 
     HAS_SECRET_TOKEN=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-        docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db \
+        export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db \
         psql -U judgekit -d judgekit -tAc \"SELECT count(*) FROM information_schema.columns WHERE table_name='judge_workers' AND column_name='secret_token'\"" 2>/dev/null | tr -d '[:space:]')
 
     if [[ "${HAS_SECRET_TOKEN}" == "1" ]]; then

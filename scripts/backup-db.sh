@@ -38,7 +38,7 @@ if [ "$DB_DIALECT" = "postgresql" ]; then
     fi
     [ -n "${PG_PASS}" ] || { echo "ERROR: POSTGRES_PASSWORD is required (set POSTGRES_PASSWORD or ENV_FILE)" >&2; exit 1; }
 
-    timeout 600s docker exec -e PGPASSWORD="${PG_PASS}" "${CONTAINER_NAME}" \
+    PGPASSWORD="${PG_PASS}" timeout 600s docker exec -e PGPASSWORD "${CONTAINER_NAME}" \
       pg_dump -U "${DB_USER}" -d "${DB_NAME}" | gzip > "$BACKUP_PATH"
     echo "Created PostgreSQL backup via ${CONTAINER_NAME}: $BACKUP_PATH"
   else

@@ -201,7 +201,7 @@ by 'docker volume prune').
 --- Manual recovery steps (run as a user with sudo) ---
 
   # 1. Safety net — snapshot both the in-container dump and the anon volume
-  docker exec -e PGPASSWORD=\$(grep '^POSTGRES_PASSWORD=' ~/judgekit/.env.production | cut -d= -f2-) \\
+  PGPASSWORD=\$(grep '^POSTGRES_PASSWORD=' ~/judgekit/.env.production | cut -d= -f2-) docker exec -e PGPASSWORD \\
     ${CONTAINER} pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/recover.dump \\
     && docker cp ${CONTAINER}:/tmp/recover.dump ${BACKUP_DIR}/pre-migration-\$(date +%s).dump
   sudo tar -czf /tmp/pgdata-anon-\$(date +%s).tar.gz -C ${ANON_SRC} .
@@ -252,7 +252,7 @@ if docker inspect --format='{{.State.Running}}' "$CONTAINER" 2>/dev/null | grep 
     PG_PASS="${POSTGRES_PASSWORD:-}"
   fi
   if [[ -n "$PG_PASS" ]]; then
-    if ! docker exec -e PGPASSWORD="$PG_PASS" "$CONTAINER" \
+    if ! PGPASSWORD="$PG_PASS" docker exec -e PGPASSWORD "$CONTAINER" \
         pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f "/tmp/recover-${TS}.dump"; then
       fatal "pg_dump failed; refusing to migrate without a logical backup"
     fi

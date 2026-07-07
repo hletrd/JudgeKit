@@ -176,7 +176,7 @@ if remote "docker inspect judgekit-db >/dev/null 2>&1 && docker inspect --format
   info "Running pre-deploy pg_dump..."
   if remote "mkdir -p /home/${REMOTE_USER}/backups && \
       PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.production | cut -d= -f2-) && \
-      docker exec -e PGPASSWORD=\"\${PG_PASS}\" judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
+      export PGPASSWORD=\"\${PG_PASS}\" && docker exec -e PGPASSWORD judgekit-db pg_dump -U judgekit -d judgekit --format=custom --compress=9 -f /tmp/${BACKUP_NAME} && \
       docker cp judgekit-db:/tmp/${BACKUP_NAME} /home/${REMOTE_USER}/backups/${BACKUP_NAME} && \
       docker exec judgekit-db rm -f /tmp/${BACKUP_NAME}"; then
     success "Pre-deploy backup saved: ~/backups/${BACKUP_NAME}"
