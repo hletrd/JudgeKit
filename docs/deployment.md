@@ -150,9 +150,13 @@ Current production target shortcuts used by the local deploy environment:
 |--------|--------|----------|---------|-----------------|
 | `oj` / AuraEdu | `oj.auraedu.me` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | Integrated app + worker host |
 | `algo` | `algo.xylolabs.com` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | App host + dedicated `worker-0.algo.xylolabs.com` |
-| `worv` | `test.worv.ai` | `ubuntu` | `~/.ssh/worv-judgekit.pem` | App host + dedicated `worker.test.worv.ai` |
 
-For split-host targets (`algo`, `worv`), `deploy-docker.sh` computes the app
+> The former `worv` target (`test.worv.ai`) was retired from the deployment
+> roster on 2026-07-06. `deploy-docker.sh` refuses `DEPLOY_TARGET=worv`; do
+> not deploy there. Any local `.env.deploy.worv` / `.env.worv` files are
+> leftover credentials, not an invitation to deploy.
+
+For split-host targets (`algo`), `deploy-docker.sh` computes the app
 `AUTH_URL` before startup and upserts `JUDGE_BASE_URL=<AUTH_URL>/api/v1` into
 each configured `WORKER_HOSTS` machine before restarting `docker-compose.worker.yml`.
 Non-local HTTP worker URLs are rejected; do not recover production workers with

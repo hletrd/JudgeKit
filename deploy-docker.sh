@@ -138,11 +138,25 @@ DEPLOY_TARGET="${DEPLOY_TARGET:-}"
 if [[ "${DEPLOY_TARGET}" == "oj" ]]; then
     DEPLOY_TARGET="auraedu"
 fi
+# test.worv.ai ('worv') was retired from the deployment roster on 2026-07-06
+# (user directive). Refuse it explicitly — a stale local .env.deploy.worv may
+# still exist on disk and must never be deployed to again.
+if [[ "${DEPLOY_TARGET}" == "worv" ]]; then
+    echo "[FATAL] DEPLOY_TARGET='worv' (test.worv.ai) was retired on 2026-07-06 and is no longer a deploy target." >&2
+    exit 1
+fi
 TARGET_ENV_FILE=""
 if [[ -n "${DEPLOY_TARGET}" ]]; then
+    case "${DEPLOY_TARGET}" in
+        algo|auraedu) ;;
+        *)
+            echo "[FATAL] Unknown DEPLOY_TARGET='${DEPLOY_TARGET}'. Expected one of: algo, auraedu (alias: oj)." >&2
+            exit 1
+            ;;
+    esac
     TARGET_ENV_FILE="${SCRIPT_DIR}/.env.deploy.${DEPLOY_TARGET}"
     if [[ ! -f "${TARGET_ENV_FILE}" ]]; then
-        echo "[FATAL] Unknown DEPLOY_TARGET='${DEPLOY_TARGET}'. Expected one of: algo, worv, auraedu (alias: oj)." >&2
+        echo "[FATAL] Missing target profile '${TARGET_ENV_FILE}' for DEPLOY_TARGET='${DEPLOY_TARGET}'." >&2
         exit 1
     fi
 fi
