@@ -238,17 +238,22 @@ async fn check(State(state): State<AppState>, Json(req): Json<CheckRequest>) -> 
         e.blocked_until = None;
     }
 
-    // Check if window expired — reset
-    if e.window_started_at + Duration::from_millis(req.window_ms) <= now {
+    // Check if window expired — reset. checked_add: an absurd window_ms can
+    // overflow Instant arithmetic and panic (RPF cycle-1 L2); on overflow the
+    // window simply never expires (fails stricter, never looser).
+    let window_end = e
+        .window_started_at
+        .checked_add(Duration::from_millis(req.window_ms));
+    if window_end.is_some_and(|end| end <= now) {
         e.attempts = 0;
         e.window_started_at = now;
     }
 
     // Check if at or over limit
     if e.attempts >= req.max_attempts {
-        let retry_after = (e.window_started_at + Duration::from_millis(req.window_ms))
-            .saturating_duration_since(now)
-            .as_millis() as u64;
+        let retry_after = window_end
+            .map(|end| end.saturating_duration_since(now).as_millis() as u64)
+            .unwrap_or(u64::MAX);
         return (
             StatusCode::OK,
             Json(CheckResponse {
@@ -260,7 +265,7 @@ async fn check(State(state): State<AppState>, Json(req): Json<CheckRequest>) -> 
     }
 
     // Allowed — increment
-    e.attempts += 1;
+    e.attempts = e.attempts.saturating_add(1);
     e.last_attempt = now;
     let remaining = req.max_attempts.saturating_sub(e.attempts);
 
@@ -308,24 +313,33 @@ async fn record_failure(
         e.blocked_until = None;
     }
 
-    // Reset window if expired
-    if e.window_started_at + Duration::from_millis(req.window_ms) <= now {
+    // Reset window if expired. checked_add: overflow means the window never
+    // expires (fails stricter, never looser) instead of panicking
+    // (RPF cycle-1 L2).
+    let window_expired = e
+        .window_started_at
+        .checked_add(Duration::from_millis(req.window_ms))
+        .is_some_and(|end| end <= now);
+    if window_expired {
         e.attempts = 0;
         e.window_started_at = now;
     }
 
     // Record the failure
-    e.attempts += 1;
+    e.attempts = e.attempts.saturating_add(1);
     e.last_attempt = now;
 
     // Check if threshold reached
     if e.attempts >= req.max_attempts {
         let exp = e.consecutive_blocks.min(MAX_CONSECUTIVE_BLOCKS_EXP);
         let multiplier = 2u64.pow(exp);
-        let block_duration = Duration::from_millis((req.block_ms * multiplier).min(MAX_BLOCK_MS));
+        // saturating_mul: an attacker-influenced block_ms times the backoff
+        // multiplier must clamp, not overflow-panic (RPF cycle-1 L2).
+        let block_duration =
+            Duration::from_millis(req.block_ms.saturating_mul(multiplier).min(MAX_BLOCK_MS));
         let blocked_until = now + block_duration;
         e.blocked_until = Some(blocked_until);
-        e.consecutive_blocks += 1;
+        e.consecutive_blocks = e.consecutive_blocks.saturating_add(1);
 
         return (
             StatusCode::OK,
