@@ -97,19 +97,26 @@ describe("Cycle 23: Ranking cache uses Date.now() for staleness (L2)", () => {
   });
 });
 
-describe("Cycle 23: ICPC live-rank tie-breakers (L3)", () => {
+// Cycle 23 (L3) originally added last_ac_at + userId tie-breakers to the ICPC
+// live-rank WHERE clause. RPF cycle-1 (2026-07, M11) SUPERSEDED that decision:
+// the board (computeContestRanking in contest-scoring.ts) assigns the SAME rank
+// to entries with equal (solved, penalty) — last_ac_at/userId are sort-only,
+// NOT rank discriminators (see contest-scoring.ts rank-equality check). The
+// extra WHERE terms made computeSingleUserLiveRank over-count and disagree with
+// the board by one for tied users, so they were removed. The live rank now
+// counts only strictly-better (solved, penalty), matching the board exactly.
+describe("Cycle 23 L3 → RPF cycle-1 M11: ICPC live-rank matches board tie definition", () => {
   const leaderboard = src("src/lib/assignments/leaderboard.ts");
 
-  it("includes last_ac_at in the user_totals CTE", () => {
-    expect(leaderboard).toContain("MAX(CASE WHEN us.has_ac = 1 THEN us.first_ac_at ELSE NULL END) AS last_ac_at");
+  it("counts users with more solved, or equal solved and less penalty, as ranked higher", () => {
+    expect(leaderboard).toContain("ut.solved_count > t.solved_count");
+    expect(leaderboard).toContain(
+      "ut.solved_count = t.solved_count AND ut.total_penalty < t.total_penalty",
+    );
   });
 
-  it("includes earlier last AC tie-breaker in the WHERE clause", () => {
-    // Earlier last AC (smaller timestamp) ranks better
-    expect(leaderboard).toContain("ut.last_ac_at < t.last_ac_at");
-  });
-
-  it("includes userId lexicographic tie-breaker in the WHERE clause", () => {
-    expect(leaderboard).toContain("ut.user_id < t.user_id");
+  it("does NOT discriminate ties by last_ac_at or userId (equal solved+penalty is the same rank on the board)", () => {
+    expect(leaderboard).not.toContain("ut.last_ac_at < t.last_ac_at");
+    expect(leaderboard).not.toContain("ut.user_id < t.user_id");
   });
 });
