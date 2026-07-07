@@ -153,9 +153,14 @@ async function resolveTagIdsWithExecutor(
   executor: DatabaseExecutor | TransactionClient
 ): Promise<string[]> {
   const tagIds: string[] = [];
+  const seenNames = new Set<string>();
   for (const name of tagNames) {
     const trimmed = name.trim();
-    if (!trimmed) continue;
+    // Dedupe AFTER trimming: ["dp", " dp"] previously resolved to the same
+    // tag id twice and the duplicate problem_tags insert aborted the whole
+    // mutation on pt_problem_tag_idx (RPF cycle-1 PR-M2).
+    if (!trimmed || seenNames.has(trimmed)) continue;
+    seenNames.add(trimmed);
     const [existing] = await executor
       .select({ id: tags.id })
       .from(tags)
@@ -163,29 +168,32 @@ async function resolveTagIdsWithExecutor(
       .limit(1);
     if (existing) {
       tagIds.push(existing.id);
-    } else {
-      const newId = nanoid();
-      try {
-        await executor.insert(tags)
-          .values({ id: newId, name: trimmed, createdBy, createdAt: await getDbNowUncached() });
-        tagIds.push(newId);
-      } catch (error) {
-        const pgErr = error as { code?: string };
-        if (pgErr.code !== "23505") {
-          throw error;
-        }
-        // Handle unique constraint race — re-fetch the existing tag
-        const [raced] = await executor
-          .select({ id: tags.id })
-          .from(tags)
-          .where(eq(tags.name, trimmed))
-          .limit(1);
-        if (!raced) {
-          throw error;
-        }
-        tagIds.push(raced.id);
-      }
+      continue;
     }
+    // Race-safe create. The previous try/catch on error code 23505 was dead
+    // code inside a PG transaction: after the unique violation the tx is
+    // aborted (25P02), so the recovery re-SELECT failed and the whole
+    // mutation 500'd anyway (RPF cycle-1 PR-M1). ON CONFLICT DO NOTHING
+    // never raises, so the tx stays healthy and the follow-up SELECT sees
+    // the winner's row.
+    const inserted = await executor
+      .insert(tags)
+      .values({ id: nanoid(), name: trimmed, createdBy, createdAt: await getDbNowUncached() })
+      .onConflictDoNothing({ target: tags.name })
+      .returning({ id: tags.id });
+    if (inserted.length > 0) {
+      tagIds.push(inserted[0].id);
+      continue;
+    }
+    const [raced] = await executor
+      .select({ id: tags.id })
+      .from(tags)
+      .where(eq(tags.name, trimmed))
+      .limit(1);
+    if (!raced) {
+      throw new Error(`tag "${trimmed}" conflicted on insert but is not selectable`);
+    }
+    tagIds.push(raced.id);
   }
   return tagIds;
 }
@@ -196,7 +204,9 @@ async function syncProblemTags(
   executor: DatabaseExecutor | TransactionClient = db
 ) {
   await executor.delete(problemTags).where(eq(problemTags.problemId, problemId));
-  for (const tagId of tagIds) {
+  // Defensive dedupe: a duplicate (problemId, tagId) insert would abort the
+  // surrounding transaction on pt_problem_tag_idx (RPF cycle-1 PR-M2).
+  for (const tagId of new Set(tagIds)) {
     await executor.insert(problemTags)
       .values({ id: nanoid(), problemId, tagId });
   }
