@@ -195,6 +195,15 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
 /**
  * Tables in FK-dependency order (parents before children).
  * Each entry maps a logical name to the Drizzle table reference.
+ *
+ * EVERY pgTable in the schema MUST be listed here (enforced by
+ * tests/unit/db/import-implementation.test.ts). A table absent from this list
+ * is silently missing from backups, AND a restore's truncate of its FK parents
+ * cascade-deletes its live rows with no compensating insert — unrecoverable
+ * data loss (RPF cycle-1 CQ-CRIT).
+ *
+ * Intentional exclusion: `realtimeCoordination` holds ephemeral SSE slot
+ * coordination rows that are meaningless outside the running instance.
  */
 export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[] }[] = [
   // Level 0: no foreign keys
@@ -209,6 +218,8 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   // Level 1: FK to level 0
   { name: "sessions", table: schema.sessions, orderColumns: ["sessionToken"] },
   { name: "accounts", table: schema.accounts, orderColumns: ["id"] },
+  { name: "passwordResetTokens", table: schema.passwordResetTokens, orderColumns: ["id"] },
+  { name: "emailVerificationTokens", table: schema.emailVerificationTokens, orderColumns: ["id"] },
   { name: "loginEvents", table: schema.loginEvents, orderColumns: ["id"] },
   { name: "auditEvents", table: schema.auditEvents, orderColumns: ["id"] },
   { name: "apiKeys", table: schema.apiKeys, orderColumns: ["id"] },
@@ -220,6 +231,7 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   { name: "enrollments", table: schema.enrollments, orderColumns: ["id"] },
   { name: "groupInstructors", table: schema.groupInstructors, orderColumns: ["id"] },
   { name: "testCases", table: schema.testCases, orderColumns: ["id"] },
+  { name: "sourceDrafts", table: schema.sourceDrafts, orderColumns: ["id"] },
   { name: "problemGroupAccess", table: schema.problemGroupAccess, orderColumns: ["id"] },
   { name: "assignments", table: schema.assignments, orderColumns: ["id"] },
   { name: "problemSetProblems", table: schema.problemSetProblems, orderColumns: ["id"] },
@@ -231,6 +243,8 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   // Level 3: FK to level 0-2
   { name: "discussionPosts", table: schema.discussionPosts, orderColumns: ["id"] },
   { name: "assignmentProblems", table: schema.assignmentProblems, orderColumns: ["id"] },
+  { name: "contestAnnouncements", table: schema.contestAnnouncements, orderColumns: ["id"] },
+  { name: "contestClarifications", table: schema.contestClarifications, orderColumns: ["id"] },
   { name: "recruitingInvitations", table: schema.recruitingInvitations, orderColumns: ["id"] },
   { name: "examSessions", table: schema.examSessions, orderColumns: ["id"] },
   { name: "contestAccessTokens", table: schema.contestAccessTokens, orderColumns: ["id"] },

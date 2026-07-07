@@ -15,9 +15,12 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+import { is } from "drizzle-orm";
+import { PgTable } from "drizzle-orm/pg-core";
 import { buildImportColumnSets, convertValue, importDatabase, TABLE_MAP } from "@/lib/db/import";
 import { getTableOrder, TABLE_ORDER } from "@/lib/db/export";
 import { db } from "@/lib/db/index";
+import * as schema from "@/lib/db/schema";
 
 describe("importDatabase implementation guards", () => {
   it("aborts the transaction on batch insert failure instead of silently committing partial state", () => {
@@ -41,6 +44,29 @@ describe("importDatabase implementation guards", () => {
     expect(jsonColumns.has("functionSpec")).toBe(true);
     expect(jsonColumns.has("labels")).toBe(true);
     expect(jsonColumns.has("config")).toBe(true);
+  });
+
+  it("covers every schema pgTable in TABLE_ORDER (missing tables are cascade-wiped on restore)", () => {
+    // A table absent from TABLE_ORDER is never exported, and on import the
+    // truncate of its FK parents (users/assignments/problems) cascade-deletes
+    // its live rows with NO compensating insert — unrecoverable data loss
+    // (RPF cycle-1 CQ-CRIT: contestAnnouncements, contestClarifications,
+    // sourceDrafts, passwordResetTokens, emailVerificationTokens).
+    const INTENTIONALLY_EXCLUDED = new Set([
+      // Ephemeral SSE slot coordination rows; meaningless outside the running
+      // instance. Documented in src/lib/db/export.ts above TABLE_ORDER.
+      "realtimeCoordination",
+    ]);
+
+    const schemaTableNames = Object.entries(schema)
+      .filter(([, value]) => is(value, PgTable))
+      .map(([exportName]) => exportName)
+      .filter((exportName) => !INTENTIONALLY_EXCLUDED.has(exportName));
+
+    const orderedNames = new Set(getTableOrder());
+    const missing = schemaTableNames.filter((name) => !orderedNames.has(name));
+
+    expect(missing).toEqual([]);
   });
 
   it("keeps TABLE_MAP and TABLE_ORDER consistent at runtime", () => {
