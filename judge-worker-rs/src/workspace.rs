@@ -30,8 +30,15 @@ impl SandboxWorkspace {
 }
 
 fn chown_recursive(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
-    std::os::unix::fs::chown(path, Some(uid), Some(gid))?;
-    if path.is_dir() {
+    // SECURITY: never follow symlinks (RPF cycle-1 H1). The sandbox user can
+    // plant `ln -s /etc pwn` inside the RW workspace; the previous
+    // `fs::chown` + `path.is_dir()` combination both dereferenced symlinks,
+    // so a root worker would chown arbitrary host paths and recurse into
+    // them. `lchown` changes the link itself, and `symlink_metadata` reports
+    // the link (not its target), so a symlink is never treated as a
+    // directory to descend into.
+    std::os::unix::fs::lchown(path, Some(uid), Some(gid))?;
+    if path.symlink_metadata()?.file_type().is_dir() {
         for entry in std::fs::read_dir(path)? {
             let entry = entry?;
             chown_recursive(&entry.path(), uid, gid)?;
@@ -126,6 +133,64 @@ mod tests {
     fn is_root() -> bool {
         // SAFETY: getuid is async-signal-safe and has no side effects.
         unsafe { libc::getuid() == 0 }
+    }
+
+    #[test]
+    fn chown_recursive_does_not_follow_symlinks() {
+        // Regression test for RPF cycle-1 H1: a dangling symlink inside the
+        // workspace made the old fs::chown (which dereferences) fail with
+        // ENOENT, and a symlink to a directory was recursed into. lchown must
+        // succeed on the link itself and never descend through it.
+        let workspace = SandboxWorkspace::new().expect("create workspace");
+        let p = workspace.path().to_path_buf();
+
+        std::os::unix::fs::symlink("/nonexistent/target", p.join("dangling"))
+            .expect("create dangling symlink");
+
+        let outside = tempfile::TempDir::new().expect("create outside dir");
+        fs::write(outside.path().join("host-file"), b"host data").expect("write outside file");
+        std::os::unix::fs::symlink(outside.path(), p.join("escape"))
+            .expect("create dir symlink");
+
+        // SAFETY: getuid/getgid are async-signal-safe with no side effects.
+        let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+        super::chown_recursive(&p, uid, gid)
+            .expect("chown_recursive must tolerate symlinks without following them");
+
+        // The symlink target and its contents must be untouched (still exist,
+        // never descended into / chowned via the link).
+        assert!(outside.path().join("host-file").exists());
+    }
+
+    #[test]
+    fn root_chown_recursive_leaves_symlink_target_ownership_unchanged() {
+        if !is_root() {
+            // Ownership changes require root; the non-root behavioral test
+            // above covers the no-follow traversal.
+            return;
+        }
+
+        let workspace = SandboxWorkspace::new().expect("create workspace");
+        let p = workspace.path().to_path_buf();
+
+        let outside = tempfile::TempDir::new().expect("create outside dir");
+        let target_file = outside.path().join("host-file");
+        fs::write(&target_file, b"host data").expect("write outside file");
+        chown(&target_file, Some(65534), Some(65534)).expect("chown outside file");
+        chown(outside.path(), Some(65534), Some(65534)).expect("chown outside dir");
+
+        std::os::unix::fs::symlink(outside.path(), p.join("escape"))
+            .expect("create dir symlink");
+
+        super::chown_recursive(&p, 0, 0).expect("chown workspace tree");
+
+        let meta = fs::metadata(&target_file).expect("stat outside file");
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(
+            meta.uid(),
+            65534,
+            "chown_recursive followed a symlink and changed host file ownership"
+        );
     }
 
     #[test]
