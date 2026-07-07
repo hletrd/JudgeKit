@@ -55,6 +55,10 @@ pub struct DockerRunResult {
     pub duration_ms: u64,
     /// Peak memory usage in KB from cgroup stats. None if unavailable.
     pub memory_peak_kb: Option<u64>,
+    /// Whether the container process actually started (see
+    /// [`ContainerInspect::started`]). Used to distinguish Docker's own
+    /// pre-start diagnostics from submission-controlled stderr.
+    pub container_started: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -92,6 +96,14 @@ struct ContainerInspect {
     oom_killed: bool,
     duration_ms: Option<u64>,
     memory_peak_kb: Option<u64>,
+    /// Whether the container process actually started (`State.StartedAt` is a
+    /// real timestamp, not Docker's zero time). `false` means the runtime
+    /// failed before the submission ever ran — the only state in which
+    /// captured stderr is guaranteed to be Docker's own diagnostics rather
+    /// than submission-controlled output. Defaults to `true` when inspect
+    /// fails/times out so unknown states are never classified as
+    /// environment failures on the strength of stderr text alone.
+    started: bool,
 }
 
 /// Parse a Docker RFC 3339 timestamp into epoch milliseconds.
@@ -195,6 +207,7 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
                 oom_killed: false,
                 duration_ms: None,
                 memory_peak_kb: None,
+                started: true,
             };
         }
     };
@@ -205,6 +218,13 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
             let parts: Vec<&str> = stdout.trim().splitn(4, ' ').collect();
 
             let oom_killed = parts.first().is_some_and(|s| s.trim() == "true");
+
+            // Docker reports the zero time (0001-01-01T00:00:00Z) for
+            // StartedAt when the container never started (e.g. OCI runtime
+            // create failure). parse_timestamp_epoch_ms returns None for it.
+            let started = parts
+                .get(1)
+                .is_some_and(|s| parse_timestamp_epoch_ms(s).is_some());
 
             let duration_ms = if parts.len() >= 3 {
                 match (
@@ -230,12 +250,14 @@ async fn inspect_container_state(container_name: &str) -> ContainerInspect {
                 oom_killed,
                 duration_ms,
                 memory_peak_kb,
+                started,
             }
         }
         Err(_) => ContainerInspect {
             oom_killed: false,
             duration_ms: None,
             memory_peak_kb: None,
+            started: true,
         },
     }
 }
@@ -405,11 +427,18 @@ async fn run_docker_once(
         "Docker run command"
     );
 
+    // kill_on_drop: if this future is dropped mid-run (client disconnect
+    // aborts the axum handler, or worker shutdown aborts the task), the
+    // `docker run` CLI must die with it. Without this the container — which
+    // is launched without --rm and only reaped once status=exited — was
+    // abandoned and an infinite-loop submission kept CPU/RAM forever
+    // (RPF cycle-1 RW-H1). Matches every other Docker Command in this file.
     let mut child = tokio::process::Command::new("docker")
         .args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(DockerError::SpawnFailed)?;
 
@@ -516,6 +545,7 @@ async fn run_docker_once(
                 oom_killed: state.oom_killed,
                 duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
                 memory_peak_kb: state.memory_peak_kb,
+                container_started: state.started,
             })
         }
         Ok(Err(e)) => {
@@ -539,6 +569,7 @@ async fn run_docker_once(
                 oom_killed: state.oom_killed,
                 duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
                 memory_peak_kb: state.memory_peak_kb,
+                container_started: state.started,
             })
         }
     }
@@ -561,7 +592,16 @@ pub async fn run_docker(
         .await
         .map_err(|e| JudgeEnvironmentError(e.to_string()))?;
 
-    if seccomp_profile.is_some() && should_retry_without_seccomp(&result.stderr) {
+    // Only classify a seccomp/OCI init failure when the container never
+    // started: in that state the captured stderr is Docker's own pre-start
+    // diagnostics. Once the container has started, stderr is
+    // submission-controlled — a program printing "error during container
+    // init" previously turned its whole submission into a judge-environment
+    // error and aborted the remaining test cases (RPF cycle-1 M2).
+    if seccomp_profile.is_some()
+        && !result.container_started
+        && should_retry_without_seccomp(&result.stderr)
+    {
         tracing::warn!(
             stderr = %result.stderr,
             image = %options.image,
