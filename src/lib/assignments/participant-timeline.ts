@@ -216,13 +216,18 @@ export async function getParticipantTimeline(
       const problemPoints = problemRow.points ?? DEFAULT_PROBLEM_POINTS;
       // For ICPC: "accepted" status means full score (binary accept/reject).
       // For IOI: submissions are typically "scored" rather than "accepted", so
-      // use score >= full points as the "first AC" condition. This is consistent
-      // with the `solved` field in contest-scoring.ts which uses
-      // `bestScore >= ap.points` for IOI.
+      // a full solve is a RAW score of 100 (submissions.score is a 0-100
+      // percentage; mapSubmissionPercentageToAssignmentPoints converts it to
+      // points later). The previous `score >= problemPoints` compared the
+      // percentage against the per-problem POINT WEIGHT — units mismatch:
+      // points=50 flagged any >=50% as first AC, points>100 never recognized
+      // a real full solve (RPF cycle-1 M13). contest-scoring.ts's
+      // `bestScore >= ap.points` operates on the point-mapped best, which
+      // equals 100% raw — the same condition expressed here in raw units.
       const isFirstAc = scoringModel === "icpc"
         ? (submission: typeof problemSubmissions[number]) => submission.status === "accepted"
         : (submission: typeof problemSubmissions[number]) =>
-            submission.score !== null && submission.score !== undefined && submission.score >= problemPoints;
+            submission.score !== null && submission.score !== undefined && submission.score >= 100;
       const firstAccepted = problemSubmissions.find(isFirstAc) ?? null;
       const wrongBeforeAc = firstAccepted
         ? problemSubmissions.filter(

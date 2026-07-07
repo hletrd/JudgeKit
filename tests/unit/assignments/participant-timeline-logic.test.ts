@@ -25,8 +25,12 @@ describe("participant-timeline logic", () => {
       expect(source).toContain("submission.status === \"accepted\"");
     });
 
-    it("uses score >= problemPoints for IOI scoring model", () => {
-      expect(source).toContain("submission.score >= problemPoints");
+    it("uses raw score >= 100 (full-solve percentage) for IOI scoring model", () => {
+      // submissions.score is a 0-100 percentage; comparing it against the
+      // per-problem POINT WEIGHT was a units mismatch that mis-flagged first
+      // ACs whenever points != 100 (RPF cycle-1 M13).
+      expect(source).toContain("submission.score >= 100");
+      expect(source).not.toContain("submission.score >= problemPoints");
     });
 
     it("branches on scoringModel === 'icpc'", () => {

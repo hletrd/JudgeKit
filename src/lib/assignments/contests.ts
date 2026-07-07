@@ -15,6 +15,10 @@ export type ContestEntry = {
   scoringModel: ScoringModel;
   startsAt: Date | null;
   deadline: Date | null;
+  /** Late-submission close. Optional so ContestEntry-shaped producers that
+   * predate it keep compiling; when present, the EFFECTIVE close for status
+   * purposes is `lateDeadline ?? deadline` (RPF cycle-1 L15). */
+  lateDeadline?: Date | null;
   freezeLeaderboardAt: Date | null;
   enableAntiCheat: boolean;
   problemCount: number;
@@ -43,16 +47,21 @@ export function getContestStatus(
 ): ContestStatus {
   const nowMs = now.getTime();
 
+  // Effective close honors the late-submission window: a contest with a
+  // configured lateDeadline previously reported "closed" during that window
+  // (RPF cycle-1 L15), matching neither redeemAccessCode nor
+  // contestAccessTokenExpiry (both use COALESCE(lateDeadline, deadline)).
+  const effectiveCloseMs = (contest.lateDeadline ?? contest.deadline)?.getTime();
+
   if (contest.examMode === "scheduled") {
     if (contest.startsAt && nowMs < contest.startsAt.getTime()) return "upcoming";
-    if (contest.deadline && nowMs >= contest.deadline.getTime()) return "closed";
+    if (effectiveCloseMs && nowMs >= effectiveCloseMs) return "closed";
     return "open";
   }
 
   // windowed
   if (contest.startsAt && nowMs < contest.startsAt.getTime()) return "upcoming";
-  const effectiveClose = contest.deadline?.getTime();
-  if (effectiveClose && nowMs >= effectiveClose) return "closed";
+  if (effectiveCloseMs && nowMs >= effectiveCloseMs) return "closed";
   if (contest.personalDeadline && nowMs >= contest.personalDeadline.getTime()) return "expired";
   if (contest.startedAt) return "in_progress";
   return "open";
@@ -69,6 +78,7 @@ type RawContestRow = {
   scoring_model: string;
   starts_at: Date | null;
   deadline: Date | null;
+  late_deadline: Date | null;
   freeze_leaderboard_at: Date | null;
   enable_anti_cheat: boolean;
   problem_count: number;
@@ -88,6 +98,7 @@ function mapRow(row: RawContestRow): ContestEntry {
     scoringModel: (row.scoring_model ?? "ioi") as ScoringModel,
     startsAt: row.starts_at ? new Date(row.starts_at) : null,
     deadline: row.deadline ? new Date(row.deadline) : null,
+    lateDeadline: row.late_deadline ? new Date(row.late_deadline) : null,
     freezeLeaderboardAt: row.freeze_leaderboard_at ? new Date(row.freeze_leaderboard_at) : null,
     enableAntiCheat: Boolean(row.enable_anti_cheat),
     problemCount: row.problem_count,
@@ -108,6 +119,7 @@ const BASE_SELECT = `
     a.scoring_model,
     a.starts_at,
     a.deadline,
+    a.late_deadline,
     a.freeze_leaderboard_at,
     a.enable_anti_cheat,
     (SELECT COUNT(*) FROM assignment_problems ap WHERE ap.assignment_id = a.id) AS problem_count,

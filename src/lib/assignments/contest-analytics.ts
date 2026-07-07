@@ -1,4 +1,5 @@
 import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
+import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
 import { computeContestRanking } from "./contest-scoring";
 import { mapSubmissionPercentageToAssignmentPoints } from "./scoring";
 
@@ -91,7 +92,7 @@ type CheatCountRow = {
 };
 
 export async function computeContestAnalytics(assignmentId: string, includeTimeline = false): Promise<ContestAnalytics> {
-  const { entries } = await computeContestRanking(assignmentId);
+  const { scoringModel, entries } = await computeContestRanking(assignmentId);
 
   const problems = await rawQueryAll<ProblemRow>(
     `SELECT ap.problem_id AS "problemId", p.title, COALESCE(ap.points, 100) AS points
@@ -114,7 +115,18 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
   for (const entry of entries) {
     const numericScore = Number(entry.totalScore ?? 0);
     const safeScore = Number.isFinite(numericScore) ? numericScore : 0;
-    const pct = totalPointsPossible > 0 ? (safeScore / totalPointsPossible) * 100 : 0;
+    // ICPC totalScore is the COUNT of solved problems (contest-scoring.ts),
+    // not points — dividing it by totalPointsPossible put every participant
+    // in the 0-10% bucket (RPF cycle-1 M10). Bucket ICPC entries by the
+    // fraction of problems solved instead.
+    const pct =
+      scoringModel === "icpc"
+        ? problems.length > 0
+          ? (safeScore / problems.length) * 100
+          : 0
+        : totalPointsPossible > 0
+          ? (safeScore / totalPointsPossible) * 100
+          : 0;
     const bucketIdx = Number.isFinite(pct)
       ? Math.min(Math.max(Math.floor(pct / 10), 0), 9)
       : 0;
@@ -185,7 +197,8 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
       `SELECT DISTINCT ON (s.user_id, s.problem_id)
               s.user_id AS "userId", s.problem_id AS "problemId", s.submitted_at AS "submittedAt"
        FROM submissions s
-       WHERE s.assignment_id = @assignmentId AND ROUND(s.score::numeric, 2) = 100
+       WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
+         AND ROUND(s.score::numeric, 2) = 100
        ORDER BY s.user_id, s.problem_id, s.submitted_at ASC`,
       { assignmentId }
     ),
@@ -263,7 +276,7 @@ export async function computeContestAnalytics(assignmentId: string, includeTimel
          INNER JOIN users u ON u.id = s.user_id
          INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
          LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
-         WHERE s.assignment_id = @assignmentId
+         WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
        ) ranked
        WHERE prev_best IS NULL OR score > prev_best
        ORDER BY "submittedAt" ASC`,

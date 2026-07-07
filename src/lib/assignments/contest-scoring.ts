@@ -84,12 +84,12 @@ export function invalidateRankingCache(assignmentId?: string): void {
         rankingCache.delete(key);
       }
     }
-    // Also clear any background refresh tracking for this assignment
-    for (const key of _refreshingKeys) {
-      if (key.startsWith(`${assignmentId}:`)) {
-        _refreshingKeys.delete(key);
-      }
-    }
+    // Do NOT clear _refreshingKeys here: entries in that set mark refreshes
+    // that are currently IN FLIGHT. Deleting the marker mid-flight let a
+    // second concurrent refresh start for the same key (duplicate load), and
+    // the first one's completion could then overwrite the cache with data
+    // computed BEFORE the invalidation (stale overwrite). The in-flight
+    // refresh removes its own marker in its finally block (RPF cycle-1 L16).
     for (const key of _lastRefreshFailureAt.keys()) {
       if (key.startsWith(`${assignmentId}:`)) {
         _lastRefreshFailureAt.delete(key);
@@ -97,7 +97,6 @@ export function invalidateRankingCache(assignmentId?: string): void {
     }
   } else {
     rankingCache.clear();
-    _refreshingKeys.clear();
     _lastRefreshFailureAt.clear();
   }
 }
