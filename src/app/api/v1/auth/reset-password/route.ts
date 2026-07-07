@@ -4,6 +4,7 @@ import { resetPassword, validatePasswordResetToken } from "@/lib/email";
 import { consumeRateLimitAttemptMulti, getRateLimitKey } from "@/lib/security/rate-limit";
 import { FIXED_MIN_PASSWORD_LENGTH, getPasswordValidationError } from "@/lib/security/password";
 import { validateCsrf } from "@/lib/security/csrf";
+import { hashToken } from "@/lib/security/token-hash";
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1),
@@ -30,7 +31,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const { token, password } = parsed.data;
 
   const rateLimitKey = getRateLimitKey("reset_password", req.headers);
-  const tokenRateLimitKey = `reset_password:token:${token.slice(0, 8)}`;
+  // Key on the full token hash: an 8-char prefix bucketed unrelated tokens
+  // together, letting one client's failures rate-limit another's legitimate
+  // reset (availability). Hashing also keeps the secret token itself out of
+  // the rate-limit store (RPF cycle-1 SR-L9).
+  const tokenRateLimitKey = `reset_password:token:${hashToken(token)}`;
   const blocked = await consumeRateLimitAttemptMulti(rateLimitKey, tokenRateLimitKey);
   if (blocked) {
     return NextResponse.json({ error: "rateLimited" }, { status: 429 });

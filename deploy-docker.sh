@@ -989,7 +989,7 @@ for path in list(root.iterdir()) if root.exists() else []:
             shutil.rmtree(path)
         else:
             path.unlink()
-PY"
+PY" || warn "Legacy escaped route-group cleanup failed (best-effort); continuing deploy"
 
 # Only transfer .env.production if the remote does not already have one.
 # Each target has its own secrets (AUTH_SECRET, JUDGE_AUTH_TOKEN, AUTH_URL).

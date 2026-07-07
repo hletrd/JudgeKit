@@ -70,9 +70,11 @@ async function buildPublicProblemSetSearchFilter(search?: string, tag?: string):
 
   if (normalizedSearch) {
     const escapedSearch = `%${escapePracticeLike(normalizedSearch)}%`;
+    // ILIKE for case-insensitive search — the rest of the app searches with
+    // ILIKE; case-sensitive LIKE here silently hid matches (RPF cycle-1 PR-L2).
     filters.push(or(
-      sql`${problemSets.name} LIKE ${escapedSearch} ESCAPE '\\'`,
-      sql`${problemSets.description} LIKE ${escapedSearch} ESCAPE '\\'`,
+      sql`${problemSets.name} ILIKE ${escapedSearch} ESCAPE '\\'`,
+      sql`${problemSets.description} ILIKE ${escapedSearch} ESCAPE '\\'`,
     )!);
   }
 
@@ -124,7 +126,9 @@ export async function listPublicProblemSets(options: { limit?: number; offset?: 
         columns: { id: true, name: true, username: true },
       },
     },
-    orderBy: [desc(problemSets.createdAt)],
+    // id tiebreaker keeps pagination stable when createdAt ties — offset
+    // pages previously duplicated/skipped rows on ties (RPF cycle-1 PR-L5).
+    orderBy: [desc(problemSets.createdAt), desc(problemSets.id)],
     limit: options.limit,
     offset: options.offset,
   });

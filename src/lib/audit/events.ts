@@ -57,7 +57,11 @@ function computeJsonLength(value: JsonValue): number {
   if (value === null) return 4;
   if (typeof value === "boolean") return value ? 4 : 5;
   if (typeof value === "number") return String(value).length;
-  if (typeof value === "string") return value.length + 2;
+  // Strings must account for JSON escaping (quotes, backslashes, control
+  // chars, non-BMP escapes): `value.length + 2` under-counted, so the final
+  // serialized-size guard tripped and collapsed the whole `details` payload
+  // to {"_truncated":true}, losing the audit evidence (RPF cycle-1 CQ-L2).
+  if (typeof value === "string") return JSON.stringify(value).length;
   if (Array.isArray(value)) {
     let len = 2; // [ ]
     for (const item of value) {

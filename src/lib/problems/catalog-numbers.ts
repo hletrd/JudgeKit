@@ -42,7 +42,10 @@ export async function getCatalogNumbersForIds(
     dbi
       .select({
         id: problems.id,
-        rank: sql<number>`row_number() over (order by ${problems.sequenceNumber} asc, ${problems.createdAt} asc)`.as(
+        // problems.id is the deterministic final tiebreaker: without it, rows
+        // tied on (sequenceNumber, createdAt) could swap catalog numbers
+        // between renders (RPF cycle-1 PR-L3).
+        rank: sql<number>`row_number() over (order by ${problems.sequenceNumber} asc, ${problems.createdAt} asc, ${problems.id} asc)`.as(
           "catalog_rank"
         ),
       })
