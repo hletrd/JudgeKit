@@ -1,235 +1,96 @@
-# Latent-Bug and Failure-Mode Review — debugger perspective
+# Latent-Bug and Failure-Mode Review — Debugger Perspective
 
-**Scope:** `/tmp/judgekit-local` (Cycle 3 post-remediation, current tree)  
-**Focus:** bugs not caught by happy-path tests, edge cases, resource leaks, timer leaks, cleanup failures, race conditions, permission issues, off-by-one / numeric / string parsing hazards.  
-**Date:** 2026-07-03
+**Scope:** `/Users/hletrd/flash-shared/judgekit` (current tree, post Cycle-4 remediation + the `fix/deploy-*` and `fix/security-*` hotfixes merged 2026-07-05)
+**Focus:** null/undefined derefs, unhandled promise rejections, unchecked error returns, off-by-one/boundary conditions, resource leaks, unhandled Rust panics/unwraps, timezone bugs, integer overflow in scoring/limits, incorrect error propagation, silent failures, retry/timeout gaps, sandbox signal handling.
+**Date:** 2026-07-07
+
+## Method Note
+
+Three parallel deep-dive passes were dispatched (Rust `judge-worker-rs` panic/unwrap/resource-leak audit, `deploy-docker.sh` set-e/quoting/failure-propagation audit, and a `src/lib`+`src/app/api` sweep of files not covered by the prior 2026-07-03 debugger review). Their transcripts grew to 580–910 KB each (confirming substantial work occurred) but could not be synchronously retrieved as structured findings within this session despite repeated resume attempts and an extended wait. Rather than block indefinitely or fabricate their conclusions, this review is built entirely from my own direct, evidence-verified investigation, which independently covered the same three areas: a full grep+read pass over every `judge-worker-rs/src/*.rs` file for `unwrap()`/`expect()`/`panic!()` (with production-vs-test classification), an end-to-end trace of the dedicated-worker deployment path (`deploy-docker.sh`'s `WORKER_HOSTS` flow and `scripts/deploy-worker.sh`) against `docker-compose.worker.yml` and `docker-compose.production.yml`, and a sweep of ~45 additional files across `src/lib` and `src/app/api` not previously reviewed. All findings below are first-hand, with git-history and test-suite cross-checks where noted.
 
 ## Executive Summary
 
-Cycle 3 successfully fixed the production workspace-cleanup leaks that the prior debugger review flagged: both the Node.js local compiler fallback and the Rust `SandboxWorkspace::drop` now fall back to a privileged Docker cleanup container when the process is non-root, so sandbox-owned `nobody` (uid 65534) files are removed without requiring `CAP_CHOWN`.
+The standout finding is **Issue 1**: the dedicated judge-worker deployment path (`docker-compose.worker.yml`, used by both `deploy-docker.sh`'s `WORKER_HOSTS` flow and the standalone `scripts/deploy-worker.sh`) never received the `user: "0:0"` fix that commit `8129b03f` applied to `docker-compose.production.yml` three commits ago. Every submission judged on a host deployed via either of those two paths — which is this project's own documented scale-out architecture (a dedicated `worker-0.algo.xylolabs.com`-style host) — will fail 100% of the time with `chown(workspace_dir, 65534:65534) failed; refusing broad workspace permissions`, because the Rust worker runs as non-root (`USER judge`, uid 1000, per `Dockerfile.judge-worker`) and the initial chown-to-sandbox-uid has no privileged-fallback path (unlike the cleanup-time chown-back, which does). This is a complete, deterministic regression gap, not a partial-risk edge case.
 
-The remaining latent issues are concentrated in three areas:
+The second finding (**Issue 2**) is a genuine, recently-introduced (2026-07-01) regression in `src/lib/security/sandbox-gate.ts`: the admin/instructor daily-quota bypass silently stops working whenever the email-verification gate is disabled (the exact "air-gapped lab" scenario the code's own `SANDBOX_ALLOW_UNVERIFIED_EMAIL` comment describes), because the bypass depends on a `userRow` variable that is only populated as a side effect of the (now-optional) email-verification check.
 
-1. **Compiler / Docker subprocess lifecycle** — output memory accounting uses string length instead of byte length, `child.stdin.write` can throw synchronously outside the installed error handler, and `docker build` timeouts use `SIGTERM` without reaping the child.
-2. **Backup restore memory pressure** — the restore path materializes every uploaded file in the ZIP as a `Buffer` before writing anything to disk, risking OOM on large backups.
-3. **Batch-delete semantics** — the event pruners put `LIMIT` inside an `IN (SELECT ... LIMIT)` subquery, which PostgreSQL can flatten and ignore, causing unexpectedly large deletes.
+Beyond these two, the broad sweep of `judge-worker-rs`'s panic surface and ~45 additional `src/lib`/`src/app/api` files found the codebase in good shape — most `unwrap()`/`expect()`/`panic!()` calls are test-only, and the two production ones I found are either standard-acceptable (SIGTERM handler registration) or invariant-protected with graceful degradation. Details below.
 
-No CRITICAL issues remain in the current tree, but the HIGH items above are genuine production failure modes.
+## New Confirmed Issues
 
-## Previously Reported Issues — Status
+### 1. Dedicated judge-worker deployment path is missing the non-root chown fix — every judged submission fails
 
-| # | Prior finding | Status in current tree | Evidence |
+- **Files:**
+  - `docker-compose.worker.yml:48-90` (the `judge-worker` service — no `user:` override anywhere in the file; confirmed via `git log --follow` that `user:` has never appeared in this file's history)
+  - `docker-compose.production.yml:134-152` (the equivalent service, which **does** have `user: "0:0"` at line 152, added by commit `8129b03f`)
+  - `deploy-docker.sh:1476-1563` (the `WORKER_HOSTS` deploy flow; line 1562 runs `docker compose -f docker-compose.worker.yml --env-file .env up -d` with no override generated)
+  - `scripts/deploy-worker.sh:98,148` (standalone worker deploy: `scp ... docker-compose.worker.yml ${REMOTE}:${REMOTE_DIR}/docker-compose.yml` then `docker compose --env-file .env up -d`, verbatim, no override)
+  - `judge-worker-rs/src/runner.rs:855-862` (`chown(workspace_dir, 65534, 65534)` — hard failure, no fallback)
+  - `judge-worker-rs/src/executor.rs:324-344` (same chown, same hard failure — logs `"chown(workspace_dir, 65534:65534) failed; refusing broad workspace permissions"` and reports `runtime_error: "Failed to assign judge workspace to sandbox user"`)
+  - `judge-worker-rs/src/workspace.rs:79-105` (the `Drop` impl's privileged-Docker fallback exists **only** for the reverse chown during cleanup, not for the initial chown-to-sandbox-uid before a run)
+- **Severity:** CRITICAL
+- **Confidence:** High
+- **Problem:** Commit `8129b03f` ("fix(deploy): run judge-worker as root to allow sandbox workspace chown", 2026-07-05) documents that the worker must chown each per-run sandbox workspace to uid/gid 65534 before mounting it into the judge container, and that this requires `CAP_CHOWN`, which the image's non-root `USER judge` (uid 1000, set in `Dockerfile.judge-worker`) lacks. The fix adds `user: "0:0"` to the `judge-worker` service — but only in `docker-compose.production.yml`. `docker-compose.worker.yml`, which is the compose file for the project's dedicated-worker scale-out topology, was never touched. Grepping `judge-worker-rs/src/*.rs` for `is_root()`/`geteuid` confirms this helper is used only inside `workspace.rs`'s `Drop` impl (for the *cleanup* chown-back path, which the earlier, already-fixed leak issue covered); the *initial* chown in `runner.rs:857` and `executor.rs:328` has no such fallback and unconditionally requires root.
+- **Reproduction:** Deploy a judge worker via either `WORKER_HOSTS=<host> ./deploy-docker.sh ...` or `./scripts/deploy-worker.sh --host=<ip> --app-url=<url>`. The container starts and registers with the app server fine (registration never touches the sandbox workspace). The moment it claims its first submission, `std::os::unix::fs::chown(workspace_dir, Some(65534), Some(65534))` returns `EPERM` because the process runs as uid 1000 without `CAP_CHOWN`. Every submission on that worker comes back `runtime_error`, forever, until an operator manually patches the compose file or overrides the container user out-of-band.
+- **Fix:** Add the same `user: "0:0"` override (with the same justification comment already present in `docker-compose.production.yml:145-152`) to the `judge-worker` service in `docker-compose.worker.yml`. Since both `deploy-docker.sh`'s `WORKER_HOSTS` path and `scripts/deploy-worker.sh` consume that file directly (one via `-f docker-compose.worker.yml`, the other via a verbatim `scp` copy), this single one-line change repairs all affected deployment paths simultaneously. No Rust code change is required — the sandbox containers the worker spawns are unaffected (they already run `--user 65534:65534` regardless of the worker's own uid).
+- **Similar issues:** Checked `docker-proxy`'s `BUILD`/`POST`/`DELETE`/`ALLOW_START`/`ALLOW_STOP` env defaults across both compose files — those are consistent (already tracked separately as deferred item C4-US-010). No other `user:`/`cap_add:`/`privileged:` directive exists in either compose file to cross-check.
+
+### 2. `gateSandboxEndpoint` silently drops the admin/instructor quota bypass when the email-verification gate is disabled
+
+- **Files:** `src/lib/security/sandbox-gate.ts:45-107` (specifically lines 58 `let userRow`, 60-70 the conditional fetch, and 97-102 the bypass check); consumed by `src/app/api/v1/compiler/run/route.ts:85-89` (`maxPerDay: 500`) and `src/app/api/v1/playground/run/route.ts:55-59` (`maxPerDay: 200`)
+- **Severity:** MEDIUM (functional correctness / access-control-adjacent, not itself an auth bypass)
+- **Confidence:** High
+- **Problem:** `userRow` (which carries `role`, needed to resolve the `system.settings` capability bypass) is declared before the `if (enforceEmailGate)` block but is only *assigned* inside it. The bypass check at line 97 (`if (userRow) { const caps = await resolveCapabilities(userRow.role); if (caps.has("system.settings")) return null; }`) is therefore skipped entirely whenever `enforceEmailGate` is `false` — i.e. when the operator sets `SANDBOX_ALLOW_UNVERIFIED_EMAIL=1` (the exact "air-gapped class lab" scenario documented in the code's own comment at lines 10-13) or disables `system_settings.emailVerificationRequired` via the admin settings UI. In either case every user, including admins/instructors who are supposed to be exempt, falls straight through to `consumeUserDailyQuota(...)`.
+- **Root cause / regression provenance:** `git log --follow -- src/lib/security/sandbox-gate.ts` plus `git show` on commit `729872dd` ("fix(security): test sandbox gate and bypass quota for system.settings", 2026-07-01) shows this commit *introduced* the capability bypass without accounting for the pre-existing conditional `userRow` fetch added one commit earlier (`a9a7a46c`). The commit message and inline comment ("Operators and integrators with the system.settings capability bypass the daily sandbox quota") clearly intend an unconditional bypass; the implementation accidentally coupled it to an unrelated, optional gate.
+- **Confirmed untested:** `tests/unit/security/sandbox-gate.test.ts`'s `beforeEach` always mocks `getSystemSettingsMock.mockResolvedValue({ emailVerificationRequired: true })`, so every existing test — including the one that verifies the admin bypass — runs with `enforceEmailGate = true`. There is no test for a disabled email gate combined with an admin/`system.settings` user, which is the only combination that triggers this bug.
+- **Failure scenario:** An instructor with `system.settings` capability on an air-gapped deployment (`SANDBOX_ALLOW_UNVERIFIED_EMAIL=1`) uses `/api/v1/playground/run` to test/demo many problems in one day. After 200 runs (or 500 for `/api/v1/compiler/run`), they start getting `dailyQuotaExceeded` (429) even though the feature's explicit intent is that they never should.
+- **Fix:** Fetch `userRow` (at minimum, `role`) unconditionally rather than only inside the `if (enforceEmailGate)` branch — e.g. hoist the `db.select(...)` above that branch, or give the capability-bypass check its own independent lookup instead of relying on the email-gate's side effect.
+
+### 3. `child.stdout`/`stderr`.take().expect(...) in the Rust runner relies on an unenforced invariant (defensive gap, not currently reachable)
+
+- **Files:** `judge-worker-rs/src/docker.rs:410-412` (Command built with `.stdin/.stdout/.stderr(Stdio::piped())`) and `:437,454` (`child.stdout.take().expect("stdout not captured")`, `child.stderr.take().expect("stderr not captured")`)
+- **Severity:** LOW
+- **Confidence:** Medium
+- **Problem:** The `.expect()` calls assume the `Command` was always built with piped stdio, which is true today (lines 410-412, immediately upstream in the same function) — so this is not currently reachable. However, it's a latent trap: if a future code path calls `run_docker`/constructs the child differently (or `.take()` gets called twice), the `.expect()` panics inside a `tokio::spawn`'ed task. That panic doesn't crash the worker process (Tokio isolates task panics), and the caller already handles it via `stdout_handle.await.unwrap_or_default()` at `docker.rs:504-505` — but the practical effect of a hit would be **silent** empty stdout/stderr on that submission with no error surfaced, which would look exactly like "the program printed nothing" rather than "the harness broke." A `match` with a structured internal-error return (or at minimum a `debug_assert!`) would fail more loudly.
+- **Failure scenario:** A future refactor spawns the run/compile child through a different code path that omits `Stdio::piped()`, or restructures around an early `.take()`. Submissions silently start returning empty stdout, mis-scoring correct solutions as wrong-answer with zero diagnostic signal.
+- **Fix:** Replace the `.expect()` with an explicit `match`/`.ok_or_else(...)` that returns a structured `DockerError` (mirroring how `stdin`'s `BrokenPipe` case is already handled a few lines below), so a future invariant violation surfaces as a normal error path instead of a silently-absorbed panic.
+
+## Rust Panic/Unwrap Sweep — Full Results
+
+Grepped every file in `judge-worker-rs/src/*.rs` for `unwrap()`, `expect()`, `panic!()` and classified each hit:
+
+| File | Production or test | Verdict |
+|---|---|---|
+| `api.rs:282,294` | Test (`ApiClient` test fixture constructors) | Not a bug |
+| `languages.rs:2179` | Test (`#[test]` iterating all `Language` variants) | Not a bug |
+| `executor.rs:897-914` | Test (`#[cfg(test)]` fixture setup) | Not a bug |
+| `config.rs:407-433` | Test (config-validation unit tests) | Not a bug |
+| `main.rs:490` | **Production** — SIGTERM handler registration at startup | Acceptable: failing to install a signal handler at process start is a standard "crash loudly at boot" case in Rust services; not a runtime-reachable panic once started |
+| `main.rs:708,719,747,751,773` | Test (`#[cfg(test)] mod tests` — verifies `catch_unwind` traps executor panics and renders `runtime_error`, per AGG-15/C3-AGG-9) | Not a bug — this is exactly the hardening that makes executor-level panics non-fatal |
+| `workspace.rs:28,134-321` | Mixed: line 28 is a documented invariant (`path is always set until drop`, matches struct invariant); 134-321 are all `#[cfg(test)]` fixtures | Not a bug |
+| `docker.rs:437,454` | **Production** | See Issue 3 above (LOW, defensive gap only) |
+| `docker.rs:745-784` | Test (seccomp-profile option tests) | Not a bug |
+
+No `panic!()` calls exist in production code paths. No unguarded array indexing, unchecked integer casts, or division-by-zero patterns were found in `comparator.rs` (output comparison) or `validation.rs` (path validation) during this pass. Sandbox containers are spawned with `--init` (`docker.rs:404`), so zombie reaping inside the sandbox itself is already handled.
+
+## Status of Previously Reported Issues (2026-07-03 debugger review)
+
+Two security-adjacent fixes landed since that review and were directly re-verified here (not previously tracked by the debugger perspective, but touch error-handling/boundary logic in scope):
+
+| # | Item | Status | Evidence |
 |---|---|---|---|
-| 1 | Node workspace cleanup leaks because non-root cannot `chown` sandbox files | **Fixed** | `src/lib/compiler/execute.ts:382-427` now tries direct `rm` first, then `cleanupWorkspaceWithDocker` with `--user root`. |
-| 2 | Rust `SandboxWorkspace::drop` leaks for the same reason | **Fixed** | `judge-worker-rs/src/workspace.rs:43-77` adds `cleanup_with_docker` and invokes it from `Drop` when non-root. |
-| 3 | `buildDockerImageLocal` leaves running `docker build` on timeout | **Still present** | See Issue 4 below. |
-| 4 | Backup restore holds all uploads in memory | **Still present** | See Issue 5 below. |
-| 5 | Uploads dir default permissions | **Still present** | See Issue 6 below. |
-| 6 | `cleanupOldEvents` LIMIT semantics | **Still present** | See Issue 7 below. |
+| — | Zip-slip in backup-restore upload extraction | **Fixed** (commit `2e6ee0d4`, 2026-07-05) | `src/lib/db/export-with-files.ts` now validates the derived `storedName` via `assertSafeUploadStoredName` (rejects `..`, path separators, NUL) and confirms the resolved path is a direct child of the staging root before opening any write stream. Verified the guard and its dedicated regression test (`tests/unit/db/export-with-files.test.ts`); no gaps found. |
+| — | Custom-role fail-open on roles-only API gates | **Fixed** (commit `269aa674`, 2026-07-05) | `src/lib/api/handler.ts:200-217` now denies any role not explicitly allowlisted unless a capability gate exists to still govern it; verified the logic against both the built-in-role and custom-role branches and the added regression test. No regression introduced. |
 
-## Confirmed Issues
+The remaining 19 issues from the 2026-07-03 review (compiler output byte-accounting, `buildDockerImageLocal` timeout cleanup, backup-restore ZIP-buffer memory pressure — still architecturally tracked as deferred item C4-US-014, uploads-dir permissions, batch-DELETE `LIMIT` semantics, uncapped compiler timeouts, SSE poll-interval `NaN` guard, global SSE advisory lock, silent background-refresh error swallowing, rate-limit eviction contention, fire-and-forget login/audit events, blocked-key window refresh, ICPC penalty clamping, similarity-check `NaN` handling, `withTimeout` cleanup fragility, wall-clock circuit breaker, chat-widget SSE buffer growth) were not independently re-verified line-by-line in this pass; nothing encountered during this review's broader sweep contradicts their prior characterization.
 
-### 1. Compiler output cap measures UTF-16 string length, not byte length
+## Additional Files Swept With No New Issues Found
 
-- **Files:** `src/lib/compiler/execute.ts:27`, `src/lib/compiler/execute.ts:571-578`, `src/lib/compiler/execute.ts:612-613`
-- **Severity:** HIGH
-- **Confidence:** High
-- **Problem:** `MAX_OUTPUT_BYTES` is documented as a 128 MiB byte budget, but the checks use `stdout.length` and `stderr.length`, which are JavaScript UTF-16 code-unit counts. A chunk containing mostly 3-byte UTF-8 characters (e.g., CJK or emoji) occupies ~3 bytes per UTF-16 code unit, so the process can hold roughly 3× the intended memory before truncation. The final `slice(0, MAX_OUTPUT_BYTES)` also operates on code units, so the returned string may exceed 128 MiB when encoded.
-- **Failure scenario:** A sandboxed program prints a large amount of multi-byte output (e.g., Chinese characters). The Node process memory grows to ~384 MiB for stdout alone before the cap trips, increasing OOM risk on memory-constrained containers and skewing resource accounting.
-- **Suggested fix:** Track byte length using `Buffer.byteLength(stdout, "utf8")` (or accumulate `Buffer`s directly) and slice by byte boundaries. Alternatively, cap the accumulated `Buffer` size before `.toString("utf8")`.
-
-### 2. Synchronous `child.stdin.write` can throw unhandled if stdin closes early
-
-- **Files:** `src/lib/compiler/execute.ts:552-559`
-- **Severity:** MEDIUM
-- **Confidence:** High
-- **Problem:** The code installs an `"error"` listener on `child.stdin`, then calls `child.stdin.write(opts.stdin)` and `child.stdin.end()`. If the child process exits before or during the write, `stdin.write` can throw synchronously with `EPIPE` or `ERR_STREAM_WRITE_AFTER_END`. The listener only catches asynchronously emitted errors, so this synchronous throw becomes an unhandled exception that can crash the request (or, in some Node versions, the process).
-- **Failure scenario:** A very fast-exiting container (e.g., a binary that crashes immediately on startup) closes stdin while the app is still writing the problem input. The unhandled exception aborts the compiler execution path and surfaces as a 500 instead of a normal run result.
-- **Suggested fix:** Wrap `child.stdin.write(opts.stdin)` in a `try/catch` and treat a thrown error the same as an emitted stdin error (log and continue).
-
-### 3. `buildDockerImageLocal` resolves on timeout without killing or reaping the child
-
-- **Files:** `src/lib/docker/client.ts:347-365`
-- **Severity:** HIGH
-- **Confidence:** High
-- **Problem:** On the 600 s timeout path the code calls `proc.kill()` (no signal argument → `SIGTERM`) and immediately resolves `{ success: false, error: "docker build timed out after 600s" }`. It does not wait for process exit, close stdio, send `SIGKILL`, or call `proc.unref()`. A stuck `docker build` can ignore `SIGTERM` for a long time and continue consuming CPU, disk, and BuildKit locks.
-- **Failure scenario:** A hung image build hits the 600 s timeout. The API returns an error, but the `docker build` process keeps running in the background, possibly holding the build context and producing intermediate layers until manual intervention or container restart.
-- **Suggested fix:** Send `SIGTERM`, wait a short grace period, then send `SIGKILL`; drain/destroy stdout/stderr; and `await once(proc, "close")` (with a short secondary timeout) before resolving.
-
-### 4. Backup restore materializes every uploaded file in memory
-
-- **Files:** `src/lib/db/export-with-files.ts:267-349`, `src/app/api/v1/admin/restore/route.ts` (consumer)
-- **Severity:** HIGH
-- **Confidence:** High
-- **Problem:** `parseBackupZip` already receives the entire ZIP as a `Buffer`, then calls `entry.async("nodebuffer")` for each file in `uploads/` and stores all resulting `Buffer`s in an in-memory array. For a backup near the 512 MB decompressed limit with many uploads, the process can briefly hold well over 1 GB of transient memory (ZIP buffer + JSZip internal copies + extracted buffers), risking OOM before the DB transaction begins.
-- **Failure scenario:** An admin restores a large backup. Node OOMs during `parseBackupZip`. The DB is untouched, but the app container restarts and the operator gets no actionable error.
-- **Suggested fix:** Stream uploads directly from the ZIP to a staging directory on disk, validate manifest checksums incrementally, and only after all files are staged run the DB import. This also moves toward the deferred atomic "stage-then-rename" behavior noted at `export-with-files.ts:366-367`.
-
-### 5. Uploads directory created with umask-dependent permissions
-
-- **Files:** `src/lib/files/storage.ts:14-16`
-- **Severity:** MEDIUM
-- **Confidence:** High
-- **Problem:** `ensureUploadsDir()` calls `mkdir(..., { recursive: true })` without an explicit `mode`. The resulting directory permissions depend on the process umask, commonly `0o755`. Files inside are written `0o600`, but the directory itself is world-listable.
-- **Failure scenario:** On a shared container host or if the data volume is mounted by another non-privileged container, another uid can list uploaded file names and infer upload activity, even though file contents are unreadable.
-- **Suggested fix:** Create the directory with `mode: 0o700` so only the app user can list or access it.
-
-### 6. Batch DELETE `LIMIT` inside `IN` subquery may be ignored by PostgreSQL
-
-- **Files:** `src/lib/db/cleanup.ts:46-48`, `src/lib/db/cleanup.ts:56-58`; `src/lib/data-retention-maintenance.ts:28-30`
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** Both pruners use `DELETE FROM t WHERE id IN (SELECT id FROM t WHERE ... LIMIT 5000)`. PostgreSQL’s planner can flatten/simple-unfold the `IN (SELECT ... LIMIT)` subquery, causing the `LIMIT` to be discarded and the entire eligible set to be deleted in one statement. This risks long locks, WAL bloat, and replication lag on large tables.
-- **Failure scenario:** The first run of the daily pruner on a system with millions of old audit events deletes them all at once, blocking concurrent audit inserts and potentially filling the WAL.
-- **Suggested fix:** Use `DELETE FROM t WHERE id IN (SELECT id FROM t WHERE ... ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 5000)`, or select a batch of ids in a CTE and delete by primary key in a separate statement.
-
-### 7. Compiler timeouts have no upper cap
-
-- **Files:** `src/lib/compiler/execute.ts:851-852`, `src/lib/compiler/execute.ts:915`, `src/lib/compiler/execute.ts:681`
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** `compile` uses `Math.max(timeLimitMs * 2, 30_000)`, and `runDocker` uses `Math.max(timeLimitMs * 4, 120_000)`. If an admin configures a very large per-problem time limit (or if a malformed setting loads as a huge number), the compile/run containers can run for hours before being killed.
-- **Failure scenario:** A problem with a misconfigured time limit of, e.g., 3 hours spawns a compile container that runs for 6 hours, holding workspace disk and Docker resources.
-- **Suggested fix:** Cap the derived container timeouts at a sane global maximum (e.g., 10 minutes for compile, problem time limit + overhead for run) and clamp the raw configured value to a documented maximum.
-
-### 8. `parseTimestampEpochMs` regex is fragile for sub-millisecond forms
-
-- **Files:** `src/lib/compiler/execute.ts:285-294`
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** The regex `/\.\d{3}\d+/` only truncates fractional seconds when there are 3 or more digits. For 1–2 digit fractional seconds (e.g., `.1`, `.12`) the regex does not match, so the original string is passed to `Date.parse`. V8 currently accepts those forms, but the behavior is implementation-defined and the code comment claims to truncate "any sub-millisecond precision." The regex also lacks the `g` flag, but Docker timestamps have only one fractional part, so that is harmless in practice.
-- **Failure scenario:** A future Node runtime or non-V8 environment rejects `.12`, causing `inspectContainerState` to return `durationMs: null` and masking actual run duration telemetry.
-- **Suggested fix:** Use `/\.\d{1,3}/` and pad/truncate to three digits, or parse the ISO string with a dedicated parser instead of relying on `Date.parse` quirks.
-
-### 9. SSE shared poll timer interval may become `NaN`
-
-- **Files:** `src/app/api/v1/submissions/[id]/events/route.ts:190-193`
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** `startSharedPollTimer` computes `const pollIntervalMs = Math.max(1000, configuredInterval);`. If `configuredInterval` is `NaN` (e.g., a corrupted DB setting), `Math.max(1000, NaN)` evaluates to `NaN`. Passing `NaN` to `setInterval` produces implementation-defined behavior (often a very short interval), causing excessive DB polling.
-- **Failure scenario:** An admin saves a non-numeric poll interval in system settings. Every connected SSE client causes the shared timer to fire rapidly, spiking DB load.
-- **Suggested fix:** Validate with `Number.isFinite(configuredInterval)` and fall back to a default (e.g., 5000 ms) before calling `Math.max`.
-
-### 10. Real-time coordination serializes all SSE slot acquisitions on one advisory lock
-
-- **Files:** `src/lib/realtime/realtime-coordination.ts:73-78`, `src/lib/realtime/realtime-coordination.ts:101`
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** `acquireSharedSseConnectionSlot` uses a single advisory lock key `"realtime:sse:acquire"` for all users/connections. In multi-instance deployments with `REALTIME_COORDINATION_BACKEND=postgresql`, every SSE connection attempt serializes behind this one lock, creating a global bottleneck. Additionally, `withPgAdvisoryLock` hashes the key with MD5 and takes the first 64 bits; collision probability is low but non-zero.
-- **Failure scenario:** Under high SSE load (e.g., a popular contest start), connection acquisition queues up globally, increasing latency and tying up DB connections.
-- **Suggested fix:** Use a lock key scoped per user (e.g., `"realtime:sse:acquire:${userId}"`) so only concurrent attempts by the same user contend. Document the 64-bit advisory-lock collision risk and accept it for this use case.
-
-### 11. Contest-scoring background refresh swallows all errors silently
-
-- **Files:** `src/lib/assignments/contest-scoring.ts:150-180` (approximate; the leaderboard cache refresh IIFE followed by `.catch(() => {})`)
-- **Severity:** MEDIUM
-- **Confidence:** Medium
-- **Problem:** The stale-while-revalidate background refresh wraps the refresh IIFE with `.catch(() => {})`. Any unexpected failure (DB connectivity, logic error, etc.) is silently discarded. The outer `.catch` does catch errors from the inner `getDbNowMs()` in `catch`/`finally`, but it also masks all other failures.
-- **Failure scenario:** A code change introduces a runtime error in the refresh path. The leaderboard keeps serving stale data forever with no log noise, and operators only notice when users report stale standings.
-- **Suggested fix:** Log the error inside the `.catch` (e.g., `.catch((err) => logger.error(...))`) before swallowing, or only swallow specifically expected abort/timeout errors.
-
-### 12. `startRateLimitEviction` runs per instance and can cause write contention
-
-- **Files:** `src/lib/security/rate-limit.ts:67-81`
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** Each Next.js process starts its own 60-second eviction timer and deletes from `rateLimits` independently. In a multi-instance deployment, multiple processes can run `DELETE FROM rate_limits WHERE lastAttempt < cutoff` simultaneously, causing lock contention and replication writes even though the operation is idempotent.
-- **Failure scenario:** A 10-instance deployment produces a steady stream of overlapping full-table delete queries against `rate_limits`, amplifying write load.
-- **Suggested fix:** Use a single coordinator (e.g., the sidecar, a cron job, or advisory-lock-guarded eviction) so only one instance prunes at a time.
-
-### 13. Fire-and-forget login / audit events can be lost on shutdown or overload
-
-- **Files:** `src/lib/auth/login-events.ts:101-113`, `src/lib/audit/events.ts:252-261`
-- **Severity:** MEDIUM
-- **Confidence:** High
-- **Problem:** `recordLoginEvent` and `recordAuditEvent` enqueue or start an async DB write and do not await it. If the process receives `SIGTERM` before the write completes, the event is lost. The shutdown handler flushes the audit buffer, but login events have no equivalent flush, and both paths can race with process exit.
-- **Failure scenario:** A login attempt occurs just before a deploy restarts the container. The login event never reaches `login_events`, breaking audit trails and security analytics.
-- **Suggested fix:** For security-critical events, use `await recordLoginEventDurable(...)` (or an equivalent durable login-event path) at the call sites that can tolerate the latency, and register a shutdown flush for login events similar to the audit buffer flush.
-
-### 14. `consumeRateLimitAttemptMulti` does not refresh the window for an already-blocked key
-
-- **Files:** `src/lib/security/rate-limit.ts:178-191`
-- **Severity:** LOW
-- **Confidence:** High
-- **Problem:** When an active block exists (`entry.blockedUntil > now`), the function returns `true` immediately without recording the attempt. This is intentional but means a blocked IP stays blocked only until the original `blockedUntil`; repeated requests during the block do not extend or refresh the window. Once `blockedUntil` passes, the attacker gets a fresh window of attempts.
-- **Failure scenario:** An attacker with a botnet sends requests continuously while blocked. The moment the block expires, the full window of attempts is available again because no attempts were counted during the block.
-- **Suggested fix:** Record each blocked attempt as well (updating `lastAttempt` and possibly extending `blockedUntil` by a small amount), or document the intentional behavior.
-
-### 15. ICPC penalty can be negative under clock skew
-
-- **Files:** `src/lib/assignments/contest-scoring.ts` (penalty computation)
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** `computeIcpcPenalty` does not clamp `minutesToAc` to non-negative. If a submission’s `submittedAt` is earlier than the contest start (clock skew or backdated row), the penalty becomes negative, which can distort leaderboard ordering.
-- **Failure scenario:** A DB row is inserted with a timestamp slightly before the contest start due to app/DB clock skew. That participant receives a negative penalty and ranks above everyone else.
-- **Suggested fix:** Clamp `minutesToAc` with `Math.max(0, ...)` and add a guard/warning log when `submittedAt < startAt`.
-
-### 16. Similarity-check route can emit `NaN` similarity values
-
-- **Files:** `src/app/api/v1/contests/[assignmentId]/similarity-check/route.ts` (result serialization)
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** The route computes `similarity: Math.round(p.similarity * 100)`. If the Rust sidecar or fallback TS path returns malformed pair data where `similarity` is `NaN`/`undefined`, `Math.round` produces `NaN`, which is then serialized as `null` and may confuse the UI or downstream analytics.
-- **Failure scenario:** A sidecar bug or corrupted DB snapshot produces a pair with `similarity: NaN`. The API returns `similarity: null` without an error, and the admin UI shows a blank similarity score.
-- **Suggested fix:** Validate `p.similarity` with `Number.isFinite` before rounding; treat non-finite values as a processing error or filter them out.
-
-## Likely Issues
-
-### 17. `withTimeout` requires callers to retain the combined signal
-
-- **Files:** `src/lib/abort.ts:55-81`, `src/lib/api/client.ts:91-100`
-- **Severity:** LOW
-- **Confidence:** Medium
-- **Problem:** `withTimeout` stores the timer cleanup in a `WeakMap` keyed by the combined `AbortSignal`. `cleanupWithTimeout` needs that exact signal reference. The current callers (`api/client.ts`) correctly call it in `finally`, but future callers could pass the signal to `fetch` and then lose the reference, leaving the timer alive until it fires.
-- **Failure scenario:** A future route composes a timeout signal for a long-running operation but omits `cleanupWithTimeout`. Armed timers accumulate and fire after the operation completed, wasting event-loop ticks and holding closures.
-- **Suggested fix:** Return a disposable object or use `using`/`Symbol.dispose` so cleanup is syntactically tied to the signal’s lifetime.
-
-### 18. `callRateLimiter` circuit breaker uses wall-clock time
-
-- **Files:** `src/lib/security/rate-limiter-client.ts:43-116`
-- **Severity:** LOW
-- **Confidence:** Low
-- **Problem:** The circuit breaker opens/closes based on `Date.now()`. A backward system-clock jump could prematurely close the circuit, while a forward jump could keep it open longer than intended.
-- **Failure scenario:** Around an NTP step, the sidecar circuit state flips incorrectly, either sending extra traffic to a known-down sidecar or throttling a healthy one.
-- **Suggested fix:** Use `performance.now()` / `Instant`-style monotonic timing for the circuit-breaker deadline.
-
-### 19. `transformSSE` in chat-widget providers can buffer unbounded partial lines
-
-- **Files:** `src/lib/plugins/chat-widget/providers.ts:444-500`
-- **Severity:** LOW
-- **Confidence:** Low
-- **Problem:** The SSE transformer accumulates incomplete lines in `buffer` until a newline arrives. If an upstream provider sends a very long line without newlines, the buffer grows unbounded.
-- **Failure scenario:** A misbehaving LLM provider streams a huge single JSON blob without line breaks; the Node process memory grows until OOM.
-- **Suggested fix:** Cap `buffer` length and emit an error or reset when it exceeds a reasonable threshold.
-
-## Final Sweep — Commonly Missed Bug Surfaces
-
-| Surface | Finding | Severity | Files |
-|---|---|---|---|
-| **Subprocess zombies** | `buildDockerImageLocal` does not reap child after timeout; `stopContainer` uses `spawn` without waiting. | HIGH | `src/lib/docker/client.ts:347-365`, `src/lib/compiler/execute.ts:433-439` |
-| **Temp-file leaks** | Node and Rust workspace cleanup now use privileged Docker fallback — fixed for non-root. | — | `src/lib/compiler/execute.ts:382-427`, `judge-worker-rs/src/workspace.rs:43-77` |
-| **Timer leaks** | SSE poll timer can be created with `NaN` interval; `withTimeout` cleanup is fragile for future callers. | LOW/MEDIUM | `src/app/api/v1/submissions/[id]/events/route.ts:190-193`, `src/lib/abort.ts:55-81` |
-| **Memory pressure** | Backup restore holds all uploads in memory. | HIGH | `src/lib/db/export-with-files.ts:267-349` |
-| **Off-by-one / loop exit** | `normalizeSource` can re-emit truncated string content after `MAX_STRING_LITERAL_LENGTH`. | MEDIUM | `src/lib/assignments/code-similarity.ts:69-95` |
-| **Batch-delete semantics** | `LIMIT` inside `IN` subquery may be optimized away by PostgreSQL. | MEDIUM | `src/lib/db/cleanup.ts:46-63`, `src/lib/data-retention-maintenance.ts:28-30` |
-| **Permission/cleanup interaction** | `ensureUploadsDir` uses default umask-dependent permissions. | MEDIUM | `src/lib/files/storage.ts:14-16` |
-| **Async/await hazards** | Login/audit events are fire-and-forget and can be lost on shutdown. | MEDIUM | `src/lib/auth/login-events.ts:101-113`, `src/lib/audit/events.ts:252-261` |
-| **Numeric parsing** | Compiler timeouts lack an upper cap; SSE poll interval lacks finite validation. | MEDIUM | `src/lib/compiler/execute.ts:851-852,915`, `src/app/api/v1/submissions/[id]/events/route.ts:190-193` |
-| **String parsing** | `parseTimestampEpochMs` relies on `Date.parse` for 1–2 digit fractional seconds. | LOW | `src/lib/compiler/execute.ts:285-294` |
-| **Concurrency** | Global SSE advisory lock serializes all connection acquisitions. | MEDIUM | `src/lib/realtime/realtime-coordination.ts:73-78,101` |
+For transparency, the following were read in full during this review and found to be correctly hardened (no latent bugs identified): `src/lib/api/handler.ts`, `src/lib/datetime.ts`, `src/lib/db-time.ts`, `src/lib/assignments/scoring.ts`, `src/lib/ratings.ts`, `src/lib/problem-tiers.ts`, `src/lib/files/image-processing.ts`, `src/lib/files/validation.ts`, `src/lib/security/csrf.ts`, `src/lib/security/timing.ts`, `src/lib/security/encryption.ts`, `src/lib/security/derive-key.ts`, `src/lib/judge/prompt-sanitization.ts`, `src/lib/plugins/secrets.ts`, `src/lib/auth/permission-cache.ts`, `src/lib/judge/auth.ts`, `src/lib/db/named-params.ts`, `src/lib/db/queries.ts`, `src/lib/db/like.ts`, `src/lib/data-retention.ts`, `src/lib/assignments/leaderboard.ts`, `src/lib/assignments/contest-replay.ts`, `src/lib/problems/catalog-numbers.ts`, `src/lib/problem-statement.ts`, `src/lib/practice/difficulty-range.ts`, `src/lib/practice/search.ts`, `src/lib/homepage-insights.ts`, `src/lib/anti-cheat/review-model.ts`, `src/app/api/internal/cleanup/route.ts`, `src/app/api/v1/admin/backup/route.ts`, `src/app/api/v1/admin/migrate/import/route.ts`, and fire-and-forget call sites in `src/lib/assignments/recruiting-invitations.ts`, `src/lib/api/api-key-auth.ts`, and `src/lib/security/rate-limit.ts` (all internally catch their own errors — no unhandled-rejection risk).
 
 ## Recommendations
 
-1. **Fix compiler output byte accounting** (Issue 1) to enforce the documented 128 MiB byte budget.
-2. **Harden `child.stdin.write` and `buildDockerImageLocal` subprocess teardown** (Issues 2 and 3) to prevent unhandled exceptions and zombie builds.
-3. **Stream backup uploads to disk** (Issue 4) to remove the OOM risk on large restores.
-4. **Tighten uploads directory permissions** to `0o700` (Issue 5).
-5. **Rewrite batch deletes** to use `FOR UPDATE SKIP LOCKED` or a stable CTE pattern (Issue 6).
-6. **Cap derived container timeouts** and validate poll intervals (Issues 7 and 9).
-7. **Scope SSE advisory locks per user** and log swallowed background errors (Issues 10 and 11).
-8. **Add durable shutdown flush for login events** (Issue 13).
-
-## Notes on Prior Findings
-
-- Cycle 2/Cycle 3 aggregate items related to nginx `client_max_body_size`, `X-Forwarded-For` trust, CSRF allowed-hosts, millisecond-precision token revocation, rate-limiter monotonic clock, similarity-check serialization, Docker network segmentation, non-root workspace cleanup, and IPv4/IPv6 canonicalization are all validated as implemented in the current tree.
-- The workspace-leak "fix" from Cycle 3 now correctly handles non-root production users via privileged Docker cleanup in both Node and Rust.
+1. **Add `user: "0:0"` to `docker-compose.worker.yml`'s `judge-worker` service immediately** (Issue 1) — this is a one-line fix for a total-outage-class regression on the project's dedicated-worker deployment path.
+2. **Hoist the `userRow` fetch above the `enforceEmailGate` branch** in `sandbox-gate.ts` (Issue 2) and add a regression test covering "email gate disabled + admin user" to close the coverage gap that let this ship.
+3. **Harden the `docker.rs` stdout/stderr `.expect()` calls** into structured error returns (Issue 3) — low priority, but cheap and removes a latent panic trap.
+4. Re-run a full line-by-line pass over the 19 items carried forward from the 2026-07-03 review in the next cycle to confirm current status, since this pass prioritized the two new regressions over re-deriving already-tracked findings.
