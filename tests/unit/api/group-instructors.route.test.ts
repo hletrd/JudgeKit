@@ -143,7 +143,15 @@ beforeEach(() => {
       })),
     })),
   });
-  dbInsertMock.mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
+  // Atomic upsert chain: insert().values().onConflictDoUpdate().returning().
+  // `inserted: true` = fresh row (201 added); false = conflict-update (200).
+  dbInsertMock.mockReturnValue({
+    values: vi.fn(() => ({
+      onConflictDoUpdate: vi.fn(() => ({
+        returning: vi.fn().mockResolvedValue([{ inserted: true }]),
+      })),
+    })),
+  });
   dbUpdateMock.mockReturnValue({
     set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
   });
@@ -189,10 +197,11 @@ describe("POST /api/v1/groups/[id]/instructors — target role guard", () => {
 
   it("updates an existing instructor assignment instead of inserting", async () => {
     getRoleLevelMock.mockResolvedValue(2);
-    dbSelectMock.mockReturnValue({
-      from: vi.fn(() => ({
-        where: vi.fn(() => ({
-          limit: vi.fn().mockResolvedValue([{ id: "gi-1" }]),
+    // Conflict-update path: the upsert reports the row pre-existed.
+    dbInsertMock.mockReturnValue({
+      values: vi.fn(() => ({
+        onConflictDoUpdate: vi.fn(() => ({
+          returning: vi.fn().mockResolvedValue([{ inserted: false }]),
         })),
       })),
     });
@@ -205,8 +214,7 @@ describe("POST /api/v1/groups/[id]/instructors — target role guard", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.data).toMatchObject({ updated: true, role: "ta" });
-    expect(dbUpdateMock).toHaveBeenCalledOnce();
-    expect(dbInsertMock).not.toHaveBeenCalled();
+    expect(dbInsertMock).toHaveBeenCalledOnce();
   });
 
   it("returns 404 when the target user does not exist", async () => {

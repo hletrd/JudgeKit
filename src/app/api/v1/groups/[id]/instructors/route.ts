@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { groupInstructors, users } from "@/lib/db/schema";
@@ -88,27 +88,29 @@ export const POST = createApiHandler({
       return apiError("instructorRoleInvalid", 409);
     }
 
-    const existing = await db
-      .select({ id: groupInstructors.id })
-      .from(groupInstructors)
-      .where(and(eq(groupInstructors.groupId, id), eq(groupInstructors.userId, body.userId)))
-      .limit(1);
+    // Atomic upsert on the (groupId, userId) unique index. The previous
+    // SELECT-then-(UPDATE|INSERT) raced: two concurrent adds both passed the
+    // pre-check and the loser 500'd on the unique violation, and a concurrent
+    // DELETE made the UPDATE affect 0 rows while still reporting success.
+    // `xmax = 0` distinguishes a fresh insert from a conflict-update so the
+    // 201-vs-200 response contract is preserved.
+    const [row] = await db
+      .insert(groupInstructors)
+      .values({
+        groupId: id,
+        userId: body.userId,
+        role: body.role,
+      })
+      .onConflictDoUpdate({
+        target: [groupInstructors.groupId, groupInstructors.userId],
+        set: { role: body.role },
+      })
+      .returning({ inserted: sql<boolean>`(xmax = 0)` });
 
-    if (existing.length > 0) {
-      await db
-        .update(groupInstructors)
-        .set({ role: body.role })
-        .where(eq(groupInstructors.id, existing[0].id));
-      return apiSuccess({ updated: true, role: body.role });
+    if (row?.inserted) {
+      return apiSuccess({ added: true, role: body.role }, { status: 201 });
     }
-
-    await db.insert(groupInstructors).values({
-      groupId: id,
-      userId: body.userId,
-      role: body.role,
-    });
-
-    return apiSuccess({ added: true, role: body.role }, { status: 201 });
+    return apiSuccess({ updated: true, role: body.role });
   },
 });
 
