@@ -6,8 +6,8 @@
 import { NextRequest } from "next/server";
 import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db, execTransaction } from "@/lib/db";
-import { submissions, submissionResults, judgeWorkers } from "@/lib/db/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { submissions, submissionResults, judgeWorkers, testCases } from "@/lib/db/schema";
+import { eq, and, sql, inArray } from "drizzle-orm";
 import { recordAuditEvent } from "@/lib/audit/events";
 import { isJudgeAuthorizedForWorker } from "@/lib/judge/auth";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
@@ -26,6 +26,36 @@ import { getDbNowUncached } from "@/lib/db-time";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { parseClaimToken } from "@/lib/judge/claim-token";
 import { invalidateRankingCache } from "@/lib/assignments/contest-scoring";
+
+/**
+ * Drop result rows whose test case no longer exists. Test cases can be
+ * deleted mid-judge (problem edit, test-set replacement); submission_results
+ * has a NOT NULL FK to test_cases, so inserting a row for a deleted case
+ * raises an FK violation that rolls back the WHOLE report transaction —
+ * wedging the submission in 'judging' (with the worker retrying 500s) until
+ * the stale-claim timeout. Per-case rows for deleted cases are meaningless
+ * after the edit anyway; the verdict write must not die with them.
+ */
+async function filterRowsToExistingTestCases<T extends { testCaseId: string }>(
+  tx: { select: typeof db.select },
+  submissionId: string,
+  rows: T[],
+): Promise<T[]> {
+  if (rows.length === 0) return rows;
+  const ids = [...new Set(rows.map((row) => row.testCaseId))];
+  const existing = await tx
+    .select({ id: testCases.id })
+    .from(testCases)
+    .where(inArray(testCases.id, ids));
+  if (existing.length === ids.length) return rows;
+  const existingIds = new Set(existing.map((row) => row.id));
+  const kept = rows.filter((row) => existingIds.has(row.testCaseId));
+  logger.warn(
+    { submissionId, dropped: rows.length - kept.length, kept: kept.length },
+    "[judge/poll] Dropping result rows for test cases deleted mid-judge",
+  );
+  return kept;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,7 +165,11 @@ export async function POST(request: NextRequest) {
           if (Array.isArray(results) && results.length > 0) {
             await tx.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
 
-            const rows = buildSubmissionResultRows(submissionId, results);
+            const rows = await filterRowsToExistingTestCases(
+              tx,
+              submissionId,
+              buildSubmissionResultRows(submissionId, results),
+            );
             if (rows.length > 0) {
               await tx.insert(submissionResults).values(rows);
             }
@@ -205,7 +239,11 @@ export async function POST(request: NextRequest) {
 
         await tx.delete(submissionResults).where(eq(submissionResults.submissionId, submissionId));
 
-        const rows = buildSubmissionResultRows(submissionId, results);
+        const rows = await filterRowsToExistingTestCases(
+          tx,
+          submissionId,
+          buildSubmissionResultRows(submissionId, results),
+        );
         if (rows.length > 0) {
           await tx.insert(submissionResults).values(rows);
         }
