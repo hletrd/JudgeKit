@@ -160,7 +160,7 @@ describe("POST /api/v1/judge/poll", () => {
         },
         body: JSON.stringify({
           submissionId: "submission-1",
-          claimToken: "claim-token",
+          claimToken: createClaimToken(new Date("2026-04-20T12:00:00Z").getTime() - 30_000),
           status: "judging",
           compileOutput: null,
           results: [],
@@ -375,6 +375,39 @@ describe("POST /api/v1/judge/poll", () => {
     await expect(response.json()).resolves.toEqual({ error: "claimExpired" });
     expect(execTransactionMock).not.toHaveBeenCalled();
     expect(dbTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects in-progress extension for a legacy claim token without a timestamp", async () => {
+    submissionsFindFirstMock.mockResolvedValue({
+      id: "submission-1",
+      status: "judging",
+      judgeClaimedAt: new Date("2026-04-20T11:59:00Z"),
+      judgeWorkerId: "worker-1",
+    });
+
+    const { POST } = await import("@/app/api/v1/judge/poll/route");
+    const response = await POST(
+      new NextRequest("http://localhost/api/v1/judge/poll", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer test-token",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          submissionId: "submission-1",
+          claimToken: "legacy-token-without-timestamp",
+          status: "judging",
+          compileOutput: null,
+          results: [],
+        }),
+      })
+    );
+
+    // A legacy token's claim age is unknowable; extending it would reopen the
+    // indefinite-extension hole. It must be treated as already expired.
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ error: "claimExpired" });
+    expect(execTransactionMock).not.toHaveBeenCalled();
   });
 
   it("accepts in-progress reports within the maximum claim duration", async () => {

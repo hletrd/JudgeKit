@@ -89,16 +89,27 @@ export async function POST(request: NextRequest) {
       // original claim timestamp because `judgeClaimedAt` is refreshed by
       // every in-progress report.
       const { claimCreatedAt } = parseClaimToken(claimToken);
-      if (claimCreatedAt !== null) {
-        const elapsedMs = dbNow.getTime() - claimCreatedAt;
-        const maxDurationMs = getConfiguredSettings().maxJudgeClaimDurationMs;
-        if (elapsedMs > maxDurationMs) {
-          logger.warn(
-            { submissionId, elapsedMs, maxDurationMs },
-            "[judge/poll] Claim exceeded maximum duration; rejecting in-progress report",
-          );
-          return apiError("claimExpired", 403);
-        }
+      if (claimCreatedAt === null) {
+        // Legacy token without an embedded timestamp: its true claim age is
+        // unknowable, so allowing extension would reopen the indefinite
+        // claim-extension hole for claims issued before the timestamped-token
+        // deploy. Treat it as already expired for in-progress extension; the
+        // final-report path is unaffected, and the submission becomes
+        // re-claimable (with a timestamped token) after the stale timeout.
+        logger.warn(
+          { submissionId },
+          "[judge/poll] Legacy claim token without timestamp; rejecting in-progress extension",
+        );
+        return apiError("claimExpired", 403);
+      }
+      const elapsedMs = dbNow.getTime() - claimCreatedAt;
+      const maxDurationMs = getConfiguredSettings().maxJudgeClaimDurationMs;
+      if (elapsedMs > maxDurationMs) {
+        logger.warn(
+          { submissionId, elapsedMs, maxDurationMs },
+          "[judge/poll] Claim exceeded maximum duration; rejecting in-progress report",
+        );
+        return apiError("claimExpired", 403);
       }
 
       // Mirror the final path: wrap the claim update so a stale/invalid claim
