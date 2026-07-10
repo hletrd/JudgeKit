@@ -85,18 +85,22 @@ function findInternalKeyViolation(metadata: Record<string, string> | undefined):
  * counter value and write back the same increment — defeating the lockout.
  * The atomic SQL UPDATE acquires a row-level lock and serializes increments.
  *
- * Fire-and-forget tradeoff: this function is called via `void` (not awaited)
- * from inside the redeem transaction. The counter increment persists even if
- * the calling transaction rolls back, which is intentional for brute-force
- * protection. Tradeoff: if the DB write fails, the counter is lost (under-counting);
- * if the calling transaction rolls back after the increment commits, the counter
- * is elevated (over-counting). Both cases are acceptable because the lockout is
- * per-invitation and self-corrects on successful auth (via resetFailedRedeemAttempt).
+ * Executor: pass the redeem transaction's `tx` so the increment runs UNDER
+ * the FOR UPDATE row lock the redeem path holds — that is what makes
+ * check-then-increment atomic across concurrent attempts. (The previous
+ * fire-and-forget `void` call on the global pool meant N concurrent redeems
+ * all read the same pre-increment counter from their snapshots, allowing far
+ * more than MAX_FAILED_REDEEM_ATTEMPTS password guesses per lockout.) The
+ * wrong-password branch returns immediately after this call, so the enclosing
+ * transaction commits and the counter durably persists.
  */
-async function incrementFailedRedeemAttempt(token: string): Promise<void> {
+async function incrementFailedRedeemAttempt(
+  token: string,
+  executor: Pick<typeof db, "update"> = db,
+): Promise<void> {
   try {
     const tokenHashValue = hashToken(token);
-    await db
+    await executor
       .update(recruitingInvitations)
       .set({
         // sql.raw is safe here: FAILED_REDEEM_ATTEMPTS_KEY is a module-level
@@ -575,7 +579,13 @@ export async function redeemRecruitingToken(
         })
         .from(recruitingInvitations)
         .where(eq(recruitingInvitations.tokenHash, hashToken(token)))
-        .limit(1);
+        .limit(1)
+        // FOR UPDATE: serializes concurrent redeems of the same token. The
+        // brute-force lockout below is check-then-act on this row's counter;
+        // without the lock, N parallel attempts all read the same
+        // pre-increment counter and each gets a password guess, defeating
+        // MAX_FAILED_REDEEM_ATTEMPTS.
+        .for("update");
 
       if (!invitation) return { ok: false as const, error: "invalidToken" };
 
@@ -641,9 +651,11 @@ export async function redeemRecruitingToken(
         } else {
           const { valid } = await verifyAndRehashPassword(accountPassword, existingUser.id, existingUser.passwordHash);
           if (!valid) {
-            // Increment failed-redeem counter outside the transaction to
-            // persist the attempt even if the transaction rolls back.
-            void incrementFailedRedeemAttempt(token);
+            // Increment INSIDE the transaction, under the FOR UPDATE row
+            // lock, so the next serialized attempt reads the committed
+            // counter. We return (not throw) right after, so the transaction
+            // commits and the increment persists.
+            await incrementFailedRedeemAttempt(token, tx);
             return { ok: false as const, error: "accountPasswordIncorrect" };
           }
         }
