@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/db/schema";
 import { consumeUserDailyQuota } from "@/lib/security/api-rate-limit";
 import { getSystemSettings } from "@/lib/system-settings";
-import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { resolveCapabilities, getRoleLevel } from "@/lib/capabilities/cache";
+import { DEFAULT_ROLE_LEVELS } from "@/lib/capabilities/defaults";
 
 const ALLOW_UNVERIFIED_EMAIL_ENV = (() => {
   // Hard env-level escape hatch for deployments that intentionally don't
@@ -69,16 +70,15 @@ export async function gateSandboxEndpoint(options: GateOptions): Promise<NextRes
 
     userRow = row;
 
-    // Staff (instructors/admins/super_admins) bypass the verified-email
-    // gate. They're created by operators, not by public signup, so
-    // requiring email verification breaks normal admin workflows on
-    // fresh deployments without SMTP. Recruiting candidates and students
-    // must verify.
-    const isStaff =
-      row?.role === "instructor" ||
-      row?.role === "admin" ||
-      row?.role === "super_admin" ||
-      row?.role === "assistant";
+    // Staff (assistant-level and above, including custom roles at that
+    // level) bypass the verified-email gate. They're created by operators,
+    // not by public signup, so requiring email verification breaks normal
+    // admin workflows on fresh deployments without SMTP. Recruiting
+    // candidates and students must verify. getRoleLevel returns -1 for
+    // unknown roles, so those stay gated (fail-safe).
+    const isStaff = row
+      ? (await getRoleLevel(row.role)) >= DEFAULT_ROLE_LEVELS.assistant
+      : false;
     if (!isStaff && !row?.emailVerified) {
       return NextResponse.json(
         {

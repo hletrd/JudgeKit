@@ -6,11 +6,13 @@ const {
   getSystemSettingsMock,
   consumeUserDailyQuotaMock,
   resolveCapabilitiesMock,
+  getRoleLevelMock,
 } = vi.hoisted(() => ({
   dbSelectMock: vi.fn(),
   getSystemSettingsMock: vi.fn(),
   consumeUserDailyQuotaMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
+  getRoleLevelMock: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({
@@ -37,7 +39,16 @@ vi.mock("@/lib/security/api-rate-limit", () => ({
 
 vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
+  getRoleLevel: getRoleLevelMock,
 }));
+
+const BUILTIN_LEVELS: Record<string, number> = {
+  student: 0,
+  assistant: 1,
+  instructor: 2,
+  admin: 3,
+  super_admin: 4,
+};
 
 function mockUserRow(row: { emailVerified: Date | null; role: string } | undefined) {
   const rows = row ? [row] : [];
@@ -65,6 +76,7 @@ describe("gateSandboxEndpoint", () => {
   beforeEach(() => {
     getSystemSettingsMock.mockResolvedValue({ emailVerificationRequired: true });
     resolveCapabilitiesMock.mockResolvedValue(new Set());
+    getRoleLevelMock.mockImplementation(async (role: string) => BUILTIN_LEVELS[role] ?? -1);
     consumeUserDailyQuotaMock.mockResolvedValue(null);
   });
 
@@ -104,6 +116,27 @@ describe("gateSandboxEndpoint", () => {
     expect(result?.status).toBe(429);
     const body = await result?.json();
     expect(body.error).toBe("dailyQuotaExceeded");
+  });
+
+  it("bypasses the email gate for a custom role at assistant level or above", async () => {
+    mockUserRow({ emailVerified: null, role: "senior_instructor" });
+    getRoleLevelMock.mockResolvedValue(2);
+
+    const { gateSandboxEndpoint } = await importGate();
+    const result = await gateSandboxEndpoint({ userId: "user-1", endpoint: "sandbox:run", maxPerDay: 10 });
+
+    expect(result).toBeNull();
+    expect(consumeUserDailyQuotaMock).toHaveBeenCalledWith("user-1", "sandbox:run", 10);
+  });
+
+  it("keeps the email gate for an unknown role (level -1)", async () => {
+    mockUserRow({ emailVerified: null, role: "ghost_role" });
+
+    const { gateSandboxEndpoint } = await importGate();
+    const result = await gateSandboxEndpoint({ userId: "user-1", endpoint: "sandbox:run", maxPerDay: 10 });
+
+    expect(result).toBeInstanceOf(NextResponse);
+    expect(result?.status).toBe(403);
   });
 
   it("bypasses the quota and returns null for an admin with system.settings capability", async () => {
