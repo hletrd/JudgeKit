@@ -1014,7 +1014,12 @@ fi
 upsert_env_literal AUTH_TRUST_HOST true
 upsert_env_literal TRUST_HOST_OVERRIDE 1
 upsert_env_literal TRUSTED_PROXY_HOPS 1
-upsert_env_literal JUDGE_ALLOW_ANY_JUDGE_IP "${JUDGE_ALLOW_ANY_JUDGE_IP_DEFAULT}"
+# Backfill-only (ensure, not upsert): the correct value is operator-dependent.
+# A separated host may legitimately run JUDGE_ALLOW_ANY_JUDGE_IP=1 when network
+# isolation is enforced by a firewall/security group instead of
+# JUDGE_ALLOWED_IPS; upserting the architecture default would reset it to 0 on
+# every redeploy and silently lock the remote worker out.
+ensure_env_literal JUDGE_ALLOW_ANY_JUDGE_IP "${JUDGE_ALLOW_ANY_JUDGE_IP_DEFAULT}"
 
 # Warn if the remote production config leaves judge routes fail-closed.
 if remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
