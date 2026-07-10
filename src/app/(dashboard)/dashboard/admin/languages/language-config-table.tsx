@@ -84,17 +84,20 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [imageStatusLoading, setImageStatusLoading] = useState(true);
   const [imageStatusError, setImageStatusError] = useState(false);
-  const buildAbortControllerRef = useRef<AbortController | null>(null);
+  // Per-language controllers: builds are independent, so starting one must
+  // not abort a sibling's in-flight request (which surfaced a spurious
+  // "build failed" toast for a build that was still running server-side).
+  const buildAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
   const removeAbortControllerRef = useRef<AbortController | null>(null);
   const pruneAbortControllerRef = useRef<AbortController | null>(null);
   const imageStatusAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     return () => {
-      if (buildAbortControllerRef.current) {
-        buildAbortControllerRef.current.abort();
-        buildAbortControllerRef.current = null;
+      for (const controller of buildAbortControllersRef.current.values()) {
+        controller.abort();
       }
+      buildAbortControllersRef.current.clear();
       if (removeAbortControllerRef.current) {
         removeAbortControllerRef.current.abort();
         removeAbortControllerRef.current = null;
@@ -159,11 +162,9 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
 
   function handleBuild(lang: LanguageConfig) {
     setBuildingLangs(prev => new Set(prev).add(lang.language));
-    if (buildAbortControllerRef.current) {
-      buildAbortControllerRef.current.abort();
-    }
+    buildAbortControllersRef.current.get(lang.language)?.abort();
     const controller = new AbortController();
-    buildAbortControllerRef.current = controller;
+    buildAbortControllersRef.current.set(lang.language, controller);
     apiFetch("/api/v1/admin/docker/images/build", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -182,8 +183,17 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
           toast.error(t("toast.buildError"));
         }
       })
-      .catch(() => toast.error(t("toast.buildError")))
-      .finally(() => setBuildingLangs(prev => { const next = new Set(prev); next.delete(lang.language); return next; }));
+      .catch((err: unknown) => {
+        // Unmount/duplicate-click aborts are not build failures.
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        toast.error(t("toast.buildError"));
+      })
+      .finally(() => {
+        if (buildAbortControllersRef.current.get(lang.language) === controller) {
+          buildAbortControllersRef.current.delete(lang.language);
+        }
+        setBuildingLangs(prev => { const next = new Set(prev); next.delete(lang.language); return next; });
+      });
   }
 
   function handleRemoveImage(lang: LanguageConfig) {

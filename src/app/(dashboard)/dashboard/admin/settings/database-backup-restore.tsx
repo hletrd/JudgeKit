@@ -18,6 +18,7 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
   const [isDownloading, setIsDownloading] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [confirmRestore, setConfirmRestore] = useState(false);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [restorePassword, setRestorePassword] = useState("");
   const [downloadMode, setDownloadMode] = useState<DownloadMode | null>(null);
   const [backupPassword, setBackupPassword] = useState("");
@@ -203,14 +204,21 @@ export function DatabaseBackupRestore({ isSuperAdmin }: { isSuperAdmin: boolean 
             ref={fileInputRef}
             type="file"
             accept=".json,.zip,application/json,application/zip"
-            onChange={() => setConfirmRestore(false)}
+            onChange={(event) => {
+              // Track the selection in STATE: the button's disabled check
+              // previously read the ref during render, and selecting a file
+              // did not re-render (setConfirmRestore(false) bails out when
+              // already false), leaving Restore permanently disabled.
+              setSelectedFileName(event.target.files?.[0]?.name ?? null);
+              setConfirmRestore(false);
+            }}
             className="block w-full text-sm text-muted-foreground file:mr-4 file:py-1 file:px-3 file:rounded file:border file:border-input file:text-sm file:font-medium file:bg-background file:text-foreground hover:file:bg-accent cursor-pointer"
           />
           {!confirmRestore ? (
             <Button
               variant="destructive"
               onClick={() => setConfirmRestore(true)}
-              disabled={isRestoring || !fileInputRef.current?.files?.length}
+              disabled={isRestoring || !selectedFileName}
             >
               <Upload className="mr-2 h-4 w-4" />
               {t("restoreDatabase")}

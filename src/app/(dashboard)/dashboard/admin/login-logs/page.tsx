@@ -21,7 +21,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { FilterSelect } from "@/components/filter-select";
 import { db } from "@/lib/db";
 import { loginEvents, users } from "@/lib/db/schema";
-import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatDateTimeInTimeZone, parseDateTimeLocalInput } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { escapeLikePattern } from "@/lib/db/like";
 import { normalizePage } from "@/lib/pagination";
@@ -191,15 +191,21 @@ export default async function AdminLoginLogsPage({
     `);
   }
 
+  // Date-range boundaries are computed in the SYSTEM timezone: timestamps in
+  // this table render in that zone, so UTC boundaries offset the filter by
+  // the zone difference (e.g. "to July 10" leaked ~9h of July 11 KST).
   if (dateFrom) {
-    const fromDate = new Date(dateFrom);
-    filters.push(gte(loginEvents.createdAt, fromDate));
+    const fromMs = parseDateTimeLocalInput(`${dateFrom}T00:00`, timeZone);
+    if (fromMs !== null) {
+      filters.push(gte(loginEvents.createdAt, new Date(fromMs)));
+    }
   }
 
   if (dateTo) {
-    const endOfDay = new Date(dateTo);
-    endOfDay.setUTCHours(23, 59, 59, 999);
-    filters.push(lte(loginEvents.createdAt, endOfDay));
+    const toMs = parseDateTimeLocalInput(`${dateTo}T23:59:59`, timeZone);
+    if (toMs !== null) {
+      filters.push(lte(loginEvents.createdAt, new Date(toMs + 999)));
+    }
   }
 
   const whereClause = filters.length > 0 ? and(...filters) : undefined;

@@ -103,6 +103,7 @@ export function AllowedHostsForm({ initialHosts, authUrlHost }: AllowedHostsForm
               <button
                 type="button"
                 onClick={() => handleRemove(host)}
+                aria-label={t("removeHost", { host })}
                 className="ml-1 rounded-full hover:bg-muted"
               >
                 <X className="h-3 w-3" />

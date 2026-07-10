@@ -164,7 +164,7 @@ export function ChatLogsClient() {
                 {s.provider && <Badge variant="outline">{s.provider}</Badge>}
                 {s.model && <Badge variant="secondary">{s.model}</Badge>}
                 <Badge variant="outline">{s.messageCount} messages</Badge>
-                <span>{s.lastMessageAt ? formatDateTimeInTimeZone(new Date(Number(s.lastMessageAt) * 1000), locale, timeZone) : ""}</span>
+                <span>{s.lastMessageAt ? formatDateTimeInTimeZone(s.lastMessageAt, locale, timeZone) : ""}</span>
               </div>
             </div>
           </CardContent>

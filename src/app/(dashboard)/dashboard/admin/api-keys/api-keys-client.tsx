@@ -92,6 +92,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
   const locale = useLocale();
   const timeZone = useSystemTimezone();
   const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [togglingKeyId, setTogglingKeyId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [createdKey, setCreatedKey] = useState<CreatedKey | null>(null);
   const [createdKeyCopied, setCreatedKeyCopied] = useState(false);
@@ -268,6 +269,10 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
   }
 
   async function handleToggle(key: ApiKey) {
+    // Guard rapid double-clicks: two in-flight PATCHes flip the key state
+    // back to the original while showing conflicting toasts.
+    if (togglingKeyId) return;
+    setTogglingKeyId(key.id);
     try {
       const res = await apiFetch(`/api/v1/admin/api-keys/${key.id}`, {
         method: "PATCH",
@@ -284,6 +289,8 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
       }
     } catch {
       toast.error(t("toggleFailed"));
+    } finally {
+      setTogglingKeyId(null);
     }
   }
 
@@ -504,6 +511,7 @@ export function ApiKeysClient({ roleOptions }: { roleOptions?: RoleOption[] }) {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggle(key)}
+                            disabled={togglingKeyId === key.id}
                           >
                             {key.isActive ? t("inactive") : t("active")}
                           </Button>

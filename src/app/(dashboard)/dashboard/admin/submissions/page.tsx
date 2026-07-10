@@ -21,7 +21,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { PaginationControls } from "@/components/pagination-controls";
 import { Input } from "@/components/ui/input";
-import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatDateTimeInTimeZone, parseDateTimeLocalInput } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
@@ -125,14 +125,18 @@ export default async function AdminSubmissionsPage({
     statusFilter !== "all" ? eq(submissions.status, statusFilter) : undefined,
     groupFilter ? eq(assignments.groupId, groupFilter) : undefined,
     languageFilter ? eq(submissions.language, languageFilter) : undefined,
-    dateFrom ? gte(submissions.submittedAt, new Date(dateFrom)) : undefined,
-    dateTo
-      ? (() => {
-          const endOfDay = new Date(dateTo);
-          endOfDay.setUTCHours(23, 59, 59, 999);
-          return lte(submissions.submittedAt, endOfDay);
-        })()
-      : undefined,
+    // System-timezone day boundaries — see the same pattern in the audit-log
+    // and login-log filters; UTC boundaries offset the range by the zone diff.
+    (() => {
+      if (!dateFrom) return undefined;
+      const fromMs = parseDateTimeLocalInput(`${dateFrom}T00:00`, timeZone);
+      return fromMs !== null ? gte(submissions.submittedAt, new Date(fromMs)) : undefined;
+    })(),
+    (() => {
+      if (!dateTo) return undefined;
+      const toMs = parseDateTimeLocalInput(`${dateTo}T23:59:59`, timeZone);
+      return toMs !== null ? lte(submissions.submittedAt, new Date(toMs + 999)) : undefined;
+    })(),
     searchWhereClause
   );
 

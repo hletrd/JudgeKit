@@ -15,7 +15,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { FilterSelect } from "@/components/filter-select";
 import { db } from "@/lib/db";
 import { auditEvents, users } from "@/lib/db/schema";
-import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { formatDateTimeInTimeZone, parseDateTimeLocalInput } from "@/lib/datetime";
 import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { escapeLikePattern } from "@/lib/db/like";
 import { normalizePage } from "@/lib/pagination";
@@ -285,19 +285,20 @@ export default async function AdminAuditLogsPage({
     filters.push(sql`${auditEvents.action} LIKE ${escapeLikePattern(actionTypeFilter) + '%'} ESCAPE '\\'`);
   }
 
+  // Date-range boundaries are computed in the SYSTEM timezone: timestamps in
+  // this table render in that zone, so UTC boundaries offset the filter by
+  // the zone difference (e.g. "to July 10" leaked ~9h of July 11 KST).
   if (dateFrom) {
-    const fromDate = new Date(dateFrom);
-    if (!isNaN(fromDate.getTime())) {
-      filters.push(gte(auditEvents.createdAt, fromDate));
+    const fromMs = parseDateTimeLocalInput(`${dateFrom}T00:00`, timeZone);
+    if (fromMs !== null) {
+      filters.push(gte(auditEvents.createdAt, new Date(fromMs)));
     }
   }
 
   if (dateTo) {
-    const toDate = new Date(dateTo);
-    if (!isNaN(toDate.getTime())) {
-      const endOfDay = new Date(toDate);
-      endOfDay.setUTCHours(23, 59, 59, 999);
-      filters.push(lte(auditEvents.createdAt, endOfDay));
+    const toMs = parseDateTimeLocalInput(`${dateTo}T23:59:59`, timeZone);
+    if (toMs !== null) {
+      filters.push(lte(auditEvents.createdAt, new Date(toMs + 999)));
     }
   }
 
