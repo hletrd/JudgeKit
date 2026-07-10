@@ -139,7 +139,18 @@ describe("recruiting token DB-time consistency", () => {
     // Default chain setup for transaction
     txSelectMock.mockReturnValue({ from: txFromMock });
     txFromMock.mockReturnValue({ where: txWhereMock });
-    txWhereMock.mockReturnValue({ limit: txLimitMock });
+    // .limit(1) must stay awaitable directly AND support the trailing
+    // .for("update") the redeem path now chains (row-lock serializing the
+    // brute-force lockout). Augment the promise with a `for` method that
+    // resolves to the same rows.
+    txWhereMock.mockReturnValue({
+      limit: (...args: unknown[]) => {
+        const rowsPromise = txLimitMock(...args);
+        return Object.assign(Promise.resolve(rowsPromise), {
+          for: () => rowsPromise,
+        });
+      },
+    });
     txLimitMock.mockResolvedValue([]);
     txUpdateMock.mockReturnValue({ set: txUpdateSetMock });
     txUpdateSetMock.mockReturnValue({ where: txUpdateWhereMock });
