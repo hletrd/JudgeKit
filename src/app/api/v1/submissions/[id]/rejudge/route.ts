@@ -35,6 +35,12 @@ export const POST = createApiHandler({
 
     // Delete existing test case results and reset submission (atomic transaction)
     await execTransaction(async (tx) => {
+      // FOR UPDATE: the conditional active_tasks decrement below is decided by
+      // this snapshot. Without the row lock, a poll final-report transaction
+      // (which also decrements the owning worker) can commit between this read
+      // and our update, and both paths decrement the same worker for the same
+      // submission — under-counting its live capacity. The lock serializes the
+      // two: whichever commits second sees the other's result and skips.
       const [current] = await tx
         .select({
           status: submissions.status,
@@ -42,7 +48,8 @@ export const POST = createApiHandler({
         })
         .from(submissions)
         .where(eq(submissions.id, id))
-        .limit(1);
+        .limit(1)
+        .for("update");
 
       await tx.delete(submissionResults).where(eq(submissionResults.submissionId, id));
 
