@@ -30,11 +30,24 @@ function encodeIntLiteral(v: unknown): string {
   );
 }
 
+/**
+ * Encode a boolean strictly: only a real boolean or the exact strings
+ * "true"/"false" are accepted. Truthiness coercion would flip a stringified
+ * `"false"` (e.g. from a CSV/import path that stored the literal as text) to
+ * `true` and silently corrupt the expected value — the same boolean-string
+ * bug class already seen in db/import.ts.
+ */
+function encodeBoolLiteral(v: unknown): string {
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (v === "true" || v === "false") return v;
+  throw new Error(`invalid boolean literal for function judging: ${JSON.stringify(v)}`);
+}
+
 function encodeScalar(v: unknown, t: string): string {
   switch (t) {
     case "int": case "long": return encodeIntLiteral(v);
     case "double": return String(Number(v)); // shortest round-trip form
-    case "bool": return v ? "true" : "false";
+    case "bool": return encodeBoolLiteral(v);
     case "string": return JSON.stringify(String(v));
     default: throw new Error(`unsupported scalar ${t}`);
   }

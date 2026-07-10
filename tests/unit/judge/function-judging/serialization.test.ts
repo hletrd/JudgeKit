@@ -8,6 +8,18 @@ describe("function-judging serialization", () => {
     expect(encodeValue("a,b", "string")).toBe('"a,b"');
   });
 
+  it("encodes booleans strictly — stringified values pass through exact, junk throws", () => {
+    expect(encodeValue(false, "bool")).toBe("false");
+    // Exact string literals (e.g. from a text-typed import path) are accepted
+    // verbatim; anything else must throw rather than truthiness-coerce.
+    expect(encodeValue("false", "bool")).toBe("false");
+    expect(encodeValue("true", "bool")).toBe("true");
+    expect(() => encodeValue("False", "bool")).toThrow(/boolean/);
+    expect(() => encodeValue(1, "bool")).toThrow(/boolean/);
+    expect(() => encodeValue("", "bool")).toThrow(/boolean/);
+    expect(() => encodeValue(null, "bool")).toThrow(/boolean/);
+  });
+
   it("encodes int/long values > 2^53 verbatim (no float64 rounding) — F1", () => {
     // 2^53 + 1 cannot be represented as a JS Number; previously
     // String(Math.trunc(Number(v))) rounded it. BigInt and digit-string inputs
