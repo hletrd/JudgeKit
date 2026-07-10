@@ -38,12 +38,18 @@ export function mapSubmissionPercentageToAssignmentPoints(
   if (lateContext && lateContext.submittedAt && lateContext.latePenalty > 0) {
     const submittedTime = lateContext.submittedAt.valueOf();
 
-    // For windowed exams, apply late penalty against the personal deadline
-    if (lateContext.examMode === "windowed" && lateContext.personalDeadline) {
-      const personalDeadlineTime = lateContext.personalDeadline.valueOf();
-      if (submittedTime > personalDeadlineTime) {
-        const penaltyFraction = lateContext.latePenalty / 100;
-        earnedPoints = roundAssignmentScore(earnedPoints * (1 - penaltyFraction));
+    // For windowed exams, apply late penalty against the personal deadline.
+    // A windowed submission with no personal deadline gets NO penalty — this
+    // must stay in lock-step with the SQL in buildIoiLatePenaltyCaseExpr(),
+    // where the windowed branch requires personal_deadline IS NOT NULL and
+    // the global-deadline branch requires @examMode != 'windowed'.
+    if (lateContext.examMode === "windowed") {
+      if (lateContext.personalDeadline) {
+        const personalDeadlineTime = lateContext.personalDeadline.valueOf();
+        if (submittedTime > personalDeadlineTime) {
+          const penaltyFraction = lateContext.latePenalty / 100;
+          earnedPoints = roundAssignmentScore(earnedPoints * (1 - penaltyFraction));
+        }
       }
     } else if (lateContext.deadline) {
       // Non-windowed: apply late penalty against the global deadline

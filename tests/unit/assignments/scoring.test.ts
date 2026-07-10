@@ -262,6 +262,25 @@ describe("mapSubmissionPercentageToAssignmentPoints — windowed exam", () => {
     ).toBe(40); // no penalty
   });
 
+  it("applies NO penalty for windowed exams with a null personalDeadline, matching SQL", () => {
+    const globalDeadline = new Date("2026-03-09T12:00:00.000Z");
+
+    // Windowed exam, participant has no exam_sessions row (personal_deadline
+    // NULL). The SQL CASE in buildIoiLatePenaltyCaseExpr applies no penalty
+    // (windowed branch requires personal_deadline IS NOT NULL, global branch
+    // requires @examMode != 'windowed'), so the TS path must not apply the
+    // global-deadline penalty either — even when submitted after it.
+    expect(
+      mapSubmissionPercentageToAssignmentPoints(80, 50, {
+        submittedAt: new Date("2026-03-09T13:00:00.000Z"),
+        deadline: globalDeadline,
+        latePenalty: 25,
+        personalDeadline: null,
+        examMode: "windowed",
+      })
+    ).toBe(40); // no penalty — same as the SQL ELSE branch
+  });
+
   it("falls back to global deadline when examMode is not windowed", () => {
     const personalDeadline = new Date("2026-03-09T10:00:00.000Z");
     const globalDeadline = new Date("2026-03-09T12:00:00.000Z");
