@@ -14,7 +14,8 @@ import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getEffectiveExamCloseAt } from "@/lib/assignments/exam-close";
 import { getDbNowUncached } from "@/lib/db-time";
 import { LRUCache } from "lru-cache";
-import { getUnsupportedRealtimeGuard, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
+import { getUnsupportedRealtimeGuard, rollbackSharedHeartbeat, shouldRecordSharedHeartbeat, usesSharedRealtimeCoordination } from "@/lib/realtime/realtime-coordination";
+import { logger } from "@/lib/logger";
 // Canonical client-event vocabulary lives in lib (RPF cycle-4 AGG4-7) so the
 // submission validator's freshness probe can share it; the zod schema below
 // still rejects server-originated event classes (ip_change, code_similarity,
@@ -164,14 +165,24 @@ export const POST = createApiHandler({
               createdAt: now,
             });
         } catch (error) {
-          // The LRU marked this 60 s window as recorded BEFORE the insert
+          // The dedup marked this 60 s window as recorded BEFORE the insert
           // committed (RPF cycle-6 AGG6-4): a failed insert would otherwise
-          // suppress heartbeats on this instance for the rest of the window,
-          // silently shrinking the 90 s submit-freshness margin honest
-          // candidates depend on. Evict so the client's retry (it sees the
-          // 5xx) can re-record immediately. Shared-coordination dedup is
-          // DB-backed and unaffected.
-          if (!usesSharedRealtimeCoordination()) {
+          // suppress heartbeats for the rest of the window, silently
+          // shrinking the 90 s submit-freshness margin honest candidates
+          // depend on. Roll the dedup back so the client's retry (it sees
+          // the 5xx) can re-record immediately — in BOTH modes: the LRU for
+          // single-instance, and the DB-backed row for shared coordination
+          // (which shouldRecordSharedHeartbeat had already durably advanced).
+          if (usesSharedRealtimeCoordination()) {
+            try {
+              await rollbackSharedHeartbeat({ assignmentId, userId: user.id });
+            } catch (rollbackError) {
+              logger.warn(
+                { err: rollbackError, assignmentId, userId: user.id },
+                "[anti-cheat] failed to roll back shared heartbeat dedup after insert failure",
+              );
+            }
+          } else {
             lastHeartbeatTime.delete(`${assignmentId}:${user.id}`);
           }
           throw error;

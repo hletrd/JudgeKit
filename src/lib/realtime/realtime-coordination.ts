@@ -202,6 +202,27 @@ export async function shouldRecordSharedHeartbeat({
   });
 }
 
+/**
+ * Undo a heartbeat dedup advancement after the corresponding antiCheatEvents
+ * insert failed. `shouldRecordSharedHeartbeat` durably commits the dedup row
+ * BEFORE the caller inserts the event; if that insert throws, leaving the row
+ * advanced suppresses heartbeats for the rest of the window — the client's
+ * retry gets `shouldRecord=false` and an honest candidate accrues a
+ * `submission_stale_heartbeat` flag. Deleting the row re-opens the window so
+ * the retry re-records. (Worst case a concurrent instance also records one
+ * extra heartbeat row — dedup is churn reduction, not correctness.)
+ */
+export async function rollbackSharedHeartbeat({
+  assignmentId,
+  userId,
+}: {
+  assignmentId: string;
+  userId: string;
+}) {
+  const key = getHeartbeatKey(assignmentId, userId);
+  await db.delete(realtimeCoordination).where(eq(realtimeCoordination.key, key));
+}
+
 export function warnIfSingleInstanceRealtimeOnly(routeName: string) {
   const status = getRealtimeCoordinationStatus();
   if (
