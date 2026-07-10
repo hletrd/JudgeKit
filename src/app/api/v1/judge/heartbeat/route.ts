@@ -11,6 +11,12 @@ import { z } from "zod";
 import { getDbNowUncached } from "@/lib/db-time";
 import { sweepStaleWorkers } from "@/lib/judge/worker-staleness-sweep";
 
+// Per-process throttle for the inline (heartbeat-triggered) sweep. The
+// background interval (instrumentation) is the primary scheduler; the inline
+// path only tightens detection latency between its ticks.
+const INLINE_SWEEP_MIN_INTERVAL_MS = 30_000;
+let lastInlineSweepAtMs = 0;
+
 const heartbeatSchema = z.object({
   workerId: z.string().min(1),
   workerSecret: z.string().min(1),
@@ -75,9 +81,18 @@ export async function POST(request: NextRequest) {
     // Run the staleness sweep (online->stale, stale->offline+reap). Extracted to
     // worker-staleness-sweep so the SAME logic also runs on a background interval
     // (instrumentation), which is what reaps a dead single worker when no other
-    // heartbeat would ever trigger this inline path. Awaiting prevents racing
-    // with another worker's heartbeat. Reuse the already-fetched DB `now`.
-    await sweepStaleWorkers(now);
+    // heartbeat would ever trigger this inline path. The sweep is idempotent, so
+    // it runs fire-and-forget here: the heartbeat row update above has already
+    // committed, and a transient sweep failure must not turn a successful
+    // heartbeat into a 500 (a worker that re-registers on heartbeat failure
+    // would accumulate duplicate rows). Throttled per process so a large fleet
+    // heartbeating every 30s doesn't multiply the sweep write load.
+    if (Date.now() - lastInlineSweepAtMs >= INLINE_SWEEP_MIN_INTERVAL_MS) {
+      lastInlineSweepAtMs = Date.now();
+      void sweepStaleWorkers(now).catch((err) => {
+        logger.warn({ err }, "[judge] inline heartbeat staleness sweep failed");
+      });
+    }
 
     return apiSuccess({ ok: true });
   } catch (error) {
