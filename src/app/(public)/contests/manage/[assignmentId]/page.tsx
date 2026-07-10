@@ -205,6 +205,7 @@ export default async function ContestDetailPage({
     examBadgeScheduled: tGroups("examBadgeScheduled"),
     examBadgeWindowed: tGroups("examBadgeWindowed", { duration: assignment.examDurationMinutes ?? 0 }),
     examDuration: tAssignment("examDuration"),
+    examDurationValue: tAssignment("examDurationValue", { minutes: assignment.examDurationMinutes ?? 0 }),
   };
 
   // Student view — redirect to public contest page

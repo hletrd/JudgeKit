@@ -7,6 +7,9 @@ import { nanoid } from "nanoid";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch, getApiError } from "@/lib/api/client";
+import { translateApiErrorKey } from "@/lib/i18n/api-error";
+import { formatDateTimeLocalInput, parseDateTimeLocalInput } from "@/lib/datetime";
+import { useSystemTimezone } from "@/contexts/timezone-context";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -70,27 +73,6 @@ function createEmptyProblemDraft(availableProblems: AvailableProblem[]): Assignm
   };
 }
 
-function formatDateTimeInput(value: number | null) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 16);
-}
-
-function parseDateTimeInput(value: string) {
-  const trimmedValue = value.trim();
-
-  if (!trimmedValue) {
-    return null;
-  }
-
-  const parsedValue = new Date(trimmedValue).valueOf();
-  return Number.isNaN(parsedValue) ? null : parsedValue;
-}
-
 export default function AssignmentFormDialog({
   groupId,
   availableProblems,
@@ -101,6 +83,13 @@ export default function AssignmentFormDialog({
   const router = useRouter();
   const t = useTranslations("groups");
   const tCommon = useTranslations("common");
+  // Datetime-local fields must round-trip through the SYSTEM timezone, not
+  // the browser's: every read-only deadline display uses the system zone, so
+  // a browser-local form silently shifts the stored instant when an
+  // instructor edits from a differently-zoned machine.
+  const timeZone = useSystemTimezone();
+  const formatDateTimeInput = (value: number | null) => formatDateTimeLocalInput(value, timeZone);
+  const parseDateTimeInput = (value: string) => parseDateTimeLocalInput(value, timeZone);
   const isEditing = Boolean(initialAssignment);
   const isDuplicating = Boolean(seedAssignment) && !isEditing;
   const defaultAssignment = initialAssignment ?? seedAssignment;
@@ -284,7 +273,7 @@ export default function AssignmentFormDialog({
       const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        toast.error(t(getApiError(payload) || (isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed")));
+        toast.error(translateApiErrorKey(t, getApiError(payload), isEditing ? "assignmentUpdateFailed" : "assignmentCreateFailed"));
         return;
       }
 

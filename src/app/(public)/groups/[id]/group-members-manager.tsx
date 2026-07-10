@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
+import { translateApiErrorKey } from "@/lib/i18n/api-error";
 import { DestructiveActionDialog } from "@/components/destructive-action-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,6 +80,29 @@ export function GroupMembersManager({
   const [currentAvailableStudents, setCurrentAvailableStudents] = useState(
     sortStudents(availableStudents)
   );
+
+  // Re-seed local state when the server props change (i.e. after
+  // router.refresh() delivers fresh data). Without this, bulk-add and
+  // paste-enroll — which rely on refresh instead of optimistic appends —
+  // never surface the new members in the table or the count badge: useState
+  // seeds exactly once and refresh preserves client state. Setting state
+  // during render on a prop change is the React-endorsed reset pattern.
+  const [seededMembers, setSeededMembers] = useState(members);
+  const [seededStudents, setSeededStudents] = useState(availableStudents);
+  if (members !== seededMembers) {
+    setSeededMembers(members);
+    setCurrentMembers(sortMembers(members));
+  }
+  if (availableStudents !== seededStudents) {
+    setSeededStudents(availableStudents);
+    setCurrentAvailableStudents(sortStudents(availableStudents));
+    // Keep the instructor's dropdown choice if it is still enrollable.
+    setSelectedStudentId((prev) =>
+      availableStudents.some((student) => student.id === prev)
+        ? prev
+        : (availableStudents[0]?.id ?? "")
+    );
+  }
   const normalizedStudentSearch = studentSearchQuery.trim().toLowerCase();
   const filteredAvailableStudents = normalizedStudentSearch
     ? currentAvailableStudents.filter((student) =>
@@ -138,7 +162,7 @@ export function GroupMembersManager({
       const payload = await response.json().catch(() => ({ data: {} }));
 
       if (!response.ok) {
-        toast.error(t(getApiError(payload) || "memberAddFailed"));
+        toast.error(translateApiErrorKey(t, getApiError(payload), "memberAddFailed"));
         return;
       }
 
@@ -200,7 +224,7 @@ export function GroupMembersManager({
       const payload = await response.json().catch(() => ({ enrolled: 0, skipped: 0 }));
 
       if (!response.ok) {
-        toast.error(t(getApiError(payload) || "bulkAddFailed"));
+        toast.error(translateApiErrorKey(t, getApiError(payload), "bulkAddFailed"));
         return;
       }
 
@@ -309,7 +333,7 @@ export function GroupMembersManager({
 
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        toast.error(t(getApiError(payload) || "memberRemoveFailed"));
+        toast.error(translateApiErrorKey(t, getApiError(payload), "memberRemoveFailed"));
         return false;
       }
 

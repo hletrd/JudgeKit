@@ -210,6 +210,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
       examBadgeScheduled: tGroups("examBadgeScheduled"),
       examBadgeWindowed: tGroups("examBadgeWindowed", { duration: contest.examDurationMinutes ?? 0 }),
       examDuration: tAssignment("examDuration"),
+    examDurationValue: tAssignment("examDurationValue", { minutes: contest.examDurationMinutes ?? 0 }),
     };
 
     return (

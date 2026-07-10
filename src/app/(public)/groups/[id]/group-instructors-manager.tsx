@@ -45,6 +45,7 @@ export function GroupInstructorsManager({
   const [userSearchQuery, setUserSearchQuery] = useState("");
   const [selectedRole, setSelectedRole] = useState<"co_instructor" | "ta">("ta");
   const [isAdding, setIsAdding] = useState(false);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
   const normalizedUserSearch = userSearchQuery.trim().toLowerCase();
   const filteredAvailableUsers = normalizedUserSearch
     ? availableUsers.filter((user) =>
@@ -98,6 +99,10 @@ export function GroupInstructorsManager({
   }
 
   async function handleRemove(userId: string) {
+    // Guard double-clicks: the second DELETE would hit an already-removed
+    // record and surface a spurious failure toast.
+    if (removingUserId) return;
+    setRemovingUserId(userId);
     try {
       const res = await apiFetch(`/api/v1/groups/${groupId}/instructors`, {
         method: "DELETE",
@@ -112,6 +117,8 @@ export function GroupInstructorsManager({
       toast.success(t("instructorRemoved"));
     } catch {
       toast.error(t("removeInstructorFailed"));
+    } finally {
+      setRemovingUserId(null);
     }
   }
 
@@ -195,6 +202,7 @@ export function GroupInstructorsManager({
                         variant="ghost"
                         size="sm"
                         onClick={() => void handleRemove(inst.userId)}
+                        disabled={removingUserId !== null}
                         aria-label={t("removeInstructor")}
                       >
                         <Trash2 className="size-4" />

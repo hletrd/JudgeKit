@@ -156,6 +156,7 @@ export default async function GroupAssignmentDetailPage({
     examBadgeScheduled: tGroups("examBadgeScheduled"),
     examBadgeWindowed: tGroups("examBadgeWindowed", { duration: assignment.examDurationMinutes ?? 0 }),
     examDuration: tAssignment("examDuration"),
+    examDurationValue: tAssignment("examDurationValue", { minutes: assignment.examDurationMinutes ?? 0 }),
   };
 
   if (!canViewBoard) {

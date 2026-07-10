@@ -44,6 +44,8 @@ export interface AssignmentOverviewLabels {
   examBadgeScheduled?: string;
   examBadgeWindowed?: string;
   examDuration?: string;
+  /** Fully formatted duration value (e.g. "45 min" / "45분"); falls back to a raw "<n> min". */
+  examDurationValue?: string;
 }
 
 export interface AssignmentOverviewProps {
@@ -230,7 +232,7 @@ export function AssignmentOverview({
             {assignment.examMode === "windowed" && assignment.examDurationMinutes && (
               <div className="space-y-1">
                 <dt className="text-sm font-medium">{labels.examDuration}</dt>
-                <dd className="text-sm text-muted-foreground">{assignment.examDurationMinutes} min</dd>
+                <dd className="text-sm text-muted-foreground">{labels.examDurationValue ?? `${assignment.examDurationMinutes} min`}</dd>
               </div>
             )}
           </dl>

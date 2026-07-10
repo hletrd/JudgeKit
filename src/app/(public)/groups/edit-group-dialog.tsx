@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { apiFetch, getApiError } from "@/lib/api/client";
+import { translateApiErrorKey } from "@/lib/i18n/api-error";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -89,7 +90,7 @@ export default function EditGroupDialog({ group }: { group: EditableGroup }) {
 
         if (!response.ok) {
           const errorBody = await response.json().catch(() => ({}));
-          toast.error(t(getApiError(errorBody) || "updateError"));
+          toast.error(translateApiErrorKey(t, getApiError(errorBody), "updateError"));
           return;
         }
 

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
+import { translateApiErrorKey } from "@/lib/i18n/api-error";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -69,7 +70,7 @@ export default function CreateGroupDialog() {
         const data = await response.json().catch(() => ({ data: {} }));
 
         if (!response.ok) {
-          toast.error(t(getApiError(data) || "createError"));
+          toast.error(translateApiErrorKey(t, getApiError(data), "createError"));
           return;
         }
 
