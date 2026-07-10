@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Plus, Check, Ban, Trash2, Link, Copy, ShieldAlert } from "lucide-react";
 import { apiFetch, apiFetchJson, getApiError, getApiCode } from "@/lib/api/client";
 import { formatDateTimeInTimeZone } from "@/lib/datetime";
+import { useSystemTimezone } from "@/contexts/timezone-context";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -74,6 +75,7 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
   const t = useTranslations("contests.invitations");
   const tCommon = useTranslations("common");
   const locale = useLocale();
+  const timeZone = useSystemTimezone();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [stats, setStats] = useState<Stats>({ total: 0, pending: 0, redeemed: 0, revoked: 0, expired: 0 });
   const [loading, setLoading] = useState(true);
@@ -359,7 +361,9 @@ export function RecruitingInvitationsPanel({ assignmentId }: { assignmentId: str
 
   function formatDate(dateStr: string | null) {
     if (!dateStr) return "-";
-    return formatDateTimeInTimeZone(dateStr, locale);
+    // Pass the system timezone explicitly — omitting it falls back to the
+    // hardcoded Asia/Seoul default and diverges from every sibling panel.
+    return formatDateTimeInTimeZone(dateStr, locale, timeZone);
   }
 
   const expiryLabels: Record<string, string> = {

@@ -88,6 +88,10 @@ export function QuickCreateContestForm({ problems }: { problems: Problem[] }) {
       } else {
         toast.error(t("createError"));
       }
+    } catch {
+      // Network failure / timeout: apiFetch rejects — without this catch the
+      // instructor gets no feedback at all on whether the contest was created.
+      toast.error(t("createError"));
     } finally {
       setCreating(false);
     }

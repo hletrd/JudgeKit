@@ -542,8 +542,21 @@ export function AnalyticsCharts({ assignmentId }: AnalyticsChartsProps) {
         undefined,
         { data: null as unknown as AnalyticsData }
       );
-      if (ok) {
-        setData(json.data);
+      if (ok && json.data && typeof json.data === "object") {
+        // Normalize each field: the render paths .map over these directly,
+        // and a 200 payload missing one field must degrade to empty charts
+        // instead of crashing the whole analytics tab.
+        const d = json.data;
+        setData({
+          scoreDistribution: Array.isArray(d.scoreDistribution) ? d.scoreDistribution : [],
+          problemSolveRates: Array.isArray(d.problemSolveRates) ? d.problemSolveRates : [],
+          problemSolveTimes: Array.isArray(d.problemSolveTimes) ? d.problemSolveTimes : [],
+          cheatSummary:
+            d.cheatSummary && typeof d.cheatSummary === "object"
+              ? d.cheatSummary
+              : { totalEvents: 0, byType: {}, flaggedStudents: [] },
+          studentProgressions: Array.isArray(d.studentProgressions) ? d.studentProgressions : [],
+        });
       } else {
         setError(true);
       }

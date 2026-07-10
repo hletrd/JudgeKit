@@ -66,12 +66,15 @@ interface LeaderboardTableProps {
   canViewStudentDetails?: boolean;
 }
 
-function formatIcpcCell(result: LeaderboardProblemResult, contestStartMs: number): string {
+function formatIcpcCell(result: LeaderboardProblemResult, contestStartMs: number | null): string {
   if (result.solved) {
-    const minutes = result.firstAcAt
-      ? Math.floor((result.firstAcAt - contestStartMs) / 60_000)
-      : 0;
     const prefix = result.attempts > 1 ? `+${result.attempts - 1}` : "+";
+    // Without a contest start time a minute figure is meaningless — the
+    // epoch-based fallback rendered "+/28712345". Show the solved marker only.
+    if (!contestStartMs || !result.firstAcAt) {
+      return prefix;
+    }
+    const minutes = Math.floor((result.firstAcAt - contestStartMs) / 60_000);
     return `${prefix}\n${minutes}`;
   }
   if (result.attempts > 0) {
@@ -218,6 +221,11 @@ export function LeaderboardTable({
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Whether any fetch has succeeded. The mount-time poll tick calls
+  // fetchLeaderboard(true), so gating setError on !isRefresh made the error
+  // state unreachable on a failed FIRST load — an outage rendered as the
+  // "no entries yet" empty state instead of the error+retry UI.
+  const hasLoadedRef = useRef(false);
 
   const fetchLeaderboard = useCallback(
     async (isRefresh = false) => {
@@ -241,16 +249,18 @@ export function LeaderboardTable({
           // Validate the response shape before setting state
           if (json.data && typeof json.data === "object" && Array.isArray(json.data.entries)) {
             setData(json.data);
-          } else if (!isRefresh) {
+            hasLoadedRef.current = true;
+            setError(false);
+          } else if (!hasLoadedRef.current) {
             setError(true);
           }
-        } else if (!isRefresh) {
+        } else if (!hasLoadedRef.current) {
           setError(true);
         }
       } catch (err) {
         // AbortError means the request was cancelled — not a real error
         if (err instanceof DOMException && err.name === "AbortError") return;
-        if (!isRefresh) {
+        if (!hasLoadedRef.current) {
           setError(true);
         }
       } finally {
@@ -503,7 +513,7 @@ export function LeaderboardTable({
                             : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
                         )}
                       >
-                        {formatIcpcCell(result, data.startsAt ?? 0)}
+                        {formatIcpcCell(result, data.startsAt ?? null)}
                       </TableCell>
                     );
                   }

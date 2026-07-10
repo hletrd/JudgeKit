@@ -65,7 +65,15 @@ export function ContestQuickStats({
         setStats((prev) => ({
           participantCount: typeof d.participantCount === "number" && Number.isFinite(d.participantCount) ? d.participantCount : prev.participantCount,
           submittedCount: typeof d.submittedCount === "number" && Number.isFinite(d.submittedCount) ? d.submittedCount : prev.submittedCount,
-          avgScore: d.avgScore !== null && d.avgScore !== undefined && typeof d.avgScore === "number" && Number.isFinite(d.avgScore) ? d.avgScore : null,
+          // Keep the previous average on a malformed/absent field (matching
+          // the other three stats); only blank it when the server explicitly
+          // returns null (no submitters yet).
+          avgScore:
+            typeof d.avgScore === "number" && Number.isFinite(d.avgScore)
+              ? d.avgScore
+              : d.avgScore === null
+                ? null
+                : prev.avgScore,
           problemsSolvedCount: typeof d.problemsSolvedCount === "number" && Number.isFinite(d.problemsSolvedCount) ? d.problemsSolvedCount : prev.problemsSolvedCount,
         }));
       }
