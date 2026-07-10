@@ -120,7 +120,9 @@ describe("admin languages dockerImage allowlist (NEW-H4)", () => {
     dbSelectMock.mockReturnValueOnce(makeSelectChain([])); // no existing
     dbInsertMock.mockReturnValue({
       values: vi.fn(() => ({
-        returning: vi.fn(() => Promise.resolve([{ id: "lc-1", language: "python3" }])),
+        onConflictDoNothing: vi.fn(() => ({
+          returning: vi.fn(() => Promise.resolve([{ id: "lc-1", language: "python3" }])),
+        })),
       })),
     });
     const { POST } = await import("@/app/api/v1/admin/languages/route");

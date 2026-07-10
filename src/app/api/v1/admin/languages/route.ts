@@ -86,7 +86,16 @@ export const POST = createApiHandler({
         isEnabled: true,
         updatedAt: await getDbNowUncached(),
       })
+      // The SELECT pre-check above races with a concurrent create of the same
+      // language key: both pass, and the loser previously died on the unique
+      // constraint as a generic 500. Resolve the race at the constraint and
+      // translate it into the same 409 the pre-check returns.
+      .onConflictDoNothing({ target: languageConfigs.language })
       .returning();
+
+    if (!created) {
+      return apiError("languageAlreadyExists", 409);
+    }
 
     recordAuditEvent({
       actorId: user.id,

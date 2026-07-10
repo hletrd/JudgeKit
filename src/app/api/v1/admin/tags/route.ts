@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
-import { apiSuccess } from "@/lib/api/responses";
+import { apiSuccess, apiError } from "@/lib/api/responses";
 import { db } from "@/lib/db";
 import { tags, problemTags } from "@/lib/db/schema";
 import { asc, count, eq } from "drizzle-orm";
@@ -45,7 +45,15 @@ export const POST = createApiHandler({
         color: body.color ?? null,
         createdBy: user.id,
       })
+      // tags.name is UNIQUE; without conflict handling a concurrent (or
+      // repeated) create of the same name died on the constraint as a
+      // generic 500. Surface it as a clean 409 instead.
+      .onConflictDoNothing({ target: tags.name })
       .returning({ id: tags.id, name: tags.name, color: tags.color });
+
+    if (!created) {
+      return apiError("tagAlreadyExists", 409);
+    }
 
     recordAuditEvent({
       actorId: user.id,
