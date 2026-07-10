@@ -22,6 +22,8 @@ type ComputedResult = {
 };
 
 type FunctionReferenceSolutionProps = {
+  /** True when the form has unsaved edits — computing would run against stale persisted data. */
+  hasUnsavedChanges?: boolean;
   spec: FunctionSpec;
   value: ReferenceSolution;
   onChange: (next: ReferenceSolution) => void;
@@ -75,6 +77,7 @@ export function FunctionReferenceSolution({
   value,
   onChange,
   problemId,
+  hasUnsavedChanges = false,
   onComputed,
   testCaseCount,
   disabled = false,
@@ -177,10 +180,16 @@ export function FunctionReferenceSolution({
       </div>
 
       <div className="space-y-2">
-        <Button type="button" onClick={handleCompute} disabled={disabled || isComputing || !problemId}>
+        <Button type="button" onClick={handleCompute} disabled={disabled || isComputing || !problemId || hasUnsavedChanges}>
           {isComputing ? t("fnComputeRunning") : t("fnComputeExpected")}
         </Button>
         {!problemId && <p className="text-xs text-muted-foreground">{t("fnComputeSaveFirst")}</p>}
+        {/* The server computes against the PERSISTED test cases and reference
+            solution and results merge back by position — running with unsaved
+            local edits writes outputs that do not match the visible inputs. */}
+        {problemId && hasUnsavedChanges && (
+          <p className="text-xs text-muted-foreground">{t("fnComputeUnsavedChanges")}</p>
+        )}
       </div>
 
       <div className="space-y-2">

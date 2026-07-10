@@ -65,7 +65,7 @@ export default async function CreateProblemPage({
       title: initialProblem.title,
       description: initialProblem.description ?? "",
       sequenceNumber: initialProblem.sequenceNumber ?? null,
-      problemType: (initialProblem.problemType ?? "auto") as "auto" | "manual",
+      problemType: (initialProblem.problemType ?? "auto") as "auto" | "manual" | "function",
       timeLimitMs: initialProblem.timeLimitMs ?? 2000,
       memoryLimitMb: initialProblem.memoryLimitMb ?? 256,
       visibility: (initialProblem.visibility ?? "private") as "public" | "private" | "hidden",
@@ -86,6 +86,11 @@ export default async function CreateProblemPage({
           isVisible: testCase.isVisible ?? false,
         })),
       tags: problemTagNames,
+      // Function problems: without these, a duplicate silently reverts to the
+      // default single-int spec and loses the reference solution, garbling the
+      // copied test cases on hydration (mirror of edit/page.tsx).
+      functionSpec: initialProblem.functionSpec ?? null,
+      referenceSolution: initialProblem.referenceSolution ?? null,
     };
   }
 

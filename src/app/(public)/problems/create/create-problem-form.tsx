@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { apiFetch, getApiError, getApiData } from "@/lib/api/client";
+import { translateApiErrorKey } from "@/lib/i18n/api-error";
 import { formatBytes } from "@/lib/formatting";
 import { toast } from "sonner";
 import { useUnsavedChangesGuard } from "@/hooks/use-unsaved-changes-guard";
@@ -149,6 +150,23 @@ export default function CreateProblemForm({
   );
   const areTestCasesEditable = !testCasesLocked || testCaseOverrideEnabled;
   const [expandedTestCases, setExpandedTestCases] = useState<Set<string>>(new Set());
+
+  // Test-case drafts are format-incompatible across the function/raw
+  // boundary (raw stdin text vs canonical function-arg encoding). Switching
+  // type used to carry the old drafts across, submitting malformed cases.
+  // Stash per paradigm so a round-trip type switch loses nothing.
+  const testCaseStashRef = useRef<{ raw: ProblemTestCaseDraft[] | null; function: ProblemTestCaseDraft[] | null }>({ raw: null, function: null });
+  function handleProblemTypeChange(next: ProblemType) {
+    const paradigmOf = (type: ProblemType) => (type === "function" ? "function" : "raw") as "raw" | "function";
+    const prevParadigm = paradigmOf(problemType);
+    const nextParadigm = paradigmOf(next);
+    if (prevParadigm !== nextParadigm) {
+      testCaseStashRef.current[prevParadigm] = testCases;
+      setTestCases(testCaseStashRef.current[nextParadigm] ?? []);
+      setExpandedTestCases(new Set());
+    }
+    setProblemType(next);
+  }
 
   const [currentTags, setCurrentTags] = useState<string[]>(initialProblem?.tags ?? []);
   const isDirty =
@@ -362,7 +380,10 @@ export default function CreateProblemForm({
     if (!canUploadFiles) return;
     setIsUploadingImage(true);
 
-    const placeholder = `![${t("imageUploading")}]()`;
+    // Unique per-upload token: concurrent uploads previously shared one
+    // placeholder string, so whichever finished first replaced the OTHER
+    // upload's marker (swapped URLs / orphaned placeholders).
+    const placeholder = `![${t("imageUploading")}](uploading-${Math.random().toString(36).slice(2, 10)})`;
     const textarea = descriptionRef.current;
     const cursorPos = textarea?.selectionStart ?? description.length;
     const before = description.slice(0, cursorPos);
@@ -389,7 +410,7 @@ export default function CreateProblemForm({
 
       if (!res.ok || !parseOk) {
         setDescription((prev) => prev.replace(placeholder, ""));
-        toast.error(t(getApiError(uploadData) ?? "uploadFailed"));
+        toast.error(translateApiErrorKey(t, getApiError(uploadData), "uploadFailed"));
         setIsUploadingImage(false);
         return;
       }
@@ -433,9 +454,21 @@ export default function CreateProblemForm({
   }
 
   function removeTestCase(index: number) {
+    // Prune the removed row's expand/collapse entries — the keys are per-row
+    // (_key), so leaving them would leak; index-based keys previously shifted
+    // the expanded state onto the wrong rows after a middle delete.
+    const removedKey = testCases[index]?._key;
     setTestCases((current) => current.filter((_, currentIndex) => currentIndex !== index));
     testCaseInputFileRefs.current.splice(index, 1);
     testCaseOutputFileRefs.current.splice(index, 1);
+    if (removedKey) {
+      setExpandedTestCases((current) => {
+        const next = new Set(current);
+        next.delete(`input-${removedKey}`);
+        next.delete(`output-${removedKey}`);
+        return next;
+      });
+    }
   }
 
   async function handleTestCaseFileChange(
@@ -524,7 +557,7 @@ export default function CreateProblemForm({
       const payload = await res.json().catch(() => ({ data: {} }));
 
       if (!res.ok) {
-        toast.error(t(getApiError(payload) || (isEditing ? "updateError" : "createError")));
+        toast.error(translateApiErrorKey(t, getApiError(payload), isEditing ? "updateError" : "createError"));
         return;
       }
 
@@ -760,7 +793,7 @@ export default function CreateProblemForm({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="problemType">{t("problemTypeLabel")}</Label>
-          <Select value={problemType} onValueChange={(v) => { if (v) setProblemType(v as ProblemType); }}>
+          <Select value={problemType} onValueChange={(v) => { if (v) handleProblemTypeChange(v as ProblemType); }}>
             <SelectTrigger id="problemType">
               <SelectValue>
                 {problemType === "auto"
@@ -866,6 +899,7 @@ export default function CreateProblemForm({
             value={referenceSolution}
             onChange={setReferenceSolution}
             problemId={mode === "edit" ? (initialProblem?.id ?? null) : null}
+            hasUnsavedChanges={isDirty}
             onComputed={applyComputedExpected}
             testCaseCount={testCases.length}
             disabled={isLoading}
@@ -1021,10 +1055,10 @@ export default function CreateProblemForm({
                         </Button>
                       </div>
                     </div>
-                    {testCase.input.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`input-${index}`) ? (
+                    {testCase.input.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`input-${testCase._key ?? index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
                         <span className="text-sm text-muted-foreground">{formatBytes(testCase.input.length, locale)}</span>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`input-${index}`))}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`input-${testCase._key ?? index}`))}>
                           {t("showContent")}
                         </Button>
                       </div>
@@ -1062,10 +1096,10 @@ export default function CreateProblemForm({
                         </Button>
                       </div>
                     </div>
-                    {testCase.expectedOutput.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`output-${index}`) ? (
+                    {testCase.expectedOutput.length > LARGE_TESTCASE_THRESHOLD && !expandedTestCases.has(`output-${testCase._key ?? index}`) ? (
                       <div className="flex items-center justify-between rounded-lg border bg-muted/40 p-3 min-h-[140px]">
                         <span className="text-sm text-muted-foreground">{formatBytes(testCase.expectedOutput.length, locale)}</span>
-                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`output-${index}`))}>
+                        <Button type="button" variant="outline" size="sm" onClick={() => setExpandedTestCases((s) => new Set(s).add(`output-${testCase._key ?? index}`))}>
                           {t("showContent")}
                         </Button>
                       </div>
