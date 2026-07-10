@@ -28,6 +28,19 @@ const MAX_COMPUTE_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// (MAX_SUBMISSIONS_FOR_SIMILARITY in src/lib/assignments/code-similarity.ts).
 const MAX_SUBMISSIONS: usize = 500;
 
+/// Concurrent /compute requests actually processed. The 16 MiB body cap
+/// bounds ONE payload; without a concurrency bound, N concurrent requests
+/// buffer N bodies plus their parsed submission structs and ngram sets
+/// simultaneously, so memory scales with connection count and can OOM the
+/// process below any per-request limit. One request already saturates the
+/// rayon pool, so extra parallelism buys latency, not throughput.
+const MAX_CONCURRENT_COMPUTE: usize = 2;
+
+/// How long a /compute request may wait for a slot (bodies are NOT read
+/// while queued — the limiter runs before body extraction) before the
+/// service sheds it with 503.
+const COMPUTE_QUEUE_TIMEOUT_SECS: u64 = 10;
+
 /// True when a /compute payload exceeds the submission cap. Extracted so the
 /// boundary can be unit-tested without standing up an axum router.
 fn exceeds_submission_cap(count: usize) -> bool {
@@ -83,6 +96,39 @@ async fn require_bearer(
 
 async fn health() -> impl IntoResponse {
     Json(HealthResponse { ok: true })
+}
+
+#[derive(Clone)]
+struct ComputeLimit {
+    semaphore: Arc<tokio::sync::Semaphore>,
+}
+
+/// Bound in-flight /compute work. Runs as middleware BEFORE the Json
+/// extractor, so a queued request holds only its connection — its body is
+/// not buffered until a permit is granted. Saturation past the queue
+/// timeout sheds with 503 instead of accumulating memory.
+async fn limit_compute_concurrency(
+    State(limit): State<ComputeLimit>,
+    req: Request,
+    next: Next,
+) -> Result<axum::response::Response, StatusCode> {
+    let permit = tokio::time::timeout(
+        std::time::Duration::from_secs(COMPUTE_QUEUE_TIMEOUT_SECS),
+        limit.semaphore.acquire(),
+    )
+    .await;
+    match permit {
+        Ok(Ok(_permit)) => Ok(next.run(req).await),
+        Ok(Err(_closed)) => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Err(_elapsed) => {
+            tracing::warn!(
+                max_concurrent = MAX_CONCURRENT_COMPUTE,
+                timeout_secs = COMPUTE_QUEUE_TIMEOUT_SECS,
+                "compute concurrency limit saturated; shedding request"
+            );
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
+    }
 }
 
 async fn compute(Json(req): Json<ComputeRequest>) -> impl IntoResponse {
@@ -219,9 +265,20 @@ async fn main() {
         );
     }
 
+    let compute_limit = ComputeLimit {
+        semaphore: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_COMPUTE)),
+    };
+
+    // Layer order (outermost first at runtime): require_bearer →
+    // limit_compute_concurrency → DefaultBodyLimit → handler. Auth runs
+    // before the limiter so unauthenticated floods cannot consume permits.
     let protected = Router::new()
         .route("/compute", post(compute))
         .layer(DefaultBodyLimit::max(MAX_COMPUTE_BODY_BYTES))
+        .layer(middleware::from_fn_with_state(
+            compute_limit,
+            limit_compute_concurrency,
+        ))
         .layer(middleware::from_fn_with_state(
             auth_state.clone(),
             require_bearer,
