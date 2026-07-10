@@ -449,10 +449,15 @@ function transformSSE(
   const encoder = new TextEncoder();
   let buffer = "";
 
+  // Reader hoisted so cancel() can reach it: without a cancel handler, a
+  // downstream cancellation (client disconnected mid-response) never reaches
+  // `body`, and the provider keeps generating the full completion — leaking
+  // tokens/cost and holding the upstream socket open.
+  const reader = body.getReader();
+  let cancelled = false;
+
   return new ReadableStream({
     async start(controller) {
-      const reader = body.getReader();
-
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -489,12 +494,21 @@ function transformSSE(
           }
         }
 
-        controller.close();
+        if (!cancelled) {
+          controller.close();
+        }
       } catch (err) {
-        controller.error(err);
+        if (!cancelled) {
+          controller.error(err);
+        }
       } finally {
         reader.releaseLock();
       }
+    },
+    cancel(reason) {
+      cancelled = true;
+      // Propagate to the provider's HTTP body: aborts the upstream request.
+      return reader.cancel(reason);
     },
   });
 }

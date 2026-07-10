@@ -99,19 +99,27 @@ function buildLoggedStreamingResponse(options: {
   persistAssistantMessage: (status: "complete" | "partial" | "error") => Promise<void>;
 }) {
   let completed = false;
+  let cancelled = false;
+  // Reader hoisted so cancel() can reach it: without a cancel handler, a
+  // client disconnect never propagates to the upstream provider stream and
+  // the LLM generates to completion (leaked tokens/cost, held socket).
+  const reader = options.stream.getReader();
   const passthrough = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = options.stream.getReader();
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           if (value) controller.enqueue(value);
         }
-        completed = true;
-        controller.close();
+        if (!cancelled) {
+          completed = true;
+          controller.close();
+        }
       } catch (error) {
-        controller.error(error);
+        if (!cancelled) {
+          controller.error(error);
+        }
       } finally {
         reader.releaseLock();
         try {
@@ -120,6 +128,10 @@ function buildLoggedStreamingResponse(options: {
           // Persistence failure must not crash the stream
         }
       }
+    },
+    cancel(reason) {
+      cancelled = true;
+      return reader.cancel(reason);
     },
   });
 
@@ -392,9 +404,11 @@ export const POST = createApiHandler({
       const decoder = new TextDecoder();
       let assistantContent = "";
       let streamCompleted = false;
+      let loggingStreamCancelled = false;
+      const upstreamReader = stream.getReader();
       const loggingStream = new ReadableStream<Uint8Array>({
         async start(controller) {
-          const reader = stream.getReader();
+          const reader = upstreamReader;
           try {
             while (true) {
               const { done, value } = await reader.read();
@@ -405,10 +419,14 @@ export const POST = createApiHandler({
               }
             }
             assistantContent += decoder.decode();
-            streamCompleted = true;
-            controller.close();
+            if (!loggingStreamCancelled) {
+              streamCompleted = true;
+              controller.close();
+            }
           } catch (error) {
-            controller.error(error);
+            if (!loggingStreamCancelled) {
+              controller.error(error);
+            }
           } finally {
             reader.releaseLock();
             try {
@@ -426,6 +444,10 @@ export const POST = createApiHandler({
               // Persistence failure must not crash the stream
             }
           }
+        },
+        cancel(reason) {
+          loggingStreamCancelled = true;
+          return upstreamReader.cancel(reason);
         },
       });
 
@@ -521,9 +543,11 @@ export const POST = createApiHandler({
     const decoder = new TextDecoder();
     let assistantContent = "";
     let finalStreamCompleted = false;
+    let loggingStreamCancelled = false;
+    const upstreamReader = finalStream.getReader();
     const loggingStream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        const reader = finalStream.getReader();
+        const reader = upstreamReader;
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -534,10 +558,14 @@ export const POST = createApiHandler({
             }
           }
           assistantContent += decoder.decode();
-          finalStreamCompleted = true;
-          controller.close();
+          if (!loggingStreamCancelled) {
+            finalStreamCompleted = true;
+            controller.close();
+          }
         } catch (error) {
-          controller.error(error);
+          if (!loggingStreamCancelled) {
+            controller.error(error);
+          }
         } finally {
           reader.releaseLock();
           try {
@@ -555,6 +583,10 @@ export const POST = createApiHandler({
             // Persistence failure must not crash the stream
           }
         }
+      },
+      cancel(reason) {
+        loggingStreamCancelled = true;
+        return upstreamReader.cancel(reason);
       },
     });
 
