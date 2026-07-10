@@ -110,6 +110,18 @@ const MAX_CONSECUTIVE_BLOCKS_EXP: u32 = 4;
 // Body size cap for the JSON endpoints. Rate limit payloads are tiny;
 // 64 KiB is a generous upper bound.
 const MAX_BODY_BYTES: usize = 64 * 1024;
+// Hard cap on distinct keys held in memory. The age sweep alone lets a
+// caller flooding unique keys grow the map unbounded for 24h before any
+// eviction fires — enough to OOM the process. When the cap is hit, a batch
+// of victims is shed synchronously before inserting the new key.
+const MAX_ENTRIES: usize = 250_000;
+// How many entries one capacity eviction sheds. Large enough that the
+// O(batch) shed cost amortizes across many subsequent inserts.
+const EVICTION_BATCH: usize = 4_096;
+// Keys are `scope:identifier` strings built by the app (typically well under
+// 100 bytes). Bounding them prevents a flood of near-64KiB keys from
+// amplifying per-entry memory by three orders of magnitude.
+const MAX_KEY_BYTES: usize = 512;
 
 /// Bearer token loaded from RATE_LIMITER_AUTH_TOKEN at startup.
 /// When unset the service stays open for local dev (with a warning).
@@ -207,8 +219,84 @@ async fn health() -> impl IntoResponse {
     Json(OkResponse { ok: true })
 }
 
+/// Shed victims when the store is at capacity and `key` would add a new entry.
+///
+/// Non-blocked entries are evicted first so active brute-force blocks survive;
+/// if every entry is blocked (pathological — requires an attacker to have
+/// created MAX_ENTRIES blocks), arbitrary victims are shed instead so the
+/// limiter keeps serving new keys rather than growing unbounded.
+fn enforce_capacity(store: &Store, key: &str, now: Instant, max_entries: usize) {
+    if store.len() < max_entries || store.contains_key(key) {
+        return;
+    }
+
+    let victims: Vec<String> = store
+        .iter()
+        .filter(|entry| {
+            let blocked = entry
+                .value()
+                .blocked_until
+                .map(|until| until > now)
+                .unwrap_or(false);
+            !blocked
+        })
+        .take(EVICTION_BATCH)
+        .map(|entry| entry.key().clone())
+        .collect();
+
+    let mut removed = 0usize;
+    for victim in &victims {
+        if store.remove(victim).is_some() {
+            removed += 1;
+        }
+    }
+
+    if removed == 0 {
+        let fallback: Vec<String> = store
+            .iter()
+            .take(EVICTION_BATCH)
+            .map(|entry| entry.key().clone())
+            .collect();
+        for victim in &fallback {
+            if store.remove(victim).is_some() {
+                removed += 1;
+            }
+        }
+        warn!(
+            removed,
+            remaining = store.len(),
+            "rate-limit store full of active blocks; evicted arbitrary victims to preserve availability"
+        );
+    } else {
+        warn!(
+            removed,
+            remaining = store.len(),
+            "rate-limit store hit MAX_ENTRIES; evicted non-blocked victims"
+        );
+    }
+}
+
 async fn check(State(state): State<AppState>, Json(req): Json<CheckRequest>) -> impl IntoResponse {
     let now = state.clock.now();
+
+    if req.key.len() > MAX_KEY_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(CheckResponse {
+                allowed: false,
+                remaining: 0,
+                retry_after: None,
+            }),
+        );
+    }
+
+    // Clamp the window to the eviction age: an idle entry is dropped after
+    // EVICTION_AGE_MS regardless, so a longer window would silently reset its
+    // counter mid-window anyway. Clamping makes that boundary explicit and
+    // consistent instead of an eviction-timing accident.
+    let window_ms = req.window_ms.min(EVICTION_AGE_MS);
+
+    enforce_capacity(&state.store, &req.key, now, MAX_ENTRIES);
 
     let mut entry = state.store.entry(req.key).or_insert_with(|| RateLimitEntry {
         attempts: 0,
@@ -243,7 +331,7 @@ async fn check(State(state): State<AppState>, Json(req): Json<CheckRequest>) -> 
     // window simply never expires (fails stricter, never looser).
     let window_end = e
         .window_started_at
-        .checked_add(Duration::from_millis(req.window_ms));
+        .checked_add(Duration::from_millis(window_ms));
     if window_end.is_some_and(|end| end <= now) {
         e.attempts = 0;
         e.window_started_at = now;
@@ -286,6 +374,21 @@ async fn record_failure(
     let now = state.clock.now();
     let now_unix_ms = state.clock.now_unix_ms();
 
+    if req.key.len() > MAX_KEY_BYTES {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(RecordFailureResponse {
+                blocked: false,
+                blocked_until: None,
+            }),
+        );
+    }
+
+    // Same clamp as check(): see the comment there.
+    let window_ms = req.window_ms.min(EVICTION_AGE_MS);
+
+    enforce_capacity(&state.store, &req.key, now, MAX_ENTRIES);
+
     let mut entry = state.store.entry(req.key).or_insert_with(|| RateLimitEntry {
         attempts: 0,
         window_started_at: now,
@@ -318,7 +421,7 @@ async fn record_failure(
     // (RPF cycle-1 L2).
     let window_expired = e
         .window_started_at
-        .checked_add(Duration::from_millis(req.window_ms))
+        .checked_add(Duration::from_millis(window_ms))
         .is_some_and(|end| end <= now);
     if window_expired {
         e.attempts = 0;
@@ -669,6 +772,107 @@ mod tests {
         .await;
         assert!(after_reset.allowed);
         assert_eq!(after_reset.remaining, 1);
+    }
+
+    #[tokio::test]
+    async fn oversized_key_is_rejected_and_not_stored() {
+        let state = test_state(Instant::now(), 1_000_000);
+        let response: Response = check(
+            State(state.clone()),
+            Json(CheckRequest {
+                key: "k".repeat(MAX_KEY_BYTES + 1),
+                max_attempts: 5,
+                window_ms: 60_000,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(state.store.is_empty(), "oversized key must not create an entry");
+
+        let response: Response = record_failure(
+            State(state.clone()),
+            Json(RecordFailureRequest {
+                key: "k".repeat(MAX_KEY_BYTES + 1),
+                max_attempts: 5,
+                window_ms: 60_000,
+                block_ms: 1_000,
+            }),
+        )
+        .await
+        .into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert!(state.store.is_empty());
+    }
+
+    #[tokio::test]
+    async fn capacity_eviction_sheds_non_blocked_entries_first() {
+        let start = Instant::now();
+        let state = test_state(start, 1_000_000);
+
+        for i in 0..3 {
+            let _ = check(
+                State(state.clone()),
+                Json(CheckRequest {
+                    key: format!("plain:{i}"),
+                    max_attempts: 5,
+                    window_ms: 60_000,
+                }),
+            )
+            .await;
+        }
+        // One actively blocked entry that must survive the shed.
+        let blocked: RecordFailureResponse = decode_json(
+            record_failure(
+                State(state.clone()),
+                Json(RecordFailureRequest {
+                    key: "blocked:target".into(),
+                    max_attempts: 1,
+                    window_ms: 60_000,
+                    block_ms: 60_000,
+                }),
+            )
+            .await,
+        )
+        .await;
+        assert!(blocked.blocked);
+        assert_eq!(state.store.len(), 4);
+
+        // Cap of 4 with a new key: the three plain entries are shed, the
+        // active block survives.
+        enforce_capacity(&state.store, "new:key", state.clock.now(), 4);
+        assert!(state.store.get("blocked:target").is_some());
+        assert!(state.store.len() < 4);
+        assert!(state.store.get("plain:0").is_none());
+    }
+
+    #[tokio::test]
+    async fn window_longer_than_eviction_age_is_clamped() {
+        let start = Instant::now();
+        let (state, clock) = test_state_with_clock(start, 1_000_000);
+        let request = |key: &str| CheckRequest {
+            key: key.into(),
+            max_attempts: 1,
+            // Four days: longer than the 24h idle eviction, so an unclamped
+            // window would be silently reset by eviction mid-window anyway.
+            window_ms: EVICTION_AGE_MS * 4,
+        };
+
+        let first: CheckResponse =
+            decode_json(check(State(state.clone()), Json(request("k"))).await).await;
+        assert!(first.allowed);
+        let second: CheckResponse =
+            decode_json(check(State(state.clone()), Json(request("k"))).await).await;
+        assert!(!second.allowed);
+        assert!(
+            second.retry_after.unwrap() <= EVICTION_AGE_MS,
+            "retry_after must reflect the clamped window"
+        );
+
+        clock.advance_instant(Duration::from_millis(EVICTION_AGE_MS + 1));
+        let third: CheckResponse =
+            decode_json(check(State(state), Json(request("k"))).await).await;
+        assert!(third.allowed, "window resets at the clamped 24h boundary");
     }
 
     #[tokio::test]
