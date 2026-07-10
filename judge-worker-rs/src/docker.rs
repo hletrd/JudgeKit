@@ -622,7 +622,9 @@ pub async fn cleanup_orphaned_containers() {
     // shutdown select below it (debugger N1). `status=exited` is intentional
     // here: reaping `running` containers mid-loop would race in-flight
     // judgements. The startup sweep (`cleanup_all_oj_containers_at_startup`)
-    // is the path that reaps every `oj-*` regardless of status.
+    // reaps every `oj-*` regardless of status, and
+    // `cleanup_stale_running_containers` reaps `running` containers old
+    // enough to be provably orphaned.
     let ps_output = match tokio::time::timeout(
         std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
         tokio::process::Command::new("docker")
@@ -688,6 +690,94 @@ pub async fn cleanup_orphaned_containers() {
             tracing::warn!(
                 secs = DOCKER_CLEANUP_TIMEOUT_SECS,
                 "docker rm during orphan sweep timed out; containers may leak until next tick"
+            );
+        }
+    }
+}
+
+/// Second periodic pass: reap `running` oj-* containers that have been up for
+/// an hour or more. Every legitimate container is bounded by the compile/run
+/// timeouts (minutes at most), but a `docker run` future dropped mid-flight —
+/// runner client disconnect, task abort — SIGKILLs only the CLI child; the
+/// daemon-side container keeps running, never matches `status=exited`, and
+/// previously held its CPU/memory until the next process restart's startup
+/// sweep. An hour of uptime is far past any legitimate bound, so force-remove.
+pub async fn cleanup_stale_running_containers() {
+    let ps_output = match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "ps",
+                "--filter",
+                "name=oj-",
+                "--filter",
+                "status=running",
+                "--format",
+                "{{.ID}}\t{{.Status}}",
+            ])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Failed to list running containers for stale sweep");
+            return;
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "docker ps during stale-running sweep timed out; skipping this tick"
+            );
+            return;
+        }
+    };
+
+    let listing = String::from_utf8_lossy(&ps_output.stdout);
+    let stale_ids: Vec<String> = listing
+        .lines()
+        .filter_map(|line| {
+            let (id, status) = line.split_once('\t')?;
+            // `docker ps` renders uptime as "Up 5 minutes" / "Up About an
+            // hour" / "Up 3 hours" / "Up 2 days"; any hour-or-larger unit
+            // means the container has outlived every legitimate timeout.
+            let status = status.trim();
+            let is_stale = status.starts_with("Up")
+                && ["hour", "day", "week", "month", "year"]
+                    .iter()
+                    .any(|unit| status.contains(unit));
+            is_stale.then(|| id.to_string())
+        })
+        .collect();
+    if stale_ids.is_empty() {
+        return;
+    }
+
+    let mut args = vec!["rm".to_string(), "-f".to_string()];
+    args.extend(stale_ids.iter().cloned());
+    match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(&args)
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(_)) => {
+            tracing::warn!(
+                count = stale_ids.len(),
+                "Force-removed stale running containers leaked by dropped runs"
+            );
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "Failed to remove stale running containers");
+        }
+        Err(_elapsed) => {
+            tracing::warn!(
+                secs = DOCKER_CLEANUP_TIMEOUT_SECS,
+                "docker rm during stale-running sweep timed out; containers may leak until next tick"
             );
         }
     }

@@ -17,6 +17,27 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tokio::sync::Semaphore;
 
+/// RAII guard for the `active_tasks` heartbeat counter. Increments on
+/// construction and decrements on drop, so the count is released on ANY exit
+/// from the submission task — normal completion, executor panic, and even a
+/// panic inside the panic-recovery branch itself (a trailing `fetch_sub`
+/// statement would be skipped by that second unwind, permanently over-counting
+/// and starving the worker of routed work).
+struct ActiveTaskGuard(Arc<AtomicUsize>);
+
+impl ActiveTaskGuard {
+    fn new(counter: Arc<AtomicUsize>) -> Self {
+        counter.fetch_add(1, Ordering::Relaxed);
+        Self(counter)
+    }
+}
+
+impl Drop for ActiveTaskGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
 /// Best-effort string rendering of a panic payload caught by `catch_unwind`.
 /// Used by the executor spawn body's panic recovery (AGG-15 / C3-AGG-9) and
 /// unit-tested independently of the network report path.
@@ -200,12 +221,19 @@ async fn main() {
         }
     };
 
-    // Verify seccomp profile exists if not disabled
+    // Verify seccomp profile exists if not disabled. This must be FATAL, not
+    // a warning: with the profile missing, every judgement fails closed with
+    // a runtime_error while /health (which only reflects the docker
+    // capability probe) stays green — the worker would silently claim and
+    // fail the whole queue. Mirror the docker-capability probe's exit(1).
     if !config.disable_custom_seccomp && !config.seccomp_profile_path.exists() {
         tracing::error!(
             path = %config.seccomp_profile_path.display(),
-            "Run-phase seccomp profile is missing. Execution will fail closed."
+            "Run-phase seccomp profile is missing. Refusing to start: every \
+             judgement would fail closed while the healthcheck stays green. \
+             Mount the profile or set JUDGE_DISABLE_CUSTOM_SECCOMP explicitly."
         );
+        std::process::exit(1);
     }
 
     let concurrency = config.judge_concurrency;
@@ -538,7 +566,10 @@ async fn main() {
                     tracing::info!("Shutdown signal received during cleanup sweep, stopping polling");
                     break;
                 }
-                _ = docker::cleanup_orphaned_containers() => {}
+                _ = async {
+                    docker::cleanup_orphaned_containers().await;
+                    docker::cleanup_stale_running_containers().await;
+                } => {}
             }
             last_cleanup_at = std::time::Instant::now();
         }
@@ -587,15 +618,18 @@ async fn main() {
                 tracing::info!(submission_id = %submission.id, "Processing submission");
                 let client = Arc::clone(&client);
                 let config = Arc::clone(&config);
-                let active_tasks = Arc::clone(&active_tasks);
                 let worker_secret = worker_secret.clone();
 
-                active_tasks.fetch_add(1, Ordering::Relaxed);
+                // Increment in the poll loop (before the task runs) so the
+                // heartbeat never under-reports; the guard's Drop decrements
+                // on any task exit, including nested panics.
+                let task_guard = ActiveTaskGuard::new(Arc::clone(&active_tasks));
 
                 let handle = tokio::task::spawn(async move {
                     // The permit is moved into this task and dropped when done,
                     // releasing the semaphore slot for a new job.
                     let _permit = permit;
+                    let _task_guard = task_guard;
                     // Capture id + claim_token before moving `submission` into
                     // the executor future: if that future panics we need them
                     // to report a runtime_error verdict (AGG-15 / C3-AGG-9).
@@ -623,7 +657,6 @@ async fn main() {
                         )
                         .await;
                     }
-                    active_tasks.fetch_sub(1, Ordering::Relaxed);
                 });
                 task_handles.push(handle);
             }
