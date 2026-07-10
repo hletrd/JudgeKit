@@ -37,15 +37,27 @@ fn chown_recursive(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     // them. `lchown` changes the link itself, and `symlink_metadata` reports
     // the link (not its target), so a symlink is never treated as a
     // directory to descend into.
-    std::os::unix::fs::lchown(path, Some(uid), Some(gid))?;
-    if path.symlink_metadata()?.file_type().is_dir() {
-        for entry in std::fs::read_dir(path)? {
-            let entry = entry?;
-            chown_recursive(&entry.path(), uid, gid)?;
+    //
+    // Iterative traversal with an explicit heap work-list: the sandbox user
+    // can mkdir arbitrarily deep trees during compile, and call-stack
+    // recursion at that depth overflows and SIGABRTs the whole worker.
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        std::os::unix::fs::lchown(&current, Some(uid), Some(gid))?;
+        if current.symlink_metadata()?.file_type().is_dir() {
+            for entry in std::fs::read_dir(&current)? {
+                stack.push(entry?.path());
+            }
         }
     }
     Ok(())
 }
+
+/// Hard bound on the docker-based cleanup. This helper runs synchronously
+/// inside Drop (which may execute on a tokio runtime thread); every other
+/// docker invocation in the worker is timeout + kill_on_drop guarded, and a
+/// wedged dockerd here would otherwise block a runtime thread indefinitely.
+const DOCKER_CLEANUP_TIMEOUT_SECS: u64 = 60;
 
 fn cleanup_with_docker(path: &Path) -> io::Result<()> {
     let parent = path.parent().ok_or_else(|| {
@@ -58,7 +70,7 @@ fn cleanup_with_docker(path: &Path) -> io::Result<()> {
     let mount = format!("{}:/work", parent.display());
     let target = format!("/work/{}", name.to_string_lossy());
 
-    let output = Command::new("docker")
+    let mut child = Command::new("docker")
         .args([
             "run",
             "--rm",
@@ -71,32 +83,68 @@ fn cleanup_with_docker(path: &Path) -> io::Result<()> {
             "-rf",
             &target,
         ])
-        .output()?;
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
-            format!("docker cleanup failed: {stderr}"),
-        ));
+    let deadline = std::time::Instant::now()
+        + std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS);
+    loop {
+        match child.try_wait()? {
+            Some(status) => {
+                if status.success() {
+                    return Ok(());
+                }
+                let mut stderr = String::new();
+                if let Some(mut pipe) = child.stderr.take() {
+                    use std::io::Read;
+                    let _ = pipe.read_to_string(&mut stderr);
+                }
+                return Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("docker cleanup failed: {stderr}"),
+                ));
+            }
+            None => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("docker cleanup timed out after {DOCKER_CLEANUP_TIMEOUT_SECS}s"),
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
     }
-    Ok(())
 }
 
 impl Drop for SandboxWorkspace {
     fn drop(&mut self) {
         if let Some(path) = self.path.take() {
-            unsafe {
-                let uid = libc::getuid();
+            // Best-effort chown-back for ANY uid, not just root: a non-root
+            // worker holding CAP_CHOWN (the F-2 least-privilege deployment
+            // shape) can reclaim the 65534-owned tree here and take the fast
+            // native remove_dir_all below instead of falling into the
+            // docker-container cleanup on every single run. Without the
+            // capability the first lchown fails with EPERM and we proceed to
+            // the existing fallbacks unchanged.
+            // SAFETY: getuid/getgid are async-signal-safe with no side effects.
+            let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+            if let Err(e) = chown_recursive(&path, uid, gid) {
                 if uid == 0 {
-                    let gid = libc::getgid();
-                    if let Err(e) = chown_recursive(&path, uid, gid) {
-                        tracing::warn!(
-                            error = %e,
-                            path = %path.display(),
-                            "Failed to chown workspace back to worker user; cleanup may fail",
-                        );
-                    }
+                    tracing::warn!(
+                        error = %e,
+                        path = %path.display(),
+                        "Failed to chown workspace back to worker user; cleanup may fail",
+                    );
+                } else {
+                    tracing::debug!(
+                        error = %e,
+                        path = %path.display(),
+                        "chown-back skipped (no CAP_CHOWN); will use docker cleanup if removal fails",
+                    );
                 }
             }
 
