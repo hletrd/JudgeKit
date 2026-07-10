@@ -99,7 +99,10 @@ describe("buildIoiLatePenaltyCaseExpr", () => {
   it("produces a CASE expression containing the non-windowed late penalty branch", () => {
     const expr = buildIoiLatePenaltyCaseExpr();
     expect(expr).toContain("@examMode::text != 'windowed'");
-    expect(expr).toContain("@deadline::bigint");
+    expect(expr).toContain("@deadlineMs::bigint");
+    // Full-precision comparison: no epoch-second truncation of submitted_at.
+    expect(expr).toContain("to_timestamp(@deadlineMs::double precision / 1000.0)");
+    expect(expr).not.toContain("EXTRACT(EPOCH FROM");
     expect(expr).toContain("@latePenalty::double precision");
   });
 

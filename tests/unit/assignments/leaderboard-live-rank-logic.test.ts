@@ -130,7 +130,7 @@ describe("computeSingleUserLiveRank implementation", () => {
 
   describe("parameter binding", () => {
     it("passes deadline, latePenalty, and examMode parameters for IOI query", () => {
-      expect(source).toContain("deadline:");
+      expect(source).toContain("deadlineMs:");
       expect(source).toContain("latePenalty:");
       expect(source).toContain("examMode:");
     });

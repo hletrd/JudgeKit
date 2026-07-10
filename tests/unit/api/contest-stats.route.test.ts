@@ -52,14 +52,14 @@ describe("contest stats route implementation", () => {
     });
 
     it("passes deadline, latePenalty, and examMode parameters to the raw query", () => {
-      expect(source).toContain("deadline: deadlineSec");
+      expect(source).toContain("deadlineMs,");
       expect(source).toContain("latePenalty");
       expect(source).toContain("examMode");
     });
 
-    it("computes deadline as epoch seconds for the scoring query", () => {
-      expect(source).toContain("deadlineSec");
-      expect(source).toContain("Math.floor(new Date(assignment.deadline).getTime() / 1000)");
+    it("computes deadline as epoch milliseconds for the scoring query", () => {
+      expect(source).toContain("deadlineMs");
+      expect(source).toContain("new Date(assignment.deadline).getTime()");
     });
 
     it("uses COALESCE(ap.points, 100) consistent with leaderboard scoring", () => {

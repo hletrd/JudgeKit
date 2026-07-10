@@ -1,5 +1,6 @@
 import { LRUCache } from "lru-cache";
 import { computeContestAnalytics } from "@/lib/assignments/contest-analytics";
+import { registerAssignmentCacheInvalidator } from "@/lib/assignments/contest-scoring";
 import { getDbNowMs } from "@/lib/db-time";
 import { logger } from "@/lib/logger";
 
@@ -30,6 +31,18 @@ const analyticsCache = new LRUCache<string, CacheEntry>({
   dispose: (_value, key) => {
     _lastRefreshFailureAt.delete(key);
   },
+});
+
+// Drop cached analytics whenever a score mutation invalidates the ranking
+// cache (judge verdict, rejudge, override) — otherwise the leaderboard
+// updates immediately while this surface serves pre-mutation aggregates for
+// up to CACHE_TTL_MS. Keys are bare assignment ids.
+registerAssignmentCacheInvalidator((assignmentId) => {
+  if (assignmentId) {
+    analyticsCache.delete(assignmentId);
+  } else {
+    analyticsCache.clear();
+  }
 });
 
 /**

@@ -65,6 +65,50 @@ const REFRESH_FAILURE_COOLDOWN_MS = 5_000;
 const _lastRefreshFailureAt = new Map<string, number>();
 
 /**
+ * Invalidation generations. A ranking recompute snapshots the DB when it
+ * STARTS; by the time it finishes, an invalidation (judge verdict, rejudge,
+ * override) may have deleted the key. Without a generation check the late
+ * `rankingCache.set` would resurrect pre-mutation standings as "fresh" for
+ * another STALE_AFTER_MS. Writers capture the generation before computing and
+ * discard their result if it moved. (The `_refreshingKeys` marker only stops a
+ * SECOND refresh from starting — it cannot stop the in-flight one's write.)
+ *
+ * Bounded LRU: entries are tiny counters; 5_000 far exceeds the number of
+ * assignments that can be invalidated within one refresh window.
+ */
+let _globalInvalidationGen = 0;
+const _assignmentInvalidationGen = new LRUCache<string, number>({ max: 5_000 });
+
+type InvalidationSnapshot = { global: number; assignment: number };
+
+function captureInvalidationGen(assignmentId: string): InvalidationSnapshot {
+  return {
+    global: _globalInvalidationGen,
+    assignment: _assignmentInvalidationGen.get(assignmentId) ?? 0,
+  };
+}
+
+function invalidationGenMoved(assignmentId: string, snap: InvalidationSnapshot): boolean {
+  const now = captureInvalidationGen(assignmentId);
+  return now.global !== snap.global || now.assignment !== snap.assignment;
+}
+
+/**
+ * Sibling per-assignment caches (contest stats, contest analytics) register
+ * here so one mutation-side call to `invalidateRankingCache` invalidates every
+ * surface derived from submission scores — otherwise the leaderboard updates
+ * immediately while stats/analytics serve pre-mutation aggregates until their
+ * TTL. Registration happens at module load, i.e. exactly when the sibling
+ * cache starts to exist in this process.
+ */
+type AssignmentCacheInvalidator = (assignmentId?: string) => void;
+const _linkedInvalidators: AssignmentCacheInvalidator[] = [];
+
+export function registerAssignmentCacheInvalidator(fn: AssignmentCacheInvalidator): void {
+  _linkedInvalidators.push(fn);
+}
+
+/**
  * Invalidate cached leaderboard data for an assignment.
  * Call this after any mutation that affects submission scores or status
  * (judge verdict, rejudge, score override) so the next leaderboard request
@@ -75,6 +119,10 @@ const _lastRefreshFailureAt = new Map<string, number>();
  */
 export function invalidateRankingCache(assignmentId?: string): void {
   if (assignmentId) {
+    _assignmentInvalidationGen.set(
+      assignmentId,
+      (_assignmentInvalidationGen.get(assignmentId) ?? 0) + 1,
+    );
     // Delete both the live and any frozen variant for this assignment.
     // Keys are `${assignmentId}:${cutoffSec ?? 'live'}` — frozen variants use
     // a numeric cutoff, so delete the live key and iterate to find frozen ones.
@@ -96,8 +144,19 @@ export function invalidateRankingCache(assignmentId?: string): void {
       }
     }
   } else {
+    _globalInvalidationGen += 1;
     rankingCache.clear();
     _lastRefreshFailureAt.clear();
+  }
+
+  // Cascade to the registered sibling caches (stats, analytics). Isolated so
+  // one broken invalidator cannot block the others or the caller.
+  for (const invalidate of _linkedInvalidators) {
+    try {
+      invalidate(assignmentId);
+    } catch (err) {
+      logger.warn({ err, assignmentId }, "[contest-scoring] linked cache invalidator failed");
+    }
   }
 }
 
@@ -155,10 +214,15 @@ export async function computeContestRanking(assignmentId: string, cutoffSec?: nu
       // Use an async IIFE instead of .then()/.catch()/.finally() chain to
       // avoid unhandled-rejection risk: if getDbNowMs() throws inside a
       // .catch() handler, the resulting rejection is not caught by .finally().
+      const genAtStart = captureInvalidationGen(assignmentId);
       (async () => {
         try {
           const fresh = await _computeContestRankingInner(assignmentId, cutoffSec);
-          rankingCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
+          // Discard if an invalidation landed while we were computing: this
+          // result snapshots the DB from BEFORE the mutation that invalidated.
+          if (!invalidationGenMoved(assignmentId, genAtStart)) {
+            rankingCache.set(cacheKey, { data: fresh, createdAt: await getDbNowMs() });
+          }
           _lastRefreshFailureAt.delete(cacheKey);
         } catch {
           // Use Date.now() as fallback for the cooldown timestamp. If the DB
@@ -183,9 +247,14 @@ export async function computeContestRanking(assignmentId: string, cutoffSec?: nu
     return cached.data;
   }
 
-  // Cache miss — compute fresh and populate cache
+  // Cache miss — compute fresh and populate cache. The same generation guard
+  // applies: an invalidation during the compute means this snapshot predates
+  // the mutation, so return it once but do not persist it as fresh.
+  const missGen = captureInvalidationGen(assignmentId);
   const result = await _computeContestRankingInner(assignmentId, cutoffSec);
-  rankingCache.set(cacheKey, { data: result, createdAt: await getDbNowMs() });
+  if (!invalidationGenMoved(assignmentId, missGen)) {
+    rankingCache.set(cacheKey, { data: result, createdAt: await getDbNowMs() });
+  }
   return result;
 }
 
@@ -252,16 +321,16 @@ async function _computeContestRankingInner(assignmentId: string, cutoffSec?: num
     return { scoringModel: "ioi", entries: [] };
   }
 
-  // Deadline as epoch seconds for the scoring query (null if no deadline)
-  const deadlineSec = meta.deadline ? Math.floor(new Date(meta.deadline).getTime() / 1000) : null;
+  // Deadline as epoch milliseconds for the scoring query (null if no deadline)
+  const deadlineMs = meta.deadline ? new Date(meta.deadline).getTime() : null;
   const latePenalty = meta.latePenalty ?? 0;
   const examMode = meta.examMode ?? "none";
 
   const rows = await rawQueryAll<RawLeaderboardRow>(
     buildScoringQuery(cutoffSec != null),
     cutoffSec != null
-      ? { assignmentId, cutoffSec, deadline: deadlineSec, latePenalty, examMode }
-      : { assignmentId, deadline: deadlineSec, latePenalty, examMode }
+      ? { assignmentId, cutoffSec, deadlineMs, latePenalty, examMode }
+      : { assignmentId, deadlineMs, latePenalty, examMode }
   );
 
   const assignmentProblemRows = await rawQueryAll<{ problemId: string; points: number }>(

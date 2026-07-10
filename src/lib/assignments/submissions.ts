@@ -724,7 +724,7 @@ export async function getAssignmentStatusRows(
       FROM scored
       GROUP BY user_id, problem_id
     `, {
-      deadline: deadlineVal ? Math.floor(deadlineVal.getTime() / 1000) : null,
+      deadlineMs: deadlineVal ? deadlineVal.getTime() : null,
       latePenalty,
       examMode: assignment.examMode ?? "none",
       assignmentId,

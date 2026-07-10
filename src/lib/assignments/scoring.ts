@@ -127,7 +127,8 @@ function validateSqlColumnName(name: string, paramName: string): string {
  *
  * Returns a SQL CASE expression that computes the adjusted score for a single
  * submission row. The caller must ensure:
- * - `@deadline`, `@latePenalty`, `@examMode` parameters are bound.
+ * - `@deadlineMs` (epoch milliseconds), `@latePenalty`, `@examMode`
+ *   parameters are bound.
  * - For the windowed branch, `personal_deadline` is available in the FROM
  *   clause (via LEFT JOIN exam_sessions).
  * - `score` and `points` (or an alias like `COALESCE(ap.points, 100)`) are
@@ -155,9 +156,13 @@ export function buildIoiLatePenaltyCaseExpr(
   return `CASE
     WHEN ${safeScoreCol} IS NOT NULL THEN
       CASE
-        -- Non-windowed: late penalty against the global deadline
-        WHEN @deadline::bigint IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed'
-             AND ${safeSubmittedAtCol} IS NOT NULL AND EXTRACT(EPOCH FROM ${safeSubmittedAtCol})::bigint > @deadline::bigint
+        -- Non-windowed: late penalty against the global deadline. Compared at
+        -- full timestamp precision (to_timestamp of the millisecond bind):
+        -- truncating both sides to whole epoch seconds silently waived the
+        -- penalty for submissions landing inside the deadline's second, and
+        -- diverged from the TS path's millisecond comparison.
+        WHEN @deadlineMs::bigint IS NOT NULL AND @latePenalty::double precision > 0 AND @examMode::text != 'windowed'
+             AND ${safeSubmittedAtCol} IS NOT NULL AND ${safeSubmittedAtCol} > to_timestamp(@deadlineMs::double precision / 1000.0)
         THEN ROUND(((LEAST(GREATEST(${safeScoreCol}, 0), 100) / 100.0 * ${safePointsCol}) * (1.0 - @latePenalty::double precision / 100.0))::numeric, 2)
         -- Windowed: late penalty against the per-user personal_deadline
         WHEN @examMode::text = 'windowed' AND @latePenalty::double precision > 0

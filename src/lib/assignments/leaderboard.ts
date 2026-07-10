@@ -285,7 +285,7 @@ export async function computeSingleUserLiveRank(
     {
       assignmentId,
       userId,
-      deadline: meta.deadline ? Math.floor(new Date(meta.deadline).getTime() / 1000) : null,
+      deadlineMs: meta.deadline ? new Date(meta.deadline).getTime() : null,
       latePenalty: meta.latePenalty ?? 0,
       examMode: meta.examMode ?? "none",
     },
