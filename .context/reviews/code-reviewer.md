@@ -107,3 +107,25 @@ All fixes I was asked to audit are **correct**. Recorded so future cycles don't 
 ---
 
 *This cycle's pass verified the eight post-2026-07-05 fixes as correct and surfaced six new/still-open findings (1 Medium + 1 Medium hardening, 4 Low). Prior-cycle findings live in git history and the deferred plan; they were not re-enumerated here.*
+
+---
+
+# Remediation — 2026-07-10 (race/reliability/stability cycle)
+
+**Findings above:** F-1, F-3, F-4, F-5, F-6 — **all fixed** with regression tests. F-2 — **deliberately deferred**: the CAP_CHOWN reduction needs file capabilities on the binary (Docker grants no ambient caps to non-root) plus cleanup-path changes, and the same change previously shipped a silent judging outage (compose comments document the tradeoff). The cleanup path was nonetheless prepared for it: the drop-time chown-back is now attempted for any uid, and the docker cleanup fallback is timeout-bounded.
+
+**New findings from a six-reviewer race/reliability sweep — all verified and fixed:**
+
+- **judge-worker-rs:** missing run-phase seccomp profile is now FATAL at startup (was: /health stayed green while 100% of judgements failed); `active_tasks` released via RAII guard (a panic inside the panic-recovery branch leaked the count forever, starving routing); periodic sweep also force-removes `running` oj-* containers up ≥1h (a dropped `docker run` future leaked a daemon-side container until restart); `chown_recursive` converted to iterative traversal (deep adversarial trees overflowed the stack → SIGABRT); `cleanup_with_docker` bounded at 60s with kill-on-timeout (was an unbounded blocking call on a runtime thread).
+- **rate-limiter-rs:** hard 250k-entry cap with non-blocked-first shedding (store previously grew unbounded for 24h → OOM); 512-byte key bound; per-request window clamped to the 24h eviction age (longer windows were silently reset mid-window by eviction).
+- **code-similarity-rs:** /compute bounded to 2 concurrent requests with a 10s queue timeout, enforced in middleware before body extraction (N concurrent 16 MiB bodies could OOM below the per-request cap).
+- **judge pipeline (TS):** worker reap now reconciles `active_tasks` to the live non-reclaimable claim count instead of hard-zeroing (heartbeat-stalled-but-judging worker could over-claim after recovery); heartbeat's inline sweep is fire-and-forget + 30s-throttled (a transient sweep failure 500'd a successful heartbeat → duplicate worker re-registration; O(W) sweep write amplification); final/in-progress reports drop result rows whose test case was deleted mid-judge (NOT NULL FK violation wedged the verdict in a 500-retry loop until stale reclaim); rejudge takes `FOR UPDATE` on the submission row (double `active_tasks` decrement vs a concurrent final report).
+- **scoring/contests:** SQL global-deadline late penalty compared at millisecond precision via `@deadlineMs` + `to_timestamp` (epoch-second truncation waived the penalty inside the deadline's second and diverged from the TS path); ranking-cache writes are invalidation-generation-guarded (an in-flight SWR refresh could resurrect pre-mutation standings as "fresh" after `invalidateRankingCache`); ranking invalidation cascades to the newly-registered stats + analytics caches (previously TTL-only → surfaces disagreed for up to 60s); the stats endpoint is scoring-model-aware (ICPC = solved-count semantics) and overlays `score_overrides` for IOI, matching `computeContestRanking` (ICPC overrides remain deliberately un-overlaid, same as the board).
+- **anti-cheat:** shared-coordination heartbeat dedup is rolled back when the `antiCheatEvents` insert fails (the AGG6-4 fix had covered only the LRU path; honest candidates could accrue `submission_stale_heartbeat` flags).
+- **recruiting:** redeem brute-force lockout is atomic — invitation row `SELECT ... FOR UPDATE` + the failed-attempt counter incremented inside the transaction (N parallel redeems previously each got a password guess from pre-increment snapshots).
+- **chat-widget:** client disconnect now propagates through the route's proxy streams AND `transformSSE` (cancel handlers added at both layers) so the upstream LLM request aborts instead of generating to completion.
+- **groups/admin:** add-instructor is an atomic `onConflictDoUpdate` upsert (`xmax = 0` keeps the 201/200 contract); duplicate language/tag creation returns a clean 409 instead of an unhandled unique-violation 500.
+
+**Deferred (tracked, not fixed):** `streamBackupWithFiles` whole-archive in-memory export (export-side twin of the deferred C4-US-014 restore buffering — fix both together with a streaming ZIP writer); F-2 worker privilege reduction as above.
+
+*Verification: full unit suite 3151/3151; cargo tests green across all three crates (judge-worker 100, rate-limiter 6 incl. 3 new, code-similarity 49); `tsc --noEmit` and eslint clean; `bash -n` clean on deploy-docker.sh. Every fix landed as its own signed conventional commit and was pushed.*
