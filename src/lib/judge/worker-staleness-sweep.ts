@@ -14,8 +14,8 @@
  * unit tests for the predicates remain DB-free.
  */
 import { db } from "@/lib/db";
-import { judgeWorkers } from "@/lib/db/schema";
-import { and, eq, lt } from "drizzle-orm";
+import { judgeWorkers, submissions } from "@/lib/db/schema";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { getDbNowUncached } from "@/lib/db-time";
 import { getConfiguredSettings } from "@/lib/system-settings-config";
 import { logger } from "@/lib/logger";
@@ -56,14 +56,33 @@ export async function sweepStaleWorkers(now?: Date): Promise<StalenessSweepResul
   // stale -> offline (terminal): past the stale-claim timeout the worker holds
   // no reclaimable claim, so reap it and reconcile active_tasks. Only `stale`
   // rows — never a live `online` worker.
+  //
+  // active_tasks is RECONCILED to the worker's live claim count, not
+  // hard-zeroed: heartbeats and claim freshness are independent channels. A
+  // worker whose heartbeat loop stalls while its judge loop keeps sending
+  // in-progress reports still owns non-reclaimable submissions
+  // (judge_claimed_at fresh); zeroing here and letting a recovered heartbeat
+  // flip it back online at active_tasks=0 would let it over-claim past its
+  // real concurrency. For a truly dead worker the count is 0 — identical to
+  // the old behavior.
   const staleClaimTimeoutMs = getConfiguredSettings().staleClaimTimeoutMs;
+  const reclaimCutoff = computeActiveTasksResetCutoff(ts, staleClaimTimeoutMs);
   const reapedOffline = await db
     .update(judgeWorkers)
-    .set({ status: "offline", deregisteredAt: ts, activeTasks: 0 })
+    .set({
+      status: "offline",
+      deregisteredAt: ts,
+      activeTasks: sql`(
+        SELECT COUNT(*)::int FROM ${submissions}
+        WHERE ${submissions.judgeWorkerId} = ${judgeWorkers.id}
+          AND ${submissions.status} IN ('queued', 'judging')
+          AND ${submissions.judgeClaimedAt} >= ${reclaimCutoff}
+      )`,
+    })
     .where(
       and(
         eq(judgeWorkers.status, "stale"),
-        lt(judgeWorkers.lastHeartbeatAt, computeActiveTasksResetCutoff(ts, staleClaimTimeoutMs))
+        lt(judgeWorkers.lastHeartbeatAt, reclaimCutoff)
       )
     )
     .returning({ id: judgeWorkers.id });

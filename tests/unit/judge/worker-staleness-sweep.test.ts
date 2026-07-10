@@ -8,6 +8,11 @@ const { dbMock, loggerMock } = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ db: dbMock }));
 vi.mock("@/lib/db/schema", () => ({
   judgeWorkers: { id: "id", status: "status", lastHeartbeatAt: "last_heartbeat_at" },
+  submissions: {
+    judgeWorkerId: "judge_worker_id",
+    status: "status",
+    judgeClaimedAt: "judge_claimed_at",
+  },
 }));
 vi.mock("@/lib/db-time", () => ({
   getDbNowUncached: vi.fn(async () => new Date("2026-05-31T00:00:00Z")),
