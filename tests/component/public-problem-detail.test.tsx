@@ -7,6 +7,10 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+
 vi.mock("@/components/problem/structured-problem-statement", () => ({
   StructuredProblemStatement: ({ description }: { description: string | null }) => <div>{description}</div>,
 }));

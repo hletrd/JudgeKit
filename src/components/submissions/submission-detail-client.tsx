@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
@@ -211,10 +212,10 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
         <div className="space-y-3">
           <div>
-            <Link href={props.backHref} className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+            <BackLink fallbackHref={props.backHref} className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
               <ArrowLeft className="size-4" />
               {tCommon("back")}
-            </Link>
+            </BackLink>
             <h1 className="mb-2 text-2xl font-bold">{t("submissionId", { id: formatSubmissionIdPrefix(submission.id) })}</h1>
             <div className="flex flex-wrap items-center gap-2" role="status" aria-live="polite">
               <Badge variant="outline">

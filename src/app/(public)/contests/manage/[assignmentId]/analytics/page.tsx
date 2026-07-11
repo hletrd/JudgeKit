@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { eq } from "drizzle-orm";
@@ -42,13 +42,13 @@ export default async function ContestAnalyticsPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/contests/manage/${assignmentId}`}
+      <BackLink
+        fallbackHref={`/contests/manage/${assignmentId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         {tCommon("back")}
-      </Link>
+      </BackLink>
 
       <div className="flex items-center justify-between">
         <div>

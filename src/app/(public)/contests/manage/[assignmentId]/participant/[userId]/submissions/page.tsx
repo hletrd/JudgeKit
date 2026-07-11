@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { notFound, redirect } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
@@ -106,13 +107,13 @@ export default async function ContestParticipantSubmissionsPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/contests/manage/${assignmentId}`}
+      <BackLink
+        fallbackHref={`/contests/manage/${assignmentId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         {tAudit("backToContest")}
-      </Link>
+      </BackLink>
 
       <div className="space-y-1">
         <h2 className="text-2xl font-bold">

@@ -41,14 +41,6 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const submissionId = resolvedParams.id;
   const fromParam = resolvedSearchParams?.from;
-  const backHref = buildLocalePath(
-    fromParam === "problem"
-      ? "/practice"
-      : fromParam === "admin"
-        ? "/dashboard/admin/submissions"
-        : "/submissions",
-    locale,
-  );
 
   const timeZone = await getResolvedSystemTimeZone();
   const t = await getTranslations("submissions");
@@ -99,6 +91,22 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   }
 
   const canViewDetails = isOwner || canViewAsInstructor;
+
+  // Back-link fallback. `from=problem` points at the PROBLEM the submission
+  // belongs to, not the bare practice list: after submitting, "back" must
+  // return the user to where they came from (the in-app BackLink uses real
+  // history when available; this href covers direct/deep links). Landing on
+  // the full list here discarded the user's filtered list context entirely.
+  const backHref = buildLocalePath(
+    fromParam === "problem"
+      ? submission.problemId
+        ? `/practice/problems/${submission.problemId}${submission.assignmentId ? `?assignmentId=${submission.assignmentId}` : ""}`
+        : "/practice"
+      : fromParam === "admin"
+        ? "/dashboard/admin/submissions"
+        : "/submissions",
+    locale,
+  );
 
   // Capabilities surface the rejudge / comment / view_source actions on the
   // submission detail UI (`SubmissionDetailClient`). Previously hard-coded to

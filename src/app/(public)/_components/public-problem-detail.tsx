@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,13 +52,13 @@ export function PublicProblemDetail({
         <div>
           <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
             <div>
-              <Link
-                href={backHref}
+              <BackLink
+                fallbackHref={backHref}
                 className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
               >
                 <ArrowLeft className="size-4" />
                 {backLabel}
-              </Link>
+              </BackLink>
               <h1 className="text-3xl font-bold">{title}</h1>
             </div>
             <div className="flex flex-wrap gap-2">

@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { getTranslations, getLocale } from "next-intl/server";
 import { ArrowLeft } from "lucide-react";
 import { eq, and, desc } from "drizzle-orm";
@@ -109,13 +110,13 @@ export default async function StudentDetailPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/contests/manage/${assignmentId}`}
+      <BackLink
+        fallbackHref={`/contests/manage/${assignmentId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         {t("title")}
-      </Link>
+      </BackLink>
 
       <div>
         <h2 className="text-2xl font-bold">{student.name}</h2>
