@@ -40,30 +40,9 @@ int main(void) {
 
     return 0;
 }`,
-  python: `import sys
-input = sys.stdin.readline
-
-def main():
-    pass
-
-if __name__ == "__main__":
-    main()`,
-  python3: `import sys
-input = sys.stdin.readline
-
-def main():
-    pass
-
-if __name__ == "__main__":
-    main()`,
-  pypy: `import sys
-input = sys.stdin.readline
-
-def main():
-    pass
-
-if __name__ == "__main__":
-    main()`,
+  python: "",
+  python3: "",
+  pypy: "",
   java: `import java.io.*;
 import java.util.*;
 
