@@ -32,7 +32,8 @@ describe("admin submissions implementation", () => {
     expect(source).toContain('name="dateTo"');
     expect(source).toContain('parseDateTimeLocalInput(`${dateFrom}T00:00`, timeZone)');
     expect(source).toContain('gte(submissions.submittedAt, new Date(fromMs))');
-    expect(source).toContain('lte(submissions.submittedAt, endOfDay)');
+    expect(source).toContain('parseDateTimeLocalInput(`${dateTo}T23:59:59`, timeZone)');
+    expect(source).toContain('lte(submissions.submittedAt, new Date(toMs + 999))');
     expect(source).toContain('if (dateFrom) params.set("dateFrom", dateFrom);');
     expect(source).toContain('if (dateTo) params.set("dateTo", dateTo);');
     expect(source).toContain('t("dateFromLabel")');
