@@ -56,6 +56,9 @@ describe("importDatabase implementation guards", () => {
       // Ephemeral SSE slot coordination rows; meaningless outside the running
       // instance. Documented in src/lib/db/export.ts above TABLE_ORDER.
       "realtimeCoordination",
+      // Five-minute one-time grants must not become reusable after a restore.
+      // Documented in src/lib/db/export.ts above TABLE_ORDER.
+      "oidcAuthorizationCodes",
     ]);
 
     const schemaTableNames = Object.entries(schema)

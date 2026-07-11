@@ -13,6 +13,7 @@ export async function register() {
     { registerAuditFlushOnShutdown },
     { syncLanguageConfigsOnStartup },
     { initializeSettings },
+    { assertOidcConfiguration },
   ] = await Promise.all([
     import("@/lib/security/env"),
     import("@/lib/security/production-config"),
@@ -23,6 +24,7 @@ export async function register() {
     import("@/lib/audit/node-shutdown"),
     import("@/lib/judge/sync-language-configs"),
     import("@/lib/system-settings-config"),
+    import("@/lib/oidc/config"),
   ]);
 
   assertProductionConfig();
@@ -31,6 +33,7 @@ export async function register() {
   assertLoadedEnvFilePermissions();
   getValidatedAuthSecret();
   getValidatedJudgeAuthToken();
+  await assertOidcConfiguration();
 
   // Insert any missing language configs into the database
   await syncLanguageConfigsOnStartup();

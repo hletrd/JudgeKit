@@ -70,6 +70,33 @@ export const sessions = pgTable("sessions", {
   expires: timestamp("expires", { withTimezone: true }).notNull(),
 });
 
+export const oidcAuthorizationCodes = pgTable(
+  "oidc_authorization_codes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    codeHash: text("code_hash").notNull(),
+    clientId: text("client_id").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    redirectUri: text("redirect_uri").notNull(),
+    scope: text("scope").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    nonce: text("nonce"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("oidc_authorization_codes_hash_idx").on(table.codeHash),
+    index("oidc_authorization_codes_expires_at_idx").on(table.expiresAt),
+  ]
+);
+
 export const accounts = pgTable("accounts", {
   id: text("id")
     .primaryKey()

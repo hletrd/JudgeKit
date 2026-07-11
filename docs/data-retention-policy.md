@@ -18,6 +18,7 @@ Governance reference for operators deploying JudgeKit. All implementation lives 
 | Login events | 180 days | `LOGIN_EVENT_RETENTION_DAYS` |
 | Source-code drafts (unsubmitted autosaves) | 180 days since last edit | `SOURCE_DRAFT_RETENTION_DAYS` |
 | Anti-cheat code snapshots (in-progress editor captures) | 180 days since capture | `CODE_SNAPSHOT_RETENTION_DAYS` |
+| OIDC authorization codes | Until the fixed five-minute protocol expiry | Not configurable |
 
 All overrides must be positive integers. Invalid or zero values are silently ignored and the default is used.
 

@@ -22,6 +22,7 @@ vi.mock("@/lib/db/schema", () => ({
   auditEvents: { createdAt: "auditEvents.createdAt" },
   sourceDrafts: { updatedAt: "sourceDrafts.updatedAt" },
   codeSnapshots: { createdAt: "codeSnapshots.createdAt" },
+  oidcAuthorizationCodes: { id: "oidcAuthorizationCodes.id", expiresAt: "oidcAuthorizationCodes.expiresAt" },
 }));
 
 vi.mock("@/lib/logger", () => ({
@@ -121,6 +122,19 @@ describe("startSensitiveDataPruning / stopSensitiveDataPruning", () => {
     // accumulating forever — and outliving the 180-day anti-cheat events
     // derived from it. The prune keys on createdAt (append-only table).
     expect(mocks.loggerDebug).toHaveBeenCalledWith(expect.anything(), "Pruned expired code snapshots");
+  });
+
+  it("removes OIDC authorization codes as soon as they expire", async () => {
+    const { startSensitiveDataPruning, stopSensitiveDataPruning } = await import("@/lib/data-retention-maintenance");
+
+    stopSensitiveDataPruning();
+    startSensitiveDataPruning();
+    await flushMicrotasks();
+
+    expect(mocks.loggerDebug).toHaveBeenCalledWith(
+      expect.anything(),
+      "Pruned expired OIDC authorization codes",
+    );
   });
 
   it("does not create duplicate intervals when started twice", async () => {

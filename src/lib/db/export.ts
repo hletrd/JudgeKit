@@ -202,8 +202,9 @@ export function streamDatabaseExport(options: { signal?: AbortSignal; sanitize?:
  * cascade-deletes its live rows with no compensating insert — unrecoverable
  * data loss (RPF cycle-1 CQ-CRIT).
  *
- * Intentional exclusion: `realtimeCoordination` holds ephemeral SSE slot
- * coordination rows that are meaningless outside the running instance.
+ * Intentional exclusions: `realtimeCoordination` holds ephemeral SSE slot
+ * coordination rows, and `oidcAuthorizationCodes` holds five-minute one-time
+ * grants. Neither is meaningful or safe to restore from a backup.
  */
 export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[] }[] = [
   // Level 0: no foreign keys

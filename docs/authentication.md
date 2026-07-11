@@ -15,6 +15,7 @@
   header. Judge worker endpoints use separate worker tokens.
 - The session token (JWT) carries only core identity and security fields: `id`, `username`, `email`, `name`, `className`, `role`, `mustChangePassword`, plus `authenticatedAt`/`uaHash`. User editor/UI **preferences are not stored in the token** — they are read on demand from the database via `getUserPreferences()` (`src/lib/user-preferences.ts`, React-cached per request), so the cookie stays small and preference changes take effect without a token refresh.
 - Token revocation is enforced by comparing the token's `authenticatedAt` against the user's `tokenInvalidatedAt`. Both the Auth.js `jwt` callback and `src/proxy.ts` re-validate the user against the DB (the proxy lookup is briefly cached).
+- JudgeKit can also act as an OpenID Connect provider for a configured first-party client. It uses Authorization Code with S256 PKCE and an exact redirect-URI allowlist. See [OIDC provider](./oidc-provider.md).
 
 ## Password policy
 

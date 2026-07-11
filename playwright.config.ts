@@ -1,10 +1,19 @@
 import path from "node:path";
+import { generateKeyPairSync } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const localBaseUrl = "http://localhost:3110";
 const localServerUrl = localBaseUrl;
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? localBaseUrl;
 const isRemoteRun = Boolean(process.env.PLAYWRIGHT_BASE_URL);
+const localOidcPrivateKeyBase64 = !isRemoteRun
+  ? Buffer.from(
+      generateKeyPairSync("rsa", { modulusLength: 2048 }).privateKey.export({
+        type: "pkcs8",
+        format: "pem",
+      }),
+    ).toString("base64")
+  : "";
 const evidenceRoot = path.join(".sisyphus", "evidence", "playwright");
 
 if (!isRemoteRun) {
@@ -105,6 +114,14 @@ export default defineConfig({
           AUTH_TRUST_HOST: "true",
           TRUSTED_PROXY_HOPS: "1",
           TRUST_HOST_OVERRIDE: "1",
+          OIDC_ENABLED: "1",
+          OIDC_ALLOW_INSECURE_LOOPBACK: "1",
+          OIDC_ISSUER: localBaseUrl,
+          OIDC_CLIENT_ID: "info-course-portal",
+          OIDC_CLIENT_SECRET: "playwright-oidc-client-secret-32-characters",
+          OIDC_CLIENT_REDIRECT_URIS: JSON.stringify([`${localBaseUrl}/oidc-test-callback`]),
+          OIDC_SIGNING_PRIVATE_KEY_B64: localOidcPrivateKeyBase64,
+          OIDC_SIGNING_KEY_ID: "playwright-test-key",
           // Pass through the operator's JUDGE_AUTH_TOKEN only when it is a real
           // value. Never inject the placeholder fallback: it is byte-identical
           // to JUDGE_AUTH_TOKEN_PLAYWRIGHT_PLACEHOLDER, which

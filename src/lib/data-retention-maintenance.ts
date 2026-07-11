@@ -1,7 +1,7 @@
 import { and, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { auditEvents, antiCheatEvents, chatMessages, codeSnapshots, loginEvents, recruitingInvitations, sourceDrafts, submissions } from "@/lib/db/schema";
+import { auditEvents, antiCheatEvents, chatMessages, codeSnapshots, loginEvents, oidcAuthorizationCodes, recruitingInvitations, sourceDrafts, submissions } from "@/lib/db/schema";
 import { DATA_RETENTION_DAYS, isDataRetentionLegalHold, getRetentionCutoff } from "@/lib/data-retention";
 import { getDbNowMs } from "@/lib/db-time";
 
@@ -19,7 +19,7 @@ const BATCH_DELAY_MS = 100;
  * those databases would need `DELETE ... WHERE id IN (SELECT id ...)` instead.
  */
 async function batchedDelete(
-  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof codeSnapshots | typeof loginEvents | typeof recruitingInvitations | typeof sourceDrafts | typeof submissions,
+  table: typeof auditEvents | typeof antiCheatEvents | typeof chatMessages | typeof codeSnapshots | typeof loginEvents | typeof oidcAuthorizationCodes | typeof recruitingInvitations | typeof sourceDrafts | typeof submissions,
   whereClause: ReturnType<typeof lt> | ReturnType<typeof and>,
 ): Promise<number> {
   let totalDeleted = 0;
@@ -107,12 +107,21 @@ async function pruneCodeSnapshots(nowMs: number) {
   logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired code snapshots");
 }
 
+async function pruneOidcAuthorizationCodes(nowMs: number) {
+  const cutoff = new Date(nowMs);
+  const deleted = await batchedDelete(
+    oidcAuthorizationCodes,
+    lt(oidcAuthorizationCodes.expiresAt, cutoff),
+  );
+  logger.debug({ cutoff: cutoff.toISOString(), deleted }, "Pruned expired OIDC authorization codes");
+}
+
 /**
  * Run all sensitive-data retention prunes for one day's maintenance window.
  *
- * Eight independent prunes (chatMessages, antiCheatEvents,
+ * Nine independent prunes (chatMessages, antiCheatEvents,
  * recruitingInvitations, submissions, loginEvents, auditEvents, sourceDrafts,
- * codeSnapshots) run concurrently against the DB. The cutoff is taken from
+ * codeSnapshots, OIDC authorization codes) run concurrently against the DB. The cutoff is taken from
  * `getDbNowMs()` so it is computed against
  * the same clock as the data timestamps, avoiding app-vs-DB clock skew.
  *
@@ -152,6 +161,7 @@ async function pruneSensitiveOperationalData() {
       pruneAuditEvents(nowMs),
       pruneSourceDrafts(nowMs),
       pruneCodeSnapshots(nowMs),
+      pruneOidcAuthorizationCodes(nowMs),
     ]);
     for (const result of results) {
       if (result.status === "rejected") {
