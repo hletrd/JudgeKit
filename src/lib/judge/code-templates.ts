@@ -1,12 +1,18 @@
 /**
- * Default code templates for competitive programming languages.
- * Preloaded into the editor when a user selects a language and the editor is empty.
+ * Skeleton (starter) code handling.
+ *
+ * Starter code is now admin-configured per language (`language_configs.starter_code`),
+ * and the default is BLANK — a language with no configured starter opens an
+ * empty editor. The built-in map below is NO LONGER preloaded; it is retained
+ * only as a legacy-recognition set so `isTemplateLike()` still treats
+ * boilerplate that OLDER sessions preloaded as "safe to overwrite" during the
+ * transition. New preloads come solely from the configured starter code.
  */
 
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 import { getAdapter, supportsFunctionJudging, FUNCTION_JUDGING_LANGUAGES } from "@/lib/judge/function-judging/registry";
 
-export const DEFAULT_TEMPLATES: Record<string, string> = {
+const LEGACY_TEMPLATES: Record<string, string> = {
   c: `#include <stdio.h>
 
 int main(void) {
@@ -135,17 +141,21 @@ export function getStarterCode(opts: {
   problemType?: string | null;
   functionSpec?: FunctionSpec | null;
   language: string;
+  /** Admin-configured starter code for this language (null/empty = blank). */
+  starterCode?: string | null;
 }): string {
-  const { problemType, functionSpec, language } = opts;
+  const { problemType, functionSpec, language, starterCode } = opts;
   if (problemType === "function" && functionSpec && supportsFunctionJudging(language)) {
     try {
       return getAdapter(language).generateStub(functionSpec);
     } catch {
       // Defensive: a malformed spec must not break the editor. Fall through to
-      // the normal template (or empty) rather than throwing in render.
+      // the configured starter (or blank) rather than throwing in render.
     }
   }
-  return DEFAULT_TEMPLATES[language] ?? "";
+  // Default blank: no built-in fallback. Only the admin-configured starter is
+  // preloaded, verbatim (leading indentation preserved).
+  return starterCode ?? "";
 }
 
 /**
@@ -157,13 +167,28 @@ export function getStarterCode(opts: {
  * are treated as template-like too — this lets a language switch swap stubs
  * without clobbering code the student actually wrote.
  */
-export function isTemplateLike(code: string, functionSpec?: FunctionSpec | null): boolean {
+export function isTemplateLike(
+  code: string,
+  functionSpec?: FunctionSpec | null,
+  /** Configured starter codes across all available languages. A preloaded
+   *  starter for language X must stay overwritable after switching to Y. */
+  knownStarters?: readonly string[],
+): boolean {
   const trimmed = code.trim();
   if (trimmed.length === 0) return true;
 
-  // Check if it matches any existing template (ignoring whitespace)
-  for (const tmpl of Object.values(DEFAULT_TEMPLATES)) {
+  // Legacy boilerplate an older session may have preloaded is still treated as
+  // "not real work" so a language switch / draft restore can replace it.
+  for (const tmpl of Object.values(LEGACY_TEMPLATES)) {
     if (tmpl.trim() === trimmed) return true;
+  }
+
+  // Admin-configured starter codes are template-like too.
+  if (knownStarters) {
+    for (const starter of knownStarters) {
+      const starterTrimmed = starter.trim();
+      if (starterTrimmed.length > 0 && starterTrimmed === trimmed) return true;
+    }
   }
 
   // For function problems, the adapter stub for any supported language is also

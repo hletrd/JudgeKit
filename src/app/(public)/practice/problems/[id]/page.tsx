@@ -259,7 +259,7 @@ export default async function PublicProblemDetailPage({
       siteDescription: tCommon("appDescription"),
     }),
     getSystemSettings(),
-    db.select({ id: languageConfigs.id, language: languageConfigs.language, displayName: languageConfigs.displayName, standard: languageConfigs.standard, isEnabled: languageConfigs.isEnabled }).from(languageConfigs).where(eq(languageConfigs.isEnabled, true)),
+    db.select({ id: languageConfigs.id, language: languageConfigs.language, displayName: languageConfigs.displayName, standard: languageConfigs.standard, starterCode: languageConfigs.starterCode, isEnabled: languageConfigs.isEnabled }).from(languageConfigs).where(eq(languageConfigs.isEnabled, true)),
     listProblemDiscussionThreads(problem.id, session?.user?.id ?? null),
     listProblemSolutionThreads(problem.id, session?.user?.id ?? null),
     listProblemEditorials(problem.id, session?.user?.id ?? null),
@@ -288,6 +288,9 @@ export default async function PublicProblemDetailPage({
       language: language.language,
       displayName: definition.displayName,
       standard: definition.standard,
+      // Admin-configured skeleton code (null = blank editor); the built-in
+      // definition carries no starter code.
+      starterCode: language.starterCode,
     }];
   });
 

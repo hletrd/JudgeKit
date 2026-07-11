@@ -19,6 +19,7 @@ const addLanguageSchema = z.object({
   compileCommand: z.string().max(500).nullable().optional(),
   runCommand: z.string().min(1).max(500),
   dockerfile: z.string().max(10000).nullable().optional(),
+  starterCode: z.string().max(20000).nullable().optional(),
 });
 
 export const GET = createApiHandler({
@@ -83,6 +84,9 @@ export const POST = createApiHandler({
         compileCommand: body.compileCommand?.trim() || null,
         runCommand: body.runCommand.trim(),
         dockerfile: body.dockerfile?.trim() || null,
+        // Preserve starter code verbatim (leading whitespace/indentation is
+        // significant); only an all-whitespace value collapses to null/blank.
+        starterCode: body.starterCode && body.starterCode.trim() ? body.starterCode : null,
         isEnabled: true,
         updatedAt: await getDbNowUncached(),
       })

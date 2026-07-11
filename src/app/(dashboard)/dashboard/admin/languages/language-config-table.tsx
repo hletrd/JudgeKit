@@ -56,6 +56,7 @@ interface LanguageConfig {
   compileCommand: string | null;
   runCommand: string;
   dockerfile: string | null;
+  starterCode: string | null;
   isEnabled: boolean | null;
   updatedAt: Date;
   runtimeInfo: string;
@@ -68,7 +69,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [editingLang, setEditingLang] = useState<LanguageConfig | null>(null);
-  const [editForm, setEditForm] = useState({ dockerImage: "", compileCommand: "", runCommand: "", dockerfile: "" });
+  const [editForm, setEditForm] = useState({ dockerImage: "", compileCommand: "", runCommand: "", dockerfile: "", starterCode: "" });
   const [search, setSearch] = useState("");
   const [imageInfo, setImageInfo] = useState<Map<string, { size: string; created: string; stale: boolean }>>(new Map());
   const [diskUsage, setDiskUsage] = useState<{ total: string; used: string; available: string; usePercent: string } | null>(null);
@@ -77,7 +78,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
   const [addForm, setAddForm] = useState({
     language: "", displayName: "", standard: "", extension: "",
     dockerImage: "", compiler: "", compileCommand: "", runCommand: "",
-    dockerfile: "",
+    dockerfile: "", starterCode: "",
   });
   const [isPruning, setIsPruning] = useState(false);
   const [staleCount, setStaleCount] = useState(0);
@@ -271,6 +272,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
       compileCommand: lang.compileCommand ?? "",
       runCommand: lang.runCommand,
       dockerfile: lang.dockerfile ?? "",
+      starterCode: lang.starterCode ?? "",
     });
   }
 
@@ -345,6 +347,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         compileCommand: addForm.compileCommand || undefined,
         runCommand: addForm.runCommand,
         dockerfile: addForm.dockerfile || undefined,
+        starterCode: addForm.starterCode || undefined,
       });
       if (result.success) {
         toast.success(t("add.createSuccess"));
@@ -352,7 +355,7 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
         setAddForm({
           language: "", displayName: "", standard: "", extension: "",
           dockerImage: "", compiler: "", compileCommand: "", runCommand: "",
-          dockerfile: "",
+          dockerfile: "", starterCode: "",
         });
         router.refresh();
       } else {
@@ -610,6 +613,20 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
               />
               <p id="edit-dockerfile-help" className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-starter-code">{t("edit.starterCode")}</Label>
+              <Textarea
+                id="edit-starter-code"
+                aria-describedby="edit-starter-code-help"
+                value={editForm.starterCode}
+                onChange={(e) => setEditForm(prev => ({ ...prev, starterCode: e.target.value }))}
+                rows={10}
+                className="font-mono text-sm"
+                placeholder={t("edit.starterCodePlaceholder")}
+              />
+              <p id="edit-starter-code-help" className="text-xs text-muted-foreground">{t("edit.starterCodeHelp")}</p>
+            </div>
           </div>
 
           <div className="border-t px-6 py-4 flex gap-2">
@@ -743,6 +760,20 @@ export function LanguageConfigTable({ languages }: { languages: LanguageConfig[]
                 placeholder={t("edit.dockerfilePlaceholder")}
               />
               <p id="add-dockerfile-help" className="text-xs text-muted-foreground">{t("edit.dockerfileHelp")}</p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="add-starter-code">{t("edit.starterCode")} <span className="text-muted-foreground text-xs">({tCommon("optional")})</span></Label>
+              <Textarea
+                id="add-starter-code"
+                aria-describedby="add-starter-code-help"
+                value={addForm.starterCode}
+                onChange={(e) => setAddForm(prev => ({ ...prev, starterCode: e.target.value }))}
+                rows={10}
+                className="font-mono text-sm"
+                placeholder={t("edit.starterCodePlaceholder")}
+              />
+              <p id="add-starter-code-help" className="text-xs text-muted-foreground">{t("edit.starterCodeHelp")}</p>
             </div>
           </div>
 

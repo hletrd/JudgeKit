@@ -267,6 +267,13 @@
       "when": 1783688126515,
       "tag": "0037_graceful_switch",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1783748342024,
+      "tag": "0038_abnormal_tigra",
+      "breakpoints": true
     }
   ]
 }

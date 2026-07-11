@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LanguageSelector } from "@/components/language-selector";
 import { apiFetch, parseApiResponse } from "@/lib/api/client";
-import { DEFAULT_TEMPLATES, getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
+import { getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
 import { FUNCTION_JUDGING_LANGUAGES } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 import { useSourceDraft } from "@/hooks/use-source-draft";
@@ -24,6 +24,8 @@ type SubmissionLanguage = {
   language: string;
   displayName: string;
   standard: string | null;
+  /** Admin-configured skeleton code for this language (null = blank editor). */
+  starterCode?: string | null;
 };
 
 type ProblemSubmissionFormProps = {
@@ -89,6 +91,18 @@ export function ProblemSubmissionForm({
   }, [allLanguages, isFunctionProblem, functionSpec]);
 
   const availableLanguages = useMemo(() => languages.map((entry) => entry.language), [languages]);
+
+  // Admin-configured starter code: a per-language lookup for the current
+  // selection, plus the set of all configured starters so isTemplateLike can
+  // recognize a preloaded starter as overwritable after a language switch.
+  const starterByLanguage = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of languages) {
+      if (entry.starterCode) map.set(entry.language, entry.starterCode);
+    }
+    return map;
+  }, [languages]);
+  const knownStarters = useMemo(() => [...starterByLanguage.values()], [starterByLanguage]);
   const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
     problemId,
@@ -114,6 +128,7 @@ export function ProblemSubmissionForm({
     language,
     sourceCode,
     setSourceCode,
+    knownStarters,
     onRestored: ({ updatedAt }) => {
       const when = updatedAt ? new Date(updatedAt) : null;
       const time =
@@ -130,11 +145,11 @@ export function ProblemSubmissionForm({
       prevLanguageRef.current = language;
       // Swap the starter code on language switch, but only when the editor
       // still holds template/stub content (never clobber real student work).
-      if (isTemplateLike(sourceCode, activeFunctionSpec)) {
-        setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }));
+      if (isTemplateLike(sourceCode, activeFunctionSpec, knownStarters)) {
+        setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language, starterCode: starterByLanguage.get(language) ?? null }));
       }
     }
-  }, [language, sourceCode, setSourceCode, problemType, activeFunctionSpec]);
+  }, [language, sourceCode, setSourceCode, problemType, activeFunctionSpec, knownStarters, starterByLanguage]);
 
   // Initial stub preload for function problems: a freshly opened editor starts
   // empty, so seed the adapter stub for the selected language. Mirrors the
@@ -142,12 +157,15 @@ export function ProblemSubmissionForm({
   const stubPreloadedRef = useRef(false);
   useEffect(() => {
     if (stubPreloadedRef.current) return;
-    if (!activeFunctionSpec) return;
+    // Preload the starter code into a freshly-opened empty editor — for
+    // function problems this is the adapter stub, otherwise the configured
+    // starter (blank when unset). Only ever fills an empty editor.
     if (sourceCode.trim().length === 0) {
-      setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }));
+      const preload = getStarterCode({ problemType, functionSpec: activeFunctionSpec, language, starterCode: starterByLanguage.get(language) ?? null });
+      if (preload) setSourceCode(preload);
     }
     stubPreloadedRef.current = true;
-  }, [activeFunctionSpec, problemType, language, sourceCode, setSourceCode]);
+  }, [activeFunctionSpec, problemType, language, sourceCode, setSourceCode, starterByLanguage]);
 
   const lastSnapshotRef = useRef<string>("");
   const lastChangeRef = useRef<number>(0);
@@ -399,13 +417,13 @@ export function ProblemSubmissionForm({
           >
             {t("uploadSourceFile")}
           </Button>
-          {(activeFunctionSpec || DEFAULT_TEMPLATES[language]) && (
+          {(activeFunctionSpec || starterByLanguage.get(language)) && (
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() =>
-                setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language }))
+                setSourceCode(getStarterCode({ problemType, functionSpec: activeFunctionSpec, language, starterCode: starterByLanguage.get(language) ?? null }))
               }
               title={activeFunctionSpec ? t("resetToStub") : t("resetToTemplate")}
             >

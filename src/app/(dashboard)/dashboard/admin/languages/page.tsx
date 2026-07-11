@@ -25,6 +25,7 @@ export default async function AdminLanguagesPage() {
     compileCommand: languageConfigs.compileCommand,
     runCommand: languageConfigs.runCommand,
     dockerfile: languageConfigs.dockerfile,
+    starterCode: languageConfigs.starterCode,
     isEnabled: languageConfigs.isEnabled,
     updatedAt: languageConfigs.updatedAt,
   }).from(languageConfigs).orderBy(asc(languageConfigs.displayName), asc(languageConfigs.standard));

@@ -18,6 +18,9 @@ interface UseServerSourceDraftOptions {
    * Restoration behavior is identical with or without the callback.
    */
   onRestored?: (info: { updatedAt: string | null }) => void;
+  /** Configured starter codes so an unmodified starter is recognized as
+   *  template-like (safe to restore over / not autosaved as real work). */
+  knownStarters?: readonly string[];
 }
 
 const AUTOSAVE_DEBOUNCE_MS = 3000;
@@ -43,12 +46,14 @@ export function useServerSourceDraft({
   setSourceCode,
   enabled = true,
   onRestored,
+  knownStarters,
 }: UseServerSourceDraftOptions): void {
   const hydratedRef = useRef(false);
   const sourceRef = useRef(sourceCode);
   const languageRef = useRef(language);
   const setSourceRef = useRef(setSourceCode);
   const onRestoredRef = useRef(onRestored);
+  const knownStartersRef = useRef(knownStarters);
   const lastSavedRef = useRef<string>("");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -64,6 +69,9 @@ export function useServerSourceDraft({
   useEffect(() => {
     onRestoredRef.current = onRestored;
   }, [onRestored]);
+  useEffect(() => {
+    knownStartersRef.current = knownStarters;
+  }, [knownStarters]);
 
   // One-time hydration from the server draft (current language only).
   useEffect(() => {
@@ -79,7 +87,7 @@ export function useServerSourceDraft({
         const drafts = json?.data?.drafts ?? [];
         const match = drafts.find((d) => d.language === languageRef.current);
         // Only restore into an empty/template editor — never overwrite work.
-        if (match && isTemplateLike(sourceRef.current)) {
+        if (match && isTemplateLike(sourceRef.current, null, knownStartersRef.current)) {
           setSourceRef.current(match.sourceCode);
           lastSavedRef.current = match.sourceCode;
           onRestoredRef.current?.({ updatedAt: match.updatedAt ?? null });
@@ -98,7 +106,7 @@ export function useServerSourceDraft({
   // Debounced autosave of meaningful (non-template) changes.
   useEffect(() => {
     if (!enabled || !hydratedRef.current) return;
-    if (sourceCode.trim().length === 0 || isTemplateLike(sourceCode)) return;
+    if (sourceCode.trim().length === 0 || isTemplateLike(sourceCode, null, knownStartersRef.current)) return;
     if (sourceCode === lastSavedRef.current) return;
 
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);

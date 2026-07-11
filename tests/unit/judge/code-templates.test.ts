@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TEMPLATES, getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
+import { getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
 import { getAdapter } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 
@@ -12,6 +12,8 @@ const twoSum: FunctionSpec = {
   returnType: "int[]",
   enabledLanguages: ["python", "cpp23", "javascript"],
 };
+
+const SAMPLE_STARTER = "#include <bits/stdc++.h>\nint main() { return 0; }";
 
 describe("getStarterCode", () => {
   it("returns the adapter stub for a function problem in a supported language", () => {
@@ -26,30 +28,39 @@ describe("getStarterCode", () => {
     expect(code).toContain("class Solution");
   });
 
-  it("falls back to DEFAULT_TEMPLATES for a function problem in an UNSUPPORTED language", () => {
-    // rust is not a function-judging language → normal template.
-    const code = getStarterCode({ problemType: "function", functionSpec: twoSum, language: "rust" });
-    expect(code).toBe(DEFAULT_TEMPLATES.rust);
+  it("returns the configured starter for a function problem in an UNSUPPORTED language", () => {
+    // rust is not a function-judging language → the configured starter (or blank).
+    const code = getStarterCode({ problemType: "function", functionSpec: twoSum, language: "rust", starterCode: SAMPLE_STARTER });
+    expect(code).toBe(SAMPLE_STARTER);
   });
 
-  it("falls back to DEFAULT_TEMPLATES when problemType is not 'function'", () => {
-    const code = getStarterCode({ problemType: "auto", functionSpec: twoSum, language: "python" });
-    expect(code).toBe(DEFAULT_TEMPLATES.python);
+  it("returns the configured starter when problemType is not 'function'", () => {
+    const code = getStarterCode({ problemType: "auto", functionSpec: twoSum, language: "cpp", starterCode: SAMPLE_STARTER });
+    expect(code).toBe(SAMPLE_STARTER);
   });
 
-  it("falls back to DEFAULT_TEMPLATES when no spec is present", () => {
-    const code = getStarterCode({ problemType: "function", functionSpec: null, language: "python" });
-    expect(code).toBe(DEFAULT_TEMPLATES.python);
+  it("returns the configured starter when no spec is present", () => {
+    const code = getStarterCode({ problemType: "function", functionSpec: null, language: "cpp", starterCode: SAMPLE_STARTER });
+    expect(code).toBe(SAMPLE_STARTER);
   });
 
-  it("returns empty string for an unknown language with no template", () => {
+  it("defaults to BLANK when no starter code is configured", () => {
+    // The core requirement: no built-in fallback template. Unset → empty editor.
+    expect(getStarterCode({ problemType: "auto", functionSpec: null, language: "cpp" })).toBe("");
+    expect(getStarterCode({ problemType: "auto", functionSpec: null, language: "python", starterCode: null })).toBe("");
     expect(getStarterCode({ problemType: "auto", functionSpec: null, language: "no-such-lang" })).toBe("");
   });
 
-  it("does not throw and falls back when the spec is malformed for stub generation", () => {
-    // An invalid spec object that the adapter may reject — must not throw.
+  it("preserves configured starter whitespace/indentation verbatim", () => {
+    const indented = "def solve():\n    x = 1\n    return x\n";
+    expect(getStarterCode({ problemType: "auto", functionSpec: null, language: "python", starterCode: indented })).toBe(indented);
+  });
+
+  it("does not throw and falls back to the configured starter when the spec is malformed", () => {
     const bad = { functionName: "f", params: [], returnType: "int", enabledLanguages: [] } as unknown as FunctionSpec;
-    expect(() => getStarterCode({ problemType: "function", functionSpec: bad, language: "python" })).not.toThrow();
+    expect(() =>
+      getStarterCode({ problemType: "function", functionSpec: bad, language: "python", starterCode: SAMPLE_STARTER }),
+    ).not.toThrow();
   });
 });
 
@@ -59,21 +70,30 @@ describe("isTemplateLike", () => {
     expect(isTemplateLike("   \n  ")).toBe(true);
   });
 
-  it("treats a DEFAULT_TEMPLATES entry as template-like", () => {
-    expect(isTemplateLike(DEFAULT_TEMPLATES.python)).toBe(true);
+  it("treats a configured starter (from knownStarters) as template-like", () => {
+    // The configured starter must stay overwritable after a language switch.
+    expect(isTemplateLike(SAMPLE_STARTER, null, [SAMPLE_STARTER])).toBe(true);
+    // Not recognized without the known-starter set (looks like user code).
+    expect(isTemplateLike(SAMPLE_STARTER)).toBe(false);
+  });
+
+  it("still recognizes legacy built-in boilerplate as template-like", () => {
+    // Older sessions may have preloaded the built-in C++ boilerplate; it must
+    // remain overwritable across the transition to blank defaults.
+    const legacyCpp = `#include <bits/stdc++.h>\nusing namespace std;\n\nint main(void) {\n    ios_base::sync_with_stdio(false);\n    cin.tie(nullptr);\n\n    return 0;\n}`;
+    expect(isTemplateLike(legacyCpp)).toBe(true);
   });
 
   it("treats a function adapter stub as template-like when a spec is supplied", () => {
     const pyStub = getAdapter("python").generateStub(twoSum);
     const cppStub = getAdapter("cpp23").generateStub(twoSum);
-    // Without a spec it is NOT recognized as template-like (it is user-looking code).
     expect(isTemplateLike(pyStub)).toBe(false);
-    // With the spec, any supported-language stub is template-like.
     expect(isTemplateLike(pyStub, twoSum)).toBe(true);
     expect(isTemplateLike(cppStub, twoSum)).toBe(true);
   });
 
-  it("treats real student code as NOT template-like even with a spec", () => {
+  it("treats real student code as NOT template-like", () => {
     expect(isTemplateLike("class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]\n", twoSum)).toBe(false);
+    expect(isTemplateLike("print('hello world')", null, [SAMPLE_STARTER])).toBe(false);
   });
 });

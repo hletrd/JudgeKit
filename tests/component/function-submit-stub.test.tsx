@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import { ProblemSubmissionForm } from "@/components/problem/problem-submission-form";
-import { DEFAULT_TEMPLATES } from "@/lib/judge/code-templates";
 import { getAdapter } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 
@@ -103,9 +102,10 @@ const twoSum: FunctionSpec = {
   enabledLanguages: ["python", "cpp23", "rust"],
 };
 
+const PYTHON_STARTER = "def solve():\n    pass\n";
 const allLanguages = [
   { id: "1", language: "c", displayName: "C", standard: null },
-  { id: "2", language: "python", displayName: "Python", standard: null },
+  { id: "2", language: "python", displayName: "Python", standard: null, starterCode: PYTHON_STARTER },
   { id: "3", language: "cpp23", displayName: "C++", standard: "C++23" },
   { id: "4", language: "rust", displayName: "Rust", standard: null },
   { id: "5", language: "java", displayName: "Java", standard: null },
@@ -214,15 +214,20 @@ describe("ProblemSubmissionForm — function-problem stub preload + language gat
     expect(editorValue()).toBe(studentCode);
   });
 
-  it("normal (non-function) problem keeps the full language list and template behavior", async () => {
+  it("normal (non-function) problem preloads the admin-configured starter, blank when unset", async () => {
     render(<ProblemSubmissionForm {...baseProps()} problemDefaultLanguage="c" />);
 
     // Full enabled-language list, unchanged.
     expect(availableLangs().sort()).toEqual(["c", "cpp23", "java", "python", "rust"].sort());
 
-    // Editor starts empty; switching language preloads the DEFAULT_TEMPLATES entry.
+    // C has no configured starter → blank (default). Switching to python, which
+    // DOES have a configured starter, preloads it into the empty editor.
     expect(editorValue()).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "python" }));
-    await waitFor(() => expect(editorValue()).toBe(DEFAULT_TEMPLATES.python));
+    await waitFor(() => expect(editorValue()).toBe(PYTHON_STARTER));
+
+    // Switching to rust (no configured starter) clears back to blank.
+    fireEvent.click(screen.getByRole("button", { name: "rust" }));
+    await waitFor(() => expect(editorValue()).toBe(""));
   });
 });

@@ -563,6 +563,10 @@ export const languageConfigs = pgTable("language_configs", {
   runCommand: text("run_command").notNull(),
   dockerfile: text("dockerfile"),
   isEnabled: boolean("is_enabled").default(true),
+  // Admin-configured skeleton (starter) code preloaded into the editor when a
+  // user picks this language. NULL/empty = a blank editor — there is no
+  // built-in fallback template.
+  starterCode: text("starter_code"),
   // Per-language time-limit multiplier applied at judge claim time. 1.0 means
   // the problem's `time_limit_ms` is honoured as-is. Set 2.5 for Python on
   // problems written for C++, 4.0 for interpreted languages with heavy startup

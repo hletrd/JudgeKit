@@ -22,6 +22,7 @@ const updateLanguageConfigSchema = z.object({
   compileCommand: z.string().max(5000),
   runCommand: z.string().min(1).max(5000),
   dockerfile: z.string().max(50000).optional(),
+  starterCode: z.string().max(20000).optional(),
 });
 
 type LanguageConfigActionResult =
@@ -87,7 +88,7 @@ export async function toggleLanguage(
 
 export async function updateLanguageConfig(
   language: string,
-  data: { dockerImage: string; compileCommand: string; runCommand: string; dockerfile?: string }
+  data: { dockerImage: string; compileCommand: string; runCommand: string; dockerfile?: string; starterCode?: string }
 ): Promise<LanguageConfigActionResult> {
   if (!(await isTrustedServerActionOrigin())) {
     return { success: false, error: "unauthorized" };
@@ -114,6 +115,8 @@ export async function updateLanguageConfig(
         compileCommand: data.compileCommand || null,
         runCommand: data.runCommand,
         dockerfile: data.dockerfile || null,
+        // Preserve indentation verbatim; only all-whitespace collapses to null.
+        starterCode: data.starterCode && data.starterCode.trim() ? data.starterCode : null,
         updatedAt: await getDbNowUncached(),
       })
       .where(eq(languageConfigs.language, language));
@@ -133,6 +136,7 @@ export async function updateLanguageConfig(
         compileCommand: data.compileCommand,
         runCommand: data.runCommand,
         hasDockerfile: Boolean(data.dockerfile),
+        hasStarterCode: Boolean(data.starterCode && data.starterCode.trim()),
       },
       context: auditContext,
     });
@@ -157,6 +161,7 @@ export async function addLanguageConfig(input: {
   compileCommand?: string;
   runCommand: string;
   dockerfile?: string;
+  starterCode?: string;
 }): Promise<LanguageConfigActionResult> {
   if (!(await isTrustedServerActionOrigin())) {
     return { success: false, error: "unauthorized" };
@@ -201,6 +206,7 @@ export async function addLanguageConfig(input: {
       compileCommand: input.compileCommand?.trim() || null,
       runCommand: input.runCommand.trim(),
       dockerfile: input.dockerfile?.trim() || null,
+      starterCode: input.starterCode && input.starterCode.trim() ? input.starterCode : null,
       isEnabled: true,
       updatedAt: await getDbNowUncached(),
     });

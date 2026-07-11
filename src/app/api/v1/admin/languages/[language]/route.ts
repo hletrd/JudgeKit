@@ -16,6 +16,7 @@ const updateLanguageSchema = z.object({
   dockerfile: z.string().max(10000).nullable().optional(),
   isEnabled: z.boolean().optional(),
   timeLimitMultiplier: z.number().min(0.1).max(50).optional(),
+  starterCode: z.string().max(20000).nullable().optional(),
 });
 
 export const GET = createApiHandler({
@@ -56,6 +57,11 @@ export const PATCH = createApiHandler({
     if (body.dockerfile !== undefined) updateValues.dockerfile = body.dockerfile;
     if (body.isEnabled !== undefined) updateValues.isEnabled = body.isEnabled;
     if (body.timeLimitMultiplier !== undefined) updateValues.timeLimitMultiplier = body.timeLimitMultiplier;
+    // Preserve starter code verbatim (indentation matters); all-whitespace or
+    // empty collapses to null so the editor opens blank.
+    if (body.starterCode !== undefined) {
+      updateValues.starterCode = body.starterCode && body.starterCode.trim() ? body.starterCode : null;
+    }
 
     await db
       .update(languageConfigs)

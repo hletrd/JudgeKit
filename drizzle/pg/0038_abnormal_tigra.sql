@@ -1,0 +1,1 @@
+ALTER TABLE "language_configs" ADD COLUMN "starter_code" text;
