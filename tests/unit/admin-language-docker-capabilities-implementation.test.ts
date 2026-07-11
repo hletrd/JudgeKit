@@ -12,7 +12,7 @@ describe("admin language Docker capability implementation", () => {
 
     expect(table).toContain("imageStatusLoading");
     expect(table).toContain("setBuildingLangs");
-    expect(table).toContain("buildAbortControllerRef");
+    expect(table).toContain("buildAbortControllersRef");
     expect(table).toContain("pruneAbortControllerRef");
     expect(table).toContain('t("imageStatus.stale")');
   });
