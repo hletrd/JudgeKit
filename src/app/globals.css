@@ -572,6 +572,18 @@
     line-height: 1.7;
   }
 
+  /* Read-only code viewers (submission detail, accepted solutions, etc.).
+     The extra `.code-viewer` class raises specificity above CodeMirror's
+     injected base theme (`.cm-editor { font-size: 0.875rem }`), which
+     otherwise wins and pins the viewer font. The plain-text textarea viewer
+     (whitespace language) is scaled by the same `.code-viewer` selector. */
+  .lecture-mode .code-viewer,
+  .lecture-mode .code-viewer.cm-editor,
+  .lecture-mode .code-viewer .cm-editor,
+  .lecture-mode .code-viewer .cm-scroller {
+    font-size: calc(0.95rem * var(--lecture-font-scale));
+  }
+
   .lecture-mode .lecture-panel-header {
     font-size: calc(1rem * var(--lecture-font-scale));
     font-weight: 600;

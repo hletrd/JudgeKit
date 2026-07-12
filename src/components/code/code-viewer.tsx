@@ -32,7 +32,7 @@ export function CodeViewer(props: CodeViewerProps) {
           aria-label={props.ariaLabel}
           aria-labelledby={props.ariaLabelledby}
           className={cn(
-            "code-surface w-full overflow-auto rounded-xl border bg-[var(--code-surface-background)] p-4 font-mono text-sm text-[var(--code-surface-foreground)] leading-relaxed shadow-sm transition-colors",
+            "code-viewer code-surface w-full overflow-auto rounded-xl border bg-[var(--code-surface-background)] p-4 font-mono text-sm text-[var(--code-surface-foreground)] leading-relaxed shadow-sm transition-colors",
             props.tone === "danger" ? "code-surface-danger" : "code-surface-default",
             props.className,
           )}
@@ -47,7 +47,12 @@ export function CodeViewer(props: CodeViewerProps) {
   return (
     <div className="relative">
       <CopyCodeButton value={props.value} />
-      <CodeSurface {...props} minHeight={height} readOnly />
+      <CodeSurface
+        {...props}
+        className={cn("code-viewer", props.className)}
+        minHeight={height}
+        readOnly
+      />
     </div>
   );
 }
