@@ -29,6 +29,8 @@ import { StartExamButton } from "@/components/exam/start-exam-button";
 import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "./filter-form";
 import { StatusBoard } from "./status-board";
+import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
+import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 
 const STATUS_FILTER_VALUES = ["all", ...ASSIGNMENT_PARTICIPANT_STATUS_VALUES] as const;
 
@@ -304,6 +306,12 @@ export default async function GroupAssignmentDetailPage({
 
   const filterSummary = tAssignment("filterSummary", { count: filteredRows.length });
   const boardTitle = tAssignment("boardTitle");
+  // Auto-refresh while any submission is still judging (server-rendered board).
+  const hasActiveStatusRows = filteredRows.some(
+    (row) =>
+      (row.latestStatus != null && IN_PROGRESS_JUDGE_STATUSES.has(row.latestStatus)) ||
+      row.problems.some((pr) => pr.latestStatus != null && IN_PROGRESS_JUDGE_STATUSES.has(pr.latestStatus)),
+  );
 
   return (
     <div className="space-y-6">
@@ -361,6 +369,7 @@ export default async function GroupAssignmentDetailPage({
         }}
       />
 
+      <SubmissionListAutoRefresh hasActiveSubmissions={hasActiveStatusRows} />
       <StatusBoard
         filteredRows={filteredRows}
         problems={assignmentStatus.problems}

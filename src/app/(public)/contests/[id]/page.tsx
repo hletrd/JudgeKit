@@ -8,6 +8,8 @@ import { ContestReplay } from "@/components/contest/contest-replay";
 import { ContestStatistics } from "@/components/contest/contest-statistics";
 import { ContestClarifications } from "@/components/contest/contest-clarifications";
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";
+import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
+import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { ContestJoinClient } from "@/app/(public)/contests/join/contest-join-client";
 import { JsonLd } from "@/components/seo/json-ld";
 import { AntiCheatMonitor } from "@/components/exam/anti-cheat-monitor";
@@ -348,6 +350,14 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
             {!isRecruitingCandidate && (
               <LeaderboardTable assignmentId={contest.id} currentUserId={session.user.id} />
             )}
+
+{/* Auto-refresh the server-rendered "My submissions" table while any of the
+                viewer's own submissions is still being judged. */}
+            <SubmissionListAutoRefresh
+              hasActiveSubmissions={mySubmissions.some(
+                (sub) => sub.status != null && IN_PROGRESS_JUDGE_STATUSES.has(sub.status),
+              )}
+            />
 
             {/* My Submissions */}
             <Card>

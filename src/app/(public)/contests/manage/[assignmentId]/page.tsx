@@ -26,6 +26,8 @@ import { getExamSessionsForAssignment } from "@/lib/assignments/exam-sessions";
 import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { FilterForm } from "../../../groups/[id]/assignments/[assignmentId]/filter-form";
 import { StatusBoard } from "../../../groups/[id]/assignments/[assignmentId]/status-board";
+import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
+import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";
 import { AccessCodeManager } from "@/components/contest/access-code-manager";
 import { InviteParticipants } from "@/components/contest/invite-participants";
@@ -310,6 +312,14 @@ export default async function ContestDetailPage({
     );
   });
 
+  // Auto-refresh the status board while any submission is still being judged:
+  // the board is server-rendered, so router.refresh() re-queries fresh rows.
+  const hasActiveStatusRows = filteredRows.some(
+    (row) =>
+      (row.latestStatus != null && IN_PROGRESS_JUDGE_STATUSES.has(row.latestStatus)) ||
+      row.problems.some((pr) => pr.latestStatus != null && IN_PROGRESS_JUDGE_STATUSES.has(pr.latestStatus)),
+  );
+
   const filterSummary = tAssignment("filterSummary", { count: filteredRows.length });
 
   // Quick stats
@@ -516,6 +526,7 @@ export default async function ContestDetailPage({
               },
             }}
           />
+          <SubmissionListAutoRefresh hasActiveSubmissions={hasActiveStatusRows} />
         </TabsContent>
 
         {/* Leaderboard Tab */}
