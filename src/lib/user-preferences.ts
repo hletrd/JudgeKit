@@ -20,9 +20,10 @@ export type UserPreferences = {
 export const PREFERENCE_DEFAULTS: UserPreferences = {
   preferredLanguage: null,
   preferredTheme: null,
-  // Opt-out model: students share accepted solutions by default for
-  // collaborative learning unless they explicitly opt out.
-  shareAcceptedSolutions: true,
+  // Opt-in model: accepted solutions are PRIVATE unless the user explicitly
+  // enables sharing. (Was opt-out before the privacy fix that also turned
+  // sharing off for every existing account.)
+  shareAcceptedSolutions: false,
   acceptedSolutionsAnonymous: false,
   editorTheme: null,
   editorFontSize: null,
@@ -61,7 +62,7 @@ export const getUserPreferences = cache(
     return {
       preferredLanguage: row.preferredLanguage ?? null,
       preferredTheme: row.preferredTheme ?? null,
-      shareAcceptedSolutions: row.shareAcceptedSolutions ?? true,
+      shareAcceptedSolutions: row.shareAcceptedSolutions ?? false,
       acceptedSolutionsAnonymous: row.acceptedSolutionsAnonymous ?? false,
       editorTheme: row.editorTheme ?? null,
       editorFontSize: row.editorFontSize ?? null,

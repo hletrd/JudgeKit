@@ -39,7 +39,7 @@ export const users = pgTable(
     image: text("image"),
     preferredLanguage: text("preferred_language"),
     preferredTheme: text("preferred_theme"),
-    shareAcceptedSolutions: boolean("share_accepted_solutions").notNull().default(true),
+    shareAcceptedSolutions: boolean("share_accepted_solutions").notNull().default(false),
     acceptedSolutionsAnonymous: boolean("accepted_solutions_anonymous").notNull().default(false),
     editorTheme: text("editor_theme"),
     editorFontSize: text("editor_font_size"),
@@ -520,6 +520,12 @@ export const submissions = pgTable(
     score: doublePrecision("score"),
     judgedAt: timestamp("judged_at", { withTimezone: true }),
     ipAddress: text("ip_address"),
+    // Snapshot of the author's shareAcceptedSolutions preference at submission
+    // time. The accepted-solutions viewer only lists submissions where BOTH
+    // this flag AND the author's current preference are true, so enabling
+    // sharing later never retroactively exposes code submitted while sharing
+    // was off. Always false for assignment submissions.
+    sharedWithCommunity: boolean("shared_with_community").notNull().default(false),
     submittedAt: timestamp("submitted_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),

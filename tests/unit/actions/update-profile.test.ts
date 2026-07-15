@@ -110,7 +110,9 @@ const testUser = {
   className: "CS101",
   preferredLanguage: null,
   preferredTheme: null,
-  shareAcceptedSolutions: true,
+  // Matches the post-privacy-backfill platform state: sharing is opt-in and
+  // off for every account (migration 0039 turned it off platform-wide).
+  shareAcceptedSolutions: false,
   acceptedSolutionsAnonymous: false,
   editorTheme: null,
   editorFontSize: null,

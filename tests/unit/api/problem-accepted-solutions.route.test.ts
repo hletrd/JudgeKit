@@ -208,4 +208,15 @@ describe("C4-N3 source contract: accepted-solutions share filter is in SQL", () 
   it("no post-query JS .filter on shareAcceptedSolutions remains", () => {
     expect(source).not.toMatch(/\.filter\([\s\S]{0,80}?shareAcceptedSolutions/);
   });
+
+  it("whereClause requires the per-submission sharedWithCommunity snapshot", () => {
+    // Privacy contract: sharing is snapshotted at submission time
+    // (submissions.shared_with_community). Both the count and list queries go
+    // through whereClause, so pinning the clause there covers both. Without
+    // this, re-enabling the profile toggle would retroactively expose code
+    // submitted while sharing was off (including all pre-0039-backfill rows).
+    expect(source).toMatch(
+      /whereClause\s*=\s*and\([\s\S]{0,400}?eq\(submissions\.sharedWithCommunity,\s*true\)/
+    );
+  });
 });

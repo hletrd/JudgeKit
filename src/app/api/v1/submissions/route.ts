@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { extractClientIp } from "@/lib/security/ip";
 import { db, execTransaction } from "@/lib/db";
-import { antiCheatEvents, examSessions, languageConfigs, problems, submissions } from "@/lib/db/schema";
+import { antiCheatEvents, examSessions, languageConfigs, problems, submissions, users } from "@/lib/db/schema";
 import { isJudgeLanguage } from "@/lib/judge/languages";
 import { parseFunctionSpec } from "@/lib/judge/function-judging/types";
 import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
@@ -330,6 +330,20 @@ export const POST = createApiHandler({
     const isManualProblem = problem.problemType === "manual";
     const initialStatus = isManualProblem ? "submitted" : "pending";
 
+    // Snapshot the author's sharing preference at submission time. The
+    // accepted-solutions viewer requires this per-submission flag in addition
+    // to the author's CURRENT preference, so enabling sharing later never
+    // retroactively exposes code submitted while sharing was off. Assignment
+    // submissions are never community-shared, so skip the lookup entirely.
+    let sharedWithCommunity = false;
+    if (!normalizedAssignmentId) {
+      const author = await db.query.users.findFirst({
+        where: eq(users.id, user.id),
+        columns: { shareAcceptedSolutions: true },
+      });
+      sharedWithCommunity = author?.shareAcceptedSolutions ?? false;
+    }
+
     // Atomic rate limit check + insert in a single transaction
     // Uses SELECT FOR UPDATE to prevent concurrent submissions from bypassing limits
     const maxPerMinute = getSubmissionRateLimitMaxPerMinute();
@@ -424,6 +438,7 @@ export const POST = createApiHandler({
         status: initialStatus,
         ipAddress: ip,
         submittedAt: dbNow,
+        sharedWithCommunity,
       });
 
       return null; // success

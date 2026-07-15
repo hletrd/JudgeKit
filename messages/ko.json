@@ -1997,7 +1997,7 @@
     "editorFontFamilyPlaceholder": "글꼴 선택",
     "editorFontDefault": "시스템 기본값",
     "shareAcceptedSolutions": "맞은 사람 코드 공유",
-    "shareAcceptedSolutionsDesc": "공개 문제의 맞은 사람 코드 뷰어에 내 AC 제출을 공개해요.",
+    "shareAcceptedSolutionsDesc": "공개 문제의 맞은 사람 코드 뷰어에 내 AC 제출을 공개해요. 설정을 켠 이후의 제출부터 공개돼요.",
     "acceptedSolutionsAnonymous": "맞은 사람 코드에서 익명으로 표시",
     "acceptedSolutionsAnonymousDesc": "코드는 공유하되 사용자 이름은 숨기고 익명으로 표시해요."
   },

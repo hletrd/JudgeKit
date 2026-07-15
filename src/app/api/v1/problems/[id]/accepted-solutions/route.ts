@@ -38,10 +38,18 @@ export const GET = createApiHandler({
     // the underlying problem later becomes public — that would leak every
     // contest participant's code to peers as soon as a problem flips
     // visibility post-contest.
+    //
+    // sharedWithCommunity is the author's sharing preference SNAPSHOTTED at
+    // submission time. Requiring it here (in addition to the author's current
+    // shareAcceptedSolutions preference below) means turning sharing on only
+    // exposes submissions made from that point forward — code submitted while
+    // sharing was off (including everything before the 0039 privacy backfill
+    // that switched sharing off platform-wide) stays private forever.
     const whereClause = and(
       eq(submissions.problemId, id),
       eq(submissions.status, "accepted"),
       sql`${submissions.assignmentId} IS NULL`,
+      eq(submissions.sharedWithCommunity, true),
       language ? eq(submissions.language, language) : undefined,
     );
 

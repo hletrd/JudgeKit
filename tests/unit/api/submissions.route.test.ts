@@ -65,7 +65,12 @@ vi.mock("@/lib/capabilities/cache", () => ({
 const dbMockObj = {
   select: dbSelectMock,
   insert: vi.fn(() => ({ values: dbInsertMock })),
-  query: { submissions: { findFirst: vi.fn(), findMany: vi.fn() } },
+  query: {
+    submissions: { findFirst: vi.fn(), findMany: vi.fn() },
+    // POST snapshots the author's shareAcceptedSolutions preference into the
+    // submission row (sharedWithCommunity); default to the opt-in default.
+    users: { findFirst: vi.fn().mockResolvedValue({ shareAcceptedSolutions: false }) },
+  },
   execute: vi.fn().mockResolvedValue(undefined),
 };
 
@@ -162,6 +167,7 @@ describe("POST /api/v1/submissions", () => {
     canAccessProblemMock.mockResolvedValue(true);
     generateSubmissionIdMock.mockReturnValue("submission-abc123");
     dbInsertMock.mockResolvedValue(undefined);
+    dbMockObj.query.users.findFirst.mockResolvedValue({ shareAcceptedSolutions: false });
 
     queueSelectResults([
       [{ id: "problem-1", title: "Hello World" }],
@@ -213,6 +219,29 @@ describe("POST /api/v1/submissions", () => {
       status: "pending",
     });
     expect(recordAuditEventMock).toHaveBeenCalledOnce();
+  });
+
+  it("snapshots the author's sharing preference into sharedWithCommunity", async () => {
+    dbMockObj.query.users.findFirst.mockResolvedValue({ shareAcceptedSolutions: true });
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(201);
+    expect(dbInsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      sharedWithCommunity: true,
+    }));
+  });
+
+  it("inserts sharedWithCommunity=false when the author is not sharing", async () => {
+    const { POST } = await import("@/app/api/v1/submissions/route");
+
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(201);
+    expect(dbInsertMock).toHaveBeenCalledWith(expect.objectContaining({
+      sharedWithCommunity: false,
+    }));
   });
 
   it.each(["plaintext", "verilog", "systemverilog", "vhdl"])(
