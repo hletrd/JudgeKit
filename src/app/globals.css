@@ -576,12 +576,15 @@
      The extra `.code-viewer` class raises specificity above CodeMirror's
      injected base theme (`.cm-editor { font-size: 0.875rem }`), which
      otherwise wins and pins the viewer font. The plain-text textarea viewer
-     (whitespace language) is scaled by the same `.code-viewer` selector. */
+     (whitespace language) is scaled by the same `.code-viewer` selector.
+     Viewers use a larger base than the editable editor: they are what gets
+     projected when walking through solutions, so they need to read from the
+     back of a lecture room. */
   .lecture-mode .code-viewer,
   .lecture-mode .code-viewer.cm-editor,
   .lecture-mode .code-viewer .cm-editor,
   .lecture-mode .code-viewer .cm-scroller {
-    font-size: calc(0.95rem * var(--lecture-font-scale));
+    font-size: calc(1.3rem * var(--lecture-font-scale));
   }
 
   .lecture-mode .lecture-panel-header {
