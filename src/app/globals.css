@@ -410,6 +410,7 @@
 
 .lecture-mode {
   --lecture-font-scale: 1.5;
+  --lecture-base-size: calc(1.125rem * var(--lecture-font-scale));
   transition: background-color 300ms ease, color 300ms ease;
 }
 
@@ -517,7 +518,6 @@
 @layer components {
   /* Problem description body — full content scaling via CSS custom property cascade */
   .lecture-mode .problem-description {
-    --lecture-base-size: calc(1.125rem * var(--lecture-font-scale));
     font-size: var(--lecture-base-size);
     line-height: 1.8;
   }
@@ -563,9 +563,11 @@
     height: auto;
   }
 
-  /* Code editor scaling */
-  .lecture-mode .cm-editor {
-    font-size: calc(0.95rem * var(--lecture-font-scale));
+  /* Editable code surfaces use the same base size as the problem body.
+     CodeMirror consumes this property from its injected theme so its
+     unlayered default font rule cannot pin the editor to 0.875rem. */
+  .lecture-mode .code-surface:not(.code-viewer) {
+    --code-surface-font-size: var(--lecture-base-size);
   }
 
   .lecture-mode .cm-editor .cm-line {

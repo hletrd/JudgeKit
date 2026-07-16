@@ -104,7 +104,9 @@ export function CodeEditor(props: CodeEditorProps) {
         isFullscreen && "flex-1",
         props.className,
       )}
-      style={isFullscreen ? { tabSize: 4, whiteSpace: "pre" } : { minHeight: height, tabSize: 4, whiteSpace: "pre", resize: "vertical" }}
+      style={isFullscreen
+        ? { fontSize: "var(--code-surface-font-size, 0.875rem)", tabSize: 4, whiteSpace: "pre" }
+        : { fontSize: "var(--code-surface-font-size, 0.875rem)", minHeight: height, tabSize: 4, whiteSpace: "pre", resize: "vertical" }}
       placeholder={props.placeholder}
       value={props.value}
       onChange={(e) => onValueChange(e.target.value)}

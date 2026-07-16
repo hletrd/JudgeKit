@@ -19,3 +19,27 @@ describe("problem editor scroll implementation", () => {
     expect(codeSurfaceSource).toContain('overflow: "auto"');
   });
 });
+
+describe("problem editor lecture typography", () => {
+  it("uses the problem body font size for CodeMirror and raw textarea editors", () => {
+    const globalsCss = read("src/app/globals.css");
+    const codeEditorSource = read("src/components/code/code-editor.tsx");
+    const codeSurfaceSource = read("src/components/code/code-surface.tsx");
+
+    expect(globalsCss).toMatch(
+      /\.lecture-mode\s*\{[^}]*--lecture-base-size:\s*calc\(1\.125rem \* var\(--lecture-font-scale\)\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.lecture-mode \.problem-description\s*\{[^}]*font-size:\s*var\(--lecture-base-size\)/,
+    );
+    expect(globalsCss).toMatch(
+      /\.lecture-mode \.code-surface:not\(\.code-viewer\)\s*\{[^}]*--code-surface-font-size:\s*var\(--lecture-base-size\)/,
+    );
+    expect(codeSurfaceSource).toContain(
+      'fontSize: "var(--code-surface-font-size, 0.875rem)"',
+    );
+    expect(codeEditorSource).toContain(
+      'fontSize: "var(--code-surface-font-size, 0.875rem)"',
+    );
+  });
+});

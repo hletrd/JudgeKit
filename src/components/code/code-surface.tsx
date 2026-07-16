@@ -51,7 +51,7 @@ const baseTheme = EditorView.theme({
   "&": {
     backgroundColor: "var(--code-surface-background)",
     color: "var(--code-surface-foreground)",
-    fontSize: "0.875rem",
+    fontSize: "var(--code-surface-font-size, 0.875rem)",
   },
   ".cm-scroller": {
     fontFamily: "var(--font-mono)",
@@ -551,7 +551,7 @@ export function CodeSurface({
       )}
       style={{
         minHeight,
-        ...(fontSize ? { fontSize: `${fontSize}px` } : {}),
+        ...(fontSize ? { "--code-surface-font-size": `${fontSize}px` } as Record<string, string> : {}),
         ...(fontFamily ? { "--font-mono": fontFamily } as Record<string, string> : {}),
       }}
     >
