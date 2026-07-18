@@ -1,24 +1,24 @@
 FROM debian:bookworm-slim AS builder
 
-# GNU APL 1.8 was released before GCC 12's default -Wno-error policy
-# changes and trips over several -Werror-promoted warnings (especially
-# in performance counters and signal handlers). Apply the same relaxed
-# CXXFLAGS the arm64 path already uses to amd64 too. PERFORMANCE_WANTED
-# is also disabled on amd64 — the perf counter probe occasionally fails
-# inside containers without proper CAP_PERFMON.
+# GNU APL 2.0 (apl-1.8 was removed from ftp.gnu.org and now 404s). GCC 12
+# promotes several warnings to errors (performance counters, signal
+# handlers), so keep the relaxed CXXFLAGS on every arch. Performance
+# counters default to off in 2.0 and need CAP_PERFMON — unavailable inside
+# containers — so no configure override is required anymore. curl -f fails
+# fast on an HTTP error instead of writing a bad tarball; --retry rides out
+# transient ftp.gnu.org hiccups.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential g++ libreadline-dev pkg-config curl ca-certificates autoconf autotools-dev && \
-    curl -sL https://ftp.gnu.org/gnu/apl/apl-1.8.tar.gz -o /tmp/apl.tar.gz && \
+    curl -fSL --retry 3 --retry-delay 5 https://ftp.gnu.org/gnu/apl/apl-2.0.tar.gz -o /tmp/apl.tar.gz && \
     tar -xzf /tmp/apl.tar.gz -C /tmp && \
-    cd /tmp/apl-1.8 && \
+    cd /tmp/apl-2.0 && \
     cp /usr/share/misc/config.sub . && \
     cp /usr/share/misc/config.guess . && \
-    sed -i 's/PERFORMANCE_WANTED=yes/PERFORMANCE_WANTED=no/' configure && \
     ./configure --prefix=/usr/local --without-gtk3 \
         CXXFLAGS="-O2 -Wno-error -Wno-implicit-fallthrough -Wno-deprecated-declarations -Wno-class-memaccess -Wno-cast-function-type -fpermissive" \
         CFLAGS="-O2 -Wno-error" && \
     make -j$(nproc) && make install && \
-    rm -rf /tmp/apl-1.8 /tmp/apl.tar.gz
+    rm -rf /tmp/apl-2.0 /tmp/apl.tar.gz
 
 FROM debian:bookworm-slim
 
