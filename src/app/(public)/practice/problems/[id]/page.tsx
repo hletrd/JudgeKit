@@ -454,7 +454,6 @@ export default async function PublicProblemDetailPage({
     ],
   };
   const problemPageHref = buildLocalePath(`/practice/problems/${problem.id}`, locale);
-  const contestlessPlaygroundHref = buildLocalePath("/playground", locale);
   const signInHref = buildLocalePath(
     `/login?callbackUrl=${encodeURIComponent(buildLocalePath(`/practice/problems/${problem.id}`, locale))}`,
     locale,
@@ -547,9 +546,9 @@ export default async function PublicProblemDetailPage({
                       ? formatDifficulty(problem.difficulty, locale)
                       : null
                   }
-                  submitAction={session?.user ? (
-                    <Link href="#public-submit-panel">
-                      <Button>{tProblems("submitSolution")}</Button>
+                  submitAction={!session?.user ? (
+                    <Link href={signInHref}>
+                      <Button>{t("practice.signInToSubmit")}</Button>
                     </Link>
                   ) : null}
                   editAction={caps.has("problems.create") ? (
@@ -557,10 +556,6 @@ export default async function PublicProblemDetailPage({
                       <Button variant="outline">{tProblems("editProblem")}</Button>
                     </Link>
                   ) : null}
-                  playgroundHref={contestlessPlaygroundHref}
-                  playgroundLabel={t("practice.tryInPlayground")}
-                  signInHref={signInHref}
-                  signInLabel={t("practice.signInToSubmit")}
                 />
 
                 {/* Problem Statistics */}

@@ -1,8 +1,6 @@
-import Link from "next/link";
 import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StructuredProblemStatement } from "@/components/problem/structured-problem-statement";
 import { TierBadge } from "@/components/tier-badge";
@@ -20,10 +18,6 @@ type PublicProblemDetailProps = {
   memoryLimitLabel: string;
   difficultyLabel?: string | null;
   difficultyTier?: ProblemTierInfo | null;
-  playgroundHref: string;
-  playgroundLabel: string;
-  signInHref: string;
-  signInLabel: string;
   submitAction?: ReactNode;
   editAction?: ReactNode;
 };
@@ -39,10 +33,6 @@ export function PublicProblemDetail({
   memoryLimitLabel,
   difficultyLabel,
   difficultyTier = null,
-  playgroundHref,
-  playgroundLabel,
-  signInHref,
-  signInLabel,
   submitAction = null,
   editAction = null,
 }: PublicProblemDetailProps) {
@@ -63,14 +53,7 @@ export function PublicProblemDetail({
             </div>
             <div className="flex flex-wrap gap-2">
               {editAction}
-              <Link href={playgroundHref}>
-                <Button variant="outline">{playgroundLabel}</Button>
-              </Link>
-              {submitAction ?? (
-                <Link href={signInHref}>
-                  <Button>{signInLabel}</Button>
-                </Link>
-              )}
+              {submitAction}
             </div>
           </div>
           <div className="mb-4 flex flex-wrap gap-2 text-sm text-muted-foreground">

@@ -16,7 +16,7 @@ vi.mock("@/components/problem/structured-problem-statement", () => ({
 }));
 
 describe("PublicProblemDetail", () => {
-  it("renders problem metadata and action links", () => {
+  it("renders problem metadata without a built-in playground link", () => {
     render(
       <PublicProblemDetail
         backHref="/practice"
@@ -29,10 +29,6 @@ describe("PublicProblemDetail", () => {
         memoryLimitLabel="Memory Limit: 256 MB"
         difficultyTier={{ tier: "bronze", label: "Bronze V" }}
         difficultyLabel="1"
-        playgroundHref="/playground"
-        playgroundLabel="Try in playground"
-        signInHref="/login"
-        signInLabel="Sign in to submit"
       />
     );
 
@@ -43,11 +39,12 @@ describe("PublicProblemDetail", () => {
     expect(screen.getByText("Memory Limit: 256 MB")).toBeInTheDocument();
     expect(screen.getByText("Bronze V")).toBeInTheDocument();
     expect(screen.getByText("1")).toBeInTheDocument();
-    expect(screen.getByText("Try in playground")).toBeInTheDocument();
-    expect(screen.getByText("Sign in to submit")).toBeInTheDocument();
+    // The playground link and sign-in fallback are no longer rendered here;
+    // the caller owns the submit/sign-in affordance via submitAction.
+    expect(screen.queryByText("Try in playground")).toBeNull();
   });
 
-  it("renders a custom submit action instead of the sign-in link when provided", () => {
+  it("renders the provided submit and edit actions", () => {
     render(
       <PublicProblemDetail
         backHref="/practice"
@@ -58,15 +55,12 @@ describe("PublicProblemDetail", () => {
         tags={[{ name: "math", color: null }]}
         timeLimitLabel="Time Limit: 2000 ms"
         memoryLimitLabel="Memory Limit: 256 MB"
-        playgroundHref="/playground"
-        playgroundLabel="Try in playground"
-        signInHref="/login"
-        signInLabel="Sign in to submit"
         submitAction={<button type="button">Quick submit</button>}
+        editAction={<button type="button">Edit problem</button>}
       />
     );
 
     expect(screen.getByText("Quick submit")).toBeInTheDocument();
-    expect(screen.queryByText("Sign in to submit")).toBeNull();
+    expect(screen.getByText("Edit problem")).toBeInTheDocument();
   });
 });
