@@ -3144,7 +3144,6 @@
       "authoredBy": "작성자: {name}",
       "timeLimit": "시간 제한: {value}ms",
       "memoryLimit": "메모리 제한: {value}MB",
-      "tryInPlayground": "플레이그라운드에서 실행",
       "signInToSubmit": "로그인 후 제출",
       "quickSubmitDescription": "{title}의 풀이를 이 페이지에서 바로 작성하고 제출하세요.",
       "solverCount": "정답자",
