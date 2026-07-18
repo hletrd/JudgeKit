@@ -895,20 +895,28 @@ chmod 600 ${REMOTE_ENV_FILE}" \
 
 # Warn when judge API routes would deny all requests in production because
 # neither an allowlist nor the explicit allow-any override is configured.
+# Inspect the *effective* config on the app host — the remote .env.production
+# that actually runs — not the local staging template, whose judge defaults
+# are always empty and would raise a false alarm on every deploy even when the
+# preserved remote config is correct (JUDGE_ALLOWED_IPS=<worker IP> on a
+# separated host, or JUDGE_ALLOW_ANY_JUDGE_IP=1 on an integrated host).
 warn_judge_ip_allowlist() {
     local env_file="$1"
-    if [[ ! -f "${env_file}" ]]; then
-        return 0
-    fi
     local allowed_ips allow_any
-    allowed_ips=$(grep '^JUDGE_ALLOWED_IPS=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
-    allow_any=$(grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' "${env_file}" 2>/dev/null | cut -d= -f2- | tr -d '[:space:]' || true)
+    if remote "test -f '${env_file}'"; then
+        allowed_ips=$(remote "grep '^JUDGE_ALLOWED_IPS=' '${env_file}' 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'" || true)
+        allow_any=$(remote "grep '^JUDGE_ALLOW_ANY_JUDGE_IP=' '${env_file}' 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'" || true)
+    else
+        # Fresh deploy: the file is generated below with these defaults.
+        allowed_ips=""
+        allow_any="${JUDGE_ALLOW_ANY_JUDGE_IP_DEFAULT}"
+    fi
     if [[ -z "${allowed_ips}" && "${allow_any}" != "1" ]]; then
         warn "JUDGE_ALLOWED_IPS is not configured and JUDGE_ALLOW_ANY_JUDGE_IP is not 1. Judge API routes will deny all requests in production. Set JUDGE_ALLOWED_IPS to the worker IP/CIDR, or set JUDGE_ALLOW_ANY_JUDGE_IP=1 only if network isolation is handled elsewhere."
     fi
 }
 
-warn_judge_ip_allowlist "${SCRIPT_DIR}/.env.production"
+warn_judge_ip_allowlist "${REMOTE_ENV_FILE}"
 
 ensure_env_secret PLUGIN_CONFIG_ENCRYPTION_KEY hex
 ensure_env_secret NODE_ENCRYPTION_KEY hex
