@@ -47,6 +47,41 @@ describe("getWarmPoolTargets", () => {
     });
   });
 
+  // Regression: targets used to be derived from the STATIC language mapping,
+  // so an admin retag made the worker acquire an image nobody warmed and every
+  // run silently went cold while the idle containers held their memory.
+  it("targets the DB docker_image when an admin has retagged a language", async () => {
+    getSystemSettings.mockResolvedValue({
+      warmPool: { enabled: true, languages: { python: 2, cpp20: 3 } },
+    });
+    selectFrom.mockResolvedValue([
+      { language: "python", isEnabled: true, dockerImage: null },
+      { language: "cpp20", isEnabled: true, dockerImage: "judge-cpp:v2" },
+    ]);
+
+    const { getWarmPoolTargets } = await import("@/lib/judge/warm-pool-server");
+    await expect(getWarmPoolTargets()).resolves.toEqual({
+      enabled: true,
+      images: { "judge-cpp:v2": 3, "judge-python:latest": 2 },
+    });
+  });
+
+  it("keeps MAX merge semantics per resolved image when only one of a pair is retagged", async () => {
+    getSystemSettings.mockResolvedValue({
+      warmPool: { enabled: true, languages: { c17: 2, cpp20: 3 } },
+    });
+    selectFrom.mockResolvedValue([
+      { language: "c17", isEnabled: true, dockerImage: "  " },
+      { language: "cpp20", isEnabled: true, dockerImage: "judge-cpp:v2" },
+    ]);
+
+    const { getWarmPoolTargets } = await import("@/lib/judge/warm-pool-server");
+    await expect(getWarmPoolTargets()).resolves.toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2, "judge-cpp:v2": 3 },
+    });
+  });
+
   it("falls back to the deployment default when the column is null", async () => {
     process.env.WARM_POOL_DEFAULT_ENABLED = "true";
     getSystemSettings.mockResolvedValue({ warmPool: null });

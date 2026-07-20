@@ -42,15 +42,46 @@ export function languageToImage(language: string): string | undefined {
 }
 
 /**
+ * Admin-editable `language_configs.docker_image` per language, as read from the
+ * DB. `null`/`undefined`/empty means "no override stored for this language".
+ */
+export type WarmPoolLanguageImages = ReadonlyMap<string, string | null | undefined>;
+
+/**
+ * The image a submission in `language` will ACTUALLY run in.
+ *
+ * The worker runs `submission.docker_image`, which the claim route fills from
+ * the admin-editable `language_configs.docker_image` column and only falls back
+ * to the static mapping when that column is empty. Warming anything else warms
+ * an image nobody asks for: `pool.acquire()` would miss forever, every run
+ * would silently go cold, and the idle containers would just hold memory.
+ * So this resolution must stay identical to the claim route's.
+ */
+export function resolveLanguageImage(
+  language: string,
+  dbImage?: string | null,
+): string | undefined {
+  const override = dbImage?.trim();
+  if (override) return override;
+  return languageToImage(language);
+}
+
+/**
  * Convert admin per-language counts into per-image targets.
  *
  * Counts for languages sharing an image are merged with MAX (not sum): a warm
  * `judge-cpp:latest` container can serve a C submission or a C++ one, so
- * provisioning both separately would double-allocate idle containers.
+ * provisioning both separately would double-allocate idle containers. The merge
+ * happens per RESOLVED image, so retagging just one of two languages that used
+ * to share an image correctly splits them into two pools.
+ *
+ * `languageImages` carries the DB overrides; a language missing from it (or
+ * stored empty) falls back to the static mapping, exactly like the claim route.
  */
 export function resolveWarmPoolTargets(
   config: WarmPoolConfig | null | undefined,
   enabledLanguages: ReadonlySet<string>,
+  languageImages?: WarmPoolLanguageImages,
 ): WarmPoolTargets {
   if (!config || !config.enabled) {
     return { enabled: false, images: {} };
@@ -59,7 +90,7 @@ export function resolveWarmPoolTargets(
   const merged: Record<string, number> = {};
   for (const [language, rawCount] of Object.entries(config.languages ?? {})) {
     if (!enabledLanguages.has(language)) continue;
-    const image = languageToImage(language);
+    const image = resolveLanguageImage(language, languageImages?.get(language));
     if (!image) continue;
     const count = Math.min(WARM_POOL_MAX_PER_IMAGE, Math.floor(Number(rawCount) || 0));
     if (count <= 0) continue;

@@ -4,6 +4,7 @@ import {
   WARM_POOL_MAX_TOTAL,
   defaultWarmPoolConfig,
   languageToImage,
+  resolveLanguageImage,
   resolveWarmPoolTargets,
   type WarmPoolConfig,
 } from "@/lib/judge/warm-pool";
@@ -23,6 +24,27 @@ describe("languageToImage", () => {
 
   it("returns undefined for an unknown language", () => {
     expect(languageToImage("brainfuck-9000")).toBeUndefined();
+  });
+});
+
+describe("resolveLanguageImage", () => {
+  it("prefers the DB image over the static mapping", () => {
+    expect(resolveLanguageImage("cpp20", "judge-cpp:v2")).toBe("judge-cpp:v2");
+  });
+
+  it("falls back to the static mapping when the DB value is missing or blank", () => {
+    expect(resolveLanguageImage("cpp20", null)).toBe("judge-cpp:latest");
+    expect(resolveLanguageImage("cpp20", undefined)).toBe("judge-cpp:latest");
+    expect(resolveLanguageImage("cpp20", "   ")).toBe("judge-cpp:latest");
+  });
+
+  it("trims the DB value the same way the claim route does", () => {
+    expect(resolveLanguageImage("python", "  judge-python:v9\n")).toBe("judge-python:v9");
+  });
+
+  it("uses the DB image even for a language with no static mapping", () => {
+    expect(resolveLanguageImage("brainfuck-9000", "judge-bf:latest")).toBe("judge-bf:latest");
+    expect(resolveLanguageImage("brainfuck-9000", null)).toBeUndefined();
   });
 });
 
@@ -137,6 +159,73 @@ describe("resolveWarmPoolTargets", () => {
     const result1 = resolveWarmPoolTargets(config, enabledLangs);
     const result2 = resolveWarmPoolTargets(config, enabledLangs);
     expect(result1).toEqual(result2);
+  });
+
+  // The whole point of the feature: the worker acquires by
+  // `submission.docker_image`, which comes from `language_configs.docker_image`.
+  // Warming the static image after an admin retags would miss every acquire.
+  it("warms the DB image when it has drifted from the static mapping", () => {
+    const config: WarmPoolConfig = { enabled: true, languages: { cpp20: 2 } };
+    const images = new Map([["cpp20", "judge-cpp:v2"]]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-cpp:v2": 2 },
+    });
+  });
+
+  it("falls back to the static mapping for languages with no DB row", () => {
+    const config: WarmPoolConfig = { enabled: true, languages: { cpp20: 2, python: 1 } };
+    const images = new Map([["cpp20", "judge-cpp:v2"]]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-cpp:v2": 2, "judge-python:latest": 1 },
+    });
+  });
+
+  it("treats a null or blank DB image as no override", () => {
+    const config: WarmPoolConfig = { enabled: true, languages: { cpp20: 2, python: 1 } };
+    const images = new Map<string, string | null>([
+      ["cpp20", null],
+      ["python", "  "],
+    ]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2, "judge-python:latest": 1 },
+    });
+  });
+
+  it("merges with MAX per RESOLVED image, so retagging one language splits the pool", () => {
+    const config: WarmPoolConfig = { enabled: true, languages: { c17: 2, cpp20: 3 } };
+    // Both share judge-cpp:latest statically; only C++ is retagged.
+    const images = new Map([["cpp20", "judge-cpp:v2"]]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2, "judge-cpp:v2": 3 },
+    });
+  });
+
+  it("merges with MAX when two languages are retagged onto the SAME image", () => {
+    const config: WarmPoolConfig = { enabled: true, languages: { c17: 2, python: 3 } };
+    const images = new Map([
+      ["c17", "judge-shared:v1"],
+      ["python", "judge-shared:v1"],
+    ]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-shared:v1": 3 },
+    });
+  });
+
+  it("still clamps per-image and total caps against DB images", () => {
+    const config: WarmPoolConfig = {
+      enabled: true,
+      languages: { python: WARM_POOL_MAX_PER_IMAGE + 5 },
+    };
+    const images = new Map([["python", "judge-python:v2"]]);
+    expect(resolveWarmPoolTargets(config, ALL, images)).toEqual({
+      enabled: true,
+      images: { "judge-python:v2": WARM_POOL_MAX_PER_IMAGE },
+    });
   });
 
   it("floors fractional counts", () => {

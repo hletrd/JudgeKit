@@ -11,13 +11,15 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   WARM_POOL_MAX_PER_IMAGE,
-  languageToImage,
+  resolveLanguageImage,
   type WarmPoolConfig,
 } from "@/lib/judge/warm-pool";
 
 export interface WarmPoolLanguageOption {
   language: string;
   displayName: string;
+  /** `language_configs.docker_image`, the image the worker actually runs. */
+  dockerImage?: string | null;
 }
 
 interface WarmPoolFormProps {
@@ -110,7 +112,7 @@ export function WarmPoolForm({ initialConfig, languages }: WarmPoolFormProps) {
       ) : (
         <div className="space-y-2">
           {languages.map((option) => {
-            const image = languageToImage(option.language);
+            const image = resolveLanguageImage(option.language, option.dockerImage);
             const count = counts[option.language] ?? 0;
             return (
               <div

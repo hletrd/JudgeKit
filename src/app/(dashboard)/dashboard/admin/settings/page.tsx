@@ -174,11 +174,18 @@ export default async function AdminSettingsPage() {
         language: languageConfigs.language,
         displayName: languageConfigs.displayName,
         isEnabled: languageConfigs.isEnabled,
+        // Shown as-is in the form: it is the image the worker will actually
+        // warm, so an admin who retagged a language sees the retagged image.
+        dockerImage: languageConfigs.dockerImage,
       })
       .from(languageConfigs)
   )
     .filter((row) => row.isEnabled !== false)
-    .map((row) => ({ language: row.language, displayName: row.displayName }));
+    .map((row) => ({
+      language: row.language,
+      displayName: row.displayName,
+      dockerImage: row.dockerImage,
+    }));
 
   const authUrlObj = getAuthUrlObject();
   const authUrlHost = authUrlObj ? normalizeHostForComparison(authUrlObj.host) : null;

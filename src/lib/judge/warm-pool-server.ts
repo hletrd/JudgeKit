@@ -28,14 +28,19 @@ export async function getWarmPoolTargets(): Promise<WarmPoolTargets> {
       .select({
         language: languageConfigs.language,
         isEnabled: languageConfigs.isEnabled,
+        // The worker runs whatever the claim route sends as `dockerImage`,
+        // which comes from this column. Warming the static mapping instead
+        // would miss every acquire the moment an admin retags a language.
+        dockerImage: languageConfigs.dockerImage,
       })
       .from(languageConfigs);
 
     const enabled = new Set(
       rows.filter((row) => row.isEnabled !== false).map((row) => row.language),
     );
+    const images = new Map(rows.map((row) => [row.language, row.dockerImage]));
 
-    return resolveWarmPoolTargets(config, enabled);
+    return resolveWarmPoolTargets(config, enabled, images);
   } catch {
     return DISABLED;
   }
