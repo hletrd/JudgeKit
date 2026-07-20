@@ -229,7 +229,8 @@ pub(crate) fn warm_eligible(phase: Phase) -> bool {
 /// Contract, in order:
 ///   * `warm` runs only when a container was acquired;
 ///   * `destroy` runs afterwards no matter the outcome — an acquired container
-///     is single-use and never goes back to the pool;
+///     is single-use and never goes back to the pool, so this is where it stops
+///     being tracked;
 ///   * `cold` runs exactly when no container was acquired, or when the warm
 ///     attempt answered `WarmUnavailable`;
 ///   * any other `DockerError` is a genuine fault and is surfaced the same way
@@ -250,8 +251,9 @@ where
 {
     if let Some(container) = container {
         let result = warm(container.clone()).await;
-        // Single use: destroyed before the result is even inspected, so no
-        // early return can leak it.
+        // Single use: retired before the result is even inspected, so no early
+        // return can leak it. `warm` itself owns the `docker rm`; this is the
+        // pool-side half (stop tracking, replenish).
         destroy(container).await;
 
         match result {
@@ -286,10 +288,18 @@ async fn run_test_case_container(
             docker::run_docker_warm(options, &container, effective_time_limit_ms).await
         },
         |container| async move {
-            docker::remove_container_by_name(&container).await;
-            // Refill in the background so the NEXT test case can also run warm,
-            // without making this one wait on a `docker run`.
+            // No `docker rm` here: `run_docker_warm` consumes the container on
+            // every path (the measurement removes it on success, the wrapper on
+            // every error), and a second force-remove is ~40 ms of pure latency
+            // per test case on the judging hot path.
             if let Some(pool) = replenish {
+                // Stop tracking the name only now, so the container is in
+                // `pending` for the whole time it is out of the pool.
+                pool.release_destroyed(&container).await;
+                // Refill in the background so the NEXT test case can also run
+                // warm, without making this one wait on a `docker run`. A
+                // reconcile that lands after shutdown began creates nothing:
+                // `drain_all` latches the pool closed first.
                 tokio::spawn(async move { pool.reconcile().await });
             }
         },

@@ -2,6 +2,7 @@ use crate::docker::WarmContainerSettings;
 use crate::types::WarmPoolTargets;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -70,12 +71,14 @@ pub fn plan_reconcile(
 struct PoolState {
     /// image -> idle container names ready to be adopted
     idle: HashMap<String, VecDeque<String>>,
-    /// Names with a Docker call in flight: a `docker run` issued but not yet
-    /// confirmed, or a downsize victim popped from `idle` and not yet removed.
+    /// Names that are live but not idle: a `docker run` issued but not yet
+    /// confirmed, a downsize victim popped from `idle` and not yet removed, or
+    /// a container handed out by `acquire` and not yet destroyed by its run.
     ///
-    /// A create is recorded BEFORE the subprocess starts and a removal victim
-    /// is moved here in the same critical section that pops it, so every live
-    /// container is tracked in either `idle` or `pending` at all times.
+    /// A create is recorded BEFORE the subprocess starts, and a removal victim
+    /// or an acquired container is moved here in the same critical section that
+    /// pops it out of `idle`, so every live container is tracked in either
+    /// `idle` or `pending` at all times.
     /// `drain_all` destroys pending names too, and the stale-running sweep
     /// deliberately refuses to reap `oj-warm-*`, so this set is the only thing
     /// standing between an aborted reconcile and a container that idles on
@@ -109,6 +112,19 @@ pub struct PoolManager {
     /// work. Skipping is safe because reconcile is idempotent and the next
     /// heartbeat runs it again.
     reconcile_lock: Mutex<()>,
+    /// Latched by `drain_all` before it takes the container list. Once set, no
+    /// container may be created or handed out again for the life of this
+    /// process.
+    ///
+    /// Refilling after the drain is not the kind of transient inconsistency the
+    /// next pass repairs: the process is on its way out, so a container created
+    /// after the drain idles on `sleep infinity` holding its memory reservation
+    /// until this host restarts — and on a decommission or a scale-down it
+    /// never does. The replenish task the executor spawns after every warm run
+    /// is detached, so it can start after `drain_all` has already emptied the
+    /// pool; it would then plan against an empty `idle` and create a FULL
+    /// per-image batch on the way out.
+    draining: AtomicBool,
 }
 
 impl PoolManager {
@@ -118,6 +134,7 @@ impl PoolManager {
             settings,
             state: Mutex::new(PoolState::default()),
             reconcile_lock: Mutex::new(()),
+            draining: AtomicBool::new(false),
         })
     }
 
@@ -144,13 +161,43 @@ impl PoolManager {
     /// empty or disabled, which makes the caller fall back to a cold run.
     ///
     /// The container is handed out ONCE and never returned: `executor` destroys
-    /// it after the single test case it serves, whatever the outcome.
+    /// it after the single test case it serves, whatever the outcome, and then
+    /// calls [`Self::release_destroyed`].
+    ///
+    /// The name moves from `idle` into `pending` in the same critical section
+    /// that pops it, so an in-use container is still tracked. Without that, a
+    /// panic in the run path (which skips the executor's destroy step, since it
+    /// is not a `Drop` guard, while `main`'s `catch_unwind` keeps the process
+    /// alive) would leave a running container nothing knows about — it would
+    /// survive shutdown and only be reclaimed by the next startup sweep.
+    ///
+    /// Returns None once `drain_all` has latched: handing out a container while
+    /// shutdown is destroying the pool would race the drain, and the caller
+    /// simply runs cold.
     pub async fn acquire(&self, image: &str) -> Option<String> {
-        if self.disabled {
+        if self.disabled || self.draining.load(Ordering::SeqCst) {
             return None;
         }
         let mut state = self.state.lock().await;
-        state.idle.get_mut(image).and_then(VecDeque::pop_front)
+        let name = state.idle.get_mut(image).and_then(VecDeque::pop_front)?;
+        state.pending.insert(name.clone());
+        // Drop the key once its queue empties, the same way pruning and
+        // downsizing do, so an image never lingers as a live-but-zero entry.
+        if state.idle.get(image).is_some_and(VecDeque::is_empty) {
+            state.idle.remove(image);
+        }
+        Some(name)
+    }
+
+    /// Stop tracking a container handed out by [`Self::acquire`], once its run
+    /// has destroyed it. The counterpart of the `pending` insert in `acquire`.
+    ///
+    /// `plan_reconcile` counts `idle` only, so a name sitting in `pending` is
+    /// never mistaken for pool capacity: the container is missing from `idle`
+    /// from the moment it is acquired, which is exactly what makes the next
+    /// reconcile plan its replacement.
+    pub async fn release_destroyed(&self, container: &str) {
+        self.finish_removal(container).await;
     }
 
     #[cfg(test)]
@@ -201,6 +248,15 @@ impl PoolManager {
     /// ignored: a pool that cannot be filled simply means cold runs.
     pub async fn reconcile(&self) {
         if self.disabled {
+            return;
+        }
+
+        // Cheap pre-check for the common case (a replenish task spawned by the
+        // executor that lands after shutdown began). Not the guarantee — that
+        // is `claim_new_container`, which re-reads the flag under the state
+        // lock — just an early out so a draining worker does no Docker work.
+        if self.draining.load(Ordering::SeqCst) {
+            tracing::debug!("warm pool is draining; skipping reconcile");
             return;
         }
 
@@ -259,9 +315,9 @@ impl PoolManager {
                 // fill) the name is already tracked, so `drain_all` destroys
                 // whatever the daemon managed to start.
                 let name = format!("{}{}", WARM_CONTAINER_PREFIX, Uuid::new_v4());
-                {
-                    let mut state = self.state.lock().await;
-                    state.pending.insert(name.clone());
+                if !self.claim_new_container(&name).await {
+                    tracing::debug!("warm pool drain began mid-reconcile; creating nothing more");
+                    return;
                 }
 
                 let created =
@@ -271,6 +327,21 @@ impl PoolManager {
                 state.pending.remove(&name);
                 match created {
                     Ok(()) => {
+                        // A drain that latched while `docker run` was in flight
+                        // has already swept this name out of `pending`; its
+                        // `docker rm` may well have lost the race with the
+                        // daemon. Destroy the container here instead of
+                        // publishing it to `idle`, where nothing would ever
+                        // look for it again.
+                        if self.draining.load(Ordering::SeqCst) {
+                            drop(state);
+                            tracing::warn!(
+                                container = %name,
+                                "warm container finished creating during drain; destroying it"
+                            );
+                            crate::docker::remove_container_by_name(&name).await;
+                            return;
+                        }
                         state.idle.entry(image.clone()).or_default().push_back(name);
                     }
                     Err(e) => {
@@ -289,6 +360,33 @@ impl PoolManager {
 
         let idle = self.idle_counts().await;
         tracing::debug!(?idle, "warm pool reconciled");
+    }
+
+    /// Claim `name` in `pending` so the container `docker run` is about to
+    /// create is tracked before it can exist, and answer whether creating it is
+    /// still allowed at all.
+    ///
+    /// The drain check and the claim happen in the SAME critical section, which
+    /// is what makes the shutdown guard airtight. The state lock serialises
+    /// this section against `drain_all`'s `take_all_tracked_names`, so for any
+    /// create there are only two orderings:
+    ///
+    ///   * this section runs first — the name is in `pending` when the drain
+    ///     takes the list, so the drain destroys it (the same argument that
+    ///     makes aborting the seed fill safe);
+    ///   * the drain's section runs first — `draining` was stored before it (in
+    ///     program order, and the lock release/acquire pair publishes the
+    ///     store), so this section reads `true` and creates nothing.
+    ///
+    /// There is no third ordering, so no container can be created that the
+    /// drain does not know about.
+    async fn claim_new_container(&self, name: &str) -> bool {
+        let mut state = self.state.lock().await;
+        if self.draining.load(Ordering::SeqCst) {
+            return false;
+        }
+        state.pending.insert(name.to_string());
+        true
     }
 
     /// Pop the next downsize victim for `image`, moving it from `idle` into
@@ -382,16 +480,38 @@ impl PoolManager {
     }
 
     /// Destroy every idle container, plus any with a Docker call still in
-    /// flight (graceful shutdown).
+    /// flight (graceful shutdown). One-way: the pool never fills again.
     pub async fn drain_all(&self) {
-        let drained = self.take_all_tracked_names().await;
-        if drained.is_empty() {
-            return;
+        // Latch BEFORE taking the list. Everything that can create a container
+        // re-reads this flag while holding the state lock, so from this point
+        // on a create either already registered its name (and is in the list
+        // below) or never happens. See `claim_new_container`.
+        self.draining.store(true, Ordering::SeqCst);
+
+        // Two passes. The first destroys everything tracked right now. The
+        // second is belt and braces for the one create that can still be in
+        // flight (reconcile is single-flight, so there is at most one): its
+        // name was already taken by the first pass, and it destroys its own
+        // container when it sees the flag, but a second sweep costs one lock
+        // acquisition and removes the need to reason about that path being
+        // reached at all.
+        for _ in 0..2 {
+            let drained = self.take_all_tracked_names().await;
+            if drained.is_empty() {
+                continue;
+            }
+            tracing::info!(count = drained.len(), "draining warm containers");
+            for name in drained {
+                crate::docker::remove_container_by_name(&name).await;
+            }
         }
-        tracing::info!(count = drained.len(), "draining idle warm containers");
-        for name in drained {
-            crate::docker::remove_container_by_name(&name).await;
-        }
+    }
+
+    /// Whether `drain_all` has latched. Test-only: production code reads the
+    /// flag through the guards above rather than checking it out of band.
+    #[cfg(test)]
+    pub fn is_draining_for_test(&self) -> bool {
+        self.draining.load(Ordering::SeqCst)
     }
 }
 
@@ -748,6 +868,171 @@ mod tests {
             vec!["oj-warm-dead".to_string()],
             "a pruned name must remain drainable until its container is gone"
         );
+    }
+
+    /// A container handed out by `acquire` is out of `idle` but still live, so
+    /// it must stay tracked until its run destroys it. Otherwise a panic in the
+    /// run path — which skips the executor's destroy step and which `main`'s
+    /// `catch_unwind` survives — leaves a running container nothing will drain.
+    #[tokio::test]
+    async fn an_acquired_container_stays_tracked_until_it_is_destroyed() {
+        let manager = manager(false);
+        manager
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-inuse")
+            .await;
+
+        let taken = manager.acquire("judge-cpp:latest").await.expect("acquire");
+        assert_eq!(taken, "oj-warm-inuse");
+
+        // Out of idle, so it is neither handed out twice nor counted as pool
+        // capacity — `plan_reconcile` reads `idle` only, which is exactly what
+        // makes the next pass plan a replacement.
+        assert!(
+            manager.idle_counts().await.is_empty(),
+            "an in-use container must not read as spare capacity"
+        );
+        let plan = plan_reconcile(
+            &manager.idle_counts().await,
+            &targets(true, &[("judge-cpp:latest", 1)]),
+        );
+        assert_eq!(
+            plan.to_create,
+            vec![("judge-cpp:latest".to_string(), 1)],
+            "the consumed container must be planned for replacement exactly once"
+        );
+
+        // ...but still tracked, so a shutdown or a panicked run still destroys it.
+        assert_eq!(
+            manager.tracked_names_for_test().await,
+            vec!["oj-warm-inuse".to_string()]
+        );
+
+        manager.release_destroyed(&taken).await;
+        assert!(
+            manager.tracked_names_for_test().await.is_empty(),
+            "a destroyed container must stop being tracked"
+        );
+    }
+
+    /// The point of tracking it: a run that panics never reaches the executor's
+    /// destroy step, and shutdown must still destroy the container it held.
+    #[tokio::test]
+    async fn shutdown_drains_a_container_whose_run_never_released_it() {
+        let manager = manager(false);
+        manager
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-inuse")
+            .await;
+        let _taken = manager.acquire("judge-cpp:latest").await.expect("acquire");
+
+        assert_eq!(
+            manager.take_all_tracked_names().await,
+            vec!["oj-warm-inuse".to_string()],
+            "shutdown must destroy a container still out on a run"
+        );
+    }
+
+    /// The invariant, stated directly: acquiring must not change how many names
+    /// the pool tracks, only which bucket they are in. A double-count would make
+    /// the startup staging sweep and `drain_all` reason about phantom names.
+    #[tokio::test]
+    async fn acquiring_moves_a_name_between_buckets_without_duplicating_it() {
+        let manager = manager(false);
+        manager
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-a")
+            .await;
+        manager
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-b")
+            .await;
+        let before = manager.tracked_names_for_test().await;
+
+        let _taken = manager.acquire("judge-cpp:latest").await.expect("acquire");
+
+        assert_eq!(
+            manager.tracked_names_for_test().await,
+            before,
+            "acquire must move a name, not add or drop one"
+        );
+    }
+
+    /// Once `drain_all` has latched, a reconcile that starts afterwards must
+    /// create nothing. The detached replenish task the executor spawns after
+    /// every warm run is exactly this case: it can begin after shutdown has
+    /// already emptied the pool, and would otherwise plan against an empty
+    /// `idle` and create a full per-image batch that outlives the process.
+    #[tokio::test]
+    async fn a_reconcile_that_starts_after_draining_creates_nothing() {
+        let manager = manager(false);
+        manager
+            .set_targets(targets(true, &[("judge-cpp:latest", 3)]))
+            .await;
+
+        manager.drain_all().await;
+        assert!(manager.is_draining_for_test());
+
+        manager.reconcile().await;
+
+        assert!(
+            manager.idle_counts().await.is_empty(),
+            "a post-drain reconcile must not refill the pool"
+        );
+        assert!(
+            manager.tracked_names_for_test().await.is_empty(),
+            "a post-drain reconcile must not even claim a name"
+        );
+        assert_eq!(manager.acquire("judge-cpp:latest").await, None);
+    }
+
+    /// The guarantee is not the early return at the top of `reconcile` (which a
+    /// drain landing mid-pass would race straight past) but the check inside the
+    /// claim, taken in the same critical section as the `pending` insert.
+    #[tokio::test]
+    async fn a_name_can_never_be_claimed_once_draining_has_latched() {
+        let manager = manager(false);
+
+        assert!(
+            manager.claim_new_container("oj-warm-before").await,
+            "a create before the drain is allowed, and is tracked"
+        );
+        assert_eq!(
+            manager.tracked_names_for_test().await,
+            vec!["oj-warm-before".to_string()],
+            "a claim must track the name before `docker run` can create it"
+        );
+
+        // The "the claim ran first" ordering: the drain's own critical section
+        // finds the name and takes it away to be destroyed.
+        assert_eq!(
+            manager.take_all_tracked_names().await,
+            vec!["oj-warm-before".to_string()],
+            "a claim that beat the drain must still be destroyed by it"
+        );
+
+        // The other ordering: the drain latched first.
+        manager.drain_all().await;
+
+        assert!(
+            !manager.claim_new_container("oj-warm-after").await,
+            "no name may be claimed once the drain has latched"
+        );
+        assert!(
+            manager.tracked_names_for_test().await.is_empty(),
+            "a refused claim must leave nothing behind"
+        );
+    }
+
+    /// Draining is one-way: the pool must not reopen because a later heartbeat
+    /// pushed fresh targets in.
+    #[tokio::test]
+    async fn draining_never_unlatches() {
+        let manager = manager(false);
+        manager.drain_all().await;
+        manager
+            .set_targets(targets(true, &[("judge-cpp:latest", 2)]))
+            .await;
+        manager.reconcile().await;
+        assert!(manager.is_draining_for_test());
+        assert!(!manager.claim_new_container("oj-warm-late").await);
+        assert!(manager.tracked_names_for_test().await.is_empty());
     }
 
     /// The warm prefix must stay inside the `oj-` namespace so the startup

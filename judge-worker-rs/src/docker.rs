@@ -1352,7 +1352,9 @@ fn warm_result_is_too_close_to_call(
 /// that lands too close to that limit is refused rather than reported.
 ///
 /// Caller contract: `container` came from `PoolManager::acquire` (so it is
-/// single-use), and the caller destroys it afterwards regardless of outcome.
+/// single-use). This function CONSUMES it: the container is destroyed on every
+/// return path, so the caller must not remove it again — it only has to stop
+/// tracking the name.
 /// EVERY `Err` from this function is [`DockerError::WarmUnavailable`] and means
 /// the caller must re-run the same test case through [`run_docker`]; the warm
 /// path may never fail a submission on its own.
@@ -1360,6 +1362,28 @@ fn warm_result_is_too_close_to_call(
 /// The measurement half is [`run_and_measure`], shared verbatim with the cold
 /// path, so adopting a warm container cannot change a verdict.
 pub async fn run_docker_warm(
+    options: &DockerRunOptions,
+    container: &str,
+    effective_time_limit_ms: u64,
+) -> Result<DockerRunResult, DockerError> {
+    let result = run_docker_warm_inner(options, container, effective_time_limit_ms).await;
+
+    // `run_and_measure` already removed the container on every path it reaches
+    // — including the happy one, which is why the caller must NOT remove it
+    // again: a second `docker rm -f` is ~40 ms of pure latency on the judging
+    // hot path, once per test case. What it does not cover is the setup half
+    // above it (refusal, inspect, update, workspace injection, exec spawn),
+    // which returns before a single measurement happens. Those paths are
+    // errors, so removing here — and only here — keeps destruction unconditional
+    // while taking the redundant call off the path that matters.
+    if result.is_err() {
+        remove_container_by_name(container).await;
+    }
+
+    result
+}
+
+async fn run_docker_warm_inner(
     options: &DockerRunOptions,
     container: &str,
     effective_time_limit_ms: u64,
@@ -3155,7 +3179,7 @@ mod tests {
             1,
             "there must be exactly one measurement implementation"
         );
-        for caller in ["run_docker_once", "run_docker_warm"] {
+        for caller in ["run_docker_once", "run_docker_warm_inner"] {
             let start = src
                 .find(&format!("async fn {caller}("))
                 .unwrap_or_else(|| panic!("{caller} present"));
@@ -3166,6 +3190,43 @@ mod tests {
                 "{caller} must measure through run_and_measure"
             );
         }
+        // The warm entry point is a thin destroy-on-error wrapper, so the
+        // invariant above reaches it only through the inner function.
+        let warm = src
+            .find("pub async fn run_docker_warm(")
+            .expect("run_docker_warm present");
+        let warm_body = &src[warm..];
+        let warm_end = warm_body.find("\n}\n").expect("body is delimited");
+        assert!(
+            warm_body[..warm_end].contains("run_docker_warm_inner("),
+            "run_docker_warm must delegate the whole run to run_docker_warm_inner"
+        );
+    }
+
+    /// The warm entry point owns its container's destruction: the executor no
+    /// longer removes it afterwards, so every error return here — including the
+    /// setup half that never reaches `run_and_measure` — must go through
+    /// `remove_container_by_name`, and the success path must not (the
+    /// measurement already removed it).
+    #[test]
+    fn the_warm_entry_point_destroys_the_container_on_every_error_path() {
+        let src = include_str!("docker.rs");
+        let start = src
+            .find("pub async fn run_docker_warm(")
+            .expect("run_docker_warm present");
+        let body = &src[start..];
+        let end = body.find("\n}\n").expect("body is delimited");
+        let body = &body[..end];
+        assert!(
+            body.contains("if result.is_err() {") && body.contains("remove_container_by_name("),
+            "run_docker_warm must force-remove its container on every error return"
+        );
+        assert_eq!(
+            body.matches("remove_container_by_name(").count(),
+            1,
+            "exactly one removal, on the error path only: the happy path is already \
+             removed by run_and_measure and a second `docker rm -f` is hot-path latency"
+        );
     }
 
     /// Every warm failure must be recoverable by re-running cold; nothing in

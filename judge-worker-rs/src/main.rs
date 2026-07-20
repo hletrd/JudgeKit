@@ -876,11 +876,17 @@ async fn main() {
         tracing::info!("All in-flight submissions completed");
     }
 
-    // Destroy every idle warm container. Runs last of the pool steps: the seed
-    // is aborted, the heartbeat task is gone and in-flight submissions have
-    // finished, so nothing can refill the pool or still be holding a container
-    // handed out by `acquire`. An idle container left behind would otherwise
-    // hold memory until the next startup sweep.
+    // Destroy every warm container — idle, mid-create, or handed out. Runs last
+    // of the pool steps: the seed is aborted, the heartbeat task is gone and
+    // in-flight submissions have finished, so nothing is still holding a
+    // container from `acquire`. A container left behind would otherwise hold
+    // its memory reservation until the next startup sweep — which on a
+    // decommissioned or scaled-down host never comes.
+    //
+    // Ordering alone does NOT stop the pool refilling: every warm run spawns a
+    // DETACHED replenish reconcile, which can start after this point. What
+    // stops it is `drain_all` itself latching the pool closed before it takes
+    // the container list, so any later create is refused.
     warm_pool.drain_all().await;
 
     // Deregister from the app server
