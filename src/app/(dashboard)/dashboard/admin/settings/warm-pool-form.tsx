@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   WARM_POOL_MAX_PER_IMAGE,
+  WARM_POOL_MAX_TOTAL,
   resolveLanguageImage,
   type WarmPoolConfig,
 } from "@/lib/judge/warm-pool";
@@ -50,6 +51,24 @@ export function WarmPoolForm({ initialConfig, languages }: WarmPoolFormProps) {
   // it parses, and discarded (reverting the display) on blur if it never does.
   const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+
+  // How many containers this config asks for after the server's own merge:
+  // languages resolving to the same image share one pool (MAX, not sum). Past
+  // WARM_POOL_MAX_TOTAL the server truncates in alphabetical image order, which
+  // silently drops whole images — so say so before the admin saves.
+  const requestedTotal = useMemo(() => {
+    const perImage = new Map<string, number>();
+    for (const option of languages) {
+      const count = Math.min(WARM_POOL_MAX_PER_IMAGE, counts[option.language] ?? 0);
+      if (count <= 0) continue;
+      const image = resolveLanguageImage(option.language, option.dockerImage);
+      if (!image) continue;
+      perImage.set(image, Math.max(perImage.get(image) ?? 0, count));
+    }
+    let total = 0;
+    for (const count of perImage.values()) total += count;
+    return total;
+  }, [counts, languages]);
 
   function setCount(language: string, value: number) {
     setCounts((prev) => ({ ...prev, [language]: value }));
@@ -160,6 +179,15 @@ export function WarmPoolForm({ initialConfig, languages }: WarmPoolFormProps) {
       )}
 
       <p className="text-xs text-muted-foreground">{t("warmPoolSharedImageHint")}</p>
+
+      {enabled && requestedTotal > WARM_POOL_MAX_TOTAL ? (
+        <p className="text-xs text-destructive" role="alert">
+          {t("warmPoolTotalExceededHint", {
+            total: requestedTotal,
+            max: WARM_POOL_MAX_TOTAL,
+          })}
+        </p>
+      ) : null}
 
       <Button type="submit" disabled={isLoading}>
         {isLoading ? tCommon("loading") : tCommon("save")}

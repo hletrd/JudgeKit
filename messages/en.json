@@ -1632,6 +1632,7 @@
       "warmPoolEnabledHint": "When enabled, judge workers keep the configured number of idle containers ready for each checked language. Changes reach workers within about 30 seconds.",
       "warmPoolCountLabelFor": "Idle container count for {language}",
       "warmPoolSharedImageHint": "Languages that share the same Docker image share one pool; the largest configured count among them is used.",
+      "warmPoolTotalExceededHint": "This configuration asks for {total} idle containers, but a worker keeps at most {max} in total. Images beyond the cap are dropped in alphabetical order — lower some counts so every image gets a pool.",
       "warmPoolNoLanguages": "No enabled languages are configured yet."
     },
     "files": {
