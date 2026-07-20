@@ -58,6 +58,12 @@ vi.mock("@/lib/api/responses", async () => {
   };
 });
 
+vi.mock("@/lib/judge/warm-pool-server", () => ({
+  getWarmPoolTargets: vi
+    .fn()
+    .mockResolvedValue({ enabled: true, images: { "judge-cpp:latest": 2 } }),
+}));
+
 import { POST } from "@/app/api/v1/judge/register/route";
 
 // ---------------------------------------------------------------------------
@@ -191,5 +197,18 @@ describe("POST /api/v1/judge/register", () => {
 
     expect(response.status).toBe(500);
     expect(loggerMock.error).toHaveBeenCalledOnce();
+  });
+});
+
+describe("warm pool targets in the register response", () => {
+  it("returns targets so a freshly started worker can build its pool immediately", async () => {
+    const response = await POST(makeRequest({ hostname: "w1", concurrency: 4 }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.warmPool).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2 },
+    });
   });
 });

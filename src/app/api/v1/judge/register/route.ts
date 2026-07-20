@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { judgeWorkers } from "@/lib/db/schema";
 import { isJudgeAuthorized, hashToken } from "@/lib/judge/auth";
 import { isJudgeIpAllowed } from "@/lib/judge/ip-allowlist";
+import { getWarmPoolTargets } from "@/lib/judge/warm-pool-server";
 import { consumeApiRateLimit } from "@/lib/security/api-rate-limit";
 import { extractClientIp } from "@/lib/security/ip";
 import { logger } from "@/lib/logger";
@@ -82,6 +83,9 @@ export async function POST(request: NextRequest) {
       workerSecret,
       heartbeatIntervalMs: HEARTBEAT_INTERVAL_MS,
       staleClaimTimeoutMs: STALE_CLAIM_TIMEOUT_MS,
+      // Warm-pool targets so a freshly started worker can build its pool
+      // immediately instead of waiting for the first heartbeat.
+      warmPool: await getWarmPoolTargets(),
     });
   } catch (error) {
     logger.error({ err: error }, "POST /api/v1/judge/register error");

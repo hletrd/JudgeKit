@@ -10,6 +10,7 @@ import { logger } from "@/lib/logger";
 import { z } from "zod";
 import { getDbNowUncached } from "@/lib/db-time";
 import { sweepStaleWorkers } from "@/lib/judge/worker-staleness-sweep";
+import { getWarmPoolTargets } from "@/lib/judge/warm-pool-server";
 
 // Per-process throttle for the inline (heartbeat-triggered) sweep. The
 // background interval (instrumentation) is the primary scheduler; the inline
@@ -94,7 +95,10 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return apiSuccess({ ok: true });
+    // Heartbeat is the steady-state config channel: an admin toggling the warm
+    // pool reaches every worker within one heartbeat interval (~30s) with no
+    // redeploy. getWarmPoolTargets fails closed to disabled targets.
+    return apiSuccess({ ok: true, warmPool: await getWarmPoolTargets() });
   } catch (error) {
     logger.error({ err: error }, "POST /api/v1/judge/heartbeat error");
     return apiError("internalServerError", 500);

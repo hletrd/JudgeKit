@@ -81,6 +81,12 @@ vi.mock("@/lib/api/responses", async () => {
   };
 });
 
+vi.mock("@/lib/judge/warm-pool-server", () => ({
+  getWarmPoolTargets: vi
+    .fn()
+    .mockResolvedValue({ enabled: true, images: { "judge-cpp:latest": 2 } }),
+}));
+
 import { POST } from "@/app/api/v1/judge/heartbeat/route";
 
 function makeRequest(body: unknown) {
@@ -190,5 +196,19 @@ describe("POST /api/v1/judge/heartbeat", () => {
     const response = await POST(makeRequest(VALID_BODY));
 
     expect(response.status).toBe(500);
+  });
+});
+
+describe("warm pool targets in the heartbeat response", () => {
+  it("returns targets on every heartbeat so admin toggles reach the fleet", async () => {
+    const response = await POST(makeRequest(VALID_BODY));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.ok).toBe(true);
+    expect(body.data.warmPool).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2 },
+    });
   });
 });
