@@ -20,9 +20,12 @@ import { FooterContentForm } from "./footer-content-form";
 import { DatabaseBackupRestore } from "./database-backup-restore";
 import { DatabaseInfo } from "./database-info";
 import { SettingsTabs } from "./settings-tabs";
+import { WarmPoolForm } from "./warm-pool-form";
 import { getAuthUrlObject, normalizeHostForComparison } from "@/lib/security/env";
-import { pool } from "@/lib/db";
+import { db, pool } from "@/lib/db";
 import { countTablesQuery } from "@/lib/db/queries";
+import { languageConfigs } from "@/lib/db/schema";
+import { defaultWarmPoolConfig, type WarmPoolConfig } from "@/lib/judge/warm-pool";
 
 const SECURITY_FIELDS: { key: keyof ConfiguredSettings }[] = [
   { key: "loginRateLimitMaxAttempts" },
@@ -163,6 +166,20 @@ export default async function AdminSettingsPage() {
   };
   const initialFooterContent = (stored?.footerContent as Record<string, FooterLocaleContent> | undefined) ?? null;
 
+  const warmPoolConfig: WarmPoolConfig =
+    (stored?.warmPool as WarmPoolConfig | null | undefined) ?? defaultWarmPoolConfig();
+  const warmPoolLanguages = (
+    await db
+      .select({
+        language: languageConfigs.language,
+        displayName: languageConfigs.displayName,
+        isEnabled: languageConfigs.isEnabled,
+      })
+      .from(languageConfigs)
+  )
+    .filter((row) => row.isEnabled !== false)
+    .map((row) => ({ language: row.language, displayName: row.displayName }));
+
   const authUrlObj = getAuthUrlObject();
   const authUrlHost = authUrlObj ? normalizeHostForComparison(authUrlObj.host) : null;
 
@@ -302,6 +319,21 @@ export default async function AdminSettingsPage() {
               initialValues={extractInitialValues(stored, JUDGE_FIELDS)}
               defaults={SETTING_DEFAULTS}
             />
+          </CardContent>
+        </Card>
+      ),
+    },
+    {
+      value: "warmPool",
+      label: t("tabWarmPool"),
+      content: (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("warmPoolCardTitle")}</CardTitle>
+            <CardDescription>{t("warmPoolCardDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WarmPoolForm initialConfig={warmPoolConfig} languages={warmPoolLanguages} />
           </CardContent>
         </Card>
       ),

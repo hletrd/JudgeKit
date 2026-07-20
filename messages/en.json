@@ -1624,7 +1624,15 @@
       "reconfirmLabel": "Confirm with your password",
       "reconfirmHint": "Required to save security-sensitive changes.",
       "passwordReconfirmRequired": "Enter your current password to save security-sensitive changes.",
-      "invalidPassword": "Current password is incorrect."
+      "invalidPassword": "Current password is incorrect.",
+      "tabWarmPool": "Warm pool",
+      "warmPoolCardTitle": "Warm container pool",
+      "warmPoolCardDescription": "Keep a set number of idle judge containers ready per language so submissions skip Docker cold start.",
+      "warmPoolEnabled": "Enable warm container pool",
+      "warmPoolEnabledHint": "When enabled, judge workers keep the configured number of idle containers ready for each checked language. Changes reach workers within about 30 seconds.",
+      "warmPoolCountLabel": "Idle container count",
+      "warmPoolSharedImageHint": "Languages that share the same Docker image share one pool; the largest configured count among them is used.",
+      "warmPoolNoLanguages": "No enabled languages are configured yet."
     },
     "files": {
       "title": "File Management",
