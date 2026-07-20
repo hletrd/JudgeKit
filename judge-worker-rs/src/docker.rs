@@ -728,9 +728,10 @@ pub async fn create_warm_container(
         Ok(Err(e)) => {
             // `output()` also fails on an I/O error AFTER the child was
             // spawned, at which point the daemon may already have created the
-            // container. Force-remove by name before giving up: the caller has
-            // dropped this name from `pending`, so this is the last chance to
-            // destroy it.
+            // container. Force-remove by name before giving up: the caller drops
+            // this name from `pending` as soon as this call returns Err, and
+            // records nothing in `idle`, so returning without removing would
+            // leave it untracked.
             remove_container_by_name(name).await;
             return Err(format!("docker run (warm) failed to spawn: {e}"));
         }
@@ -750,10 +751,10 @@ pub async fn create_warm_container(
         // A non-zero exit does NOT mean nothing was created: `docker run -d`
         // creates the container object first and only then starts it, so a
         // rejected `--runtime`/`--security-opt` leaves a container sitting in
-        // `created` state. That name is absent from the pool's `idle` and
-        // already dropped from `pending`, and the orphan sweep only matches
-        // `status=exited`, so nothing else would ever reap it. Force-remove it
-        // here before returning.
+        // `created` state. The caller never records that name in `idle` and
+        // drops it from `pending` the moment this call returns Err, and the
+        // orphan sweep only matches `status=exited`, so nothing else would ever
+        // reap it. Force-remove it here before returning.
         remove_container_by_name(name).await;
         return Err(format!("docker run (warm) failed: {}", stderr.trim()));
     }

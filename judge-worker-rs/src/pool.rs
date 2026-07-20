@@ -164,6 +164,26 @@ impl PoolManager {
             .push_back(container.to_string());
     }
 
+    /// Track a name as having a Docker call in flight, the state a container is
+    /// in between `pending.insert` and the end of `create_warm_container`.
+    #[cfg(test)]
+    pub async fn track_pending_for_test(&self, container: &str) {
+        let mut state = self.state.lock().await;
+        state.pending.insert(container.to_string());
+    }
+
+    /// Read-only view of every tracked name (idle plus in-flight), so a test can
+    /// assert that a teardown really emptied the pool without draining it
+    /// itself.
+    #[cfg(test)]
+    pub async fn tracked_names_for_test(&self) -> Vec<String> {
+        let state = self.state.lock().await;
+        let mut names: Vec<String> = state.idle.values().flatten().cloned().collect();
+        names.extend(state.pending.iter().cloned());
+        names.sort();
+        names
+    }
+
     /// Bring the live pool in line with the current targets. Creates missing
     /// idle containers and destroys excess ones. Failures are logged and
     /// ignored: a pool that cannot be filled simply means cold runs.

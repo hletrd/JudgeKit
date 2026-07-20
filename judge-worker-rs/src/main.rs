@@ -51,6 +51,71 @@ fn panic_payload_message(payload: Box<dyn Any + Send>) -> String {
         .to_owned()
 }
 
+/// The heartbeat task plus the token that stops its loop cooperatively.
+type HeartbeatTask = (
+    tokio::task::JoinHandle<()>,
+    tokio_util::sync::CancellationToken,
+);
+
+/// Outcome of the one-shot startup sweep phase.
+enum StartupSweep {
+    /// The sweep finished; normal operation continues. Carries the warm-pool
+    /// seed handle back to the caller, which still owns the shutdown sequence.
+    Completed(tokio::task::JoinHandle<()>),
+    /// A shutdown signal won the race. The warm pool has already been torn
+    /// down, so the caller must return from `main` immediately.
+    ShutdownRequested,
+}
+
+/// Race the startup sweep against `shutdown` so a deploy SIGTERM during the
+/// (internally timeout-bounded) sweep is honoured immediately instead of queued
+/// for up to ~20 s (C5-N3 / debugger-N6).
+///
+/// The shutdown arm makes the caller return from `main` outright, skipping the
+/// shutdown sequence at the bottom of that function, so it has to tear the warm
+/// pool down itself: the seed fill was spawned before this point and may already
+/// have started containers that nothing else would ever destroy.
+async fn run_startup_sweep(
+    shutdown: impl std::future::Future<Output = ()>,
+    sweep: impl std::future::Future<Output = ()>,
+    warm_pool_seed: tokio::task::JoinHandle<()>,
+    heartbeat: Option<&mut HeartbeatTask>,
+    warm_pool: &Arc<pool::PoolManager>,
+) -> StartupSweep {
+    tokio::select! {
+        _ = shutdown => {
+            tracing::info!("Shutdown signal received during startup sweep, exiting");
+            drain_warm_pool_for_exit(warm_pool_seed, heartbeat, warm_pool).await;
+            StartupSweep::ShutdownRequested
+        }
+        _ = sweep => StartupSweep::Completed(warm_pool_seed),
+    }
+}
+
+/// Tear the warm pool down on a path that leaves `main` early (startup-time
+/// shutdown, or a fatal startup error that exits the process).
+///
+/// Aborting the seed and the heartbeat rather than waiting them out is safe
+/// because the pool claims a container's name in `pending` BEFORE issuing
+/// `docker run` and only stops tracking it after the call returns, so
+/// `drain_all` still destroys whatever the daemon managed to start. Both aborts
+/// are awaited first so neither task can finish a create — and re-register its
+/// name — after the drain has run.
+async fn drain_warm_pool_for_exit(
+    warm_pool_seed: tokio::task::JoinHandle<()>,
+    heartbeat: Option<&mut HeartbeatTask>,
+    warm_pool: &Arc<pool::PoolManager>,
+) {
+    warm_pool_seed.abort();
+    let _ = warm_pool_seed.await;
+    if let Some((handle, cancel)) = heartbeat {
+        cancel.cancel();
+        handle.abort();
+        let _ = handle.await;
+    }
+    warm_pool.drain_all().await;
+}
+
 /// Map ARM CPU implementer + part to a human-readable name.
 #[cfg(target_os = "linux")]
 fn lookup_arm_cpu_part(implementer: &str, part: &str) -> Option<&'static str> {
@@ -405,7 +470,7 @@ async fn main() {
     };
 
     // Spawn heartbeat task if registered
-    let heartbeat_handle = if let Some(ref wid) = worker_id {
+    let mut heartbeat_handle = if let Some(ref wid) = worker_id {
         let client = Arc::clone(&client);
         let wid = wid.clone();
         let wsecret = worker_secret.clone();
@@ -487,6 +552,12 @@ async fn main() {
                      emit compile_error on every submission. Refusing to start. \
                      Check docker-socket-proxy ACL (POST, DELETE, ALLOW_START)."
                 );
+                // The warm-pool seed is already running and may have started
+                // containers; exiting here bypasses the shutdown sequence at the
+                // bottom of `main`, so tear the pool down first or those
+                // containers survive until the next startup sweep.
+                drain_warm_pool_for_exit(warm_pool_seed, heartbeat_handle.as_mut(), &warm_pool)
+                    .await;
                 std::process::exit(1);
             }
         }
@@ -524,6 +595,10 @@ async fn main() {
             Ok(l) => l,
             Err(e) => {
                 tracing::error!(error = %e, addr = %addr, "Failed to bind runner HTTP server");
+                // Same teardown-bypassing exit as the capability probe above:
+                // destroy anything the seed fill already started.
+                drain_warm_pool_for_exit(warm_pool_seed, heartbeat_handle.as_mut(), &warm_pool)
+                    .await;
                 std::process::exit(1);
             }
         };
@@ -563,25 +638,19 @@ async fn main() {
     // (any status). At startup there are no in-flight judgements, so this is
     // safe and reaps the `running` containers leaked by a forced restart
     // (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) that the periodic
-    // `status=exited` sweep cannot touch (R2 / feature-dev F2). Wrapped in the
-    // shutdown select so a deploy SIGTERM during the (internally
-    // timeout-bounded) sweep is honoured immediately instead of queued for up
-    // to ~20 s (C5-N3 / debugger-N6).
-    //
-    // The shutdown arm returns from `main` outright, skipping the shutdown
-    // sequence at the bottom of this function, so it has to tear the warm pool
-    // down itself: the seed fill was spawned above and may already have started
-    // containers that nothing else would ever destroy.
-    tokio::select! {
-        _ = &mut shutdown => {
-            tracing::info!("Shutdown signal received during startup sweep, exiting");
-            warm_pool_seed.abort();
-            let _ = warm_pool_seed.await;
-            warm_pool.drain_all().await;
-            return;
-        }
-        _ = docker::cleanup_all_oj_containers_at_startup() => {}
-    }
+    // `status=exited` sweep cannot touch (R2 / feature-dev F2).
+    let warm_pool_seed = match run_startup_sweep(
+        &mut shutdown,
+        docker::cleanup_all_oj_containers_at_startup(),
+        warm_pool_seed,
+        heartbeat_handle.as_mut(),
+        &warm_pool,
+    )
+    .await
+    {
+        StartupSweep::Completed(seed) => seed,
+        StartupSweep::ShutdownRequested => return,
+    };
 
     // Exponential backoff for idle polling.
     // After consecutive empty polls the sleep doubles up to MAX_BACKOFF,
@@ -724,10 +793,28 @@ async fn main() {
         }
     }
 
-    // Signal the heartbeat to stop, but do NOT await it yet: cancelling first
-    // means the loop cannot start one more reconcile in the window below.
+    // Stop the heartbeat, but do NOT await it yet: cancelling first means the
+    // loop cannot start one more reconcile in the window below.
+    //
+    // `cancel()` alone is not enough to make the join below prompt. The token is
+    // only observed by the `select!` at the TOP of the heartbeat loop, so a
+    // reconcile that is already in flight runs to completion first: a `docker
+    // ps` plus, per missing container, a `docker run` and a `docker inspect`,
+    // each individually timeout-bounded but serial. Against a wedged daemon that
+    // is easily longer than the ~10 s `docker stop` grace, so SIGKILL would land
+    // before `drain_all` below ever ran and every warm container would survive
+    // the restart. `abort()` bounds the join at the task's next await point.
+    //
+    // Aborting is safe for the same reason it is safe for the seed: the pool
+    // inserts a container's name into `pending` BEFORE issuing `docker run` and
+    // only moves it to `idle` (or drops it) after the call returns, so every
+    // container the daemon may have created is tracked in `idle` or `pending` at
+    // all times. `drain_all` destroys both sets, and the join below completes
+    // before it runs, so an aborted reconcile cannot resurrect a name after the
+    // drain.
     let heartbeat_join = heartbeat_handle.map(|(handle, cancel)| {
         cancel.cancel();
+        handle.abort();
         handle
     });
 
@@ -746,9 +833,11 @@ async fn main() {
     warm_pool_seed.abort();
     let _ = warm_pool_seed.await;
 
-    // Now join the heartbeat task. It is already cancelled, and a reconcile it
-    // may still be inside is bounded by the per-call Docker timeouts — it can
-    // no longer be queued behind the seed's single-flight guard.
+    // Now join the heartbeat task. It is already cancelled AND aborted, so the
+    // await returns as soon as the task unwinds at its next await point rather
+    // than waiting out a whole reconcile pass (which is bounded only per Docker
+    // call, not per pass: one pass is a `docker ps` plus up to N × (`docker run`
+    // + `docker inspect`), serially).
     if let Some(handle) = heartbeat_join {
         let _ = handle.await;
     }
@@ -861,24 +950,158 @@ mod tests {
         );
     }
 
-    /// C5-N3 / debugger-N6 guard: the startup reap-all sweep must be wrapped in
-    /// a shutdown `tokio::select!` so a deploy SIGTERM during the sweep is
-    /// honoured immediately. Reverting to a bare `.await` flips this red.
-    #[test]
-    fn startup_sweep_is_shutdown_select_wrapped() {
-        let src = include_str!("main.rs");
-        // First occurrence is the production call site in main, before this
-        // test module.
-        let call = src
-            .find("docker::cleanup_all_oj_containers_at_startup()")
-            .expect("startup sweep call present");
-        // Generous backward window covers the shutdown branch + tracing line
-        // that precede the sweep call inside the select block.
-        let start = call.saturating_sub(400);
-        let region = &src[start..call];
+    /// An enabled pool with settings that never reach a real daemon.
+    fn test_pool() -> Arc<pool::PoolManager> {
+        pool::PoolManager::new(
+            false,
+            docker::WarmContainerSettings {
+                seccomp_profile_path: std::path::PathBuf::from("/nonexistent/seccomp.json"),
+                disable_custom_seccomp: false,
+            },
+        )
+    }
+
+    /// A never-finishing stand-in for the warm-pool seed fill (which can sit in
+    /// `docker run` for minutes against a slow daemon).
+    ///
+    /// The returned `Arc` is held by the spawned task, so a strong count of 1
+    /// after a teardown proves the task's future was really dropped. Merely
+    /// dropping the `JoinHandle` detaches the task, which would leave it free to
+    /// finish a `docker run` and register a container AFTER the drain.
+    fn forever_seed() -> (tokio::task::JoinHandle<()>, Arc<()>) {
+        let alive = Arc::new(());
+        let held = Arc::clone(&alive);
+        let handle = tokio::spawn(async move {
+            let _held = held;
+            std::future::pending::<()>().await;
+        });
+        (handle, alive)
+    }
+
+    /// C5-N3 / debugger-N6: a shutdown signal that is already pending must win
+    /// the startup-sweep race — the sweep must not run — and the warm pool must
+    /// still be torn down, because this path returns from `main` without
+    /// reaching the shutdown sequence at the bottom of that function.
+    #[tokio::test]
+    async fn startup_shutdown_skips_the_sweep_and_drains_the_pool() {
+        let warm_pool = test_pool();
+        warm_pool
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-startup-drain")
+            .await;
+        let sweep_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let sweep_flag = Arc::clone(&sweep_ran);
+        let (seed, seed_alive) = forever_seed();
+
+        // The seed never finishes on its own, so this only returns if the
+        // teardown aborts it.
+        let phase = tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            run_startup_sweep(
+                std::future::ready(()),
+                async move {
+                    tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+                    sweep_flag.store(true, Ordering::Relaxed);
+                },
+                seed,
+                None,
+                &warm_pool,
+            ),
+        )
+        .await
+        .expect("startup shutdown must not block on the seed fill");
+
         assert!(
-            region.rfind("tokio::select!").is_some(),
-            "startup sweep must be tokio::select!-wrapped against shutdown (C5-N3)"
+            matches!(phase, StartupSweep::ShutdownRequested),
+            "a pending shutdown must win the startup-sweep race"
+        );
+        assert!(
+            !sweep_ran.load(Ordering::Relaxed),
+            "the sweep must not run once shutdown has been signalled"
+        );
+        assert_eq!(
+            Arc::strong_count(&seed_alive),
+            1,
+            "the seed fill must be aborted and joined, not detached, before the drain"
+        );
+        assert!(
+            warm_pool.idle_counts().await.is_empty(),
+            "the warm pool must be drained before main returns early"
+        );
+    }
+
+    /// The complementary case: with no shutdown pending the sweep runs to
+    /// completion, the pool is left alone, and the seed handle comes back so
+    /// the normal shutdown sequence can still stop it.
+    #[tokio::test]
+    async fn startup_sweep_runs_and_keeps_the_pool_when_no_shutdown() {
+        let warm_pool = test_pool();
+        warm_pool
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-keep")
+            .await;
+        let sweep_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let sweep_flag = Arc::clone(&sweep_ran);
+
+        let (seed, seed_alive) = forever_seed();
+
+        let phase = run_startup_sweep(
+            std::future::pending(),
+            async move {
+                sweep_flag.store(true, Ordering::Relaxed);
+            },
+            seed,
+            None,
+            &warm_pool,
+        )
+        .await;
+
+        let seed = match phase {
+            StartupSweep::Completed(seed) => seed,
+            StartupSweep::ShutdownRequested => panic!("sweep must win when no shutdown is pending"),
+        };
+        assert!(sweep_ran.load(Ordering::Relaxed), "the sweep must run");
+        assert_eq!(
+            warm_pool.idle_counts().await.get("judge-cpp:latest"),
+            Some(&1),
+            "a completed sweep must not drain the warm pool"
+        );
+        assert_eq!(
+            Arc::strong_count(&seed_alive),
+            2,
+            "the seed fill must be handed back still running, not torn down"
+        );
+        seed.abort();
+    }
+
+    /// The fatal-startup-error paths (`docker` capability probe, runner bind)
+    /// exit the process without reaching the shutdown sequence, so they call
+    /// this helper: it must abort a seed that is still mid-fill and drain every
+    /// tracked name, including one whose `docker run` is still in flight.
+    #[tokio::test]
+    async fn fatal_exit_teardown_aborts_the_seed_and_drains_tracked_names() {
+        let warm_pool = test_pool();
+        warm_pool
+            .register_idle_for_test("judge-cpp:latest", "oj-warm-fatal-idle")
+            .await;
+        warm_pool
+            .track_pending_for_test("oj-warm-fatal-pending")
+            .await;
+
+        let (seed, seed_alive) = forever_seed();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            drain_warm_pool_for_exit(seed, None, &warm_pool),
+        )
+        .await
+        .expect("fatal-exit teardown must not block on the seed fill");
+
+        assert_eq!(
+            Arc::strong_count(&seed_alive),
+            1,
+            "the seed fill must be aborted and joined before the drain"
+        );
+        assert!(
+            warm_pool.tracked_names_for_test().await.is_empty(),
+            "neither idle nor in-flight names may survive a fatal-startup exit"
         );
     }
 }
