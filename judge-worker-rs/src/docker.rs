@@ -1393,9 +1393,17 @@ pub async fn run_docker_warm(
     // again: a second `docker rm -f` is ~40 ms of pure latency on the judging
     // hot path, once per test case. What it does not cover is the setup half
     // above it (refusal, inspect, update, workspace injection, exec spawn),
-    // which returns before a single measurement happens. Those paths are
-    // errors, so removing here — and only here — keeps destruction unconditional
-    // while taking the redundant call off the path that matters.
+    // which returns before a single measurement happens.
+    //
+    // So this call is not purely for the setup half: the POST-measurement
+    // refusals (exec machinery failure, missing daemon timestamps, a result too
+    // close to the limit to call) are errors too and land here on a container
+    // `run_and_measure` has already removed. That second `docker rm -f` is a
+    // no-op the daemon answers with "No such container", and
+    // `remove_container_by_name` swallows it. It costs one Docker round trip on
+    // a test case that is being re-run cold anyway, which is far cheaper than
+    // making destruction conditional on how far the run got — an error path
+    // that leaks a container is a container that idles forever.
     if result.is_err() {
         remove_container_by_name(container).await;
     }
