@@ -85,6 +85,7 @@ export type SystemSettingsRecord = {
   emailVerificationRequired?: boolean | null;
   communityUpvoteEnabled?: boolean | null;
   communityDownvoteEnabled?: boolean | null;
+  warmPool?: { enabled: boolean; languages: Record<string, number> } | null;
 };
 
 export async function getSystemSettings(): Promise<SystemSettingsRecord | undefined> {
@@ -166,6 +167,7 @@ export async function getSystemSettings(): Promise<SystemSettingsRecord | undefi
       emailVerificationRequired: null,
       communityUpvoteEnabled: null,
       communityDownvoteEnabled: null,
+      warmPool: null,
     };
   }
 }

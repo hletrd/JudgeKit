@@ -674,6 +674,14 @@ export const systemSettings = pgTable("system_settings", {
   // disabling the board entirely. Defaults preserve current behavior.
   communityUpvoteEnabled: boolean("community_upvote_enabled").notNull().default(true),
   communityDownvoteEnabled: boolean("community_downvote_enabled").notNull().default(true),
+  // Warm container pool: admin-controlled idle judge containers kept ready per
+  // language so test-case execution skips Docker cold start. Shape:
+  // { enabled: boolean, languages: Record<string, number> }. NULL = use the
+  // deployment default (see defaultWarmPoolConfig()).
+  warmPool: jsonb("warm_pool").$type<{
+    enabled: boolean;
+    languages: Record<string, number>;
+  } | null>(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date()),

@@ -281,6 +281,13 @@
       "when": 1784083442543,
       "tag": "0039_bumpy_tempest",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1784541372022,
+      "tag": "0040_warm_pool",
+      "breakpoints": true
     }
   ]
 }
