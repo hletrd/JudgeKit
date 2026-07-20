@@ -567,9 +567,17 @@ async fn main() {
     // shutdown select so a deploy SIGTERM during the (internally
     // timeout-bounded) sweep is honoured immediately instead of queued for up
     // to ~20 s (C5-N3 / debugger-N6).
+    //
+    // The shutdown arm returns from `main` outright, skipping the shutdown
+    // sequence at the bottom of this function, so it has to tear the warm pool
+    // down itself: the seed fill was spawned above and may already have started
+    // containers that nothing else would ever destroy.
     tokio::select! {
         _ = &mut shutdown => {
             tracing::info!("Shutdown signal received during startup sweep, exiting");
+            warm_pool_seed.abort();
+            let _ = warm_pool_seed.await;
+            warm_pool.drain_all().await;
             return;
         }
         _ = docker::cleanup_all_oj_containers_at_startup() => {}
@@ -716,9 +724,32 @@ async fn main() {
         }
     }
 
-    // Cancel heartbeat task
-    if let Some((handle, cancel)) = heartbeat_handle {
+    // Signal the heartbeat to stop, but do NOT await it yet: cancelling first
+    // means the loop cannot start one more reconcile in the window below.
+    let heartbeat_join = heartbeat_handle.map(|(handle, cancel)| {
         cancel.cancel();
+        handle
+    });
+
+    // Stop the register-time seed fill BEFORE anything is awaited. The seed can
+    // be many minutes deep in `docker run` calls against a slow daemon, and
+    // everything after it (heartbeat join, in-flight tasks, `drain_all`) would
+    // then run late or not at all — a SIGKILL landing before `drain_all` is
+    // exactly the survive-shutdown leak this ordering exists to prevent.
+    //
+    // Aborting (rather than waiting the fill out) is safe because the pool
+    // claims a container's name in its own state BEFORE issuing `docker run`,
+    // and `drain_all` destroys those in-flight names too. An abort landing
+    // mid-create can therefore not strand a container the process never
+    // recorded. Awaiting the aborted handle returns as soon as the task
+    // unwinds, so this await is bounded.
+    warm_pool_seed.abort();
+    let _ = warm_pool_seed.await;
+
+    // Now join the heartbeat task. It is already cancelled, and a reconcile it
+    // may still be inside is bounded by the per-call Docker timeouts — it can
+    // no longer be queued behind the seed's single-flight guard.
+    if let Some(handle) = heartbeat_join {
         let _ = handle.await;
     }
 
@@ -737,18 +768,11 @@ async fn main() {
         tracing::info!("All in-flight submissions completed");
     }
 
-    // Destroy every idle warm container. Runs after the heartbeat task is gone
-    // and after in-flight submissions finish, so nothing can refill the pool or
-    // still be holding a container handed out by `acquire`. An idle container
-    // left behind would otherwise hold memory until the next startup sweep.
-    //
-    // Aborting the seed fill is safe (rather than waiting out a slow `docker
-    // run` per planned container) because the pool claims a container's name in
-    // its own state BEFORE issuing `docker run`, and `drain_all` destroys those
-    // in-flight names too. An abort landing mid-create can therefore no longer
-    // strand a container the process never recorded.
-    warm_pool_seed.abort();
-    let _ = warm_pool_seed.await;
+    // Destroy every idle warm container. Runs last of the pool steps: the seed
+    // is aborted, the heartbeat task is gone and in-flight submissions have
+    // finished, so nothing can refill the pool or still be holding a container
+    // handed out by `acquire`. An idle container left behind would otherwise
+    // hold memory until the next startup sweep.
     warm_pool.drain_all().await;
 
     // Deregister from the app server

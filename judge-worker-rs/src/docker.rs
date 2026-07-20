@@ -660,6 +660,10 @@ pub async fn create_warm_container(
     name: &str,
     settings: &WarmContainerSettings,
 ) -> Result<(), String> {
+    // The only early return that needs no cleanup: it runs before `docker` is
+    // ever invoked, so no container can exist under `name` yet. Every later
+    // failure path below force-removes by name, because once the CLI has been
+    // launched the daemon may hold a container the pool no longer tracks.
     let seccomp = resolve_seccomp_profile(
         Phase::Run,
         &settings.seccomp_profile_path,
@@ -721,7 +725,15 @@ pub async fn create_warm_container(
     .await
     {
         Ok(Ok(output)) => output,
-        Ok(Err(e)) => return Err(format!("docker run (warm) failed to spawn: {e}")),
+        Ok(Err(e)) => {
+            // `output()` also fails on an I/O error AFTER the child was
+            // spawned, at which point the daemon may already have created the
+            // container. Force-remove by name before giving up: the caller has
+            // dropped this name from `pending`, so this is the last chance to
+            // destroy it.
+            remove_container_by_name(name).await;
+            return Err(format!("docker run (warm) failed to spawn: {e}"));
+        }
         Err(_elapsed) => {
             // The CLI child is killed on drop, but the daemon may still have
             // created the container; force-remove by name so it cannot leak as
@@ -735,6 +747,14 @@ pub async fn create_warm_container(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
+        // A non-zero exit does NOT mean nothing was created: `docker run -d`
+        // creates the container object first and only then starts it, so a
+        // rejected `--runtime`/`--security-opt` leaves a container sitting in
+        // `created` state. That name is absent from the pool's `idle` and
+        // already dropped from `pending`, and the orphan sweep only matches
+        // `status=exited`, so nothing else would ever reap it. Force-remove it
+        // here before returning.
+        remove_container_by_name(name).await;
         return Err(format!("docker run (warm) failed: {}", stderr.trim()));
     }
 
