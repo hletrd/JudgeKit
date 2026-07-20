@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::Instant;
 use tokio::io::AsyncReadExt;
@@ -443,7 +444,19 @@ fn warm_staging_dir(container: &str) -> Option<std::path::PathBuf> {
     {
         return None;
     }
-    Some(std::env::temp_dir().join(format!("judgekit-warm-{container}")))
+    Some(warm_staging_root().join(format!("{WARM_STAGING_PREFIX}{container}")))
+}
+
+/// Filename prefix that marks a directory under [`warm_staging_root`] as a warm
+/// container's staging directory. The container name follows verbatim, which is
+/// what lets the startup sweep map a leftover directory back to the container
+/// that owned it.
+const WARM_STAGING_PREFIX: &str = "judgekit-warm-";
+
+/// Directory the per-container staging directories live in — the same base the
+/// cold path's `SandboxWorkspace` uses, deliberately (see [`warm_staging_dir`]).
+fn warm_staging_root() -> std::path::PathBuf {
+    std::env::temp_dir()
 }
 
 /// Create a warm container's staging directory, owned and moded exactly like
@@ -481,22 +494,25 @@ async fn remove_warm_staging_dir(container: &str) {
     let Some(dir) = warm_staging_dir(container) else {
         return;
     };
-    let _ = tokio::task::spawn_blocking(move || {
-        if !dir.exists() {
-            return;
-        }
-        // SAFETY: getuid/getgid are async-signal-safe with no side effects.
-        let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
-        let _ = crate::workspace::chown_recursive(&dir, uid, gid);
-        if let Err(e) = std::fs::remove_dir_all(&dir) {
-            tracing::warn!(
-                error = %e,
-                path = %dir.display(),
-                "failed to remove warm staging directory",
-            );
-        }
-    })
-    .await;
+    let _ = tokio::task::spawn_blocking(move || reclaim_and_remove_staging_dir(&dir)).await;
+}
+
+/// Blocking teardown of one staging directory: take ownership back, then
+/// delete. Shared by the per-container removal above and the startup sweep.
+fn reclaim_and_remove_staging_dir(dir: &std::path::Path) {
+    if !dir.exists() {
+        return;
+    }
+    // SAFETY: getuid/getgid are async-signal-safe with no side effects.
+    let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+    let _ = crate::workspace::chown_recursive(dir, uid, gid);
+    if let Err(e) = std::fs::remove_dir_all(dir) {
+        tracing::warn!(
+            error = %e,
+            path = %dir.display(),
+            "failed to remove warm staging directory",
+        );
+    }
 }
 
 /// Copy a prepared cold workspace into a warm container's staging directory,
@@ -1137,6 +1153,15 @@ fn warm_update_args(container: &str, memory_limit_mb: u32) -> Vec<String> {
 
 /// `docker exec` arguments that run the submission command inside an adopted
 /// warm container with the same user and workdir the cold path uses.
+///
+/// No `--ulimit` here, and none is needed: `docker exec` does not accept the
+/// flag, but the container's rlimits DO apply to an exec'd process. Verified
+/// against a live daemon (Docker 29.6.1) — in a container created with
+/// `--ulimit nofile=1024:1024`, `docker exec … cat /proc/self/limits` reports
+/// `Max open files 1024 1024`, while the same exec in a container created
+/// without the flag reports the daemon default of 1048576. So the fd ceiling a
+/// submission sees is identical on the warm and cold paths; please do not
+/// re-litigate this.
 fn warm_exec_args(container: &str, command: &[String], has_input: bool) -> Vec<String> {
     let mut args: Vec<String> = vec!["exec".into()];
     if has_input {
@@ -2060,6 +2085,163 @@ pub async fn cleanup_all_oj_containers_at_startup() {
     }
 }
 
+/// Decide which directory names under [`warm_staging_root`] are orphaned warm
+/// staging directories, given the set of container names that must be spared.
+///
+/// Pure so the selection rule — the only part that can destroy data — is unit
+/// testable without a daemon. A name is swept only when ALL of these hold:
+///   * it carries the `judgekit-warm-` prefix, so nothing else in the shared
+///     temp directory (cold workspaces included) is ever a candidate;
+///   * the remainder is a warm container name (`oj-warm-…`) that
+///     [`warm_staging_dir`] itself accepts, so a hostile or malformed entry
+///     that could not have been created by this code is left alone; and
+///   * that container name is not in `spare`.
+fn select_orphaned_staging_dirs(entries: &[String], spare: &HashSet<String>) -> Vec<String> {
+    entries
+        .iter()
+        .filter(|name| {
+            let Some(container) = name.strip_prefix(WARM_STAGING_PREFIX) else {
+                return false;
+            };
+            if !container.starts_with(crate::pool::WARM_CONTAINER_PREFIX) {
+                return false;
+            }
+            // Round-trip through the path builder: only a name it would itself
+            // produce this exact directory for is eligible for deletion.
+            if warm_staging_dir(container).as_deref()
+                != Some(&warm_staging_root().join(name.as_str()))
+            {
+                return false;
+            }
+            !spare.contains(container)
+        })
+        .cloned()
+        .collect()
+}
+
+/// One-shot startup sweep for the OTHER half of a warm container: its host
+/// staging directory.
+///
+/// [`remove_container`] tears the directory down on every in-process path, but
+/// the container sweeps above remove containers by ID through a bulk
+/// `docker rm -f` and never go through it. A worker SIGKILLed with eight warm
+/// containers live therefore strands eight full workspace copies — compiled
+/// binaries included — in the temp directory, and nothing ever reclaimed them.
+///
+/// Safety rests on two independent sources of "in use", unioned:
+///   * every name `pool` tracks (idle plus Docker-call-in-flight). The pool
+///     records a name BEFORE `docker run`, and the staging directory is created
+///     inside that call, so a concurrent create is always covered — the
+///     warm-pool seed task really does run alongside this sweep.
+///   * every `oj-warm-*` container the daemon still knows about, which covers
+///     containers already handed out to a run and any other worker process
+///     sharing the host.
+///
+/// Ordering is what makes that airtight: the directory listing is taken FIRST
+/// and both spare-sets AFTER. A directory that appears after the listing is not
+/// a candidate at all, and one that was already listed had its name tracked
+/// before it was created, so it is necessarily in the later snapshot. Whichever
+/// way the race falls, a live container's directory survives.
+///
+/// Fail-soft throughout: any failure to establish the spare-set skips the whole
+/// sweep (leaking disk is always preferable to deleting a live workspace), and
+/// no error is propagated — a worker must start even if the sweep cannot run.
+pub async fn cleanup_orphaned_warm_staging_dirs(pool: &crate::pool::PoolManager) {
+    let root = warm_staging_root();
+    let listing_root = root.clone();
+    let entries = match tokio::task::spawn_blocking(move || -> std::io::Result<Vec<String>> {
+        let mut names = Vec::new();
+        for entry in std::fs::read_dir(&listing_root)? {
+            let entry = entry?;
+            // Only directories, and never follow a symlink into one.
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            if let Some(name) = entry.file_name().to_str() {
+                names.push(name.to_string());
+            }
+        }
+        Ok(names)
+    })
+    .await
+    {
+        Ok(Ok(entries)) => entries,
+        Ok(Err(e)) => {
+            tracing::warn!(
+                error = %e,
+                path = %root.display(),
+                "Startup sweep: cannot list staging root; skipping staging reclaim"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "Startup sweep: staging listing task failed");
+            return;
+        }
+    };
+    if entries.is_empty() {
+        return;
+    }
+
+    let Some(mut spare) = live_warm_container_names().await else {
+        tracing::warn!("Startup sweep: cannot enumerate warm containers; skipping staging reclaim");
+        return;
+    };
+    spare.extend(pool.tracked_names().await);
+
+    let orphans = select_orphaned_staging_dirs(&entries, &spare);
+    if orphans.is_empty() {
+        return;
+    }
+
+    let count = orphans.len();
+    let _ = tokio::task::spawn_blocking(move || {
+        for name in orphans {
+            reclaim_and_remove_staging_dir(&root.join(name));
+        }
+    })
+    .await;
+    tracing::info!(
+        count,
+        "Startup sweep: reclaimed orphaned warm staging directories"
+    );
+}
+
+/// Names of every `oj-warm-*` container the daemon still knows about, any
+/// status. `None` when the listing could not be obtained, which callers must
+/// treat as "spare everything" rather than "nothing is live".
+async fn live_warm_container_names() -> Option<HashSet<String>> {
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "ps",
+                "-a",
+                "--filter",
+                &format!("name={}", crate::pool::WARM_CONTAINER_PREFIX),
+                "--format",
+                "{{.Names}}",
+            ])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            // Docker renders a multi-named container as a comma-separated cell.
+            .split(['\n', ','])
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(String::from)
+            .collect(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{JudgeEnvironmentError, Phase, parse_timestamp_epoch_ms, resolve_seccomp_profile};
@@ -2404,6 +2586,58 @@ mod tests {
             "got {}",
             good.display()
         );
+    }
+
+    /// Selection rule for the startup staging-directory reclaim. This is the
+    /// only code in the worker that deletes a directory it did not create in
+    /// the same process, so the rule is pinned here without needing a daemon.
+    #[test]
+    fn orphaned_staging_dirs_spare_live_containers_and_foreign_entries() {
+        let entries: Vec<String> = [
+            // Two leaked staging dirs from a SIGKILLed predecessor.
+            "judgekit-warm-oj-warm-dead-1",
+            "judgekit-warm-oj-warm-dead-2",
+            // A live one: this process tracks it / the daemon still has it.
+            "judgekit-warm-oj-warm-live",
+            // Not ours: cold workspaces and unrelated temp junk share the root.
+            "judgekit-ws-1234",
+            "oj-warm-not-prefixed",
+            "systemd-private-abc",
+            // Prefixed, but the remainder is not a warm container name.
+            "judgekit-warm-oj-4f1c-per-run",
+            "judgekit-warm-",
+            // Prefixed, but the remainder is a name `warm_staging_dir` would
+            // refuse — never produced by this code, so never deleted by it.
+            "judgekit-warm-oj-warm-..",
+            "judgekit-warm-oj-warm-a b",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+
+        let spare: super::HashSet<String> = ["oj-warm-live".to_string()].into_iter().collect();
+        let mut swept = super::select_orphaned_staging_dirs(&entries, &spare);
+        swept.sort();
+
+        assert_eq!(
+            swept,
+            vec![
+                "judgekit-warm-oj-warm-dead-1".to_string(),
+                "judgekit-warm-oj-warm-dead-2".to_string(),
+            ],
+        );
+
+        // With nothing spared, the live one is swept too — proving the spare
+        // set, not some incidental filter, is what protected it above.
+        let swept_all = super::select_orphaned_staging_dirs(&entries, &super::HashSet::new());
+        assert!(swept_all.contains(&"judgekit-warm-oj-warm-live".to_string()));
+        assert_eq!(swept_all.len(), 3);
+
+        // Every swept name resolves back under the staging root, never outside.
+        for name in swept_all {
+            let path = super::warm_staging_root().join(&name);
+            assert_eq!(path.parent(), Some(super::warm_staging_root().as_path()));
+        }
     }
 
     /// The staging directory shares the cold workspace's base directory on

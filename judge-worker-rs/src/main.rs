@@ -639,9 +639,19 @@ async fn main() {
     // safe and reaps the `running` containers leaked by a forced restart
     // (deploy SIGTERM→SIGKILL, OOM-kill, host reboot) that the periodic
     // `status=exited` sweep cannot touch (R2 / feature-dev F2).
+    //
+    // The container sweeps remove by ID and so bypass `remove_container`, which
+    // is what would otherwise destroy a warm container's host staging
+    // directory. Reclaiming those directories is therefore a second pass,
+    // ordered AFTER the container reap so the containers whose directories are
+    // now orphaned are already gone.
+    let staging_sweep_pool = Arc::clone(&warm_pool);
     let warm_pool_seed = match run_startup_sweep(
         &mut shutdown,
-        docker::cleanup_all_oj_containers_at_startup(),
+        async move {
+            docker::cleanup_all_oj_containers_at_startup().await;
+            docker::cleanup_orphaned_warm_staging_dirs(&staging_sweep_pool).await;
+        },
         warm_pool_seed,
         heartbeat_handle.as_mut(),
         &warm_pool,

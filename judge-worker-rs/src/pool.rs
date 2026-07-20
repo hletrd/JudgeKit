@@ -172,14 +172,27 @@ impl PoolManager {
         state.pending.insert(container.to_string());
     }
 
-    /// Read-only view of every tracked name (idle plus in-flight), so a test can
-    /// assert that a teardown really emptied the pool without draining it
-    /// itself.
+    /// Read-only view of every name this process tracks: idle containers plus
+    /// the ones with a Docker call in flight. Used by the startup staging-
+    /// directory sweep to know which host directories are still spoken for —
+    /// `pending` is populated before `docker run`, so a container whose staging
+    /// directory exists is always in here.
+    pub async fn tracked_names(&self) -> HashSet<String> {
+        let state = self.state.lock().await;
+        state
+            .idle
+            .values()
+            .flatten()
+            .chain(state.pending.iter())
+            .cloned()
+            .collect()
+    }
+
+    /// Sorted view of [`Self::tracked_names`], so a test can assert that a
+    /// teardown really emptied the pool without draining it itself.
     #[cfg(test)]
     pub async fn tracked_names_for_test(&self) -> Vec<String> {
-        let state = self.state.lock().await;
-        let mut names: Vec<String> = state.idle.values().flatten().cloned().collect();
-        names.extend(state.pending.iter().cloned());
+        let mut names: Vec<String> = self.tracked_names().await.into_iter().collect();
         names.sort();
         names
     }
