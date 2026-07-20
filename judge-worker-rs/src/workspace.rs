@@ -29,7 +29,7 @@ impl SandboxWorkspace {
     }
 }
 
-fn chown_recursive(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
+pub(crate) fn chown_recursive(path: &Path, uid: u32, gid: u32) -> io::Result<()> {
     // SECURITY: never follow symlinks (RPF cycle-1 H1). The sandbox user can
     // plant `ln -s /etc pwn` inside the RW workspace; the previous
     // `fs::chown` + `path.is_dir()` combination both dereferenced symlinks,

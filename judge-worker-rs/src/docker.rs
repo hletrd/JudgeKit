@@ -18,36 +18,54 @@ const COMPILE_TMPFS: &str = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS: &str = "/tmp:rw,noexec,nosuid,size=64m";
 const MIN_TIMEOUT_MS: u64 = 100;
 
-/// Writable `/workspace` for a warm container. A pre-started container has no
-/// submission workspace to bind-mount yet, so it gets a tmpfs; the submission's
-/// files are unpacked into it when the container is adopted.
-///
-/// Owned by ROOT (no `uid=`/`gid=`) and mode 0755, which is what makes the
-/// adopted container W^X-equivalent to a cold run's read-only bind mount:
-///   * the run user (uid 65534, `--cap-drop=ALL`) is "other" here, so it can
-///     neither create, rename nor unlink anything under this exec-allowed
-///     mount, and cannot `chmod`/`chown` its way back in (that needs
-///     CAP_FOWNER / CAP_CHOWN, and the bounding set is empty);
-///   * the injection exec — which runs as uid 0 but ALSO with an empty
-///     capability bounding set, so it has no CAP_DAC_OVERRIDE — is the owner
-///     and can therefore unpack into it.
-///
-/// A tmpfs owned by 65534 would invert both properties: the submission could
-/// chmod the directory back to writable, and the root injection exec would get
-/// EACCES. Both were verified against a live Docker daemon.
-const WARM_WORKSPACE_TMPFS: &str = "/workspace:rw,exec,size=64m,mode=0755";
-
-/// Largest workspace archive that can be unpacked into `WARM_WORKSPACE_TMPFS`.
-/// A bigger one would ENOSPC mid-extraction and leave a half-populated
-/// workspace, which judges as a wrong answer instead of falling back; refusing
-/// up front turns that into a cold run. Kept in step with the tmpfs `size=` by
-/// `warm_archive_budget_matches_the_workspace_tmpfs_size`.
-const WARM_WORKSPACE_ARCHIVE_MAX_BYTES: u64 = 64 * 1024 * 1024;
+/// Uid/gid every judged process runs as, cold or warm.
+const SANDBOX_UID: u32 = 65534;
 
 /// Memory ceiling a warm container starts with. `docker update` lowers this to
 /// the submission's real limit when the container is adopted, so it only needs
 /// to be >= any per-submission limit the judge will ask for.
 const WARM_CEILING_MEMORY_MB: u32 = 1024;
+
+/// How far a warm run's reported duration may sit from the problem's time
+/// limit before the result is considered too close to call.
+///
+/// Cold measures `State.FinishedAt - State.StartedAt`; warm measures
+/// `exec_die - exec_start` from the same daemon's event stream (see
+/// [`exec_duration_ms_from_events`]). Both are stamped by the daemon around
+/// the process, so both exclude the CLI round trip — but they do not bracket
+/// it at exactly the same instant, and by how much they differ turns out to
+/// depend on the daemon version. Measured against two live daemons with a
+/// workload that also timed ITSELF with `CLOCK_MONOTONIC`, so the overhead
+/// each clock adds is directly visible:
+///
+/// | daemon | cold − self | warm − self |
+/// |--------|-------------|-------------|
+/// | 29.6.2 | +20…+53 ms  | +11…+34 ms  |
+/// | 26.1.5 | +0…+3 ms    | +29…+47 ms  |
+///
+/// So warm can over-report relative to cold by up to ~46 ms, and (on another
+/// daemon) under-report by ~20 ms. This floor is ~3× the worst observed
+/// difference, which is the headroom that keeps the residual error from
+/// deciding a verdict. Anything landing inside this band of the limit is
+/// handed back to the cold path, which is authoritative.
+const WARM_TIMING_UNCERTAINTY_MS: u64 = 150;
+
+/// Relative form of [`WARM_TIMING_UNCERTAINTY_MS`], applied as the larger of
+/// the two so long limits get a proportionate band.
+const WARM_UNCERTAINTY_PERCENT: u64 = 10;
+
+/// How close a warm run's peak memory may come to the submission's memory
+/// limit before the result is considered too close to call, in KiB.
+///
+/// An adopted container's cgroup is not pristine: it still holds the idle
+/// `sleep infinity` process and whatever the image start-up charged to it, so
+/// a warm run always has slightly LESS headroom than the cold run it stands in
+/// for. Near the limit that difference could decide whether the kernel OOM
+/// killer fires, which is exactly what produces a MemoryLimit verdict. An
+/// idle warm container's peak was measured at 3.6–13.7 MiB against a live
+/// daemon (the spread is image page cache); this floor covers the worst of
+/// that with headroom.
+const WARM_MEMORY_UNCERTAINTY_KB: u64 = 32 * 1024;
 
 const SECCOMP_INIT_ERROR_SNIPPETS: &[&str] = &[
     "OCI runtime create failed",
@@ -223,6 +241,46 @@ async fn read_cgroup_memory_peak(container_id: &str) -> Option<u64> {
     None
 }
 
+/// Host paths that may hold a container's cgroup v2 memory event counters,
+/// most likely first. Ordered to match [`cgroup_memory_peak_paths`]; there is
+/// no cgroup v1 entry because v1 has no equivalent cumulative `oom_kill`
+/// counter (`memory.oom_control` reports state, not a count).
+fn cgroup_memory_events_paths(container_id: &str) -> [String; 2] {
+    [
+        format!("/sys/fs/cgroup/system.slice/docker-{container_id}.scope/memory.events"),
+        format!("/sys/fs/cgroup/docker/{container_id}/memory.events"),
+    ]
+}
+
+/// Cumulative count of processes the kernel OOM-killed in this container's
+/// cgroup, or `None` when the counter is not readable from this host.
+///
+/// This is how the warm path detects a MemoryLimit. A cold run gets its OOM
+/// signal from `docker inspect`'s `State.OOMKilled`, but that flag describes
+/// the CONTAINER, and an adopted container survives its exec being OOM-killed
+/// (its `sleep infinity` PID 1 is not the process the kernel picked). Verified
+/// against a live daemon: an exec that allocates past a 64 MiB limit exits 137
+/// while the container still reports `OOMKilled=false`, and `memory.events`
+/// goes from `oom_kill 0` to `oom_kill 1`. Taking the delta across the exec
+/// restores exact parity with the cold flag.
+async fn read_cgroup_oom_kill_count(container_id: &str) -> Option<u64> {
+    for path in cgroup_memory_events_paths(container_id) {
+        let Ok(content) = tokio::fs::read_to_string(&path).await else {
+            continue;
+        };
+        return parse_cgroup_oom_kill_count(&content);
+    }
+    None
+}
+
+/// Pull the `oom_kill` counter out of a cgroup v2 `memory.events` file.
+fn parse_cgroup_oom_kill_count(content: &str) -> Option<u64> {
+    content.lines().find_map(|line| {
+        let (key, value) = line.split_once(' ')?;
+        (key == "oom_kill").then(|| value.trim().parse::<u64>().ok())?
+    })
+}
+
 /// Inspect a stopped container for OOM status, actual runtime, and memory.
 /// Runtime is derived from Docker's `State.StartedAt` / `State.FinishedAt`
 /// timestamps, excluding container creation and cgroup setup overhead.
@@ -343,6 +401,173 @@ async fn remove_container(container_name: &str) {
             "docker rm timed out; orphan sweep will reap"
         ),
     }
+
+    // A warm container owns a host staging directory (its `/workspace`); it
+    // dies with the container. Hooked in here rather than at the call sites so
+    // that EVERY destruction path — the pool's drain, a failed creation, and
+    // the post-run removal inside `run_and_measure` — cleans it up.
+    if container_name.starts_with(crate::pool::WARM_CONTAINER_PREFIX) {
+        remove_warm_staging_dir(container_name).await;
+    }
+}
+
+/// Per-container host directory that serves as an adopted warm container's
+/// `/workspace`.
+///
+/// Created empty and bind-mounted READ-ONLY at container creation; the
+/// submission's files are written into it from the HOST side at adopt time,
+/// exactly the way the cold path prepares `options.workspace_dir`, and the
+/// container sees them through the live bind mount. Nothing is ever written
+/// from inside the container, which is what makes the warm `/workspace`
+/// W^X: the mount is genuinely read-only rather than locked down after the
+/// fact.
+///
+/// It lives under `std::env::temp_dir()` — the same base `SandboxWorkspace`
+/// uses for cold workspaces — deliberately, on two counts:
+///   * the daemon already resolves bind mounts from that directory for every
+///     cold run, so no new host-path handling is introduced; and
+///   * a bind mount inherits its source filesystem's mount options, `noexec`
+///     included (verified against a live daemon: staging a compiled binary on
+///     a `noexec` tmpfs makes `./solution` fail with EACCES). Sharing the cold
+///     path's filesystem means a warm run can execute a compiled binary
+///     exactly when a cold run can.
+///
+/// `None` for a name that is not a plain container name, so the returned path
+/// can never escape the temp directory.
+fn warm_staging_dir(container: &str) -> Option<std::path::PathBuf> {
+    if container.is_empty()
+        || !container
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.')
+        || container.contains("..")
+    {
+        return None;
+    }
+    Some(std::env::temp_dir().join(format!("judgekit-warm-{container}")))
+}
+
+/// Create a warm container's staging directory, owned and moded exactly like
+/// the cold path's `options.workspace_dir` (uid/gid 65534, 0700) so an adopted
+/// container's `/workspace` is indistinguishable from a cold one's.
+async fn create_warm_staging_dir(container: &str) -> Result<std::path::PathBuf, String> {
+    let dir = warm_staging_dir(container)
+        .ok_or_else(|| format!("unsafe warm container name {container:?}"))?;
+
+    let target = dir.clone();
+    tokio::task::spawn_blocking(move || -> std::io::Result<()> {
+        let _ = std::fs::remove_dir_all(&target);
+        std::fs::create_dir(&target)?;
+        std::os::unix::fs::chown(&target, Some(SANDBOX_UID), Some(SANDBOX_UID))?;
+        std::fs::set_permissions(
+            &target,
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("warm staging dir task failed: {e}"))?
+    .map_err(|e| format!("warm staging dir {}: {e}", dir.display()))?;
+
+    Ok(dir)
+}
+
+/// Destroy a warm container's staging directory.
+///
+/// The tree is owned by the sandbox uid, so a worker that is not root reclaims
+/// it first — the same chown-back-then-remove dance `SandboxWorkspace` does on
+/// drop. Best effort: a leaked staging directory wastes disk, it cannot
+/// affect a verdict.
+async fn remove_warm_staging_dir(container: &str) {
+    let Some(dir) = warm_staging_dir(container) else {
+        return;
+    };
+    let _ = tokio::task::spawn_blocking(move || {
+        if !dir.exists() {
+            return;
+        }
+        // SAFETY: getuid/getgid are async-signal-safe with no side effects.
+        let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
+        let _ = crate::workspace::chown_recursive(&dir, uid, gid);
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            tracing::warn!(
+                error = %e,
+                path = %dir.display(),
+                "failed to remove warm staging directory",
+            );
+        }
+    })
+    .await;
+}
+
+/// Copy a prepared cold workspace into a warm container's staging directory,
+/// preserving every entry's mode and ownership byte for byte.
+///
+/// This is the whole injection mechanism, and it is deliberately the same
+/// filesystem operation the cold path already depends on: the files a warm
+/// container sees are the files `executor.rs` produced, with the ownership and
+/// modes it set (workspace 0700 65534:65534, source 0600, compiled artifacts
+/// whatever the compile container left). The previous tar-through-a-root-exec
+/// injection rewrote all of that and left `/workspace` unreadable to the run
+/// user.
+///
+/// Symlinks are recreated as symlinks and never followed: a compile phase runs
+/// as the sandbox user in a writable workspace and can plant
+/// `ln -s /etc/shadow loot`, which a dereferencing copy would happily read as
+/// the worker (root) and hand to the submission.
+fn copy_workspace_into_staging(
+    source: &std::path::Path,
+    dest: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    use std::os::unix::fs::PermissionsExt;
+
+    // Depth-first PREORDER: a parent always precedes its children, so walking
+    // the list backwards later applies ownership/modes to children first. That
+    // ordering matters — a directory chowned to 65534 and chmodded to 0700 is
+    // no longer writable by a non-root worker, so it must be finished last.
+    let mut pending: Vec<std::path::PathBuf> = vec![std::path::PathBuf::new()];
+    let mut created: Vec<(std::path::PathBuf, std::fs::Metadata)> = Vec::new();
+
+    while let Some(rel) = pending.pop() {
+        let from = source.join(&rel);
+        let to = dest.join(&rel);
+        let meta = std::fs::symlink_metadata(&from)?;
+        let file_type = meta.file_type();
+
+        if file_type.is_dir() {
+            if !rel.as_os_str().is_empty() {
+                std::fs::create_dir(&to)?;
+            }
+            for entry in std::fs::read_dir(&from)? {
+                pending.push(rel.join(entry?.file_name()));
+            }
+        } else if file_type.is_file() {
+            std::fs::copy(&from, &to)?;
+        } else if file_type.is_symlink() {
+            std::os::unix::fs::symlink(std::fs::read_link(&from)?, &to)?;
+        } else {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "refusing to stage non-regular workspace entry {}",
+                    from.display()
+                ),
+            ));
+        }
+
+        created.push((rel, meta));
+    }
+
+    for (rel, meta) in created.iter().rev() {
+        let to = dest.join(rel);
+        // chown before chmod: chowning clears setuid/setgid bits.
+        std::os::unix::fs::lchown(&to, Some(meta.uid()), Some(meta.gid()))?;
+        if !meta.file_type().is_symlink() {
+            std::fs::set_permissions(&to, std::fs::Permissions::from_mode(meta.mode() & 0o7777))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn should_retry_without_seccomp(stderr: &str) -> bool {
@@ -487,37 +712,204 @@ async fn run_docker_once(
         .spawn()
         .map_err(DockerError::SpawnFailed)?;
 
-    run_and_measure(
-        &mut child,
-        options,
-        &container_name,
-        RunClock::ContainerLifetime,
-    )
-    .await
+    run_and_measure(&mut child, options, &container_name, &Measurement::Cold).await
 }
 
-/// Which clock measures the submission's runtime.
-#[derive(Clone, Copy, PartialEq, Debug)]
-enum RunClock {
+/// Everything the warm path needs in order to measure an adopted container's
+/// exec the way the cold path measures a container's lifetime.
+struct WarmMeasurement {
+    /// Container ID, not name: cgroup paths and `docker events` actor filters
+    /// are keyed by ID.
+    container_id: String,
+    /// `--since` bound for the post-run `docker events` query, captured just
+    /// before the exec was spawned.
+    events_since: String,
+    /// Cumulative cgroup `oom_kill` count sampled before the exec, so the
+    /// delta afterwards attributes an OOM to THIS run and not to the
+    /// container's past.
+    oom_kill_before: Option<u64>,
+    /// Set once the run has been measured: `true` when the daemon told us when
+    /// the exec started and stopped, `false` when the reported duration is CLI
+    /// wall clock and therefore not comparable with a cold run's.
+    daemon_timed: std::sync::atomic::AtomicBool,
+}
+
+/// Where a run's duration, OOM status and peak memory come from. Everything
+/// else about a judged run — output capping, stdin, the timeout, the
+/// exit-status mapping — is shared verbatim by both variants.
+enum Measurement<'a> {
     /// The container was created for this run, so Docker's own `StartedAt` /
     /// `FinishedAt` bracket exactly the submission and exclude container
-    /// creation and cgroup setup overhead. Preferred when available.
-    ContainerLifetime,
-    /// The container was already running when this run started (warm path).
-    /// Its `StartedAt` predates the submission by the whole idle period, so the
-    /// container lifetime is not a measurement of anything the submission did —
-    /// only the wall clock around the `docker exec` is. Verified against a live
-    /// daemon: a warm container idle for 3 s then killed 1 s into its exec
-    /// reports a 4.1 s lifetime.
-    ExecWallClock,
+    /// creation and cgroup setup overhead, and `State.OOMKilled` describes the
+    /// process that ran.
+    Cold,
+    /// The container was already running (warm path). Its `StartedAt` predates
+    /// the submission by the whole idle period and its `State.OOMKilled`
+    /// describes a `sleep infinity` that outlives the submission, so BOTH have
+    /// to come from elsewhere: the daemon's `exec_start`/`exec_die` events and
+    /// the container's cgroup counters.
+    Warm(&'a WarmMeasurement),
 }
 
-/// Runtime to report, given the clock in use, what `docker inspect` said, and
-/// the wall clock measured around the child process.
-fn resolve_duration_ms(clock: RunClock, inspected_ms: Option<u64>, wall_ms: u64) -> u64 {
-    match clock {
-        RunClock::ContainerLifetime => inspected_ms.unwrap_or(wall_ms),
-        RunClock::ExecWallClock => wall_ms,
+/// Counters that only exist while the container is alive, sampled before any
+/// kill. Verified against a live daemon: a container's cgroup directory is
+/// gone the instant its last process exits, so `memory.peak` MUST be read
+/// while the warm container is still up.
+struct LiveCgroupSample {
+    memory_peak_kb: Option<u64>,
+    oom_killed: bool,
+}
+
+impl Measurement<'_> {
+    /// Read whatever must be read before the container can be killed.
+    async fn sample_live_cgroup(&self) -> Option<LiveCgroupSample> {
+        match self {
+            Measurement::Cold => None,
+            Measurement::Warm(warm) => {
+                let memory_peak_kb = read_cgroup_memory_peak(&warm.container_id).await;
+                let oom_after = read_cgroup_oom_kill_count(&warm.container_id).await;
+                let oom_killed = match (warm.oom_kill_before, oom_after) {
+                    (Some(before), Some(after)) => after > before,
+                    // Unreadable counter: fall back to "no OOM observed". The
+                    // caller refuses any run whose peak lands near the limit,
+                    // and an OOM-killed process still exits 137, which the
+                    // verdict classifier treats as MemoryLimit on its own.
+                    _ => false,
+                };
+                Some(LiveCgroupSample {
+                    memory_peak_kb,
+                    oom_killed,
+                })
+            }
+        }
+    }
+
+    /// Turn the run into the OOM / duration / peak-memory triple the result
+    /// reports. `wall_ms` is the wall clock measured around the child process.
+    async fn finish(
+        &self,
+        container_name: &str,
+        live: Option<LiveCgroupSample>,
+        wall_ms: u64,
+    ) -> ContainerInspect {
+        match self {
+            Measurement::Cold => inspect_container_state(container_name).await,
+            Measurement::Warm(warm) => {
+                let live = live.unwrap_or(LiveCgroupSample {
+                    memory_peak_kb: None,
+                    oom_killed: false,
+                });
+                let exec_ms = exec_duration_ms_from_events(
+                    &warm.container_id,
+                    &warm.events_since,
+                    &unix_timestamp_arg(std::time::SystemTime::now()),
+                )
+                .await;
+                warm.daemon_timed
+                    .store(exec_ms.is_some(), std::sync::atomic::Ordering::Relaxed);
+                ContainerInspect {
+                    oom_killed: live.oom_killed,
+                    duration_ms: Some(exec_ms.unwrap_or(wall_ms)),
+                    memory_peak_kb: live.memory_peak_kb,
+                    // An adopted container is running by definition, so the
+                    // "container never started" heuristic cannot apply.
+                    started: true,
+                }
+            }
+        }
+    }
+}
+
+/// Format a `SystemTime` the way `docker events --since/--until` wants it:
+/// unix seconds with a nanosecond fraction.
+fn unix_timestamp_arg(t: std::time::SystemTime) -> String {
+    let d = t.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    format!("{}.{:09}", d.as_secs(), d.subsec_nanos())
+}
+
+/// Runtime of the single `docker exec` this container ever served, taken from
+/// the daemon's own event stream.
+///
+/// This is the warm path's answer to the cold path's `StartedAt`/`FinishedAt`:
+/// both timestamps are stamped by the daemon around the process itself, so
+/// neither includes the CLI round trip. Measured against a live daemon on
+/// identical CPU-bound work, `exec_die - exec_start` came out 5–7 ms below the
+/// `docker exec` wall clock and inside the cold clock's own run-to-run spread,
+/// whereas the naive wall clock is inflated by the whole CLI round trip
+/// (50–150 ms on a loaded daemon) that the cold clock deliberately excludes.
+///
+/// Returns `None` unless EXACTLY one `exec_start`/`exec_die` pair is found. A
+/// pool container is single-use and the worker execs into it exactly once, so
+/// anything else means the daemon's event buffer had already evicted the pair,
+/// or something else is exec'ing into the container — in either case the
+/// caller must refuse the warm result rather than report a duration it cannot
+/// stand behind.
+async fn exec_duration_ms_from_events(container_id: &str, since: &str, until: &str) -> Option<u64> {
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "events",
+                "--since",
+                since,
+                "--until",
+                until,
+                "--filter",
+                &format!("container={container_id}"),
+                "--filter",
+                "event=exec_start",
+                "--filter",
+                "event=exec_die",
+                "--format",
+                "{{json .}}",
+            ])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
+
+    if !output.status.success() {
+        tracing::warn!(
+            container_id,
+            stderr = %String::from_utf8_lossy(&output.stderr).trim(),
+            "docker events lookup for warm exec timing failed"
+        );
+        return None;
+    }
+
+    parse_exec_window_ns(&String::from_utf8_lossy(&output.stdout))
+        .map(|elapsed_ns| elapsed_ns / 1_000_000)
+}
+
+/// Extract the elapsed nanoseconds between the one `exec_start` and the one
+/// `exec_die` in a `docker events --format '{{json .}}'` stream.
+fn parse_exec_window_ns(events: &str) -> Option<u64> {
+    let mut start: Option<u64> = None;
+    let mut die: Option<u64> = None;
+
+    for line in events.lines().filter(|l| !l.trim().is_empty()) {
+        let value: serde_json::Value = serde_json::from_str(line).ok()?;
+        let time_ns = value.get("timeNano")?.as_u64()?;
+        let action = value.get("Action")?.as_str()?;
+        // The action carries the command: "exec_start: python3 sol.py".
+        let slot = if action.starts_with("exec_start") {
+            &mut start
+        } else if action.starts_with("exec_die") {
+            &mut die
+        } else {
+            continue;
+        };
+        if slot.is_some() {
+            return None; // more than one exec in the window: not ours to time
+        }
+        *slot = Some(time_ns);
+    }
+
+    match (start, die) {
+        (Some(start), Some(die)) if die >= start => Some(die - start),
+        _ => None,
     }
 }
 
@@ -539,7 +931,7 @@ async fn run_and_measure(
     child: &mut tokio::process::Child,
     options: &DockerRunOptions,
     container_name: &str,
-    clock: RunClock,
+    measurement: &Measurement<'_>,
 ) -> Result<DockerRunResult, DockerError> {
     let timeout_duration = std::time::Duration::from_millis(options.timeout_ms.max(MIN_TIMEOUT_MS));
 
@@ -632,7 +1024,10 @@ async fn run_and_measure(
             let wall_duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
             let (stdout, stdout_truncated) = stdout_handle.await.unwrap_or_default();
             let (stderr, stderr_truncated) = stderr_handle.await.unwrap_or_default();
-            let state = inspect_container_state(container_name).await;
+            let live = measurement.sample_live_cgroup().await;
+            let state = measurement
+                .finish(container_name, live, wall_duration_ms)
+                .await;
             remove_container(container_name).await;
             Ok(DockerRunResult {
                 stdout,
@@ -642,7 +1037,7 @@ async fn run_and_measure(
                 exit_code: exit_status.code(),
                 timed_out: false,
                 oom_killed: state.oom_killed,
-                duration_ms: resolve_duration_ms(clock, state.duration_ms, wall_duration_ms),
+                duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
                 memory_peak_kb: state.memory_peak_kb,
                 container_started: state.started,
             })
@@ -655,8 +1050,14 @@ async fn run_and_measure(
         Err(_) => {
             // Timeout
             let wall_duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+            // Sample the cgroup BEFORE the kill: the container's cgroup
+            // directory disappears the moment its last process exits, so
+            // `memory.peak` is unreadable a millisecond later.
+            let live = measurement.sample_live_cgroup().await;
             kill_container(container_name).await;
-            let state = inspect_container_state(container_name).await;
+            let state = measurement
+                .finish(container_name, live, wall_duration_ms)
+                .await;
             remove_container(container_name).await;
             Ok(DockerRunResult {
                 stdout: Vec::new(),
@@ -666,7 +1067,7 @@ async fn run_and_measure(
                 exit_code: None,
                 timed_out: true,
                 oom_killed: state.oom_killed,
-                duration_ms: resolve_duration_ms(clock, state.duration_ms, wall_duration_ms),
+                duration_ms: state.duration_ms.unwrap_or(wall_duration_ms),
                 memory_peak_kb: state.memory_peak_kb,
                 container_started: state.started,
             })
@@ -691,9 +1092,9 @@ fn warm_refusal_reason(options: &DockerRunOptions) -> Option<String> {
     }
 
     if !options.read_only_workspace {
-        // The adopted `/workspace` is deliberately unwritable by the run user
-        // (see WARM_WORKSPACE_TMPFS). A caller that asked for a writable
-        // workspace would silently get a read-only one.
+        // The adopted `/workspace` is a `:ro` bind mount of the container's
+        // staging directory (see `warm_staging_dir`). A caller that asked for
+        // a writable workspace would silently get a read-only one.
         return Some("run needs a writable workspace; warm /workspace is not".to_string());
     }
 
@@ -734,61 +1135,6 @@ fn warm_update_args(container: &str, memory_limit_mb: u32) -> Vec<String> {
     ]
 }
 
-/// Host `tar` arguments that pack a prepared workspace for injection.
-///
-/// This is where W^X is established, because it is the only point at which the
-/// judge controls the ownership and mode of the files that land on the
-/// exec-allowed `/workspace` tmpfs:
-///   * `--owner=0 --group=0 --numeric-owner` — everything is unpacked as root,
-///     so the run user (uid 65534) can never `chmod`/`chown` it back
-///     (CAP_FOWNER / CAP_CHOWN are not in the container's bounding set);
-///   * `--mode=go-w` — strips group/other write from every member while
-///     leaving the executable bits alone, so a compiled binary stays runnable
-///     but nothing under `/workspace` is writable by the run user. Without it
-///     a mode-0777 file produced during the compile phase would survive as a
-///     writable AND executable path.
-fn warm_archive_args(workspace_dir: &str) -> Vec<String> {
-    vec![
-        "-C".into(),
-        workspace_dir.to_string(),
-        "--owner=0".into(),
-        "--group=0".into(),
-        "--numeric-owner".into(),
-        "--mode=go-w".into(),
-        "-cf".into(),
-        "-".into(),
-        ".".into(),
-    ]
-}
-
-/// `docker exec` arguments that unpack the workspace archive into an adopted
-/// warm container.
-///
-/// Runs as root because `/workspace` is a root-owned tmpfs — that is what stops
-/// the submission from writing there. This exec is NOT privileged: the
-/// container was created with `--cap-drop=ALL`, so its capability bounding set
-/// is empty and this uid-0 process has no CAP_DAC_OVERRIDE, CAP_CHOWN or
-/// CAP_FOWNER (verified against a live daemon). It can write to `/workspace`
-/// only because it owns it.
-///
-/// `docker cp` is not an alternative: the daemon rejects it outright for
-/// `--read-only` containers ("container rootfs is marked read-only"), and warm
-/// containers are `--read-only` like every judged container.
-fn warm_extract_args(container: &str) -> Vec<String> {
-    vec![
-        "exec".into(),
-        "-i".into(),
-        "--user".into(),
-        "0:0".into(),
-        container.to_string(),
-        "tar".into(),
-        "-xf".into(),
-        "-".into(),
-        "-C".into(),
-        "/workspace".into(),
-    ]
-}
-
 /// `docker exec` arguments that run the submission command inside an adopted
 /// warm container with the same user and workdir the cold path uses.
 fn warm_exec_args(container: &str, command: &[String], has_input: bool) -> Vec<String> {
@@ -808,14 +1154,17 @@ fn warm_exec_args(container: &str, command: &[String], has_input: bool) -> Vec<S
 }
 
 /// Reset the container's cgroup peak-memory counter so the reading taken after
-/// this run reflects only this run: the container was idling (and was just
-/// written to) before it was adopted, and `memory.peak` is monotonic.
+/// this run reflects only this run: the container has been idling, and
+/// `memory.peak` is monotonic.
 ///
-/// Returns false only when the counter this host WOULD read back exists but
-/// could not be reset (cgroup v2 `memory.peak` is only resettable from Linux
-/// 6.8, and the worker must be able to write it). A host where no counter is
-/// readable at all returns true: cold and warm runs then both report
-/// `memory_peak_kb: None`, so there is nothing to over-report.
+/// Returns false when the counter exists but could not be reset (cgroup v2
+/// `memory.peak` is only writable from Linux 6.8; on 5.19–6.7 it is read-only).
+/// That is NOT a reason to refuse the warm path: `memory_peak_kb` is reported
+/// to the user but is never an input to a verdict — MemoryLimit comes from the
+/// kernel OOM killer, which the cgroup limit governs identically either way.
+/// On such a kernel the reported peak is simply an over-estimate by the
+/// container's idle baseline, and an over-estimate only ever makes the
+/// near-limit guard refuse MORE runs.
 async fn reset_cgroup_memory_peak(container_id: &str) -> bool {
     for path in cgroup_memory_peak_paths(container_id) {
         if tokio::fs::read_to_string(&path).await.is_err() {
@@ -825,46 +1174,33 @@ async fn reset_cgroup_memory_peak(container_id: &str) -> bool {
         // `memory.max_usage_in_bytes`.
         return tokio::fs::write(&path, b"0").await.is_ok();
     }
+    // No counter is readable at all, so nothing can be over-reported: cold and
+    // warm both report `memory_peak_kb: None` on this host.
     true
 }
+
+/// Log the un-resettable `memory.peak` condition once per process rather than
+/// once per judged test case.
+static WARM_PEAK_RESET_WARNED: std::sync::Once = std::sync::Once::new();
 
 /// Run one short Docker command for the warm path, mapping EVERY failure mode
 /// — spawn error, wedged daemon, non-zero exit, missing container — onto
 /// `WarmUnavailable` so the caller falls back to a cold run.
-async fn warm_docker_step(
-    args: &[String],
-    stdin_bytes: Option<&[u8]>,
-    step: &str,
-) -> Result<Vec<u8>, DockerError> {
+async fn warm_docker_step(args: &[String], step: &str) -> Result<Vec<u8>, DockerError> {
     let mut command = tokio::process::Command::new("docker");
     command
         .args(args)
-        .stdin(if stdin_bytes.is_some() {
-            std::process::Stdio::piped()
-        } else {
-            std::process::Stdio::null()
-        })
+        .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true);
-
-    let run = async {
-        let mut child = command.spawn()?;
-        if let Some(bytes) = stdin_bytes {
-            let mut stdin = child.stdin.take().expect("stdin not captured");
-            stdin.write_all(bytes).await?;
-            let _ = stdin.shutdown().await;
-            drop(stdin);
-        }
-        child.wait_with_output().await
-    };
 
     // Timeout-guarded like every other Docker invocation in this file: a wedged
     // daemon must not hold the executor's concurrency slot. kill_on_drop tears
     // down the CLI child when this future is dropped.
     match tokio::time::timeout(
         std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
-        run,
+        command.output(),
     )
     .await
     {
@@ -880,53 +1216,115 @@ async fn warm_docker_step(
     }
 }
 
-/// Pack the prepared workspace into a tar stream ready to unpack inside an
-/// adopted warm container. See [`warm_archive_args`] for the W^X properties
-/// this archive carries.
-async fn build_workspace_archive(workspace_dir: &str) -> Result<Vec<u8>, DockerError> {
-    let output = match tokio::time::timeout(
-        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
-        tokio::process::Command::new("tar")
-            .args(warm_archive_args(workspace_dir))
-            .kill_on_drop(true)
-            .output(),
-    )
-    .await
+/// Stderr fragments that mean `docker exec` never got as far as running the
+/// submission's command.
+///
+/// Verified against a live daemon: exec'ing into a container that was removed
+/// exits 1 with "No such container", a stopped one exits 1 with "is not
+/// running", and a command that is not there exits 127 with "OCI runtime exec
+/// failed". None of those are the submission's doing, and reporting the exit
+/// code as a verdict turned a container reaped between inspect and exec into a
+/// RuntimeError for the user.
+const EXEC_MACHINERY_ERROR_SNIPPETS: &[&str] = &[
+    "Error response from daemon",
+    "OCI runtime exec failed",
+    "No such container",
+    "is not running",
+    "cannot exec in a stopped",
+    "exec failed:",
+];
+
+/// Whether a finished `docker exec` failed as MACHINERY rather than as a
+/// submission.
+///
+/// Deliberately conservative in the safe direction: the worst case for a false
+/// positive is one wasted cold re-run (which then produces the real verdict),
+/// while a false negative reports the daemon's own diagnostic as the
+/// submission's RuntimeError.
+fn exec_machinery_failure(result: &DockerRunResult) -> Option<String> {
+    if result.timed_out {
+        // The command ran; we killed it. That is a verdict, not a failure.
+        return None;
+    }
+    if !result.stdout.is_empty() {
+        return None; // the submission produced output, so it ran
+    }
+    // `docker exec` uses these itself when it cannot start the command; a
+    // submission exiting with one of them is re-run cold, which is harmless.
+    if !matches!(
+        result.exit_code,
+        Some(1) | Some(125) | Some(126) | Some(127)
+    ) {
+        return None;
+    }
+    EXEC_MACHINERY_ERROR_SNIPPETS
+        .iter()
+        .find(|snippet| result.stderr.contains(**snippet))
+        .map(|_| result.stderr.trim().to_string())
+}
+
+/// Half-width of the band around a limit inside which a warm measurement is
+/// not trusted to decide a verdict.
+fn warm_uncertainty_band(limit: u64, floor: u64) -> u64 {
+    floor.max(limit / 100 * WARM_UNCERTAINTY_PERCENT)
+}
+
+/// Why this warm result is too close to a limit to stand behind, if it is.
+///
+/// The warm and cold clocks are comparable but not identical, and an adopted
+/// container's cgroup starts with slightly less headroom than a fresh one's.
+/// Neither difference is large, but "not large" is not "zero", so any result
+/// whose duration or peak memory lands close enough to a limit that the
+/// difference could flip the verdict is handed back for a cold re-run. A
+/// borderline submission getting re-run is cheap; a wrong verdict is not.
+fn warm_result_is_too_close_to_call(
+    result: &DockerRunResult,
+    effective_time_limit_ms: u64,
+    memory_limit_mb: u32,
+) -> Option<String> {
+    let time_band = warm_uncertainty_band(effective_time_limit_ms, WARM_TIMING_UNCERTAINTY_MS);
+    if result.duration_ms >= effective_time_limit_ms.saturating_sub(time_band)
+        && result.duration_ms <= effective_time_limit_ms.saturating_add(time_band)
     {
-        Ok(Ok(output)) => output,
-        Ok(Err(e)) => {
-            return Err(DockerError::WarmUnavailable(format!(
-                "workspace archive failed to spawn tar: {e}"
-            )));
-        }
-        Err(_elapsed) => {
-            return Err(DockerError::WarmUnavailable(format!(
-                "workspace archive timed out after {DOCKER_CLEANUP_TIMEOUT_SECS}s"
-            )));
-        }
-    };
-
-    if !output.status.success() {
-        return Err(DockerError::WarmUnavailable(format!(
-            "workspace archive failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )));
+        return Some(format!(
+            "duration {}ms is within {}ms of the {}ms limit",
+            result.duration_ms, time_band, effective_time_limit_ms
+        ));
     }
 
-    // An archive that cannot fit in the tmpfs would ENOSPC part-way through
-    // extraction, leaving a workspace that judges as a wrong answer instead of
-    // falling back. Refuse before anything is injected.
-    if u64::try_from(output.stdout.len()).unwrap_or(u64::MAX) > WARM_WORKSPACE_ARCHIVE_MAX_BYTES {
-        return Err(DockerError::WarmUnavailable(format!(
-            "workspace archive is {} bytes; /workspace tmpfs holds {WARM_WORKSPACE_ARCHIVE_MAX_BYTES}",
-            output.stdout.len()
-        )));
+    let memory_limit_kb = u64::from(get_memory_limit_mb(memory_limit_mb)) * 1024;
+    let memory_band = warm_uncertainty_band(memory_limit_kb, WARM_MEMORY_UNCERTAINTY_KB);
+    match result.memory_peak_kb {
+        Some(peak) if peak.saturating_add(memory_band) >= memory_limit_kb => {
+            return Some(format!(
+                "peak memory {peak}KiB is within {memory_band}KiB of the {memory_limit_kb}KiB limit"
+            ));
+        }
+        // No readable counter means this host's cgroups are out of reach (the
+        // worker is containerised away from the daemon, say), and a kill can
+        // then be attributed neither to the submission nor to the adopted
+        // container's residual footprint. A cold run still gets its OOM flag
+        // from `docker inspect`, so hand these back rather than report a
+        // different memory figure than cold would. Exit 137 is included
+        // because that is the OOM killer's signature and the verdict
+        // classifier treats it as a MemoryLimit on its own.
+        // (When the peak IS known an OOM always trips the band above, because
+        // an OOM-killed cgroup peaks at its limit.)
+        None if result.oom_killed || result.exit_code == Some(137) => {
+            return Some("possible OOM with no readable peak-memory counter".to_string());
+        }
+        _ => {}
     }
 
-    Ok(output.stdout)
+    None
 }
 
 /// Execute one test case inside an ALREADY-RUNNING warm container.
+///
+/// `effective_time_limit_ms` is the problem's time limit as the verdict
+/// classifier will apply it — NOT `options.timeout_ms`, which carries the
+/// wall-clock overhead budget on top. It is needed here because a warm result
+/// that lands too close to that limit is refused rather than reported.
 ///
 /// Caller contract: `container` came from `PoolManager::acquire` (so it is
 /// single-use), and the caller destroys it afterwards regardless of outcome.
@@ -941,69 +1339,74 @@ async fn build_workspace_archive(workspace_dir: &str) -> Result<Vec<u8>, DockerE
 pub async fn run_docker_warm(
     options: &DockerRunOptions,
     container: &str,
+    effective_time_limit_ms: u64,
 ) -> Result<DockerRunResult, DockerError> {
     if let Some(reason) = warm_refusal_reason(options) {
         return Err(DockerError::WarmUnavailable(reason));
     }
 
-    // Built before anything is done to the container, so a bad workspace costs
-    // nothing but a cold fallback.
-    let archive = build_workspace_archive(&options.workspace_dir).await?;
-
-    // Resolve the container's real ID (the cgroup paths are keyed by ID, not by
-    // name). This doubles as the liveness check required of the warm path: a
-    // pruned or dead container answers "No such container" here and falls back
-    // to cold instead of failing the submission.
+    // Resolve the container's real ID (cgroup paths and event filters are keyed
+    // by ID, not by name) and its liveness in one call: a pruned or dead
+    // container answers "No such container" here and falls back to cold
+    // instead of failing the submission.
     let inspected = warm_docker_step(
         &[
             "inspect".into(),
             "-f".into(),
-            "{{.Id}}".into(),
+            "{{.Id}} {{.State.Running}}".into(),
             container.to_string(),
         ],
-        None,
         "docker inspect (warm)",
     )
     .await?;
-    let container_id = String::from_utf8_lossy(&inspected)
-        .trim()
+    let inspected = String::from_utf8_lossy(&inspected);
+    let mut fields = inspected.split_whitespace();
+    let container_id = fields
+        .next()
+        .unwrap_or_default()
         .trim_matches('"')
         .to_string();
-    if container_id.is_empty() {
-        return Err(DockerError::WarmUnavailable(
-            "docker inspect (warm): empty container id".to_string(),
-        ));
+    let running = fields.next().unwrap_or_default() == "true";
+    if container_id.is_empty() || !running {
+        return Err(DockerError::WarmUnavailable(format!(
+            "warm container {container} is not running"
+        )));
     }
 
     // 1) Retune limits down to this submission's.
     warm_docker_step(
         &warm_update_args(container, options.memory_limit_mb),
-        None,
         "docker update (warm)",
     )
     .await?;
 
-    // 2) Inject the prepared workspace. The warm container has an empty tmpfs
-    //    /workspace; it could not bind-mount a workspace that did not exist
-    //    when it was created, and `docker cp` is refused for --read-only
-    //    containers. Unpacking a root-owned, go-w archive as root restores W^X:
-    //    from here on nothing under the exec-allowed /workspace is writable by
-    //    the uid-65534, zero-capability process that runs the submission.
-    warm_docker_step(
-        &warm_extract_args(container),
-        Some(&archive),
-        "workspace injection (warm)",
-    )
-    .await?;
+    // 2) Inject the prepared workspace from the HOST side, into the staging
+    //    directory this container already has bind-mounted read-only at
+    //    /workspace. Nothing is written from inside the container, so the run
+    //    user cannot create, modify, chmod or chown anything under /workspace
+    //    no matter what the files' modes are — and the files keep exactly the
+    //    ownership and modes the cold path gives them, so a submission can
+    //    read its own source and execute its own compiled binary.
+    inject_warm_workspace(container, &options.workspace_dir).await?;
 
     // 3) Zero the peak-memory counter so the post-run reading is this run's and
-    //    not the idle period's (or the injection's). After injection on
-    //    purpose: the unpacked tmpfs pages are charged to this cgroup.
+    //    not the idle period's. Report-only, so a kernel that cannot reset it
+    //    degrades the number instead of disabling the feature.
     if !reset_cgroup_memory_peak(&container_id).await {
-        return Err(DockerError::WarmUnavailable(
-            "kernel does not support resetting memory.peak".to_string(),
-        ));
+        WARM_PEAK_RESET_WARNED.call_once(|| {
+            tracing::warn!(
+                "cgroup memory.peak is not resettable on this kernel (needs Linux 6.8+); \
+                 warm runs will over-report peak memory by the container's idle baseline"
+            );
+        });
     }
+
+    let measurement = WarmMeasurement {
+        events_since: unix_timestamp_arg(std::time::SystemTime::now()),
+        oom_kill_before: read_cgroup_oom_kill_count(&container_id).await,
+        container_id,
+        daemon_timed: std::sync::atomic::AtomicBool::new(false),
+    };
 
     // 4) Execute, then hand over to the shared measurement logic.
     let mut child = tokio::process::Command::new("docker")
@@ -1019,12 +1422,86 @@ pub async fn run_docker_warm(
         .spawn()
         .map_err(|e| DockerError::WarmUnavailable(format!("docker exec (warm): {e}")))?;
 
-    run_and_measure(&mut child, options, container, RunClock::ExecWallClock)
-        .await
-        .map_err(|e| match e {
-            already @ DockerError::WarmUnavailable(_) => already,
-            other => DockerError::WarmUnavailable(format!("warm run failed: {other}")),
+    let result = run_and_measure(
+        &mut child,
+        options,
+        container,
+        &Measurement::Warm(&measurement),
+    )
+    .await
+    .map_err(|e| match e {
+        already @ DockerError::WarmUnavailable(_) => already,
+        other => DockerError::WarmUnavailable(format!("warm run failed: {other}")),
+    })?;
+
+    // A `docker exec` that never started the command must not become a
+    // verdict: exit 126/127 from the OCI runtime, or exit 1 from the daemon,
+    // is the pool's problem, not the submission's.
+    if let Some(reason) = exec_machinery_failure(&result) {
+        return Err(DockerError::WarmUnavailable(format!(
+            "docker exec (warm) did not run the command: {reason}"
+        )));
+    }
+
+    // Without the daemon's own exec timestamps the reported duration is CLI
+    // wall clock, which includes overhead the cold clock excludes. Refuse
+    // rather than report a duration that is not comparable with cold's.
+    if !measurement
+        .daemon_timed
+        .load(std::sync::atomic::Ordering::Relaxed)
+        && !result.timed_out
+    {
+        return Err(DockerError::WarmUnavailable(
+            "daemon did not report exec_start/exec_die for this run".to_string(),
+        ));
+    }
+
+    if let Some(reason) =
+        warm_result_is_too_close_to_call(&result, effective_time_limit_ms, options.memory_limit_mb)
+    {
+        return Err(DockerError::WarmUnavailable(format!(
+            "warm measurement too close to call: {reason}"
+        )));
+    }
+
+    Ok(result)
+}
+
+/// Populate an adopted warm container's staging directory with the prepared
+/// workspace. Every failure maps to `WarmUnavailable`: a half-injected
+/// workspace would judge as a wrong answer.
+async fn inject_warm_workspace(container: &str, workspace_dir: &str) -> Result<(), DockerError> {
+    let staging = warm_staging_dir(container).ok_or_else(|| {
+        DockerError::WarmUnavailable(format!("unsafe warm container name {container:?}"))
+    })?;
+    let source = std::path::PathBuf::from(workspace_dir);
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        // The staging directory belongs to exactly one container and one run;
+        // anything already in it means the pool handed out a container that
+        // had already been used.
+        match std::fs::read_dir(&staging) {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    return Err(format!(
+                        "staging directory {} is not empty",
+                        staging.display()
+                    ));
+                }
+            }
+            Err(e) => return Err(format!("staging directory {}: {e}", staging.display())),
+        }
+        copy_workspace_into_staging(&source, &staging).map_err(|e| {
+            format!(
+                "staging {} into {}: {e}",
+                source.display(),
+                staging.display()
+            )
         })
+    })
+    .await
+    .map_err(|e| DockerError::WarmUnavailable(format!("workspace injection task failed: {e}")))?
+    .map_err(|e| DockerError::WarmUnavailable(format!("workspace injection (warm): {e}")))
 }
 
 pub async fn run_docker(
@@ -1085,10 +1562,14 @@ pub struct WarmContainerSettings {
 /// Flags mirror the `Phase::Run` container in `run_docker_once` — same network,
 /// filesystem, capability, user, ulimit, seccomp and OCI-runtime posture —
 /// EXCEPT:
-///   * `/workspace` is a writable tmpfs (there is no submission workspace to
-///     bind-mount yet; files arrive later), and
-///   * memory/cpu/pids start at generous ceilings and are tightened to the
-///     submission's real limits with `docker update` when the container is
+///   * `/workspace` is a read-only bind mount of a dedicated, initially empty
+///     host staging directory instead of the submission's workspace (there is
+///     no submission yet). The files are written into that directory from the
+///     host when the container is adopted and appear through the live mount;
+///     see [`warm_staging_dir`]. The mount is `:ro` exactly like a cold run's
+///     workspace mount, so the run user can never write to `/workspace`.
+///   * memory starts at a generous ceiling and is tightened to the
+///     submission's real limit with `docker update` when the container is
 ///     adopted.
 ///
 /// The container idles on `sleep infinity` and is destroyed after one use.
@@ -1113,6 +1594,26 @@ pub async fn create_warm_container(
     )
     .map_err(|e| e.to_string())?;
 
+    // Created before `docker run` so the bind mount has something to point at.
+    // Every failure path below force-removes by name, and `remove_container`
+    // destroys the staging directory along with the container.
+    let staging = match create_warm_staging_dir(name).await {
+        Ok(staging) => staging,
+        Err(e) => {
+            // Nothing was started yet, but a partially created directory must
+            // not outlive this call.
+            remove_warm_staging_dir(name).await;
+            return Err(format!("warm staging directory setup failed: {e}"));
+        }
+    };
+    let staging = match staging.to_str() {
+        Some(staging) => staging.to_string(),
+        None => {
+            remove_warm_staging_dir(name).await;
+            return Err("warm staging directory path is not valid UTF-8".to_string());
+        }
+    };
+
     let mut args: Vec<String> = vec![
         "run".into(),
         "-d".into(),
@@ -1132,8 +1633,11 @@ pub async fn create_warm_container(
         "--read-only".into(),
         "--tmpfs".into(),
         RUN_TMPFS.into(),
-        "--tmpfs".into(),
-        WARM_WORKSPACE_TMPFS.into(),
+        // Same shape as the cold run-phase workspace mount: read-only, so the
+        // submission cannot write to /workspace, and a real host directory, so
+        // its contents keep the ownership and modes the executor set.
+        "-v".into(),
+        format!("{staging}:/workspace:ro"),
         "--cap-drop=ALL".into(),
         "--security-opt=no-new-privileges".into(),
         "--ulimit".into(),
@@ -1842,88 +2346,594 @@ mod tests {
         assert!(reason.contains("writable"), "got {reason}");
     }
 
-    /// W^X: the archive that is injected into the warm container must strip
-    /// group/other write from every member and own everything as root, so the
-    /// run user (uid 65534, no capabilities) can neither create nor modify a
-    /// file under the exec-allowed `/workspace`.
+    /// W^X, part 1: the staging directory a warm container gets as
+    /// `/workspace` is bind-mounted READ-ONLY, exactly like a cold run's
+    /// workspace mount. Nothing is ever written from inside the container, so
+    /// there is no "lock it down afterwards" step that could be got wrong.
     #[test]
-    fn warm_archive_is_root_owned_and_not_writable_by_the_run_user() {
-        let args = super::warm_archive_args("/tmp/ws");
-        assert!(args.contains(&"--owner=0".to_string()), "got {args:?}");
-        assert!(args.contains(&"--group=0".to_string()), "got {args:?}");
+    fn warm_container_workspace_is_a_read_only_bind_mount() {
+        let body = create_warm_container_source();
         assert!(
-            args.contains(&"--numeric-owner".to_string()),
-            "got {args:?}"
+            body.contains("{staging}:/workspace:ro"),
+            "warm /workspace must be a read-only bind mount of the staging dir"
         );
-        assert!(args.contains(&"--mode=go-w".to_string()), "got {args:?}");
-        assert!(args.contains(&"/tmp/ws".to_string()), "got {args:?}");
-    }
-
-    /// The injection exec must run as root: `/workspace` is a root-owned tmpfs
-    /// precisely so the run user cannot write to it, and `docker cp` is not an
-    /// option (the daemon refuses it for `--read-only` containers).
-    #[test]
-    fn warm_extract_args_unpack_as_root_into_workspace() {
-        let args = super::warm_extract_args("oj-warm-x");
-        assert!(args.starts_with(&["exec".to_string()]));
-        assert!(args.contains(&"-i".to_string()));
-        assert!(args.contains(&"--user".to_string()));
-        assert!(args.contains(&"0:0".to_string()));
-        assert!(args.contains(&"tar".to_string()));
-        assert!(args.contains(&"/workspace".to_string()));
-        assert!(args.contains(&"oj-warm-x".to_string()));
-    }
-
-    /// The whole W^X argument rests on `/workspace` being owned by root: a
-    /// tmpfs owned by uid 65534 would let the submission chmod it back to
-    /// writable, and would also block the root injection exec (which has an
-    /// EMPTY capability bounding set and so cannot override DAC).
-    #[test]
-    fn warm_workspace_tmpfs_is_root_owned_and_unwritable_by_the_run_user() {
-        let tmpfs = super::WARM_WORKSPACE_TMPFS;
-        assert!(!tmpfs.contains("uid="), "got {tmpfs}");
-        assert!(!tmpfs.contains("gid="), "got {tmpfs}");
-        assert!(tmpfs.contains("mode=0755"), "got {tmpfs}");
-    }
-
-    /// An archive larger than the tmpfs cannot be unpacked; catching it here
-    /// turns a half-extracted workspace (which would produce a bogus verdict)
-    /// into a clean cold fallback.
-    #[test]
-    fn warm_archive_budget_matches_the_workspace_tmpfs_size() {
         assert!(
-            super::WARM_WORKSPACE_TMPFS.contains(&format!(
-                "size={}m",
-                super::WARM_WORKSPACE_ARCHIVE_MAX_BYTES / (1024 * 1024)
-            )),
-            "archive budget must track the tmpfs size: {}",
-            super::WARM_WORKSPACE_TMPFS
+            !body.contains("/workspace:rw"),
+            "warm /workspace must never be writable"
+        );
+        assert!(
+            !body.contains("--tmpfs\".into(),\n        \"/workspace"),
+            "warm /workspace must not be a tmpfs"
         );
     }
 
-    /// Cold path: Docker's own `StartedAt`/`FinishedAt` bracket exactly the
-    /// submission, so they are preferred over the wall clock.
+    fn create_warm_container_source() -> &'static str {
+        let src = include_str!("docker.rs");
+        let start = src
+            .find("pub async fn create_warm_container(")
+            .expect("create_warm_container present");
+        let end = src[start..]
+            .find("\n/// Force-remove a container by name")
+            .expect("create_warm_container body is delimited")
+            + start;
+        &src[start..end]
+    }
+
+    /// The staging path is derived from a container name that the pool
+    /// generates, but it must not be possible to aim it anywhere else.
     #[test]
-    fn owned_container_timing_prefers_docker_timestamps() {
-        assert_eq!(
-            super::resolve_duration_ms(super::RunClock::ContainerLifetime, Some(120), 350),
-            120
-        );
-        assert_eq!(
-            super::resolve_duration_ms(super::RunClock::ContainerLifetime, None, 350),
-            350
+    fn warm_staging_dir_rejects_names_that_could_escape_the_temp_dir() {
+        for bad in [
+            "",
+            "../../etc",
+            "oj-warm-../x",
+            "oj-warm-a/b",
+            "oj-warm-$(id)",
+            "oj-warm-a b",
+        ] {
+            assert!(
+                super::warm_staging_dir(bad).is_none(),
+                "must refuse container name {bad:?}"
+            );
+        }
+
+        let good = super::warm_staging_dir("oj-warm-3f2a-9b1c").expect("plain name is accepted");
+        assert!(good.starts_with(std::env::temp_dir()));
+        assert!(
+            good.to_string_lossy().contains("oj-warm-3f2a-9b1c"),
+            "got {}",
+            good.display()
         );
     }
 
-    /// Warm path: the container's `StartedAt` predates the submission by the
-    /// whole idle period. Trusting it would report minutes of idling as the
-    /// submission's runtime and turn every warm timeout into a bogus duration.
+    /// The staging directory shares the cold workspace's base directory on
+    /// purpose: a bind mount inherits its source filesystem's mount options, so
+    /// staging somewhere `noexec` would make every compiled submission fail to
+    /// start on the warm path only.
     #[test]
-    fn adopted_container_timing_ignores_the_container_lifetime() {
+    fn warm_staging_dir_shares_the_cold_workspace_filesystem() {
+        let cold = tempfile::TempDir::new().expect("cold workspace");
+        let warm = super::warm_staging_dir("oj-warm-x").expect("staging path");
         assert_eq!(
-            super::resolve_duration_ms(super::RunClock::ExecWallClock, Some(3_600_000), 42),
-            42
+            cold.path().parent(),
+            warm.parent(),
+            "warm staging must live beside the cold workspaces"
         );
+    }
+
+    fn fixture_mode(path: &std::path::Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::symlink_metadata(path)
+            .expect("stat fixture")
+            .permissions()
+            .mode()
+            & 0o7777
+    }
+
+    /// Build the workspace the executor actually hands to a run-phase
+    /// container: directory 0700, source 0600, compiled artifact 0755, all
+    /// owned by the sandbox uid (only chownable as root, hence the `chown`
+    /// flag).
+    fn executor_shaped_workspace(chown: bool) -> tempfile::TempDir {
+        use std::os::unix::fs::PermissionsExt;
+        let ws = tempfile::TempDir::new().expect("workspace");
+        let root = ws.path();
+
+        std::fs::write(root.join("solution.py"), b"print(input())").expect("write source");
+        std::fs::write(
+            root.join("solution"),
+            b"#!/bin/sh\ncat solution.py >/dev/null && echo ran\n",
+        )
+        .expect("write artifact");
+        std::fs::create_dir(root.join("build")).expect("create nested dir");
+        std::fs::write(root.join("build").join("obj.o"), b"\0\0").expect("write nested artifact");
+
+        std::fs::set_permissions(
+            root.join("solution.py"),
+            std::fs::Permissions::from_mode(0o600),
+        )
+        .expect("chmod source");
+        std::fs::set_permissions(
+            root.join("solution"),
+            std::fs::Permissions::from_mode(0o755),
+        )
+        .expect("chmod artifact");
+        std::fs::set_permissions(root.join("build"), std::fs::Permissions::from_mode(0o755))
+            .expect("chmod nested dir");
+        std::fs::set_permissions(
+            root.join("build").join("obj.o"),
+            std::fs::Permissions::from_mode(0o644),
+        )
+        .expect("chmod nested artifact");
+
+        if chown {
+            for p in [
+                root.join("build").join("obj.o"),
+                root.join("build"),
+                root.join("solution"),
+                root.join("solution.py"),
+                root.to_path_buf(),
+            ] {
+                std::os::unix::fs::chown(&p, Some(super::SANDBOX_UID), Some(super::SANDBOX_UID))
+                    .expect("chown fixture to the sandbox uid");
+            }
+        }
+        std::fs::set_permissions(root, std::fs::Permissions::from_mode(0o700)).expect("chmod root");
+        ws
+    }
+
+    /// The injection must reproduce the workspace bit for bit. The previous
+    /// implementation unpacked a root-owned `--mode=go-w` tar as uid 0, which
+    /// left the 0700 workspace and 0600 source owned by root and therefore
+    /// unreadable to the run user — every warm run would have failed. Assert
+    /// on the modes and owners that actually come out.
+    #[test]
+    fn injection_reproduces_the_executor_s_ownership_and_modes() {
+        use std::os::unix::fs::MetadataExt;
+
+        let is_root = unsafe { libc::getuid() == 0 };
+        let source = executor_shaped_workspace(is_root);
+        let dest = tempfile::TempDir::new().expect("staging");
+        // The real staging directory starts empty and 0700, like the source.
+        std::fs::set_permissions(
+            dest.path(),
+            <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o700),
+        )
+        .expect("chmod staging");
+
+        super::copy_workspace_into_staging(source.path(), dest.path()).expect("inject");
+
+        for rel in ["", "solution.py", "solution", "build", "build/obj.o"] {
+            let from = source.path().join(rel);
+            let to = dest.path().join(rel);
+            assert_eq!(
+                fixture_mode(&to),
+                fixture_mode(&from),
+                "mode mismatch for {rel:?}"
+            );
+            let from_meta = std::fs::symlink_metadata(&from).expect("stat source");
+            let to_meta = std::fs::symlink_metadata(&to).expect("stat staged");
+            assert_eq!(to_meta.uid(), from_meta.uid(), "uid mismatch for {rel:?}");
+            assert_eq!(to_meta.gid(), from_meta.gid(), "gid mismatch for {rel:?}");
+        }
+        assert_eq!(
+            std::fs::read(dest.path().join("solution.py")).expect("read staged source"),
+            b"print(input())"
+        );
+
+        if is_root {
+            assert_eq!(
+                std::fs::symlink_metadata(dest.path())
+                    .expect("stat staged root")
+                    .uid(),
+                super::SANDBOX_UID,
+                "the staged /workspace must belong to the run user, or it cannot read it"
+            );
+        }
+    }
+
+    /// A compile phase runs as the sandbox user in a WRITABLE workspace and can
+    /// plant `ln -s /etc/shadow loot`. Dereferencing that during injection
+    /// would have the worker (root) copy a host secret straight into the
+    /// submission's `/workspace`.
+    #[test]
+    fn injection_never_follows_symlinks_out_of_the_workspace() {
+        let outside = tempfile::TempDir::new().expect("outside dir");
+        let secret = outside.path().join("host-secret");
+        std::fs::write(&secret, b"host secret").expect("write secret");
+
+        let source = tempfile::TempDir::new().expect("workspace");
+        std::os::unix::fs::symlink(&secret, source.path().join("loot")).expect("plant symlink");
+        std::os::unix::fs::symlink("/nonexistent/target", source.path().join("dangling"))
+            .expect("plant dangling symlink");
+
+        let dest = tempfile::TempDir::new().expect("staging");
+        super::copy_workspace_into_staging(source.path(), dest.path()).expect("inject");
+
+        let staged = std::fs::symlink_metadata(dest.path().join("loot")).expect("stat staged loot");
+        assert!(
+            staged.file_type().is_symlink(),
+            "a workspace symlink must be staged as a symlink, not as its target's contents"
+        );
+        assert!(
+            std::fs::symlink_metadata(dest.path().join("dangling"))
+                .expect("stat staged dangling")
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    /// A workspace whose entries are neither files, directories nor symlinks
+    /// cannot be reproduced faithfully, so it must fall back to cold rather
+    /// than be staged approximately.
+    #[test]
+    fn injection_refuses_entries_it_cannot_reproduce() {
+        let source = tempfile::TempDir::new().expect("workspace");
+        let fifo = source.path().join("fifo");
+        let c_path = std::ffi::CString::new(fifo.to_string_lossy().as_bytes()).expect("cstring");
+        // SAFETY: mkfifo takes a NUL-terminated path and a mode; no aliasing.
+        if unsafe { libc::mkfifo(c_path.as_ptr(), 0o600) } != 0 {
+            return; // the test filesystem does not support FIFOs
+        }
+
+        let dest = tempfile::TempDir::new().expect("staging");
+        let err = super::copy_workspace_into_staging(source.path(), dest.path())
+            .expect_err("a FIFO must not be staged");
+        assert!(err.to_string().contains("non-regular"), "got {err}");
+    }
+
+    /// The one thing that mattered and was never tested before: what the run
+    /// user can actually DO with the injected workspace inside a real
+    /// container. Needs root (to chown the fixture to the sandbox uid) and a
+    /// Docker daemon that can bind-mount the temp directory.
+    #[tokio::test]
+    async fn warm_workspace_is_readable_by_the_run_user_and_never_writable() {
+        // SAFETY: getuid is async-signal-safe and has no side effects.
+        if unsafe { libc::getuid() } != 0 {
+            return; // chown to the sandbox uid needs root
+        }
+        if !docker_is_usable().await {
+            return;
+        }
+
+        let name = format!(
+            "{}{}",
+            crate::pool::WARM_CONTAINER_PREFIX,
+            uuid::Uuid::new_v4()
+        );
+        let settings = super::WarmContainerSettings {
+            seccomp_profile_path: std::path::PathBuf::from("/nonexistent"),
+            disable_custom_seccomp: true,
+        };
+        if let Err(e) = super::create_warm_container(WARM_TEST_IMAGE, &name, &settings).await {
+            panic!("could not create a warm container: {e}");
+        }
+
+        let workspace = executor_shaped_workspace(true);
+        let injected = super::inject_warm_workspace(
+            &name,
+            workspace.path().to_str().expect("utf-8 workspace path"),
+        )
+        .await;
+
+        let probe = |args: Vec<&'static str>| {
+            let name = name.clone();
+            async move {
+                let mut full: Vec<String> = vec![
+                    "exec".into(),
+                    "--user".into(),
+                    "65534:65534".into(),
+                    "--workdir".into(),
+                    "/workspace".into(),
+                    name,
+                ];
+                full.extend(args.into_iter().map(String::from));
+                let out = tokio::process::Command::new("docker")
+                    .args(&full)
+                    .output()
+                    .await
+                    .expect("docker exec");
+                (
+                    out.status.success(),
+                    String::from_utf8_lossy(&out.stdout).trim().to_string(),
+                    String::from_utf8_lossy(&out.stderr).trim().to_string(),
+                )
+            }
+        };
+
+        let outcome = async {
+            injected.map_err(|e| format!("injection failed: {e}"))?;
+
+            // Readable: the run user must be able to read its own 0600 source
+            // through the 0700 workspace. This is exactly what the previous
+            // root-owned tar injection broke.
+            let (ok, stdout, stderr) = probe(vec!["cat", "solution.py"]).await;
+            if !ok || stdout != "print(input())" {
+                return Err(format!("run user cannot read its own source: {stderr}"));
+            }
+
+            // Executable: the mount must not be noexec, or every compiled
+            // language would fail on the warm path only.
+            let (ok, stdout, stderr) = probe(vec!["./solution"]).await;
+            if !ok || stdout != "ran" {
+                return Err(format!("run user cannot execute its artifact: {stderr}"));
+            }
+
+            // ...and W^X: not writable, in any of the ways a submission could
+            // try. `--cap-drop=ALL` empties the capability bounding set, so
+            // there is nothing left to override the read-only mount with.
+            for attempt in [
+                vec!["sh", "-c", "touch /workspace/pwn"],
+                vec!["sh", "-c", "echo x >> /workspace/solution.py"],
+                vec!["sh", "-c", "chmod 777 /workspace/solution"],
+                vec!["sh", "-c", "chown 65534:65534 /workspace/solution"],
+                vec!["sh", "-c", "rm -f /workspace/solution.py"],
+                vec!["sh", "-c", "mkdir /workspace/sub"],
+                vec!["sh", "-c", "ln -s /etc/passwd /workspace/link"],
+            ] {
+                let label = attempt.join(" ");
+                let (ok, _, _) = probe(attempt).await;
+                if ok {
+                    return Err(format!("run user was able to `{label}` under /workspace"));
+                }
+            }
+            Ok(())
+        }
+        .await;
+
+        super::remove_container_by_name(&name).await;
+        assert!(
+            !super::warm_staging_dir(&name)
+                .expect("staging path")
+                .exists(),
+            "destroying a warm container must destroy its staging directory"
+        );
+        outcome.expect("warm workspace contract");
+    }
+
+    const WARM_TEST_IMAGE: &str = "alpine:3.21";
+
+    async fn docker_is_usable() -> bool {
+        tokio::process::Command::new("docker")
+            .args(["image", "inspect", WARM_TEST_IMAGE])
+            .output()
+            .await
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    }
+
+    /// The warm clock: `exec_die - exec_start`, straight from the daemon, so it
+    /// excludes the CLI round trip exactly the way the cold clock excludes
+    /// container creation.
+    #[test]
+    fn exec_window_is_measured_between_the_daemon_s_own_timestamps() {
+        let events = concat!(
+            r#"{"Type":"container","Action":"exec_start: ./solution","timeNano":1784561828678533469}"#,
+            "\n",
+            r#"{"Type":"container","Action":"exec_die","timeNano":1784561829202495552}"#,
+            "\n"
+        );
+        assert_eq!(super::parse_exec_window_ns(events), Some(523_962_083));
+    }
+
+    /// Anything but exactly one exec in the window means the pair cannot be
+    /// attributed to this run — the daemon's event buffer may have evicted it,
+    /// or something else is exec'ing into the container. Refuse rather than
+    /// report a duration that might belong to another run.
+    #[test]
+    fn exec_window_is_refused_unless_exactly_one_exec_is_found() {
+        let start = r#"{"Action":"exec_start: x","timeNano":100}"#;
+        let die = r#"{"Action":"exec_die","timeNano":200}"#;
+        assert_eq!(super::parse_exec_window_ns(""), None);
+        assert_eq!(super::parse_exec_window_ns(start), None);
+        assert_eq!(super::parse_exec_window_ns(die), None);
+        assert_eq!(
+            super::parse_exec_window_ns(&format!("{start}\n{die}\n{start}\n{die}")),
+            None
+        );
+        assert_eq!(
+            super::parse_exec_window_ns(
+                "{\"Action\":\"exec_start: x\",\"timeNano\":300}\n\
+                 {\"Action\":\"exec_die\",\"timeNano\":200}"
+            ),
+            None,
+            "an exec_die that predates its exec_start is not a measurement"
+        );
+    }
+
+    #[test]
+    fn events_timestamps_are_formatted_as_unix_seconds_with_nanoseconds() {
+        let t = std::time::UNIX_EPOCH + std::time::Duration::new(1_784_561_828, 42);
+        assert_eq!(super::unix_timestamp_arg(t), "1784561828.000000042");
+    }
+
+    /// An adopted container survives its exec being OOM-killed (its
+    /// `sleep infinity` PID 1 is not what the kernel picks), so
+    /// `State.OOMKilled` stays false and the cgroup counter is the only honest
+    /// source. Verified against a live daemon.
+    #[test]
+    fn oom_kill_count_is_parsed_from_cgroup_memory_events() {
+        let events = "low 0\nhigh 0\nmax 38\noom 1\noom_kill 1\noom_group_kill 0\n";
+        assert_eq!(super::parse_cgroup_oom_kill_count(events), Some(1));
+        assert_eq!(
+            super::parse_cgroup_oom_kill_count("low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\n"),
+            Some(0)
+        );
+        assert_eq!(super::parse_cgroup_oom_kill_count("low 0\nhigh 0\n"), None);
+        assert_eq!(super::parse_cgroup_oom_kill_count(""), None);
+    }
+
+    fn warm_result(exit_code: Option<i32>, stdout: &str, stderr: &str) -> super::DockerRunResult {
+        super::DockerRunResult {
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            exit_code,
+            timed_out: false,
+            oom_killed: false,
+            duration_ms: 10,
+            memory_peak_kb: Some(1024),
+            container_started: true,
+        }
+    }
+
+    /// The Critical this replaces: a container reaped between inspect and exec
+    /// made `docker exec` exit non-zero, and that exit code was reported as the
+    /// submission's — a pool hiccup became the user's RuntimeError.
+    #[test]
+    fn a_failed_exec_is_never_a_verdict() {
+        for (exit_code, stderr) in [
+            (
+                Some(1),
+                "Error response from daemon: No such container: oj-warm-x",
+            ),
+            (
+                Some(1),
+                "Error response from daemon: container 51415be is not running",
+            ),
+            (
+                Some(127),
+                "OCI runtime exec failed: exec failed: unable to start container process: \
+                 exec: \"/workspace/solution\": stat /workspace/solution: no such file or directory",
+            ),
+            (
+                Some(126),
+                "OCI runtime exec failed: exec failed: permission denied",
+            ),
+        ] {
+            assert!(
+                super::exec_machinery_failure(&warm_result(exit_code, "", stderr)).is_some(),
+                "exit {exit_code:?} with {stderr:?} must fall back to cold"
+            );
+        }
+    }
+
+    /// ...but a submission that merely fails must still be judged, or every
+    /// runtime error would cost a pointless second run.
+    #[test]
+    fn an_ordinary_failing_submission_is_still_a_verdict() {
+        assert!(super::exec_machinery_failure(&warm_result(Some(0), "42", "")).is_none());
+        assert!(
+            super::exec_machinery_failure(&warm_result(Some(1), "", "Traceback: KeyError"))
+                .is_none()
+        );
+        assert!(super::exec_machinery_failure(&warm_result(Some(139), "", "")).is_none());
+        assert!(
+            super::exec_machinery_failure(&warm_result(Some(137), "", "")).is_none(),
+            "an OOM kill is a MemoryLimit verdict, not a broken exec"
+        );
+        // Output means the command ran, whatever it then printed to stderr.
+        assert!(
+            super::exec_machinery_failure(&warm_result(
+                Some(1),
+                "partial",
+                "Error response from daemon"
+            ))
+            .is_none()
+        );
+        let mut timed_out = warm_result(None, "", "");
+        timed_out.timed_out = true;
+        assert!(super::exec_machinery_failure(&timed_out).is_none());
+    }
+
+    fn timed_result(duration_ms: u64) -> super::DockerRunResult {
+        let mut result = warm_result(Some(0), "42", "");
+        result.duration_ms = duration_ms;
+        result
+    }
+
+    /// The safety net: a submission whose measured runtime lands near the limit
+    /// is handed back to the cold path, which is authoritative. Warm and cold
+    /// clocks agree to within their own jitter, but "within jitter" is exactly
+    /// the region where jitter decides the verdict.
+    #[test]
+    fn a_run_near_the_time_limit_is_handed_back_to_the_cold_path() {
+        for duration in [851, 1_000, 1_149] {
+            assert!(
+                super::warm_result_is_too_close_to_call(&timed_result(duration), 1_000, 256)
+                    .is_some(),
+                "{duration}ms against a 1000ms limit must fall back to cold"
+            );
+        }
+        for duration in [10, 800, 1_200] {
+            assert_eq!(
+                super::warm_result_is_too_close_to_call(&timed_result(duration), 1_000, 256),
+                None,
+                "{duration}ms against a 1000ms limit is decided by the warm run"
+            );
+        }
+    }
+
+    /// The band scales with the limit, so a 10 s problem is not judged on a
+    /// 50 ms margin.
+    #[test]
+    fn the_uncertainty_band_scales_with_the_limit() {
+        assert_eq!(super::warm_uncertainty_band(1_000, 150), 150);
+        assert_eq!(super::warm_uncertainty_band(10_000, 150), 1_000);
+        assert_eq!(super::warm_uncertainty_band(100, 150), 150);
+    }
+
+    /// An adopted container's cgroup still holds its idle process and whatever
+    /// the image start-up charged to it, so it has slightly less headroom than
+    /// the fresh container it stands in for. Near the limit that difference
+    /// could decide whether the OOM killer fires, which IS the MemoryLimit
+    /// verdict.
+    #[test]
+    fn a_run_near_the_memory_limit_is_handed_back_to_the_cold_path() {
+        let mut result = warm_result(Some(0), "42", "");
+        result.memory_peak_kb = Some(230 * 1024);
+        assert!(
+            super::warm_result_is_too_close_to_call(&result, 1_000, 256).is_some(),
+            "230MiB against a 256MiB limit must fall back to cold"
+        );
+
+        result.memory_peak_kb = Some(64 * 1024);
+        assert_eq!(
+            super::warm_result_is_too_close_to_call(&result, 1_000, 256),
+            None
+        );
+
+        // No counter to check: a kill cannot be attributed to the submission
+        // rather than to the adopted container's residual footprint, and cold
+        // would still have reported an OOM flag from `docker inspect`.
+        result.memory_peak_kb = None;
+        result.oom_killed = true;
+        assert!(super::warm_result_is_too_close_to_call(&result, 1_000, 256).is_some());
+        result.oom_killed = false;
+        result.exit_code = Some(137);
+        assert!(
+            super::warm_result_is_too_close_to_call(&result, 1_000, 256).is_some(),
+            "exit 137 is the OOM killer's signature; without a counter it must go cold"
+        );
+        result.exit_code = Some(0);
+        assert_eq!(
+            super::warm_result_is_too_close_to_call(&result, 1_000, 256),
+            None
+        );
+    }
+
+    /// Warm and cold must be measured and classified by the SAME code, or a
+    /// submission's verdict could depend on which container it happened to get.
+    #[test]
+    fn warm_and_cold_share_the_whole_measurement_half() {
+        let src = include_str!("docker.rs");
+        assert_eq!(
+            src.matches("\nasync fn run_and_measure(").count(),
+            1,
+            "there must be exactly one measurement implementation"
+        );
+        for caller in ["run_docker_once", "run_docker_warm"] {
+            let start = src
+                .find(&format!("async fn {caller}("))
+                .unwrap_or_else(|| panic!("{caller} present"));
+            let body = &src[start..];
+            let end = body.find("\n}\n").expect("body is delimited");
+            assert!(
+                body[..end].contains("run_and_measure("),
+                "{caller} must measure through run_and_measure"
+            );
+        }
     }
 
     /// Every warm failure must be recoverable by re-running cold; nothing in
