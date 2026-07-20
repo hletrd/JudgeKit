@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getSystemSettings = vi.fn();
 const selectFrom = vi.fn();
@@ -12,11 +12,22 @@ vi.mock("@/lib/db", () => ({
 }));
 
 describe("getWarmPoolTargets", () => {
+  let originalEnv: string | undefined;
+
   beforeEach(() => {
+    originalEnv = process.env.WARM_POOL_DEFAULT_ENABLED;
     vi.resetModules();
     getSystemSettings.mockReset();
     selectFrom.mockReset();
     delete process.env.WARM_POOL_DEFAULT_ENABLED;
+  });
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.WARM_POOL_DEFAULT_ENABLED;
+    } else {
+      process.env.WARM_POOL_DEFAULT_ENABLED = originalEnv;
+    }
   });
 
   it("resolves stored config into per-image targets", async () => {
