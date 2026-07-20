@@ -60,7 +60,10 @@ mod tests {
     fn heartbeat_response_parses_warm_pool() {
         let json = r#"{"data":{"ok":true,"warmPool":{"enabled":true,"images":{"judge-python:latest":3}}}}"#;
         let parsed: super::HeartbeatResponse = serde_json::from_str(json).expect("parse");
-        assert_eq!(parsed.data.warm_pool.images.get("judge-python:latest"), Some(&3));
+        assert_eq!(
+            parsed.data.warm_pool.images.get("judge-python:latest"),
+            Some(&3)
+        );
     }
 
     #[test]
@@ -416,10 +419,9 @@ pub struct RegisterResponseData {
     #[serde(rename = "staleClaimTimeoutMs")]
     #[allow(dead_code)]
     pub stale_claim_timeout_ms: u64,
-    /// Not yet consumed in production code; wired into the warm-pool
-    /// reconciler in a later task.
+    /// Initial warm-pool targets. Seeds `PoolManager` right after registration
+    /// so the pool starts filling before the first heartbeat arrives.
     #[serde(rename = "warmPool", default, deserialize_with = "lenient_warm_pool")]
-    #[allow(dead_code)]
     pub warm_pool: WarmPoolTargets,
 }
 

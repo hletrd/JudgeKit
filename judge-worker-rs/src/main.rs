@@ -741,6 +741,12 @@ async fn main() {
     // and after in-flight submissions finish, so nothing can refill the pool or
     // still be holding a container handed out by `acquire`. An idle container
     // left behind would otherwise hold memory until the next startup sweep.
+    //
+    // Aborting the seed fill is safe (rather than waiting out a slow `docker
+    // run` per planned container) because the pool claims a container's name in
+    // its own state BEFORE issuing `docker run`, and `drain_all` destroys those
+    // in-flight names too. An abort landing mid-create can therefore no longer
+    // strand a container the process never recorded.
     warm_pool_seed.abort();
     let _ = warm_pool_seed.await;
     warm_pool.drain_all().await;

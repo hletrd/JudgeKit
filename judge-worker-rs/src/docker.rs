@@ -651,12 +651,15 @@ pub struct WarmContainerSettings {
 ///     adopted.
 ///
 /// The container idles on `sleep infinity` and is destroyed after one use.
+///
+/// `name` is chosen by the caller (the pool) and recorded in pool state BEFORE
+/// this function is called, so a container can never exist without something
+/// tracking it — not even if the calling task is aborted mid-`docker run`.
 pub async fn create_warm_container(
     image: &str,
+    name: &str,
     settings: &WarmContainerSettings,
-) -> Result<String, String> {
-    let name = format!("{}{}", crate::pool::WARM_CONTAINER_PREFIX, Uuid::new_v4());
-
+) -> Result<(), String> {
     let seccomp = resolve_seccomp_profile(
         Phase::Run,
         &settings.seccomp_profile_path,
@@ -669,7 +672,7 @@ pub async fn create_warm_container(
         "run".into(),
         "-d".into(),
         "--name".into(),
-        name.clone(),
+        name.to_string(),
         "--network".into(),
         "none".into(),
         "--memory".into(),
@@ -723,7 +726,7 @@ pub async fn create_warm_container(
             // The CLI child is killed on drop, but the daemon may still have
             // created the container; force-remove by name so it cannot leak as
             // an untracked long-running container.
-            remove_container_by_name(&name).await;
+            remove_container_by_name(name).await;
             return Err(format!(
                 "docker run (warm) timed out after {DOCKER_CLEANUP_TIMEOUT_SECS}s"
             ));
@@ -735,13 +738,104 @@ pub async fn create_warm_container(
         return Err(format!("docker run (warm) failed: {}", stderr.trim()));
     }
 
+    // `docker run -d` exits 0 once the container has STARTED, even if its
+    // command died an instant later (e.g. an image whose `sleep` rejects
+    // `infinity`). Without this check the pool would record a name that is
+    // already dead, report itself full, and hand the corpse to a real run.
+    if !container_is_running(name).await {
+        remove_container_by_name(name).await;
+        return Err("warm container was not running after creation".to_string());
+    }
+
     tracing::info!(container = %name, image = %image, "created warm container");
-    Ok(name)
+    Ok(())
 }
 
 /// Force-remove a container by name, ignoring "already gone" errors.
 pub async fn remove_container_by_name(name: &str) {
     remove_container(name).await;
+}
+
+/// Whether Docker reports `name` as currently running.
+///
+/// Every failure mode (wedged daemon, container already gone, unexpected
+/// output) answers `false`. Callers use this only to reject a just-created
+/// container, and they force-remove the name on a `false` answer, so a wrong
+/// "not running" costs one wasted create — never an untracked leak.
+pub async fn container_is_running(name: &str) -> bool {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(["inspect", "-f", "{{.State.Running}}", name])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(output)) if output.status.success() => {
+            String::from_utf8_lossy(&output.stdout).trim() == "true"
+        }
+        Ok(Ok(_)) => false,
+        Ok(Err(e)) => {
+            tracing::warn!(container = %name, error = %e, "docker inspect failed to spawn");
+            false
+        }
+        Err(_elapsed) => {
+            tracing::warn!(container = %name, "docker inspect timed out");
+            false
+        }
+    }
+}
+
+/// Names of every warm container Docker currently reports as running.
+///
+/// `None` means the daemon could not be queried — the caller must then leave
+/// pool state alone rather than assume the whole pool died, which on a briefly
+/// wedged daemon would destroy a perfectly good pool.
+pub async fn running_warm_container_names() -> Option<std::collections::HashSet<String>> {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args([
+                "ps",
+                "--filter",
+                &format!("name={}", crate::pool::WARM_CONTAINER_PREFIX),
+                "--filter",
+                "status=running",
+                "--format",
+                "{{.Names}}",
+            ])
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await;
+
+    let output = match result {
+        Ok(Ok(output)) if output.status.success() => output,
+        Ok(Ok(output)) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(stderr = %stderr.trim(), "docker ps for warm pool liveness failed");
+            return None;
+        }
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "docker ps for warm pool liveness failed to spawn");
+            return None;
+        }
+        Err(_elapsed) => {
+            tracing::warn!("docker ps for warm pool liveness timed out");
+            return None;
+        }
+    };
+
+    Some(
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(String::from)
+            .collect(),
+    )
 }
 
 pub async fn cleanup_orphaned_containers() {

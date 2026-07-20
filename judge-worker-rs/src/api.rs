@@ -130,15 +130,16 @@ impl ApiClient {
         }
 
         // The heartbeat response is the steady-state warm-pool config channel.
-        // A body that fails to parse must not fail the heartbeat itself (the
-        // worker is still alive); fall back to disabled targets.
-        match response.json::<HeartbeatResponse>().await {
-            Ok(parsed) => Ok(parsed.data.warm_pool),
-            Err(e) => {
-                tracing::debug!(error = %e, "heartbeat response missing/invalid warmPool");
-                Ok(WarmPoolTargets::default())
-            }
-        }
+        // A body we cannot parse is a transport-level failure (truncated body,
+        // a proxy's 200 HTML error page), NOT an operator switching the pool
+        // off. Returning disabled targets here would be indistinguishable from
+        // the kill switch and would drain a healthy pool on a single hiccup, so
+        // this is an error: the caller leaves the existing targets untouched.
+        response
+            .json::<HeartbeatResponse>()
+            .await
+            .map(|parsed| parsed.data.warm_pool)
+            .map_err(|e| format!("Failed to parse heartbeat response: {e}"))
     }
 
     /// Deregister this worker from the app server.
@@ -365,11 +366,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn heartbeat_falls_back_to_disabled_warm_pool_on_unparseable_body() {
-        // A 200 response whose body isn't valid JSON at all (never mind an
-        // invalid warmPool) must not turn a successful heartbeat into an
-        // error — the worker is still alive and should keep running with
-        // warm pool disabled rather than treating this as a failed heartbeat.
+    async fn heartbeat_returns_err_on_unparseable_body() {
+        // A 200 whose body isn't valid JSON (a truncated body, or a proxy's
+        // HTML error page) must be an error, NOT `Ok(disabled targets)`: the
+        // caller feeds a successful heartbeat straight into the warm pool, so
+        // returning "disabled" would be indistinguishable from the operator
+        // kill switch and would drain a healthy pool on one transport hiccup.
         let server = MockServer::start().await;
         Mock::given(method("POST"))
             .and(path("/heartbeat"))
@@ -379,8 +381,49 @@ mod tests {
 
         let client = make_client_with_base(&server.uri());
         let result = client.heartbeat("worker-1", None, 0, 4, 60).await;
-        let targets = result.expect("heartbeat should not error on malformed body");
-        assert!(!targets.enabled);
-        assert!(targets.images.is_empty());
+        assert!(
+            result.is_err(),
+            "a malformed heartbeat body must not read as a disabled warm pool"
+        );
+    }
+
+    /// A well-formed body still yields the targets it carries — the error path
+    /// above must not have swallowed the happy path.
+    #[tokio::test]
+    async fn heartbeat_returns_warm_pool_targets_from_a_valid_body() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/heartbeat"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "data": {
+                    "warmPool": { "enabled": true, "images": { "judge-cpp:latest": 2 } }
+                }
+            })))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let targets = client
+            .heartbeat("worker-1", None, 0, 4, 60)
+            .await
+            .expect("valid heartbeat body");
+        assert!(targets.enabled);
+        assert_eq!(targets.images.get("judge-cpp:latest"), Some(&2));
+    }
+
+    /// A genuine non-2xx status stays an error (unchanged behavior).
+    #[tokio::test]
+    async fn heartbeat_returns_err_on_non_success_status() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/heartbeat"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("unavailable"))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let result = client.heartbeat("worker-1", None, 0, 4, 60).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("503"));
     }
 }
