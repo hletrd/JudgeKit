@@ -510,7 +510,18 @@ async fn main() {
                         // change at any time (including being switched off),
                         // so every heartbeat re-reconciles the live pool.
                         hb_pool.set_targets(targets).await;
-                        hb_pool.reconcile().await;
+                        // Detached, exactly like the executor's replenish. A
+                        // reconcile is bounded only per Docker call, serially
+                        // across prune + removals + creates, so a slow daemon
+                        // during a large downsize would hold this loop past the
+                        // 90s stale threshold — and then past the 300s
+                        // claim-reclaim one, whereupon the server hands this
+                        // worker's in-flight submissions to somebody else while
+                        // it is still judging them. Reconcile is single-flight
+                        // and idempotent, so a pass that is still running when
+                        // the next heartbeat lands simply skips.
+                        let reconcile_pool = Arc::clone(&hb_pool);
+                        tokio::spawn(async move { reconcile_pool.reconcile().await });
                     }
                     Err(e) => {
                         consecutive_failures += 1;
@@ -813,24 +824,25 @@ async fn main() {
     }
 
     // Stop the heartbeat, but do NOT await it yet: cancelling first means the
-    // loop cannot start one more reconcile in the window below.
+    // loop cannot spawn one more reconcile in the window below.
     //
     // `cancel()` alone is not enough to make the join below prompt. The token is
-    // only observed by the `select!` at the TOP of the heartbeat loop, so a
-    // reconcile that is already in flight runs to completion first: a `docker
-    // ps` plus, per missing container, a `docker run` and a `docker inspect`,
-    // each individually timeout-bounded but serial. Against a wedged daemon that
-    // is easily longer than the ~10 s `docker stop` grace, so SIGKILL would land
-    // before `drain_all` below ever ran and every warm container would survive
-    // the restart. `abort()` bounds the join at the task's next await point.
+    // only observed by the `select!` at the TOP of the heartbeat loop, so an
+    // in-flight `heartbeat()` HTTP call still has to finish first. `abort()`
+    // bounds the join at the task's next await point.
     //
-    // Aborting is safe for the same reason it is safe for the seed: the pool
-    // inserts a container's name into `pending` BEFORE issuing `docker run` and
-    // only moves it to `idle` (or drops it) after the call returns, so every
-    // container the daemon may have created is tracked in `idle` or `pending` at
-    // all times. `drain_all` destroys both sets, and the join below completes
-    // before it runs, so an aborted reconcile cannot resurrect a name after the
-    // drain.
+    // The reconcile the loop triggers is DETACHED (like the executor's
+    // replenish), so neither cancelling nor aborting this task stops a
+    // reconcile that is already running — it can still be mid-`docker run` when
+    // `drain_all` executes below. That is safe, and for the same reason the
+    // replenish path is: the pool inserts a container's name into `pending`
+    // BEFORE issuing `docker run` and only moves it to `idle` (or drops it)
+    // after the call returns, and `drain_all` latches the pool closed before it
+    // takes both sets. A create that beat the latch is in the list the drain
+    // destroys; one that did not is refused outright by `claim_new_container`,
+    // and a `docker run` that returns after the latch destroys its own
+    // container instead of publishing it. So no reconcile — aborted, detached
+    // or still running — can resurrect a name after the drain.
     let heartbeat_join = heartbeat_handle.map(|(handle, cancel)| {
         cancel.cancel();
         handle.abort();
@@ -854,9 +866,11 @@ async fn main() {
 
     // Now join the heartbeat task. It is already cancelled AND aborted, so the
     // await returns as soon as the task unwinds at its next await point rather
-    // than waiting out a whole reconcile pass (which is bounded only per Docker
-    // call, not per pass: one pass is a `docker ps` plus up to N × (`docker run`
-    // + `docker inspect`), serially).
+    // than waiting out an in-flight heartbeat request. The reconcile it spawns
+    // is detached and deliberately not waited on here: one pass is bounded only
+    // per Docker call, not per pass (a `docker ps` plus up to N × (`docker run`
+    // + `docker inspect`), serially), which is exactly the stall that must not
+    // sit between here and `drain_all`.
     if let Some(handle) = heartbeat_join {
         let _ = handle.await;
     }
