@@ -397,3 +397,51 @@ describe("updateSystemSettings", () => {
     expect(auditCall.details.smtpHost).toBe("smtp.example.com");
   });
 });
+
+describe("updateSystemSettings warmPool", () => {
+  it("persists the warm pool config when provided", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin();
+    const warmPool = { enabled: true, languages: { python: 2, cpp20: 2 } };
+
+    const result = await updateSystemSettings({ warmPool });
+
+    expect(result.success).toBe(true);
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written.warmPool).toEqual(warmPool);
+  });
+
+  it("does not touch warmPool when the payload omits it", async () => {
+    // Partial-update contract: a PUT that only changes the site title must not
+    // wipe the warm pool column.
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin();
+
+    await updateSystemSettings({ siteTitle: "JudgeKit" });
+
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written).not.toHaveProperty("warmPool");
+  });
+
+  it("clears warmPool to null when explicitly nulled", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin();
+
+    await updateSystemSettings({ warmPool: null });
+
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written.warmPool).toBeNull();
+  });
+
+  it("rejects a count above the per-image cap before writing", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    setupAuthorizedAdmin();
+
+    const result = await updateSystemSettings({
+      warmPool: { enabled: true, languages: { python: 999 } },
+    });
+
+    expect(result.success).toBe(false);
+    expect(mocks.dbInsertValues).not.toHaveBeenCalled();
+  });
+});

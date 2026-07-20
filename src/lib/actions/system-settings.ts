@@ -128,6 +128,7 @@ export async function updateSystemSettings(
     allowedHosts,
     homePageContent,
     footerContent,
+    warmPool,
     defaultLocale,
   } = parsedInput.data;
 
@@ -225,6 +226,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("footerContent")) {
     baseValues.footerContent = footerContent ?? null;
+  }
+  if (hasOwnInput("warmPool")) {
+    baseValues.warmPool = warmPool ?? null;
   }
   if (hasOwnInput("defaultLocale")) {
     baseValues.defaultLocale = defaultLocale ?? null;

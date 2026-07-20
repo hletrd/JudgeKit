@@ -176,3 +176,49 @@ describe("PUT /api/v1/admin/settings password reconfirm (C3-AGG-7)", () => {
     expect(await res.json()).toEqual({ error: "passwordReconfirmRequired" });
   });
 });
+
+describe("PUT /api/v1/admin/settings warm pool persistence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isHcaptchaConfiguredMock.mockResolvedValue(true);
+    getSystemSettingsMock.mockResolvedValue(null);
+    const setMock = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    dbUpdateMock.mockReturnValue({ set: setMock });
+    dbInsertMock.mockReturnValue({
+      values: vi.fn().mockReturnValue({
+        onConflictDoUpdate: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+  });
+
+  it("persists warmPool from the allowlisted config keys without reconfirm", async () => {
+    const onConflictMock = vi.fn().mockResolvedValue(undefined);
+    dbInsertMock.mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoUpdate: onConflictMock }),
+    });
+
+    const { PUT } = await import("@/app/api/v1/admin/settings/route");
+    const warmPool = { enabled: true, languages: { python: 2 } };
+    const res = await PUT(makePut({ warmPool }), { params: Promise.resolve({}) });
+
+    expect(res.status).toBe(200);
+    expect(verifyAndRehashPasswordMock).not.toHaveBeenCalled();
+    expect(onConflictMock).toHaveBeenCalledTimes(1);
+    const setArg = onConflictMock.mock.calls[0]?.[0]?.set ?? onConflictMock.mock.calls[0]?.[0];
+    expect(setArg.warmPool).toEqual(warmPool);
+  });
+
+  it("does not touch warmPool when the payload omits it", async () => {
+    const onConflictMock = vi.fn().mockResolvedValue(undefined);
+    dbInsertMock.mockReturnValue({
+      values: vi.fn().mockReturnValue({ onConflictDoUpdate: onConflictMock }),
+    });
+
+    const { PUT } = await import("@/app/api/v1/admin/settings/route");
+    const res = await PUT(makePut({ siteTitle: "New Title" }), { params: Promise.resolve({}) });
+
+    expect(res.status).toBe(200);
+    const setArg = onConflictMock.mock.calls[0]?.[0]?.set ?? onConflictMock.mock.calls[0]?.[0];
+    expect(setArg).not.toHaveProperty("warmPool");
+  });
+});
