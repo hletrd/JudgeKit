@@ -466,7 +466,7 @@ git commit -S -m "feat(validators): ✨ validate warm pool settings input"
 **Files:**
 - Modify: `src/lib/actions/system-settings.ts:131` (destructure) and `:231` (write block)
 - Modify: `src/app/api/v1/admin/settings/route.ts:98` (`allowedConfigKeys`)
-- Test: `tests/unit/actions/system-settings-warm-pool.test.ts`
+- Test: extend `tests/unit/actions/system-settings.test.ts` (existing harness) and the existing admin-settings route test
 
 **Interfaces:**
 - Consumes: `systemSettingsSchema` (Task 3).
@@ -474,57 +474,60 @@ git commit -S -m "feat(validators): ✨ validate warm pool settings input"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/unit/actions/system-settings-warm-pool.test.ts`:
+**Do NOT create a new test file and do NOT assert on source text.** `tests/unit/actions/system-settings.test.ts` already has a full mock harness (`mocks.auth`, `mocks.resolveCapabilities`, `mocks.dbInsertValues`, `mocks.dbInsertOnConflictDoUpdate`, `mocks.requireSettingsReconfirm`, …) that calls the real `updateSystemSettings`. Append this describe block to that file, reusing whatever authorized-caller setup its existing `beforeEach` performs:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { systemSettingsSchema } from "@/lib/validators/system-settings";
+describe("updateSystemSettings warmPool", () => {
+  it("persists the warm pool config when provided", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+    const warmPool = { enabled: true, languages: { python: 2, cpp20: 2 } };
 
-/**
- * Guards the partial-update contract for warmPool. Both writers build
- * `baseValues` behind `hasOwnInput(key)`; a payload that omits warmPool must
- * not produce a warmPool entry (which would wipe the column), and a payload
- * that includes it must produce exactly that value.
- */
-function buildWarmPoolBaseValues(input: Record<string, unknown>): Record<string, unknown> {
-  const parsed = systemSettingsSchema.parse(input);
-  const hasOwnInput = (key: string) => Object.prototype.hasOwnProperty.call(input, key);
-  const baseValues: Record<string, unknown> = {};
-  if (hasOwnInput("warmPool")) {
-    baseValues.warmPool = parsed.warmPool ?? null;
-  }
-  return baseValues;
-}
+    const result = await updateSystemSettings({ warmPool });
 
-describe("warmPool partial-update contract", () => {
-  it("omits warmPool entirely when it is not in the payload", () => {
-    expect(buildWarmPoolBaseValues({ siteTitle: "x" })).toEqual({});
+    expect(result.success).toBe(true);
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written.warmPool).toEqual(warmPool);
   });
 
-  it("writes the provided warm pool config", () => {
-    const warmPool = { enabled: true, languages: { python: 2 } };
-    expect(buildWarmPoolBaseValues({ warmPool })).toEqual({ warmPool });
+  it("does not touch warmPool when the payload omits it", async () => {
+    // Partial-update contract: a PUT that only changes the site title must not
+    // wipe the warm pool column.
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+
+    await updateSystemSettings({ siteTitle: "JudgeKit" });
+
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written).not.toHaveProperty("warmPool");
   });
 
-  it("writes null when explicitly cleared", () => {
-    expect(buildWarmPoolBaseValues({ warmPool: null })).toEqual({ warmPool: null });
-  });
-});
+  it("clears warmPool to null when explicitly nulled", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
 
-describe("REST route allowlist", () => {
-  it("includes warmPool so the PUT can persist it", async () => {
-    const source = await import("node:fs/promises").then((fs) =>
-      fs.readFile("src/app/api/v1/admin/settings/route.ts", "utf8"),
-    );
-    expect(source).toContain('"warmPool"');
+    await updateSystemSettings({ warmPool: null });
+
+    const written = mocks.dbInsertValues.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(written.warmPool).toBeNull();
+  });
+
+  it("rejects a count above the per-image cap before writing", async () => {
+    const { updateSystemSettings } = await import("@/lib/actions/system-settings");
+
+    const result = await updateSystemSettings({
+      warmPool: { enabled: true, languages: { python: 999 } },
+    });
+
+    expect(result.success).toBe(false);
+    expect(mocks.dbInsertValues).not.toHaveBeenCalled();
   });
 });
 ```
 
+For the REST PUT, add an equivalent behavioral test to the existing admin-settings route test file (`tests/unit/api/admin-settings-reconfirm.test.ts` or a sibling admin-settings route test — reuse whichever already invokes the `PUT` handler with mocked deps): send `{ warmPool: { enabled: true, languages: { python: 2 } } }` and assert the value reaches the insert/`onConflictDoUpdate` payload. If no such harness exists in that file, create `tests/unit/api/admin-settings-warm-pool.route.test.ts` modelled on the mock setup in `tests/unit/api/judge-heartbeat.route.test.ts` (hoisted mocks + `apiSuccess` stubbed to `NextResponse.json({ data })`).
+
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run tests/unit/actions/system-settings-warm-pool.test.ts`
-Expected: FAIL — `REST route allowlist > includes warmPool` fails (the string is absent from the route).
+Run: `npx vitest run tests/unit/actions/system-settings.test.ts -t "warmPool"`
+Expected: FAIL — `written.warmPool` is `undefined` because the action does not yet persist the field.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -552,7 +555,10 @@ In `src/app/api/v1/admin/settings/route.ts`, add `"warmPool"` to `allowedConfigK
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run tests/unit/actions/system-settings-warm-pool.test.ts`
+Run: `npx vitest run tests/unit/actions/system-settings.test.ts`
+Expected: PASS — the new warmPool tests plus every pre-existing test in the file (the `hasOwnInput` addition must not regress the other partial-update tests).
+
+Run the admin-settings route test file you extended.
 Expected: PASS.
 
 Run: `npx tsc --noEmit`
@@ -561,7 +567,7 @@ Expected: no errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/lib/actions/system-settings.ts src/app/api/v1/admin/settings/route.ts tests/unit/actions/system-settings-warm-pool.test.ts
+git add src/lib/actions/system-settings.ts src/app/api/v1/admin/settings/route.ts tests/unit/actions/system-settings.test.ts tests/unit/api/
 git commit -S -m "feat(admin): ✨ persist warm pool settings from both writers"
 ```
 
@@ -744,7 +750,7 @@ git commit -S -m "feat(judge): ✨ resolve warm pool targets server-side"
 **Files:**
 - Modify: `src/app/api/v1/judge/register/route.ts:80-85`
 - Modify: `src/app/api/v1/judge/heartbeat/route.ts:97`
-- Test: `tests/unit/api/judge-warm-pool-propagation.test.ts`
+- Test: extend `tests/unit/api/judge-register.route.test.ts` and `tests/unit/api/judge-heartbeat.route.test.ts` (existing harnesses)
 
 **Interfaces:**
 - Consumes: `getWarmPoolTargets()` (Task 5).
@@ -752,37 +758,63 @@ git commit -S -m "feat(judge): ✨ resolve warm pool targets server-side"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `tests/unit/api/judge-warm-pool-propagation.test.ts`:
+**Do NOT create a new file and do NOT assert on source text.** Both route test files already invoke the real `POST` handler with hoisted mocks and stub `apiSuccess` as `NextResponse.json({ data })`, so the response body is directly assertable.
+
+Add to **both** files a mock for the resolver:
 
 ```ts
-import { describe, expect, it } from "vitest";
-import { readFile } from "node:fs/promises";
+vi.mock("@/lib/judge/warm-pool-server", () => ({
+  getWarmPoolTargets: vi
+    .fn()
+    .mockResolvedValue({ enabled: true, images: { "judge-cpp:latest": 2 } }),
+}));
+```
 
-/**
- * The worker learns its warm-pool targets ONLY from these two responses —
- * there is no other app->worker config channel. Guard that both keep shipping
- * the field and that both source it from the shared resolver (so the two
- * writers cannot drift).
- */
-describe("warm pool propagation wiring", () => {
-  it("register response includes warmPool from the shared resolver", async () => {
-    const source = await readFile("src/app/api/v1/judge/register/route.ts", "utf8");
-    expect(source).toContain("getWarmPoolTargets");
-    expect(source).toContain("warmPool");
-  });
+Append to `tests/unit/api/judge-register.route.test.ts`, reusing the file's existing helper for building an authorized request:
 
-  it("heartbeat response includes warmPool from the shared resolver", async () => {
-    const source = await readFile("src/app/api/v1/judge/heartbeat/route.ts", "utf8");
-    expect(source).toContain("getWarmPoolTargets");
-    expect(source).toContain("warmPool");
+```ts
+describe("warm pool targets in the register response", () => {
+  it("returns targets so a freshly started worker can build its pool immediately", async () => {
+    const { POST } = await import("@/app/api/v1/judge/register/route");
+
+    const response = await POST(makeRegisterRequest({ hostname: "w1", concurrency: 4 }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.warmPool).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2 },
+    });
   });
 });
 ```
 
+Append to `tests/unit/api/judge-heartbeat.route.test.ts`, reusing its authorized-heartbeat setup:
+
+```ts
+describe("warm pool targets in the heartbeat response", () => {
+  it("returns targets on every heartbeat so admin toggles reach the fleet", async () => {
+    const { POST } = await import("@/app/api/v1/judge/heartbeat/route");
+
+    const response = await POST(makeHeartbeatRequest());
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.ok).toBe(true);
+    expect(body.data.warmPool).toEqual({
+      enabled: true,
+      images: { "judge-cpp:latest": 2 },
+    });
+  });
+});
+```
+
+Replace `makeRegisterRequest` / `makeHeartbeatRequest` with whatever request helpers those files already define.
+
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run tests/unit/api/judge-warm-pool-propagation.test.ts`
-Expected: FAIL — neither route mentions `getWarmPoolTargets`.
+Run: `npx vitest run tests/unit/api/judge-register.route.test.ts tests/unit/api/judge-heartbeat.route.test.ts -t "warm pool"`
+Expected: FAIL — `body.data.warmPool` is `undefined`; neither route returns the field yet.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -823,8 +855,8 @@ and replace the success return (`:97`) with:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run tests/unit/api/judge-warm-pool-propagation.test.ts`
-Expected: PASS.
+Run: `npx vitest run tests/unit/api/judge-register.route.test.ts tests/unit/api/judge-heartbeat.route.test.ts`
+Expected: PASS — the new warm-pool tests plus every pre-existing test in both files (adding an `await` to the response must not regress auth, rate-limit, or staleness-sweep behaviour).
 
 Run: `npx tsc --noEmit`
 Expected: no errors.
@@ -832,7 +864,7 @@ Expected: no errors.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/app/api/v1/judge/register/route.ts src/app/api/v1/judge/heartbeat/route.ts tests/unit/api/judge-warm-pool-propagation.test.ts
+git add src/app/api/v1/judge/register/route.ts src/app/api/v1/judge/heartbeat/route.ts tests/unit/api/judge-register.route.test.ts tests/unit/api/judge-heartbeat.route.test.ts
 git commit -S -m "feat(judge): ✨ ship warm pool targets to workers"
 ```
 
