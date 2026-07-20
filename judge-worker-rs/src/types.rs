@@ -37,6 +37,31 @@ mod tests {
         let secret = SecretString::new("super-secret-token".to_string());
         assert_eq!(format!("{:?}", secret), "[REDACTED]");
     }
+
+    #[test]
+    fn warm_pool_targets_default_to_disabled_when_absent() {
+        // Older app servers omit warmPool entirely; the worker must treat that
+        // as "warm pool off" rather than failing to parse the response.
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.warm_pool.enabled);
+        assert!(parsed.warm_pool.images.is_empty());
+    }
+
+    #[test]
+    fn warm_pool_targets_parse_image_counts() {
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000,"warmPool":{"enabled":true,"images":{"judge-cpp:latest":2}}}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(parsed.warm_pool.enabled);
+        assert_eq!(parsed.warm_pool.images.get("judge-cpp:latest"), Some(&2));
+    }
+
+    #[test]
+    fn heartbeat_response_parses_warm_pool() {
+        let json = r#"{"data":{"ok":true,"warmPool":{"enabled":true,"images":{"judge-python:latest":3}}}}"#;
+        let parsed: super::HeartbeatResponse = serde_json::from_str(json).expect("parse");
+        assert_eq!(parsed.data.warm_pool.images.get("judge-python:latest"), Some(&3));
+    }
 }
 
 impl std::fmt::Debug for SecretString {
@@ -343,11 +368,39 @@ pub struct RegisterResponseData {
     #[serde(rename = "staleClaimTimeoutMs")]
     #[allow(dead_code)]
     pub stale_claim_timeout_ms: u64,
+    /// Not yet consumed in production code; wired into the warm-pool
+    /// reconciler in a later task.
+    #[serde(rename = "warmPool", default)]
+    #[allow(dead_code)]
+    pub warm_pool: WarmPoolTargets,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct RegisterResponse {
     pub data: RegisterResponseData,
+}
+
+/// Warm container pool targets pushed by the app server in the register and
+/// heartbeat responses. `#[serde(default)]` everywhere so an older app server
+/// that omits the field simply yields "disabled" instead of a parse error.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct WarmPoolTargets {
+    #[serde(default)]
+    pub enabled: bool,
+    /// docker image -> desired idle warm-container count
+    #[serde(default)]
+    pub images: std::collections::HashMap<String, u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct HeartbeatResponseData {
+    #[serde(rename = "warmPool", default)]
+    pub warm_pool: WarmPoolTargets,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HeartbeatResponse {
+    pub data: HeartbeatResponseData,
 }
 
 #[derive(Debug, Clone, Serialize)]

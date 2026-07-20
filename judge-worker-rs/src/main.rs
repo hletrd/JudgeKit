@@ -408,7 +408,7 @@ async fn main() {
                     .heartbeat(&wid, wsecret.as_deref(), current_active, available, uptime)
                     .await
                 {
-                    Ok(()) => {
+                    Ok(_) => {
                         if consecutive_failures > 0 {
                             tracing::info!(
                                 "Heartbeat recovered after {} failures",

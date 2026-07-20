@@ -1,6 +1,7 @@
 use crate::types::{
-    ClaimRequest, DeregisterRequest, HeartbeatRequest, PollResponse, RegisterRequest,
-    RegisterResponse, ResultReport, SecretString, StatusReport, Submission, TestResult,
+    ClaimRequest, DeregisterRequest, HeartbeatRequest, HeartbeatResponse, PollResponse,
+    RegisterRequest, RegisterResponse, ResultReport, SecretString, StatusReport, Submission,
+    TestResult, WarmPoolTargets,
 };
 
 pub struct ApiClient {
@@ -106,7 +107,7 @@ impl ApiClient {
         active_tasks: usize,
         available_slots: usize,
         uptime_seconds: u64,
-    ) -> Result<(), String> {
+    ) -> Result<WarmPoolTargets, String> {
         let body = HeartbeatRequest {
             worker_id,
             worker_secret,
@@ -128,7 +129,16 @@ impl ApiClient {
             return Err(format!("Heartbeat failed: {}", response.status()));
         }
 
-        Ok(())
+        // The heartbeat response is the steady-state warm-pool config channel.
+        // A body that fails to parse must not fail the heartbeat itself (the
+        // worker is still alive); fall back to disabled targets.
+        match response.json::<HeartbeatResponse>().await {
+            Ok(parsed) => Ok(parsed.data.warm_pool),
+            Err(e) => {
+                tracing::debug!(error = %e, "heartbeat response missing/invalid warmPool");
+                Ok(WarmPoolTargets::default())
+            }
+        }
     }
 
     /// Deregister this worker from the app server.
