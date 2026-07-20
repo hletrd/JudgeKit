@@ -41,10 +41,25 @@ export function WarmPoolForm({ initialConfig, languages }: WarmPoolFormProps) {
   const tCommon = useTranslations("common");
   const [enabled, setEnabled] = useState(initialConfig.enabled);
   const [counts, setCounts] = useState<Record<string, number>>(initialConfig.languages ?? {});
+  // Holds the literal text of a count input while it's mid-edit (e.g. "" right
+  // after backspacing, or a not-yet-finished number). `counts` above stays the
+  // last *valid* value so the checkbox/disabled state never flaps just because
+  // the field is transiently empty; the draft is reconciled into `counts` once
+  // it parses, and discarded (reverting the display) on blur if it never does.
+  const [draftCounts, setDraftCounts] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
 
   function setCount(language: string, value: number) {
     setCounts((prev) => ({ ...prev, [language]: value }));
+  }
+
+  function clearDraft(language: string) {
+    setDraftCounts((prev) => {
+      if (!(language in prev)) return prev;
+      const next = { ...prev };
+      delete next[language];
+      return next;
+    });
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -102,23 +117,38 @@ export function WarmPoolForm({ initialConfig, languages }: WarmPoolFormProps) {
                 key={option.language}
                 className="flex flex-wrap items-center gap-3 rounded-lg border p-3"
               >
-                <Checkbox
-                  checked={count > 0}
-                  disabled={!enabled}
-                  onCheckedChange={(checked) =>
-                    setCount(option.language, checked === true ? DEFAULT_WARM_COUNT : 0)
-                  }
-                />
-                <span className="min-w-32 text-sm font-medium">{option.displayName}</span>
+                <label className="flex items-center gap-2">
+                  <Checkbox
+                    checked={count > 0}
+                    disabled={!enabled}
+                    onCheckedChange={(checked) => {
+                      clearDraft(option.language);
+                      setCount(option.language, checked === true ? DEFAULT_WARM_COUNT : 0);
+                    }}
+                  />
+                  <span className="min-w-32 text-sm font-medium">{option.displayName}</span>
+                </label>
                 <Input
                   type="number"
                   min={0}
                   max={WARM_POOL_MAX_PER_IMAGE}
                   className="w-20"
-                  aria-label={t("warmPoolCountLabel")}
+                  aria-label={t("warmPoolCountLabelFor", { language: option.displayName })}
                   disabled={!enabled || count === 0}
-                  value={count}
-                  onChange={(event) => setCount(option.language, parseCount(event.target.value))}
+                  value={draftCounts[option.language] ?? count}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    // Empty or not-yet-a-number input is a valid transient
+                    // state: keep it on screen instead of collapsing it to 0
+                    // (which would uncheck and disable the field mid-edit).
+                    if (raw.trim() === "" || !Number.isFinite(Number(raw))) {
+                      setDraftCounts((prev) => ({ ...prev, [option.language]: raw }));
+                      return;
+                    }
+                    clearDraft(option.language);
+                    setCount(option.language, parseCount(raw));
+                  }}
+                  onBlur={() => clearDraft(option.language)}
                 />
                 {image ? <Badge variant="outline">{image}</Badge> : null}
               </div>

@@ -1630,7 +1630,7 @@
       "warmPoolCardDescription": "Keep a set number of idle judge containers ready per language so submissions skip Docker cold start.",
       "warmPoolEnabled": "Enable warm container pool",
       "warmPoolEnabledHint": "When enabled, judge workers keep the configured number of idle containers ready for each checked language. Changes reach workers within about 30 seconds.",
-      "warmPoolCountLabel": "Idle container count",
+      "warmPoolCountLabelFor": "Idle container count for {language}",
       "warmPoolSharedImageHint": "Languages that share the same Docker image share one pool; the largest configured count among them is used.",
       "warmPoolNoLanguages": "No enabled languages are configured yet."
     },
