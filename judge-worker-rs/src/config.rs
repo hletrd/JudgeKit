@@ -430,33 +430,33 @@ mod tests {
         // Test all accepted truthy spellings
         for val in &["1", "true", "yes", "on"] {
             unsafe {
-                std::env::set_var("TEST_FLAG", val);
+                std::env::set_var("TEST_FLAG_TRUTHY", val);
             }
-            assert!(parse_env_flag("TEST_FLAG"), "Failed for value: {}", val);
+            assert!(parse_env_flag("TEST_FLAG_TRUTHY"), "Failed for value: {}", val);
         }
 
         // Test case-insensitivity
         for val in &["TRUE", "Yes", "ON", "TrUe"] {
             unsafe {
-                std::env::set_var("TEST_FLAG", val);
+                std::env::set_var("TEST_FLAG_TRUTHY", val);
             }
-            assert!(parse_env_flag("TEST_FLAG"), "Failed for case variant: {}", val);
+            assert!(parse_env_flag("TEST_FLAG_TRUTHY"), "Failed for case variant: {}", val);
         }
 
         // Test with surrounding whitespace
         for val in &[" 1 ", "  true  ", "\tyes\t", " on "] {
             unsafe {
-                std::env::set_var("TEST_FLAG", val);
+                std::env::set_var("TEST_FLAG_TRUTHY", val);
             }
             assert!(
-                parse_env_flag("TEST_FLAG"),
+                parse_env_flag("TEST_FLAG_TRUTHY"),
                 "Failed for whitespace variant: {:?}",
                 val
             );
         }
 
         unsafe {
-            std::env::remove_var("TEST_FLAG");
+            std::env::remove_var("TEST_FLAG_TRUTHY");
         }
     }
 
@@ -465,26 +465,26 @@ mod tests {
         // Test falsy spellings
         for val in &["0", "false", "no", "off", ""] {
             unsafe {
-                std::env::set_var("TEST_FLAG", val);
+                std::env::set_var("TEST_FLAG_FALSY", val);
             }
             assert!(
-                !parse_env_flag("TEST_FLAG"),
+                !parse_env_flag("TEST_FLAG_FALSY"),
                 "Should reject falsy spelling: {}",
                 val
             );
         }
 
         unsafe {
-            std::env::remove_var("TEST_FLAG");
+            std::env::remove_var("TEST_FLAG_FALSY");
         }
     }
 
     #[test]
     fn parse_env_flag_returns_false_when_unset() {
         unsafe {
-            std::env::remove_var("TEST_FLAG");
+            std::env::remove_var("TEST_FLAG_UNSET");
         }
-        assert!(!parse_env_flag("TEST_FLAG"));
+        assert!(!parse_env_flag("TEST_FLAG_UNSET"));
     }
 
     #[test]
