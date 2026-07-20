@@ -65,9 +65,6 @@ pub struct Config {
     /// Operator kill switch. When true the worker ignores warm-pool targets
     /// from the app server and judges every test case with a cold
     /// `docker run`. Configurable via `WORKER_WARM_POOL_DISABLE`.
-    /// Not yet consumed in production code; wired into the warm-pool
-    /// reconciler in a later task.
-    #[allow(dead_code)]
     pub warm_pool_disabled: bool,
 }
 

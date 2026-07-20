@@ -18,6 +18,17 @@ const COMPILE_TMPFS: &str = "/tmp:rw,exec,nosuid,size=1024m";
 const RUN_TMPFS: &str = "/tmp:rw,noexec,nosuid,size=64m";
 const MIN_TIMEOUT_MS: u64 = 100;
 
+/// Writable `/workspace` for a warm container. A pre-started container has no
+/// submission workspace to bind-mount yet, so it gets a tmpfs owned by the
+/// same unprivileged uid/gid the run phase uses; the submission's files are
+/// copied in when the container is adopted.
+const WARM_WORKSPACE_TMPFS: &str = "/workspace:rw,exec,size=64m,uid=65534,gid=65534";
+
+/// Memory ceiling a warm container starts with. `docker update` lowers this to
+/// the submission's real limit when the container is adopted, so it only needs
+/// to be >= any per-submission limit the judge will ask for.
+const WARM_CEILING_MEMORY_MB: u32 = 1024;
+
 const SECCOMP_INIT_ERROR_SNIPPETS: &[&str] = &[
     "OCI runtime create failed",
     "error during container init",
@@ -615,6 +626,124 @@ pub async fn run_docker(
     Ok(result)
 }
 
+/// Sandbox settings a warm container needs at creation time.
+///
+/// These are threaded from the process `Config` rather than re-read from the
+/// environment so a warm container can never resolve a different seccomp
+/// posture than the run-phase container it stands in for (`Config` validates
+/// the profile path and fail-closes on unconfirmed seccomp weakening; a raw
+/// `std::env::var` read here would bypass both).
+#[derive(Debug, Clone)]
+pub struct WarmContainerSettings {
+    pub seccomp_profile_path: std::path::PathBuf,
+    pub disable_custom_seccomp: bool,
+}
+
+/// Create a pre-started, idle sandbox container for `image`.
+///
+/// Flags mirror the `Phase::Run` container in `run_docker_once` — same network,
+/// filesystem, capability, user, ulimit, seccomp and OCI-runtime posture —
+/// EXCEPT:
+///   * `/workspace` is a writable tmpfs (there is no submission workspace to
+///     bind-mount yet; files arrive later), and
+///   * memory/cpu/pids start at generous ceilings and are tightened to the
+///     submission's real limits with `docker update` when the container is
+///     adopted.
+///
+/// The container idles on `sleep infinity` and is destroyed after one use.
+pub async fn create_warm_container(
+    image: &str,
+    settings: &WarmContainerSettings,
+) -> Result<String, String> {
+    let name = format!("{}{}", crate::pool::WARM_CONTAINER_PREFIX, Uuid::new_v4());
+
+    let seccomp = resolve_seccomp_profile(
+        Phase::Run,
+        &settings.seccomp_profile_path,
+        settings.disable_custom_seccomp,
+        false,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let mut args: Vec<String> = vec![
+        "run".into(),
+        "-d".into(),
+        "--name".into(),
+        name.clone(),
+        "--network".into(),
+        "none".into(),
+        "--memory".into(),
+        format!("{}m", WARM_CEILING_MEMORY_MB),
+        "--memory-swap".into(),
+        format!("{}m", WARM_CEILING_MEMORY_MB),
+        "--cpus".into(),
+        EXECUTION_CPU_LIMIT.into(),
+        // Same cap as `Phase::Run` in run_docker_once.
+        "--pids-limit".into(),
+        "64".into(),
+        "--read-only".into(),
+        "--tmpfs".into(),
+        RUN_TMPFS.into(),
+        "--tmpfs".into(),
+        WARM_WORKSPACE_TMPFS.into(),
+        "--cap-drop=ALL".into(),
+        "--security-opt=no-new-privileges".into(),
+        "--ulimit".into(),
+        "nofile=1024:1024".into(),
+        "--user".into(),
+        "65534:65534".into(),
+        "-w".into(),
+        "/workspace".into(),
+    ];
+
+    if let Some(profile) = seccomp {
+        args.push(format!("--security-opt=seccomp={}", profile.display()));
+    }
+    if let Some(runtime) = oci_runtime() {
+        args.push(format!("--runtime={}", runtime));
+    }
+    args.push("--init".into());
+    args.push(image.to_string());
+    args.extend(["sleep".to_string(), "infinity".to_string()]);
+
+    // Timeout-guarded like every other Docker invocation in this file: a wedged
+    // daemon must not stall the reconciler (and through it the heartbeat task).
+    let output = match tokio::time::timeout(
+        std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
+        tokio::process::Command::new("docker")
+            .args(&args)
+            .kill_on_drop(true)
+            .output(),
+    )
+    .await
+    {
+        Ok(Ok(output)) => output,
+        Ok(Err(e)) => return Err(format!("docker run (warm) failed to spawn: {e}")),
+        Err(_elapsed) => {
+            // The CLI child is killed on drop, but the daemon may still have
+            // created the container; force-remove by name so it cannot leak as
+            // an untracked long-running container.
+            remove_container_by_name(&name).await;
+            return Err(format!(
+                "docker run (warm) timed out after {DOCKER_CLEANUP_TIMEOUT_SECS}s"
+            ));
+        }
+    };
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("docker run (warm) failed: {}", stderr.trim()));
+    }
+
+    tracing::info!(container = %name, image = %image, "created warm container");
+    Ok(name)
+}
+
+/// Force-remove a container by name, ignoring "already gone" errors.
+pub async fn remove_container_by_name(name: &str) {
+    remove_container(name).await;
+}
+
 pub async fn cleanup_orphaned_containers() {
     // The periodic sweep runs on the hot loop, so every docker invocation is
     // wrapped in the cleanup timeout + kill_on_drop. Without these a wedged
@@ -695,6 +824,31 @@ pub async fn cleanup_orphaned_containers() {
     }
 }
 
+/// Decide whether one `docker ps` row is a stale running container.
+///
+/// Warm-pool containers are never stale: an idle warm container is
+/// long-running BY DESIGN, so reaping it here would destroy the pool the
+/// reconciler just built and put the worker in a create/reap loop.
+///
+/// `names` is the raw `{{.Names}}` cell, which Docker renders as a
+/// comma-separated list when a container has several names.
+fn is_stale_running_row(names: &str, status: &str) -> bool {
+    if names
+        .split(',')
+        .any(|n| n.trim().starts_with(crate::pool::WARM_CONTAINER_PREFIX))
+    {
+        return false;
+    }
+    // `docker ps` renders uptime as "Up 5 minutes" / "Up About an hour" /
+    // "Up 3 hours" / "Up 2 days"; any hour-or-larger unit means the container
+    // has outlived every legitimate timeout.
+    let status = status.trim();
+    status.starts_with("Up")
+        && ["hour", "day", "week", "month", "year"]
+            .iter()
+            .any(|unit| status.contains(unit))
+}
+
 /// Second periodic pass: reap `running` oj-* containers that have been up for
 /// an hour or more. Every legitimate container is bounded by the compile/run
 /// timeouts (minutes at most), but a `docker run` future dropped mid-flight —
@@ -702,6 +856,8 @@ pub async fn cleanup_orphaned_containers() {
 /// daemon-side container keeps running, never matches `status=exited`, and
 /// previously held its CPU/memory until the next process restart's startup
 /// sweep. An hour of uptime is far past any legitimate bound, so force-remove.
+///
+/// Warm-pool containers are exempt — see [`is_stale_running_row`].
 pub async fn cleanup_stale_running_containers() {
     let ps_output = match tokio::time::timeout(
         std::time::Duration::from_secs(DOCKER_CLEANUP_TIMEOUT_SECS),
@@ -713,7 +869,7 @@ pub async fn cleanup_stale_running_containers() {
                 "--filter",
                 "status=running",
                 "--format",
-                "{{.ID}}\t{{.Status}}",
+                "{{.ID}}\t{{.Names}}\t{{.Status}}",
             ])
             .kill_on_drop(true)
             .output(),
@@ -738,16 +894,9 @@ pub async fn cleanup_stale_running_containers() {
     let stale_ids: Vec<String> = listing
         .lines()
         .filter_map(|line| {
-            let (id, status) = line.split_once('\t')?;
-            // `docker ps` renders uptime as "Up 5 minutes" / "Up About an
-            // hour" / "Up 3 hours" / "Up 2 days"; any hour-or-larger unit
-            // means the container has outlived every legitimate timeout.
-            let status = status.trim();
-            let is_stale = status.starts_with("Up")
-                && ["hour", "day", "week", "month", "year"]
-                    .iter()
-                    .any(|unit| status.contains(unit));
-            is_stale.then(|| id.to_string())
+            let (id, rest) = line.split_once('\t')?;
+            let (names, status) = rest.split_once('\t')?;
+            is_stale_running_row(names, status).then(|| id.to_string())
         })
         .collect();
     if stale_ids.is_empty() {
@@ -956,5 +1105,76 @@ mod tests {
             src.matches(".kill_on_drop(true)").count() >= 5,
             "inspect/kill/rm + sweep ps/rm + startup ps/rm must all chain kill_on_drop (>=5 sites)"
         );
+    }
+
+    #[test]
+    fn stale_sweep_reaps_long_running_per_run_containers() {
+        assert!(super::is_stale_running_row(
+            "oj-2f1c9a3e-0000-4000-8000-000000000000",
+            "Up About an hour"
+        ));
+        assert!(super::is_stale_running_row("oj-abc", "Up 3 hours"));
+        assert!(super::is_stale_running_row("oj-abc", "Up 2 days"));
+    }
+
+    #[test]
+    fn stale_sweep_leaves_short_lived_containers_alone() {
+        assert!(!super::is_stale_running_row("oj-abc", "Up 5 minutes"));
+        assert!(!super::is_stale_running_row(
+            "oj-abc",
+            "Exited (0) 2 hours ago"
+        ));
+    }
+
+    /// An idle warm container is long-running BY DESIGN. Without this exclusion
+    /// the stale sweep would destroy the pool the reconciler just built, in a
+    /// loop (create → reaped at 1 h → recreate, forever).
+    #[test]
+    fn stale_sweep_never_reaps_idle_warm_containers() {
+        let warm = format!("{}abc", crate::pool::WARM_CONTAINER_PREFIX);
+        assert!(!super::is_stale_running_row(&warm, "Up 3 hours"));
+        assert!(!super::is_stale_running_row(&warm, "Up 2 days"));
+        // `docker ps` can render several comma-separated names for one
+        // container; a warm name anywhere in the list protects the row.
+        assert!(!super::is_stale_running_row(
+            &format!("some-alias,{warm}"),
+            "Up 3 hours"
+        ));
+    }
+
+    /// Warm containers must carry the same run-phase sandbox posture as a real
+    /// judging container. A deviation here is a sandbox-escape risk, so the
+    /// flag set is pinned by a source contract.
+    #[test]
+    fn warm_container_mirrors_run_phase_security_flags() {
+        let src = include_str!("docker.rs");
+        let start = src
+            .find("pub async fn create_warm_container(")
+            .expect("create_warm_container present");
+        let end = src[start..]
+            .find("\n/// Force-remove a container by name")
+            .expect("create_warm_container body is delimited")
+            + start;
+        let body = &src[start..end];
+
+        for flag in [
+            "\"--network\"",
+            "\"none\"",
+            "\"--read-only\"",
+            "\"--cap-drop=ALL\"",
+            "\"--security-opt=no-new-privileges\"",
+            "\"--user\"",
+            "\"65534:65534\"",
+            "\"nofile=1024:1024\"",
+            "RUN_TMPFS",
+            "\"--init\"",
+            "--security-opt=seccomp=",
+            "--runtime=",
+        ] {
+            assert!(
+                body.contains(flag),
+                "warm container must mirror the run-phase flag {flag}"
+            );
+        }
     }
 }

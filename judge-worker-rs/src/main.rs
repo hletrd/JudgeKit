@@ -270,15 +270,28 @@ async fn main() {
         "Worker configuration"
     );
 
+    // Warm container pool. Created before registration so the poll loop, the
+    // heartbeat task and shutdown all share one instance. The sandbox settings
+    // are threaded from Config so a warm container can never resolve a weaker
+    // seccomp posture than the run-phase container it stands in for.
+    let warm_pool = pool::PoolManager::new(
+        config.warm_pool_disabled,
+        docker::WarmContainerSettings {
+            seccomp_profile_path: config.seccomp_profile_path.clone(),
+            disable_custom_seccomp: config.disable_custom_seccomp,
+        },
+    );
+
     // Detect CPU info for registration
     let cpu_model = detect_cpu_model();
     let cpu_architecture = detect_architecture();
 
     // Register with the app server
-    let (worker_id, worker_secret, heartbeat_interval): (
+    let (worker_id, worker_secret, heartbeat_interval, warm_pool_targets): (
         Option<String>,
         Option<String>,
         std::time::Duration,
+        types::WarmPoolTargets,
     ) = match client
         .register(
             &worker_hostname,
@@ -351,6 +364,7 @@ async fn main() {
                 Some(resp.data.worker_id),
                 resp.data.worker_secret,
                 std::time::Duration::from_millis(resp.data.heartbeat_interval_ms.max(1_000)),
+                resp.data.warm_pool,
             )
         }
         Err(e) => {
@@ -381,12 +395,22 @@ async fn main() {
         }
     };
 
+    // Seed the warm pool from the register response, then fill it in the
+    // background so a slow `docker run` never delays polling. The handle lets
+    // shutdown stop the fill instead of racing a half-finished reconcile.
+    warm_pool.set_targets(warm_pool_targets).await;
+    let warm_pool_seed = {
+        let warm_pool = Arc::clone(&warm_pool);
+        tokio::spawn(async move { warm_pool.reconcile().await })
+    };
+
     // Spawn heartbeat task if registered
     let heartbeat_handle = if let Some(ref wid) = worker_id {
         let client = Arc::clone(&client);
         let wid = wid.clone();
         let wsecret = worker_secret.clone();
         let active_tasks = Arc::clone(&active_tasks);
+        let hb_pool = Arc::clone(&warm_pool);
         let heartbeat_cancel = tokio_util::sync::CancellationToken::new();
         let heartbeat_cancel_clone = heartbeat_cancel.clone();
 
@@ -409,7 +433,7 @@ async fn main() {
                     .heartbeat(&wid, wsecret.as_deref(), current_active, available, uptime)
                     .await
                 {
-                    Ok(_) => {
+                    Ok(targets) => {
                         if consecutive_failures > 0 {
                             tracing::info!(
                                 "Heartbeat recovered after {} failures",
@@ -417,6 +441,11 @@ async fn main() {
                             );
                         }
                         consecutive_failures = 0;
+                        // The app server's targets are authoritative and can
+                        // change at any time (including being switched off),
+                        // so every heartbeat re-reconciles the live pool.
+                        hb_pool.set_targets(targets).await;
+                        hb_pool.reconcile().await;
                     }
                     Err(e) => {
                         consecutive_failures += 1;
@@ -707,6 +736,14 @@ async fn main() {
         }
         tracing::info!("All in-flight submissions completed");
     }
+
+    // Destroy every idle warm container. Runs after the heartbeat task is gone
+    // and after in-flight submissions finish, so nothing can refill the pool or
+    // still be holding a container handed out by `acquire`. An idle container
+    // left behind would otherwise hold memory until the next startup sweep.
+    warm_pool_seed.abort();
+    let _ = warm_pool_seed.await;
+    warm_pool.drain_all().await;
 
     // Deregister from the app server
     if let Some(ref wid) = worker_id {
