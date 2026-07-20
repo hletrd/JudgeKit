@@ -167,6 +167,7 @@ describe("getSystemSettings", () => {
       uploadMaxFileSizeBytes: null,
       uploadMaxImageDimension: null,
       uploadMaxZipDecompressedSizeBytes: null,
+      warmPool: null,
       smtpHost: null,
       smtpPort: null,
       smtpSecure: null,
