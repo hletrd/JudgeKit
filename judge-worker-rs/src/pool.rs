@@ -13,6 +13,21 @@ use uuid::Uuid;
 /// abandoned judging container.
 pub const WARM_CONTAINER_PREFIX: &str = "oj-warm-";
 
+/// Worker-side ceiling on idle containers per image. Mirrors
+/// `WARM_POOL_MAX_PER_IMAGE` in `src/lib/judge/warm-pool.ts`.
+pub const MAX_WARM_PER_IMAGE: usize = 8;
+
+/// Worker-side ceiling on idle containers across all images. Mirrors
+/// `WARM_POOL_MAX_TOTAL` in `src/lib/judge/warm-pool.ts`.
+///
+/// The app already clamps to both of these before shipping targets, so in
+/// normal operation this changes nothing. It exists because the targets arrive
+/// over the network: a malformed heartbeat payload, a rolled-back app version
+/// or a compromised control plane would otherwise have this worker create
+/// containers until the host runs out of memory or PIDs. The worker owns the
+/// host, so it enforces its own bound rather than trusting the number.
+pub const MAX_WARM_TOTAL: usize = 24;
+
 /// Difference between the pool we have and the pool we want, expressed as
 /// per-image counts. Kept as a pure value so the decision logic is unit
 /// testable without touching Docker.
@@ -24,24 +39,62 @@ pub struct ReconcilePlan {
     pub to_remove: Vec<(String, usize)>,
 }
 
+/// Apply the worker's own ceilings to the server-supplied per-image counts.
+///
+/// Same shape as the app's clamp (sorted by image name, per-image cap first,
+/// then the fleet-wide cap), so a payload that already respects the limits
+/// passes through untouched, and one that does not is cut identically on every
+/// worker and across restarts. An image clamped to zero is dropped, which reads
+/// downstream as "not wanted" and drains whatever it already has.
+fn clamp_desired(images: &HashMap<String, u32>) -> HashMap<&str, usize> {
+    let mut names: Vec<&str> = images.keys().map(String::as_str).collect();
+    names.sort_unstable();
+
+    let mut desired: HashMap<&str, usize> = HashMap::new();
+    let mut total = 0usize;
+    for name in names {
+        if total >= MAX_WARM_TOTAL {
+            break;
+        }
+        let requested = images[name] as usize;
+        let allowed = requested
+            .min(MAX_WARM_PER_IMAGE)
+            .min(MAX_WARM_TOTAL - total);
+        if allowed == 0 {
+            continue;
+        }
+        if allowed < requested {
+            tracing::warn!(
+                image = %name,
+                requested,
+                allowed,
+                "warm pool target exceeds this worker's limits; clamping"
+            );
+        }
+        desired.insert(name, allowed);
+        total += allowed;
+    }
+    desired
+}
+
 /// Compute the create/remove deltas needed to move `current` to `targets`.
 ///
 /// When `targets.enabled` is false the plan drains every image, which is how an
 /// admin turning the feature off reaches the fleet on the next heartbeat.
 /// Output is sorted by image name so a given (current, targets) pair always
 /// produces the same plan.
+///
+/// Server-supplied counts are clamped to this worker's own limits first (see
+/// [`clamp_desired`]): the app bounds them too, but this is the process that
+/// would actually run the containers.
 pub fn plan_reconcile(
     current: &HashMap<String, usize>,
     targets: &WarmPoolTargets,
 ) -> ReconcilePlan {
     let mut plan = ReconcilePlan::default();
 
-    let desired: HashMap<&str, usize> = if targets.enabled {
-        targets
-            .images
-            .iter()
-            .map(|(image, count)| (image.as_str(), *count as usize))
-            .collect()
+    let desired = if targets.enabled {
+        clamp_desired(&targets.images)
     } else {
         HashMap::new()
     };
@@ -607,6 +660,94 @@ mod tests {
         let cur = current(&[("judge-python:latest", 1)]);
         let tgt = targets(true, &[("judge-cpp:latest", 2), ("judge-rust:latest", 1)]);
         assert_eq!(plan_reconcile(&cur, &tgt), plan_reconcile(&cur, &tgt));
+    }
+
+    /// The counts arrive over the network. A malformed or hostile payload must
+    /// not be able to make this worker create containers until the host dies,
+    /// so the per-image ceiling is enforced here as well as in the app.
+    #[test]
+    fn clamps_a_hostile_per_image_count() {
+        let plan = plan_reconcile(
+            &current(&[]),
+            &targets(true, &[("judge-cpp:latest", 100_000)]),
+        );
+        assert_eq!(
+            plan.to_create,
+            vec![("judge-cpp:latest".to_string(), super::MAX_WARM_PER_IMAGE)]
+        );
+    }
+
+    #[test]
+    fn clamps_the_fleet_wide_total_across_images() {
+        // Five images at the per-image cap = 40 requested, 24 allowed.
+        let plan = plan_reconcile(
+            &current(&[]),
+            &targets(
+                true,
+                &[
+                    ("judge-a:latest", 8),
+                    ("judge-b:latest", 8),
+                    ("judge-c:latest", 8),
+                    ("judge-d:latest", 8),
+                    ("judge-e:latest", 8),
+                ],
+            ),
+        );
+        let total: usize = plan.to_create.iter().map(|(_, n)| n).sum();
+        assert_eq!(total, super::MAX_WARM_TOTAL);
+        // Deterministic, alphabetical truncation: a and b and c fill the budget.
+        assert_eq!(
+            plan.to_create,
+            vec![
+                ("judge-a:latest".to_string(), 8),
+                ("judge-b:latest".to_string(), 8),
+                ("judge-c:latest".to_string(), 8),
+            ]
+        );
+    }
+
+    /// An over-budget image is treated as unwanted, not merely capped: whatever
+    /// it already holds must be drained rather than left running.
+    #[test]
+    fn an_image_truncated_away_is_drained() {
+        let plan = plan_reconcile(
+            &current(&[("judge-z:latest", 3)]),
+            &targets(
+                true,
+                &[
+                    ("judge-a:latest", 8),
+                    ("judge-b:latest", 8),
+                    ("judge-c:latest", 8),
+                    ("judge-z:latest", 8),
+                ],
+            ),
+        );
+        assert_eq!(plan.to_remove, vec![("judge-z:latest".to_string(), 3)]);
+    }
+
+    /// The clamp must be invisible for any payload the app actually ships.
+    #[test]
+    fn in_bounds_targets_pass_through_untouched() {
+        let plan = plan_reconcile(
+            &current(&[]),
+            &targets(true, &[("judge-cpp:latest", 2), ("judge-python:latest", 3)]),
+        );
+        assert_eq!(
+            plan.to_create,
+            vec![
+                ("judge-cpp:latest".to_string(), 2),
+                ("judge-python:latest".to_string(), 3)
+            ]
+        );
+    }
+
+    /// The worker's ceilings must not drift from the app's
+    /// (`WARM_POOL_MAX_PER_IMAGE` / `WARM_POOL_MAX_TOTAL`), or an admin-set
+    /// value the app considers legal would be silently cut here.
+    #[test]
+    fn worker_limits_mirror_the_app_limits() {
+        assert_eq!(super::MAX_WARM_PER_IMAGE, 8);
+        assert_eq!(super::MAX_WARM_TOTAL, 24);
     }
 
     #[tokio::test]
