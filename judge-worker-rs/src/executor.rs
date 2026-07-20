@@ -3,10 +3,13 @@ use crate::comparator::{compare_float_output, compare_output};
 use crate::config::Config;
 use crate::docker::{self, DockerRunOptions, Phase};
 use crate::languages;
+use crate::pool::PoolManager;
 use crate::types::{Submission, TestResult, Verdict};
 use crate::workspace::SandboxWorkspace;
 use serde::Serialize;
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 use tokio::fs;
 use tracing::Instrument;
@@ -209,14 +212,112 @@ async fn prune_dead_letter_dir(dead_letter_dir: &Path, max_files: usize) {
     }
 }
 
+/// Only the run phase may be served by a warm container.
+///
+/// A warm container is created with the run phase's seccomp profile and the
+/// strict `RUN_TMPFS`, and neither is changeable after creation, so compiling
+/// in one would either fail outright or require weakening isolation.
+/// `docker::warm_refusal_reason` refuses a compile as well; this guard stops the
+/// executor from even taking a container out of the pool for one.
+pub(crate) fn warm_eligible(phase: Phase) -> bool {
+    phase == Phase::Run
+}
+
+/// The warm-attempt-then-cold-fallback decision, with every Docker call behind
+/// a caller-supplied seam so the policy is unit-testable without a daemon.
+///
+/// Contract, in order:
+///   * `warm` runs only when a container was acquired;
+///   * `destroy` runs afterwards no matter the outcome — an acquired container
+///     is single-use and never goes back to the pool;
+///   * `cold` runs exactly when no container was acquired, or when the warm
+///     attempt answered `WarmUnavailable`;
+///   * any other `DockerError` is a genuine fault and is surfaced the same way
+///     `docker::run_docker` surfaces one, so it is never masked by a retry.
+async fn warm_then_cold<Warm, WarmFut, Destroy, DestroyFut, Cold, ColdFut>(
+    container: Option<String>,
+    warm: Warm,
+    destroy: Destroy,
+    cold: Cold,
+) -> Result<docker::DockerRunResult, docker::JudgeEnvironmentError>
+where
+    Warm: FnOnce(String) -> WarmFut,
+    WarmFut: Future<Output = Result<docker::DockerRunResult, docker::DockerError>>,
+    Destroy: FnOnce(String) -> DestroyFut,
+    DestroyFut: Future<Output = ()>,
+    Cold: FnOnce() -> ColdFut,
+    ColdFut: Future<Output = Result<docker::DockerRunResult, docker::JudgeEnvironmentError>>,
+{
+    if let Some(container) = container {
+        let result = warm(container.clone()).await;
+        // Single use: destroyed before the result is even inspected, so no
+        // early return can leak it.
+        destroy(container).await;
+
+        match result {
+            Ok(result) => return Ok(result),
+            Err(docker::DockerError::WarmUnavailable(reason)) => {
+                tracing::warn!(reason = %reason, "warm container unavailable; retrying cold");
+            }
+            Err(e) => return Err(docker::JudgeEnvironmentError(e.to_string())),
+        }
+    }
+
+    cold().await
+}
+
+/// Run one test case, preferring a warm container and falling back to the cold
+/// `docker::run_docker` on any warm-path failure.
+async fn run_test_case_container(
+    options: &DockerRunOptions,
+    config: &Config,
+    effective_time_limit_ms: u64,
+    pool: Option<&Arc<PoolManager>>,
+) -> Result<docker::DockerRunResult, docker::JudgeEnvironmentError> {
+    let container = match pool {
+        Some(pool) if warm_eligible(options.phase) => pool.acquire(&options.image).await,
+        _ => None,
+    };
+    let replenish = pool.map(Arc::clone);
+
+    warm_then_cold(
+        container,
+        |container| async move {
+            docker::run_docker_warm(options, &container, effective_time_limit_ms).await
+        },
+        |container| async move {
+            docker::remove_container_by_name(&container).await;
+            // Refill in the background so the NEXT test case can also run warm,
+            // without making this one wait on a `docker run`.
+            if let Some(pool) = replenish {
+                tokio::spawn(async move { pool.reconcile().await });
+            }
+        },
+        // The same public entry point the run loop used before warm containers
+        // existed. It owns the seccomp resolution and the
+        // `should_retry_without_seccomp` handling, which calling
+        // `run_docker_once` directly would lose.
+        || {
+            docker::run_docker(
+                options,
+                &config.seccomp_profile_path,
+                config.disable_custom_seccomp,
+                config.allow_default_compile_seccomp,
+            )
+        },
+    )
+    .await
+}
+
 pub async fn execute(
     client: &ApiClient,
     config: &Config,
     submission: Submission,
     worker_secret: Option<&str>,
+    pool: Option<&Arc<PoolManager>>,
 ) {
     let span = tracing::info_span!("judge_submission", submission_id = %submission.id);
-    execute_inner(client, config, submission, worker_secret)
+    execute_inner(client, config, submission, worker_secret, pool)
         .instrument(span)
         .await;
 }
@@ -226,6 +327,7 @@ async fn execute_inner(
     config: &Config,
     submission: Submission,
     worker_secret: Option<&str>,
+    pool: Option<&Arc<PoolManager>>,
 ) {
     let lang_config = languages::get_config(&submission.language);
 
@@ -591,33 +693,30 @@ async fn execute_inner(
             needs_exec_tmp,
         };
 
-        let execution = match docker::run_docker(
-            &run_opts,
-            &config.seccomp_profile_path,
-            config.disable_custom_seccomp,
-            config.allow_default_compile_seccomp,
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(docker::JudgeEnvironmentError(msg)) => {
-                tracing::error!(
-                    error = %msg,
-                    test_case_id = %test_case.id,
-                    "Judge environment error during test case execution"
-                );
-                report_error(
-                    client,
-                    config,
-                    &submission,
-                    "runtime_error",
-                    &msg,
-                    worker_secret,
-                )
-                .await;
-                return;
-            }
-        };
+        // Warm container first, cold `docker run` on any warm-path refusal. The
+        // fallback is total: `WarmUnavailable` never reaches the classifier
+        // below, so adopting a warm container cannot change a verdict.
+        let execution =
+            match run_test_case_container(&run_opts, config, effective_time_limit_ms, pool).await {
+                Ok(result) => result,
+                Err(docker::JudgeEnvironmentError(msg)) => {
+                    tracing::error!(
+                        error = %msg,
+                        test_case_id = %test_case.id,
+                        "Judge environment error during test case execution"
+                    );
+                    report_error(
+                        client,
+                        config,
+                        &submission,
+                        "runtime_error",
+                        &msg,
+                        worker_secret,
+                    )
+                    .await;
+                    return;
+                }
+            };
 
         // Compare raw bytes directly (avoids double conversion and UTF-8 lossy artifacts)
         let is_correct = if submission.comparison_mode == "float" {
@@ -912,6 +1011,140 @@ mod tests {
 
         assert!(output.ends_with(TRUNCATED_SUFFIX));
         assert!(!output.contains('\u{fffd}'));
+    }
+
+    /// Marker exit code used to tell the fake warm result from the fake cold
+    /// one, so a test can prove WHICH path produced the value it got back.
+    const WARM_MARKER_EXIT_CODE: i32 = 41;
+    const COLD_MARKER_EXIT_CODE: i32 = 42;
+
+    fn fake_result(exit_code: i32) -> crate::docker::DockerRunResult {
+        crate::docker::DockerRunResult {
+            stdout: Vec::new(),
+            stderr: String::new(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+            exit_code: Some(exit_code),
+            timed_out: false,
+            oom_killed: false,
+            duration_ms: 1,
+            memory_peak_kb: None,
+            container_started: true,
+        }
+    }
+
+    /// Records what each seam of `warm_then_cold` did, so the tests can assert
+    /// on the decision rather than on a live Docker daemon.
+    #[derive(Default)]
+    struct Calls {
+        warm: std::cell::Cell<usize>,
+        destroyed: std::cell::RefCell<Vec<String>>,
+        cold: std::cell::Cell<usize>,
+    }
+
+    async fn drive(
+        calls: &Calls,
+        container: Option<&str>,
+        warm_outcome: Result<crate::docker::DockerRunResult, crate::docker::DockerError>,
+    ) -> Result<crate::docker::DockerRunResult, crate::docker::JudgeEnvironmentError> {
+        let warm_outcome = std::cell::RefCell::new(Some(warm_outcome));
+        super::warm_then_cold(
+            container.map(str::to_string),
+            |_name| async {
+                calls.warm.set(calls.warm.get() + 1);
+                warm_outcome.borrow_mut().take().expect("warm runs once")
+            },
+            |name| async move {
+                calls.destroyed.borrow_mut().push(name);
+            },
+            || async {
+                calls.cold.set(calls.cold.get() + 1);
+                Ok(fake_result(COLD_MARKER_EXIT_CODE))
+            },
+        )
+        .await
+    }
+
+    #[test]
+    fn warm_is_attempted_only_for_the_run_phase() {
+        // Compile keeps the cold path: its seccomp profile differs from run's
+        // and seccomp cannot be changed on an already-created container.
+        assert!(super::warm_eligible(crate::docker::Phase::Run));
+        assert!(!super::warm_eligible(crate::docker::Phase::Compile));
+    }
+
+    #[tokio::test]
+    async fn warm_unavailable_retries_cold_instead_of_failing_the_submission() {
+        let calls = Calls::default();
+        let outcome = drive(
+            &calls,
+            Some("oj-warm-abc"),
+            Err(crate::docker::DockerError::WarmUnavailable(
+                "warm container oj-warm-abc is not running".to_string(),
+            )),
+        )
+        .await;
+
+        let result = outcome.expect("WarmUnavailable must never fail the submission");
+        assert_eq!(result.exit_code, Some(COLD_MARKER_EXIT_CODE));
+        assert_eq!(calls.cold.get(), 1, "the cold path must run exactly once");
+        assert_eq!(
+            calls.destroyed.borrow().as_slice(),
+            ["oj-warm-abc"],
+            "the acquired container is destroyed even when the warm path bailed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_successful_warm_run_skips_cold_and_still_destroys_the_container() {
+        let calls = Calls::default();
+        let outcome = drive(
+            &calls,
+            Some("oj-warm-def"),
+            Ok(fake_result(WARM_MARKER_EXIT_CODE)),
+        )
+        .await;
+
+        let result = outcome.expect("a warm success is a normal result");
+        assert_eq!(result.exit_code, Some(WARM_MARKER_EXIT_CODE));
+        assert_eq!(calls.cold.get(), 0, "a warm success must not re-run cold");
+        assert_eq!(calls.destroyed.borrow().as_slice(), ["oj-warm-def"]);
+    }
+
+    #[tokio::test]
+    async fn a_genuine_docker_error_is_propagated_rather_than_masked_by_a_cold_retry() {
+        let calls = Calls::default();
+        let outcome = drive(
+            &calls,
+            Some("oj-warm-ghi"),
+            Err(crate::docker::DockerError::ProcessError(
+                "docker daemon is wedged".to_string(),
+            )),
+        )
+        .await;
+
+        let error = match outcome {
+            Ok(_) => panic!("a non-WarmUnavailable error must not be swallowed"),
+            Err(error) => error,
+        };
+        assert!(error.0.contains("docker daemon is wedged"));
+        assert_eq!(calls.cold.get(), 0, "a genuine fault must not be retried");
+        assert_eq!(calls.destroyed.borrow().as_slice(), ["oj-warm-ghi"]);
+    }
+
+    #[tokio::test]
+    async fn without_a_warm_container_only_the_cold_path_runs() {
+        // The no-pool / pool-disabled / empty-pool case: byte-for-byte the
+        // pre-warm-pool behaviour — one cold run, nothing acquired, nothing
+        // destroyed.
+        let calls = Calls::default();
+        let outcome = drive(&calls, None, Ok(fake_result(WARM_MARKER_EXIT_CODE))).await;
+
+        let result = outcome.expect("the cold path is unaffected");
+        assert_eq!(result.exit_code, Some(COLD_MARKER_EXIT_CODE));
+        assert_eq!(calls.warm.get(), 0);
+        assert_eq!(calls.cold.get(), 1);
+        assert!(calls.destroyed.borrow().is_empty());
     }
 
     #[tokio::test]

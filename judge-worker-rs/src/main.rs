@@ -736,6 +736,10 @@ async fn main() {
                 let client = Arc::clone(&client);
                 let config = Arc::clone(&config);
                 let worker_secret = worker_secret.clone();
+                // The executor takes a warm container per test case and
+                // destroys it after one use; a disabled pool simply hands out
+                // nothing and every run stays cold.
+                let task_pool = Arc::clone(&warm_pool);
 
                 // Increment in the poll loop (before the task runs) so the
                 // heartbeat never under-reports; the guard's Drop decrements
@@ -753,8 +757,13 @@ async fn main() {
                     let submission_id = submission.id.clone();
                     let claim_token = submission.claim_token.clone();
                     let worker_secret_opt = worker_secret.as_deref();
-                    let exec_fut =
-                        executor::execute(&client, &config, submission, worker_secret_opt);
+                    let exec_fut = executor::execute(
+                        &client,
+                        &config,
+                        submission,
+                        worker_secret_opt,
+                        Some(&task_pool),
+                    );
                     if let Err(panic_payload) =
                         std::panic::AssertUnwindSafe(exec_fut).catch_unwind().await
                     {

@@ -143,9 +143,8 @@ impl PoolManager {
     /// Take an idle container for a single run. Returns None when the pool is
     /// empty or disabled, which makes the caller fall back to a cold run.
     ///
-    /// Not yet called from the run path; the adopt-side wiring lands with the
-    /// warm-container run phase.
-    #[allow(dead_code)]
+    /// The container is handed out ONCE and never returned: `executor` destroys
+    /// it after the single test case it serves, whatever the outcome.
     pub async fn acquire(&self, image: &str) -> Option<String> {
         if self.disabled {
             return None;

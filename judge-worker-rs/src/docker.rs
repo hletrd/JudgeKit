@@ -1354,13 +1354,11 @@ fn warm_result_is_too_close_to_call(
 /// Caller contract: `container` came from `PoolManager::acquire` (so it is
 /// single-use), and the caller destroys it afterwards regardless of outcome.
 /// EVERY `Err` from this function is [`DockerError::WarmUnavailable`] and means
-/// the caller must re-run the same test case with `run_docker_once`; the warm
+/// the caller must re-run the same test case through [`run_docker`]; the warm
 /// path may never fail a submission on its own.
 ///
 /// The measurement half is [`run_and_measure`], shared verbatim with the cold
 /// path, so adopting a warm container cannot change a verdict.
-// Wired into the run path by the adopt-side task; kept `pub` for that caller.
-#[allow(dead_code)]
 pub async fn run_docker_warm(
     options: &DockerRunOptions,
     container: &str,
