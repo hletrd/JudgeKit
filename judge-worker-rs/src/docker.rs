@@ -22,6 +22,25 @@ const MIN_TIMEOUT_MS: u64 = 100;
 /// Uid/gid every judged process runs as, cold or warm.
 const SANDBOX_UID: u32 = 65534;
 
+/// PID cap for the compile phase. Toolchains may legitimately spawn many
+/// processes (C++ template instantiation, dependency resolution).
+const COMPILE_PHASE_PIDS_LIMIT: u32 = 128;
+
+/// PID cap for a cold run-phase container: user code should not need many
+/// threads, and the whole cap is available to the submission's process tree.
+const RUN_PHASE_PIDS_LIMIT: u32 = 64;
+
+/// PID cap for a warm container — deliberately ONE MORE than the cold run cap.
+///
+/// A warm container is kept alive between runs by an idle `sleep infinity`, and
+/// that process holds a PID inside the same cgroup for the whole run. Reusing
+/// the cold number would therefore leave the submission one fewer usable
+/// process than it gets cold, so a program sitting right at the limit would be
+/// RuntimeError warm and Accepted cold — a verdict that silently depends on
+/// whether a pooled container happened to be available. The near-limit refusal
+/// bands only cover time and memory, so nothing else would catch it.
+const WARM_PIDS_LIMIT: u32 = RUN_PHASE_PIDS_LIMIT + 1;
+
 /// Memory ceiling a warm container starts with. `docker update` lowers this to
 /// the submission's real limit when the container is adopted, so it only needs
 /// to be >= any per-submission limit the judge will ask for.
@@ -629,8 +648,8 @@ async fn run_docker_once(
     // C++ template instantiation, Java/Maven dependency resolution). Run phase
     // gets a tighter limit because user code should not need many threads.
     let pids_limit = match options.phase {
-        Phase::Compile => "128",
-        Phase::Run => "64",
+        Phase::Compile => COMPILE_PHASE_PIDS_LIMIT,
+        Phase::Run => RUN_PHASE_PIDS_LIMIT,
     };
 
     let workspace_volume = if options.read_only_workspace {
@@ -663,7 +682,7 @@ async fn run_docker_once(
         "--cpus".into(),
         EXECUTION_CPU_LIMIT.into(),
         "--pids-limit".into(),
-        pids_limit.into(),
+        pids_limit.to_string(),
         "--read-only".into(),
         "--tmpfs".into(),
         if options.phase == Phase::Compile || options.needs_exec_tmp {
@@ -1136,8 +1155,9 @@ fn warm_refusal_reason(options: &DockerRunOptions) -> Option<String> {
 
 /// `docker update` arguments that retune an adopted warm container to the
 /// submission's real limits. Memory is the one limit that must be corrected —
-/// the container started at `WARM_CEILING_MEMORY_MB`, while cpus and pids were
-/// created at their run-phase values already. Only ever called after
+/// the container started at `WARM_CEILING_MEMORY_MB`, while cpus were created
+/// at their run-phase value already and pids at `WARM_PIDS_LIMIT`, which leaves
+/// the submission the same usable budget as a cold run. Only ever called after
 /// [`warm_refusal_reason`] has confirmed the new limit is a reduction.
 fn warm_update_args(container: &str, memory_limit_mb: u32) -> Vec<String> {
     let mem = get_memory_limit_mb(memory_limit_mb);
@@ -1674,9 +1694,12 @@ pub async fn create_warm_container(
         format!("{}m", WARM_CEILING_MEMORY_MB),
         "--cpus".into(),
         EXECUTION_CPU_LIMIT.into(),
-        // Same cap as `Phase::Run` in run_docker_once.
+        // One MORE than `Phase::Run` in run_docker_once: the idle
+        // `sleep infinity` that keeps this container alive occupies a PID in
+        // the same cgroup for the whole run, so the +1 is what makes the
+        // submission's usable process budget identical warm and cold.
         "--pids-limit".into(),
-        "64".into(),
+        WARM_PIDS_LIMIT.to_string(),
         "--read-only".into(),
         "--tmpfs".into(),
         RUN_TMPFS.into(),
@@ -2272,14 +2295,40 @@ mod tests {
 
     #[test]
     fn pids_limit_is_phase_specific() {
-        let src = include_str!("docker.rs");
-        assert!(
-            src.contains("Phase::Compile => \"128\""),
+        assert_eq!(
+            super::COMPILE_PHASE_PIDS_LIMIT,
+            128,
             "compile phase must allow 128 PIDs"
         );
-        assert!(
-            src.contains("Phase::Run => \"64\""),
+        assert_eq!(
+            super::RUN_PHASE_PIDS_LIMIT,
+            64,
             "run phase must limit PIDs to 64"
+        );
+        let src = include_str!("docker.rs");
+        assert!(
+            src.contains("Phase::Compile => COMPILE_PHASE_PIDS_LIMIT"),
+            "compile phase must use the compile PID cap"
+        );
+        assert!(
+            src.contains("Phase::Run => RUN_PHASE_PIDS_LIMIT"),
+            "run phase must use the run PID cap"
+        );
+    }
+
+    /// A warm container permanently burns one PID on its idle `sleep infinity`,
+    /// so it must be created with one MORE than the cold run cap. With the same
+    /// cap, a submission right at the limit would be RuntimeError warm and
+    /// Accepted cold — a verdict decided by pool state, which nothing else
+    /// catches (the near-limit refusal bands cover time and memory only).
+    #[test]
+    fn warm_containers_get_one_extra_pid_for_their_idle_process() {
+        assert_eq!(super::WARM_PIDS_LIMIT, super::RUN_PHASE_PIDS_LIMIT + 1);
+        assert_eq!(super::WARM_PIDS_LIMIT, 65);
+        let src = include_str!("docker.rs");
+        assert!(
+            src.contains("WARM_PIDS_LIMIT.to_string()"),
+            "the warm container must be created with the warm PID cap"
         );
     }
 
