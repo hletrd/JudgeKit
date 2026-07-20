@@ -204,7 +204,11 @@ working unmodified whether or not the pool is enabled.
   pick a warm count per language, but counts for languages sharing an image
   are merged with **MAX, not SUM** — two idle `judge-cpp` containers can serve
   either a C or a C++ submission, so provisioning "2 for C" and "2 for C++"
-  yields 2 idle containers, not 4.
+  yields 2 idle containers, not 4. The image for a language is read from
+  `language_configs.docker_image` — the same admin-editable column the claim
+  route sends to the worker — and only falls back to the built-in mapping when
+  that column is empty, so retagging a language in the admin UI moves its warm
+  pool with it instead of leaving idle containers nobody can use.
 - **Single use.** Each warm container (`oj-warm-*`) serves exactly **one test
   case**, then is destroyed and asynchronously replenished. Isolation between
   submissions — and between test cases — is identical to the cold path.
@@ -226,6 +230,29 @@ working unmodified whether or not the pool is enabled.
   doesn't provide), or a result too close to the time/memory limit to trust
   the warm-path measurement — falls straight back to a normal cold `docker
   run`. Judging correctness never depends on the pool being available.
+
+### What to expect in the numbers
+
+Two observable effects surprise admins if they aren't expecting them. Neither
+is a bug.
+
+- **A borderline test case costs roughly 2x its time limit.** When a warm
+  run's measured time or memory lands too close to the problem's limit to
+  call, the warm result is *thrown away* and the test case is re-run cold, so
+  the verdict always comes from a measurement that is directly comparable with
+  the cold path. The refused warm run still consumed its full time budget, so
+  a near-limit case costs about twice its time limit end to end. With
+  `runAllTestCases` enabled and many borderline cases, a submission's total
+  judging time can nearly double. Submissions comfortably inside or outside
+  the limit are unaffected — only the ambiguous band pays this.
+- **The memory column can flip between 0 and a real number within one
+  submission.** On cgroup v2 hosts, a cold run reports `memory_peak_kb` as 0
+  (or absent): the container's cgroup is gone by the time the peak could be
+  read. A warm run reads `memory.peak` from a container that is still alive,
+  so it reports a real number. Since any individual test case may run warm or
+  cold (empty pool, refusal, fallback), a single submission's test cases can
+  show a real peak for some and 0 for others. A 0 means "not measured on this
+  path", never "used no memory".
 
 ### Configuring it
 
