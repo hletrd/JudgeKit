@@ -4,6 +4,19 @@ use std::path::Component;
 use std::path::PathBuf;
 use std::time::Duration;
 
+/// Parse a boolean environment variable.
+/// Accepts: "1", "true", "yes", "on" (case-insensitive, with leading/trailing whitespace trimmed).
+/// Returns false if the variable is unset or does not match any truthy spelling.
+fn parse_env_flag(name: &str) -> bool {
+    match env::var(name) {
+        Ok(val) => {
+            let lower = val.trim().to_lowercase();
+            matches!(lower.as_str(), "1" | "true" | "yes" | "on")
+        }
+        Err(_) => false,
+    }
+}
+
 pub struct Config {
     pub claim_url: String,
     pub report_url: String,
@@ -176,18 +189,8 @@ impl Config {
         };
         let auth_token = SecretString::new(auth_token_raw);
 
-        let env_flag = |name: &str| -> bool {
-            match env::var(name) {
-                Ok(val) => {
-                    let lower = val.trim().to_lowercase();
-                    matches!(lower.as_str(), "1" | "true" | "yes" | "on")
-                }
-                Err(_) => false,
-            }
-        };
-
-        let disable_custom_seccomp = env_flag("JUDGE_DISABLE_CUSTOM_SECCOMP");
-        let allow_default_compile_seccomp = env_flag("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP");
+        let disable_custom_seccomp = parse_env_flag("JUDGE_DISABLE_CUSTOM_SECCOMP");
+        let allow_default_compile_seccomp = parse_env_flag("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP");
 
         // Fail closed (RPF cycle-1 M5): a lone env var silently weakening the
         // sandbox is exactly the kind of setting that leaks from a debug
@@ -195,7 +198,7 @@ impl Config {
         // confirmation var JUDGE_ALLOW_SECCOMP_WEAKENING=1; without it the
         // worker refuses to start instead of running with reduced isolation.
         if (disable_custom_seccomp || allow_default_compile_seccomp)
-            && !env_flag("JUDGE_ALLOW_SECCOMP_WEAKENING")
+            && !parse_env_flag("JUDGE_ALLOW_SECCOMP_WEAKENING")
         {
             return Err(
                 "JUDGE_DISABLE_CUSTOM_SECCOMP / JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP weaken the \
@@ -314,12 +317,7 @@ impl Config {
             ],
         };
 
-        let warm_pool_disabled = env::var("WORKER_WARM_POOL_DISABLE")
-            .map(|v| {
-                let v = v.trim().to_ascii_lowercase();
-                v == "1" || v == "true" || v == "yes"
-            })
-            .unwrap_or(false);
+        let warm_pool_disabled = parse_env_flag("WORKER_WARM_POOL_DISABLE");
 
         Ok(Config {
             claim_url,
@@ -425,10 +423,72 @@ fn is_local_control_plane_host(host: Option<&str>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_local_control_plane_host, validate_runtime_path,
+        is_local_control_plane_host, parse_env_flag, validate_runtime_path,
         validate_secure_judge_urls_with_override,
     };
     use std::path::PathBuf;
+
+    #[test]
+    fn parse_env_flag_accepts_all_truthy_spellings() {
+        // Test all accepted truthy spellings
+        for val in &["1", "true", "yes", "on"] {
+            unsafe {
+                std::env::set_var("TEST_FLAG", val);
+            }
+            assert!(parse_env_flag("TEST_FLAG"), "Failed for value: {}", val);
+        }
+
+        // Test case-insensitivity
+        for val in &["TRUE", "Yes", "ON", "TrUe"] {
+            unsafe {
+                std::env::set_var("TEST_FLAG", val);
+            }
+            assert!(parse_env_flag("TEST_FLAG"), "Failed for case variant: {}", val);
+        }
+
+        // Test with surrounding whitespace
+        for val in &[" 1 ", "  true  ", "\tyes\t", " on "] {
+            unsafe {
+                std::env::set_var("TEST_FLAG", val);
+            }
+            assert!(
+                parse_env_flag("TEST_FLAG"),
+                "Failed for whitespace variant: {:?}",
+                val
+            );
+        }
+
+        unsafe {
+            std::env::remove_var("TEST_FLAG");
+        }
+    }
+
+    #[test]
+    fn parse_env_flag_rejects_falsy_spellings() {
+        // Test falsy spellings
+        for val in &["0", "false", "no", "off", ""] {
+            unsafe {
+                std::env::set_var("TEST_FLAG", val);
+            }
+            assert!(
+                !parse_env_flag("TEST_FLAG"),
+                "Should reject falsy spelling: {}",
+                val
+            );
+        }
+
+        unsafe {
+            std::env::remove_var("TEST_FLAG");
+        }
+    }
+
+    #[test]
+    fn parse_env_flag_returns_false_when_unset() {
+        unsafe {
+            std::env::remove_var("TEST_FLAG");
+        }
+        assert!(!parse_env_flag("TEST_FLAG"));
+    }
 
     #[test]
     fn accepts_normal_runtime_paths() {
