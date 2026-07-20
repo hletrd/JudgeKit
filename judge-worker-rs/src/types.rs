@@ -62,6 +62,54 @@ mod tests {
         let parsed: super::HeartbeatResponse = serde_json::from_str(json).expect("parse");
         assert_eq!(parsed.data.warm_pool.images.get("judge-python:latest"), Some(&3));
     }
+
+    #[test]
+    fn warm_pool_targets_disabled_when_register_response_has_explicit_null() {
+        // An app server may send `"warmPool": null` explicitly (as opposed to
+        // omitting the key). serde's `#[serde(default)]` alone would NOT catch
+        // this — it only substitutes a default when the key is absent — so
+        // without the lenient deserializer this would fail the whole response.
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000,"warmPool":null}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.warm_pool.enabled);
+        assert!(parsed.warm_pool.images.is_empty());
+    }
+
+    #[test]
+    fn warm_pool_targets_disabled_when_image_count_is_negative() {
+        // `images` values are `u32`; a negative count is a type mismatch that
+        // would otherwise fail deserialization of the entire response.
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000,"warmPool":{"enabled":true,"images":{"judge-cpp:latest":-1}}}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.warm_pool.enabled);
+        assert!(parsed.warm_pool.images.is_empty());
+    }
+
+    #[test]
+    fn warm_pool_targets_disabled_when_image_count_is_fractional() {
+        // Same idea as the negative-count case, but a fractional value.
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000,"warmPool":{"enabled":true,"images":{"judge-cpp:latest":1.5}}}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.warm_pool.enabled);
+        assert!(parsed.warm_pool.images.is_empty());
+    }
+
+    #[test]
+    fn warm_pool_targets_disabled_when_field_is_wrong_type() {
+        // `warmPool` sent as a string entirely (not even object-shaped).
+        let json = r#"{"workerId":"w1","workerSecret":"s","heartbeatIntervalMs":30000,"staleClaimTimeoutMs":300000,"warmPool":"nope"}"#;
+        let parsed: super::RegisterResponseData = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.warm_pool.enabled);
+        assert!(parsed.warm_pool.images.is_empty());
+    }
+
+    #[test]
+    fn heartbeat_response_warm_pool_disabled_on_explicit_null() {
+        let json = r#"{"data":{"ok":true,"warmPool":null}}"#;
+        let parsed: super::HeartbeatResponse = serde_json::from_str(json).expect("parse");
+        assert!(!parsed.data.warm_pool.enabled);
+        assert!(parsed.data.warm_pool.images.is_empty());
+    }
 }
 
 impl std::fmt::Debug for SecretString {
@@ -370,7 +418,7 @@ pub struct RegisterResponseData {
     pub stale_claim_timeout_ms: u64,
     /// Not yet consumed in production code; wired into the warm-pool
     /// reconciler in a later task.
-    #[serde(rename = "warmPool", default)]
+    #[serde(rename = "warmPool", default, deserialize_with = "lenient_warm_pool")]
     #[allow(dead_code)]
     pub warm_pool: WarmPoolTargets,
 }
@@ -392,9 +440,22 @@ pub struct WarmPoolTargets {
     pub images: std::collections::HashMap<String, u32>,
 }
 
+/// Parse `warmPool` leniently: the warm pool is an optional optimization, so a
+/// null, malformed, or out-of-range payload must degrade to "disabled" rather
+/// than fail the whole response. A strict field here would make an unparseable
+/// warmPool fatal on the register path, where registration failure exits the
+/// worker process.
+fn lenient_warm_pool<'de, D>(deserializer: D) -> Result<WarmPoolTargets, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).unwrap_or_default())
+}
+
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct HeartbeatResponseData {
-    #[serde(rename = "warmPool", default)]
+    #[serde(rename = "warmPool", default, deserialize_with = "lenient_warm_pool")]
     pub warm_pool: WarmPoolTargets,
 }
 

@@ -363,4 +363,24 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("500"));
     }
+
+    #[tokio::test]
+    async fn heartbeat_falls_back_to_disabled_warm_pool_on_unparseable_body() {
+        // A 200 response whose body isn't valid JSON at all (never mind an
+        // invalid warmPool) must not turn a successful heartbeat into an
+        // error — the worker is still alive and should keep running with
+        // warm pool disabled rather than treating this as a failed heartbeat.
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/heartbeat"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("not json at all"))
+            .mount(&server)
+            .await;
+
+        let client = make_client_with_base(&server.uri());
+        let result = client.heartbeat("worker-1", None, 0, 4, 60).await;
+        let targets = result.expect("heartbeat should not error on malformed body");
+        assert!(!targets.enabled);
+        assert!(targets.images.is_empty());
+    }
 }
