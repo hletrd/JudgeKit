@@ -1828,6 +1828,13 @@ git commit -S -m "feat(worker): ✨ maintain warm container pool from app target
 - Consumes: `DockerRunOptions`, `Phase`, `read_cgroup_memory_peak`, `remove_container_by_name` (Task 10).
 - Produces: `docker::run_docker_warm(options: &DockerRunOptions, container: &str) -> Result<DockerRunResult, DockerError>` — same result shape as `run_docker_once`.
 
+**Additional binding requirements (decided after the plan was first written):**
+
+1. **Restore W^X before executing user code (REQUIRED, user-approved).** A cold run mounts `/workspace` read-only and `/tmp` `noexec`, so no path is both writable and executable. A warm container's `/workspace` tmpfs is `rw,exec`, which would hand untrusted submissions a writable+executable path. After `docker cp` and before `docker exec`, drop write permission on `/workspace` and its contents so the executing (uid 65534, no-capability) process cannot create or modify files there, while compiled binaries remain executable. Verify the lockdown actually holds against the unprivileged run user — a submission must not be able to chmod/chown its way back to writable. If the chosen mechanism cannot be shown to hold, treat the warm path as unavailable for that run (`WarmUnavailable` → cold fallback) rather than shipping a weaker sandbox.
+2. **Refuse adoption when the submission's memory limit exceeds the warm ceiling.** Warm containers are created at `WARM_CEILING_MEMORY_MB` (1024). `docker update` can lower a limit but must never be used to grant more than the container was created with. If `options.memory_limit_mb` exceeds the ceiling, return `WarmUnavailable` and let the cold path handle it.
+3. **Refuse adoption for languages needing an exec-allowed `/tmp`.** Cold run containers set `COMPILE_TMPFS` (exec-allowed) when `options.needs_exec_tmp` is true (.NET/Mono toolchains); warm containers always get the strict `RUN_TMPFS`. If `options.needs_exec_tmp` is true, return `WarmUnavailable` → cold fallback, or those submissions would fail in a warm container.
+4. **Treat a missing/dead container as `WarmUnavailable`.** `docker inspect`/`exec` returning "no such container" must fall back to cold, never fail the submission.
+
 - [ ] **Step 1: Write the failing test**
 
 Append to the `#[cfg(test)] mod tests` in `judge-worker-rs/src/docker.rs`:
