@@ -4,6 +4,7 @@ mod config;
 mod docker;
 mod executor;
 mod languages;
+mod pool;
 mod runner;
 mod types;
 mod validation;

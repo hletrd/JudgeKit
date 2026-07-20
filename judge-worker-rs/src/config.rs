@@ -49,6 +49,13 @@ pub struct Config {
     /// language set; set to empty string to disable.
     /// Configurable via `WORKER_PREWARM_IMAGES` env var.
     pub prewarm_images: Vec<String>,
+    /// Operator kill switch. When true the worker ignores warm-pool targets
+    /// from the app server and judges every test case with a cold
+    /// `docker run`. Configurable via `WORKER_WARM_POOL_DISABLE`.
+    /// Not yet consumed in production code; wired into the warm-pool
+    /// reconciler in a later task.
+    #[allow(dead_code)]
+    pub warm_pool_disabled: bool,
 }
 
 impl Config {
@@ -307,6 +314,13 @@ impl Config {
             ],
         };
 
+        let warm_pool_disabled = env::var("WORKER_WARM_POOL_DISABLE")
+            .map(|v| {
+                let v = v.trim().to_ascii_lowercase();
+                v == "1" || v == "true" || v == "yes"
+            })
+            .unwrap_or(false);
+
         Ok(Config {
             claim_url,
             report_url,
@@ -328,6 +342,7 @@ impl Config {
             runner_concurrency,
             allow_unregistered_mode,
             prewarm_images,
+            warm_pool_disabled,
         })
     }
 }
