@@ -64,6 +64,7 @@ Workers poll `/api/v1/judge/claim` to claim submissions. The claim request inclu
 | `JUDGE_WORKER_HOSTNAME` | System hostname | Hostname reported to app server |
 | `POLL_INTERVAL` | `500` | Polling interval in ms when the queue has work. Empty-queue polls back off exponentially (×2 per consecutive empty poll) capped at 3 s. Lowering `POLL_INTERVAL` directly reduces pickup latency on a freshly created submission but raises baseline DB QPS proportionally per worker. |
 | `WORKER_PREWARM_IMAGES` | `judge-cpp,judge-python,judge-jvm,judge-node,judge-rust,judge-go` | Comma-separated list of judge-* image tags to "prewarm" at worker startup by running `docker run --rm <image> true` once. This pulls the image layers into the OS page cache so the FIRST submission targeting each language doesn't pay the cold-disk read cost on top of docker spawn. Each prewarm is capped at 10 s; missing images log a warning and are skipped. Set to empty string to disable entirely. |
+| `WORKER_WARM_POOL_DISABLE` | `false` | Operator kill switch for the [warm container pool](#warm-container-pool). When `true`, the worker ignores whatever warm-pool targets the app sends in `register`/`heartbeat` and judges every test case with a cold `docker run`. |
 | `DEAD_LETTER_DIR` | `./dead-letter` | Directory for failed result payloads |
 
 ## Deployment
@@ -187,6 +188,132 @@ docker info | grep -i 'default runtime'   # should print "Default Runtime: crun"
 ```
 
 Roll back by editing `/etc/docker/daemon.json` to set `default-runtime` back to `runc` and restarting Docker — image layers, networks, and volumes are runtime-independent so a switch back is non-destructive.
+
+## Warm container pool
+
+Beyond page-cache prewarm and the `crun` runtime, the worker can keep a small
+pool of **idle, already-started** judge containers around so the RUN phase of
+a submission skips container create/start entirely. This is a separate,
+opt-in mechanism layered on top of the two optimizations above — both keep
+working unmodified whether or not the pool is enabled.
+
+### What it does
+
+- **Per docker image, not per language.** `judge-cpp:latest` serves both C
+  (`c17`/`c23`) and C++ (`cpp20`/`cpp23`/`cpp26`), so the admin UI lets you
+  pick a warm count per language, but counts for languages sharing an image
+  are merged with **MAX, not SUM** — two idle `judge-cpp` containers can serve
+  either a C or a C++ submission, so provisioning "2 for C" and "2 for C++"
+  yields 2 idle containers, not 4.
+- **Single use.** Each warm container (`oj-warm-*`) serves exactly **one test
+  case**, then is destroyed and asynchronously replenished. Isolation between
+  submissions — and between test cases — is identical to the cold path.
+- **RUN only, never COMPILE.** Compilation always runs in a fresh cold
+  `docker run`; only test-case execution can use a warm container. Compile is
+  a single invocation per submission (low leverage) and uses a different
+  seccomp profile than execution, so keeping it out of the pool avoids
+  mixing security profiles.
+- **Per-submission limits still apply.** A warm container is adopted with
+  `docker update` to the submission's own memory/CPU/pids limits and gets a
+  read-only bind-mounted staging directory at `/workspace` before `docker
+  exec` runs the test case, so measured time and memory match the cold path.
+  `memory.peak` is reset before each case so peak memory never accumulates
+  across test cases run in the same recycled container slot.
+- **Always has a cold fallback.** Anything the warm path cannot safely
+  handle — pool empty, a dead/unhealthy container, a submission's memory
+  limit above the pool's ~1024 MiB warm ceiling, a `needs_exec_tmp` language
+  (.NET/Mono, which needs a real writable temp mount the warm workspace
+  doesn't provide), or a result too close to the time/memory limit to trust
+  the warm-path measurement — falls straight back to a normal cold `docker
+  run`. Judging correctness never depends on the pool being available.
+
+### Configuring it
+
+Admins control the pool at **`/dashboard/admin/settings`**:
+- a global on/off switch,
+- which languages stay warm, and
+- how many idle containers to keep per language.
+
+The setting is stored as `system_settings.warm_pool` (JSONB), normalized
+server-side to per-docker-image targets (`resolveWarmPoolTargets` in
+`src/lib/judge/warm-pool.ts`) before being handed to workers.
+
+### How changes reach workers
+
+There is no redeploy or worker restart involved. The app includes the
+resolved pool targets in both the `register` and `heartbeat` responses
+(`/api/v1/judge/register`, `/api/v1/judge/heartbeat`). A worker adopts new
+targets from `register` at startup and re-reconciles against them on every
+heartbeat (~30 seconds), so an admin change takes effect fleet-wide within
+about one heartbeat interval — increase a count and the worker creates more
+idle containers; set a count to 0 and the worker tears the excess down.
+
+### Kill switch
+
+`WORKER_WARM_POOL_DISABLE=true` on a worker forces it to ignore whatever pool
+targets the app sends and judge every test case with a cold `docker run`,
+regardless of the admin setting. This is the operator-side escape hatch —
+useful for isolating whether an incident is warm-pool-related without
+touching the admin config or restarting the app.
+
+### Default-enabling a deployment
+
+`WARM_POOL_DEFAULT_ENABLED` (app env var, read by
+`defaultWarmPoolConfig()` in `src/lib/judge/warm-pool.ts`) makes the pool
+default **on** — seeded with `python: 2, cpp20: 2, c17: 2` — for a deployment
+until an admin saves an explicit `warmPool` value from the settings page.
+Once an admin has saved a value, this env var no longer has any effect; the
+DB row always wins.
+
+This variable is read by the **Next.js app process itself**, so it only
+takes effect if it is present in the environment the app container actually
+starts with. Concretely, for `docker-compose.production.yml`, that means
+`.env.production` on the target host (`env_file: - .env.production` on the
+`app` service) — **not** `.env.deploy.<target>` files such as
+`.env.deploy.auraedu`. Those `.env.deploy.*` files are sourced locally by
+`deploy-docker.sh` itself to configure the deploy *script's* own shell
+variables (`DOMAIN`, `REMOTE_HOST`, `SSH_KEY`, worker/build flags); they are
+never copied into the running app or worker container, so setting
+`WARM_POOL_DEFAULT_ENABLED` there is silently ignored.
+
+For the `oj`/`auraedu` deployment, `deploy-docker.sh` backfills
+`WARM_POOL_DEFAULT_ENABLED=true` into the remote `.env.production`
+automatically (backfill-only — it will not overwrite a value an operator has
+since changed there) whenever `DEPLOY_TARGET=oj` or `DEPLOY_TARGET=auraedu`.
+Other deployments stay off by default unless the same variable is set
+explicitly in their own `.env.production`.
+
+### Pre-production validation checklist
+
+The automated test suite (`vitest`, `tsc`, `lint`, `cargo test`, `cargo
+clippy`) covers the config/normalization/propagation logic and the Rust
+pool-manager and fallback-selection logic against Docker mocks. It does
+**not** exercise a real Docker daemon, real judge images, or a real worker
+process. Before enabling the pool against real traffic on `oj` (or any other
+deployment), an operator should confirm on a live staging deployment:
+
+- [ ] **Warm-pool-off is a no-op.** With `WARM_POOL_DEFAULT_ENABLED` unset
+      and `WORKER_WARM_POOL_DISABLE=true` on the worker, submit a Python and
+      a C++ solution. Judging succeeds, worker logs show no `created warm
+      container` lines, and verdicts/time/memory match a pre-change run.
+- [ ] **Pool creation.** Enable the pool in `/dashboard/admin/settings`
+      (Python 3 = 2, C++ = 2, C = 2) and save. Within ~30s, worker logs show
+      `created warm container` for `judge-cpp:latest` and
+      `judge-python:latest`, and `docker ps` shows `oj-warm-*` containers
+      idling.
+  - [ ] **Correctness under warm execution.** Submit Python, C++, and C
+      solutions with multiple test cases each. Verdicts are correct;
+      per-test-case time and memory readings fall in the same range as a
+      cold run; peak memory does **not** accumulate across test cases within
+      a recycled container (the `memory.peak`/cgroup reset guard); consumed
+      `oj-warm-*` containers are replenished.
+- [ ] **Scale-to-zero.** Set the pool count to 0 for all languages and save.
+      Within ~30s, all `oj-warm-*` containers disappear and judging
+      continues normally on the cold path.
+- [ ] **Fallback under pressure.** With the pool sized smaller than expected
+      concurrency (e.g. 1 idle container against 3 simultaneous
+      submissions), confirm the overflow submissions still judge correctly
+      via the cold fallback rather than erroring or queuing indefinitely.
 
 ## Admin Dashboard
 

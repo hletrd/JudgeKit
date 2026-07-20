@@ -1029,6 +1029,24 @@ upsert_env_literal TRUSTED_PROXY_HOPS 1
 # every redeploy and silently lock the remote worker out.
 ensure_env_literal JUDGE_ALLOW_ANY_JUDGE_IP "${JUDGE_ALLOW_ANY_JUDGE_IP_DEFAULT}"
 
+# oj/auraedu ships with the warm container pool defaulted on (Python 3 / C++ /
+# C — see src/lib/judge/warm-pool.ts defaultWarmPoolConfig()) until an admin
+# saves an explicit value at /dashboard/admin/settings. This is the only place
+# that actually reaches the running app: docker-compose.production.yml loads
+# the app container's env from this remote .env.production via `env_file:`.
+# `.env.deploy.auraedu` (sourced by source_local_env_profile above) only
+# configures this deploy SCRIPT's own shell variables (DOMAIN, REMOTE_HOST,
+# SSH_KEY, worker/build flags) and is never copied into the app container, so
+# setting WARM_POOL_DEFAULT_ENABLED there would silently do nothing.
+# Backfill-only (ensure, not upsert): once an admin saves warmPool in
+# system_settings, this env var stops mattering, and an operator may
+# deliberately want it unset/false on the remote for a period (e.g. the
+# warm-pool-off verification in docs/judge-workers.md) without a later
+# redeploy silently flipping it back to true.
+if [[ "${DEPLOY_TARGET}" == "auraedu" ]]; then
+    ensure_env_literal WARM_POOL_DEFAULT_ENABLED true
+fi
+
 # Warn if the remote production config leaves judge routes fail-closed.
 if remote "test -f ${REMOTE_DIR}/.env.production" 2>/dev/null; then
     REMOTE_JUDGE_ALLOWED_IPS=$(remote "grep '^JUDGE_ALLOWED_IPS=' ${REMOTE_DIR}/.env.production 2>/dev/null | cut -d= -f2- | tr -d '[:space:]'" 2>/dev/null || true)
