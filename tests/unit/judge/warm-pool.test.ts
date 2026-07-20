@@ -7,6 +7,7 @@ import {
   resolveWarmPoolTargets,
   type WarmPoolConfig,
 } from "@/lib/judge/warm-pool";
+import { systemSettingsSchema } from "@/lib/validators/system-settings";
 
 const ALL = new Set(["python", "c17", "c23", "cpp20", "cpp23", "cpp26", "rust"]);
 
@@ -199,5 +200,50 @@ describe("defaultWarmPoolConfig", () => {
     process.env.WARM_POOL_DEFAULT_ENABLED = "true";
     const config2 = defaultWarmPoolConfig();
     expect(config2.languages).toEqual({ python: 2, cpp20: 2, c17: 2 });
+  });
+});
+
+describe("systemSettingsSchema warmPool", () => {
+  it("accepts a valid warm pool config", () => {
+    const parsed = systemSettingsSchema.safeParse({
+      warmPool: { enabled: true, languages: { python: 2, cpp20: 3 } },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts null (clear to default)", () => {
+    expect(systemSettingsSchema.safeParse({ warmPool: null }).success).toBe(true);
+  });
+
+  it("accepts omission", () => {
+    expect(systemSettingsSchema.safeParse({}).success).toBe(true);
+  });
+
+  it("rejects a count above the per-image cap", () => {
+    const parsed = systemSettingsSchema.safeParse({
+      warmPool: { enabled: true, languages: { python: WARM_POOL_MAX_PER_IMAGE + 1 } },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a negative count", () => {
+    const parsed = systemSettingsSchema.safeParse({
+      warmPool: { enabled: true, languages: { python: -1 } },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a non-integer count", () => {
+    const parsed = systemSettingsSchema.safeParse({
+      warmPool: { enabled: true, languages: { python: 1.5 } },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects a missing enabled flag", () => {
+    const parsed = systemSettingsSchema.safeParse({
+      warmPool: { languages: { python: 1 } },
+    });
+    expect(parsed.success).toBe(false);
   });
 });

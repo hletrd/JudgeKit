@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeOptionalString } from "@/lib/validators/preprocess";
+import { WARM_POOL_MAX_PER_IMAGE } from "@/lib/judge/warm-pool";
 
 export const platformModeValues = ["homework", "exam", "contest", "recruiting"] as const;
 
@@ -156,6 +157,22 @@ export const systemSettingsSchema = z.object({
   homePageContent: z.record(z.string(), homePageLocaleSchema).nullable().optional(),
   // Footer Content (locale-keyed overrides)
   footerContent: z.record(z.string(), footerLocaleSchema).nullable().optional(),
+  // Warm container pool (admin-controlled). Counts are per LANGUAGE; the
+  // app normalizes them to per-image targets before shipping them to workers.
+  warmPool: z
+    .object({
+      enabled: z.boolean(),
+      languages: z.record(
+        z.string().max(50),
+        z
+          .number()
+          .int("mustBeInteger")
+          .min(0, "valueTooSmall")
+          .max(WARM_POOL_MAX_PER_IMAGE, "valueTooLarge"),
+      ),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type SystemSettingsInput = z.infer<typeof systemSettingsSchema>;
