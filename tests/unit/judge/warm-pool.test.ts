@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 import {
   WARM_POOL_MAX_PER_IMAGE,
   WARM_POOL_MAX_TOTAL,
+  defaultWarmPoolConfig,
   languageToImage,
   resolveWarmPoolTargets,
   type WarmPoolConfig,
@@ -81,14 +82,60 @@ describe("resolveWarmPoolTargets", () => {
     });
   });
 
-  it("enforces WARM_POOL_MAX_TOTAL across images deterministically", () => {
-    const languages: Record<string, number> = {};
-    for (const lang of ["python", "cpp20", "rust"]) {
-      languages[lang] = WARM_POOL_MAX_PER_IMAGE;
-    }
-    const result = resolveWarmPoolTargets({ enabled: true, languages }, ALL);
+  it("enforces WARM_POOL_MAX_TOTAL across images deterministically (full truncation)", () => {
+    // Four distinct images, each requesting 8 containers = 32 total, exceeds 24 cap.
+    // Alphabetically sorted: judge-cpp, judge-go, judge-python, judge-rust.
+    // Expected: cpp=8, go=8, python=8, rust=0 (dropped entirely).
+    const enabledLangs = new Set(["cpp20", "go", "python", "rust"]);
+    const config: WarmPoolConfig = {
+      enabled: true,
+      languages: { cpp20: 8, go: 8, python: 8, rust: 8 },
+    };
+    const result = resolveWarmPoolTargets(config, enabledLangs);
+    expect(result).toEqual({
+      enabled: true,
+      images: {
+        "judge-cpp:latest": 8,
+        "judge-go:latest": 8,
+        "judge-python:latest": 8,
+      },
+    });
     const total = Object.values(result.images).reduce((sum, n) => sum + n, 0);
-    expect(total).toBeLessThanOrEqual(WARM_POOL_MAX_TOTAL);
+    expect(total).toBe(WARM_POOL_MAX_TOTAL);
+  });
+
+  it("enforces WARM_POOL_MAX_TOTAL across images with partial truncation", () => {
+    // Craft counts so the last image receives a partial slice: cpp=8, go=8, python=5, rust=8 = 29 requested.
+    // Alphabetically: judge-cpp, judge-go, judge-python, judge-rust.
+    // After cpp (total=8), go (total=16), python (total=21), rust gets min(8, 24-21)=3.
+    const enabledLangs = new Set(["cpp20", "go", "python", "rust"]);
+    const config: WarmPoolConfig = {
+      enabled: true,
+      languages: { cpp20: 8, go: 8, python: 5, rust: 8 },
+    };
+    const result = resolveWarmPoolTargets(config, enabledLangs);
+    expect(result).toEqual({
+      enabled: true,
+      images: {
+        "judge-cpp:latest": 8,
+        "judge-go:latest": 8,
+        "judge-python:latest": 5,
+        "judge-rust:latest": 3,
+      },
+    });
+    const total = Object.values(result.images).reduce((sum, n) => sum + n, 0);
+    expect(total).toBe(WARM_POOL_MAX_TOTAL);
+  });
+
+  it("truncation is deterministic across multiple calls", () => {
+    const enabledLangs = new Set(["cpp20", "go", "python", "rust"]);
+    const config: WarmPoolConfig = {
+      enabled: true,
+      languages: { cpp20: 8, go: 8, python: 8, rust: 8 },
+    };
+    const result1 = resolveWarmPoolTargets(config, enabledLangs);
+    const result2 = resolveWarmPoolTargets(config, enabledLangs);
+    expect(result1).toEqual(result2);
   });
 
   it("floors fractional counts", () => {
@@ -97,5 +144,60 @@ describe("resolveWarmPoolTargets", () => {
       enabled: true,
       images: { "judge-python:latest": 2 },
     });
+  });
+});
+
+describe("defaultWarmPoolConfig", () => {
+  let originalEnv: string | undefined;
+
+  beforeEach(() => {
+    originalEnv = process.env.WARM_POOL_DEFAULT_ENABLED;
+  });
+
+  afterEach(() => {
+    if (originalEnv === undefined) {
+      delete process.env.WARM_POOL_DEFAULT_ENABLED;
+    } else {
+      process.env.WARM_POOL_DEFAULT_ENABLED = originalEnv;
+    }
+  });
+
+  it("returns enabled: true when WARM_POOL_DEFAULT_ENABLED is 'true'", () => {
+    process.env.WARM_POOL_DEFAULT_ENABLED = "true";
+    const config = defaultWarmPoolConfig();
+    expect(config.enabled).toBe(true);
+  });
+
+  it("returns enabled: false when WARM_POOL_DEFAULT_ENABLED is unset", () => {
+    delete process.env.WARM_POOL_DEFAULT_ENABLED;
+    const config = defaultWarmPoolConfig();
+    expect(config.enabled).toBe(false);
+  });
+
+  it("returns enabled: false when WARM_POOL_DEFAULT_ENABLED is 'false'", () => {
+    process.env.WARM_POOL_DEFAULT_ENABLED = "false";
+    const config = defaultWarmPoolConfig();
+    expect(config.enabled).toBe(false);
+  });
+
+  it("returns enabled: false when WARM_POOL_DEFAULT_ENABLED is '1' (not the exact string 'true')", () => {
+    process.env.WARM_POOL_DEFAULT_ENABLED = "1";
+    const config = defaultWarmPoolConfig();
+    expect(config.enabled).toBe(false);
+  });
+
+  it("returns the default languages map { python: 2, cpp20: 2, c17: 2 }", () => {
+    const config = defaultWarmPoolConfig();
+    expect(config.languages).toEqual({ python: 2, cpp20: 2, c17: 2 });
+  });
+
+  it("returns the default languages map regardless of WARM_POOL_DEFAULT_ENABLED value", () => {
+    process.env.WARM_POOL_DEFAULT_ENABLED = "false";
+    const config = defaultWarmPoolConfig();
+    expect(config.languages).toEqual({ python: 2, cpp20: 2, c17: 2 });
+
+    process.env.WARM_POOL_DEFAULT_ENABLED = "true";
+    const config2 = defaultWarmPoolConfig();
+    expect(config2.languages).toEqual({ python: 2, cpp20: 2, c17: 2 });
   });
 });
