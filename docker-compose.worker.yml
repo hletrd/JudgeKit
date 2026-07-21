@@ -41,6 +41,19 @@ services:
       - DELETE=${WORKER_DOCKER_PROXY_DELETE:-1}
       - ALLOW_START=${WORKER_DOCKER_PROXY_ALLOW_START:-1}
       - ALLOW_STOP=${WORKER_DOCKER_PROXY_ALLOW_STOP:-1}
+      # EXEC is REQUIRED because the warm container pool runs each test case
+      # with `docker exec` inside a pre-started container. With EXEC=0 the
+      # proxy denies POST /containers/{id}/exec, every warm attempt fails
+      # ("unable to upgrade to tcp, received 403") and silently falls back to a
+      # cold run — the pool is then pure overhead. Not env-toggleable, and kept
+      # in sync with docker-compose.production.yml.
+      # Security: this does not widen the effective attack surface. The proxy
+      # already grants CONTAINERS=1 + POST=1 + ALLOW_START=1, and it filters
+      # only on path/method — it never inspects the request body — so the
+      # worker can already create AND start a `--privileged` container with `/`
+      # bind-mounted (empirically confirmed on production). `docker exec` into
+      # an existing container is strictly weaker than that.
+      - EXEC=1
       - LOG_LEVEL=warning
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

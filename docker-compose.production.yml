@@ -84,6 +84,17 @@ services:
       # ALLOW_STOP: required for `docker kill` when a submission times out or
       # for emergency orphan cleanup.
       - ALLOW_STOP=1
+      # EXEC: required because the warm container pool runs each test case with
+      # `docker exec` inside a pre-started container. With EXEC=0 the proxy
+      # denies POST /containers/{id}/exec and every warm attempt fails ("unable
+      # to upgrade to tcp, received 403") and falls back to a cold run.
+      # Security: this does not widen the effective attack surface. The proxy
+      # already grants CONTAINERS=1 + POST=1 + ALLOW_START=1, and it filters
+      # only on path/method — it never inspects the request body — so the
+      # worker can already create AND start a `--privileged` container with `/`
+      # bind-mounted (empirically confirmed on production). `docker exec` into
+      # an existing container is strictly weaker than that.
+      - EXEC=1
       # BUILD/IMAGES stay 0 — image builds must not flow through the worker
       # path, and the worker does not list or pull images.
       - BUILD=0
