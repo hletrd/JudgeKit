@@ -254,6 +254,40 @@ is a bug.
   show a real peak for some and 0 for others. A 0 means "not measured on this
   path", never "used no memory".
 
+### Prerequisite: the Docker socket proxy must allow `exec`
+
+The warm path runs each test case with `docker exec` inside an
+already-started container. Workers reach Docker through
+`tecnativa/docker-socket-proxy` (`DOCKER_HOST=tcp://docker-proxy:2375`), and
+that proxy denies `POST /containers/{id}/exec` unless **`EXEC=1`** is set on
+the proxy service. `docker-compose.production.yml` and
+`docker-compose.worker.yml` both set it; a hand-rolled or older proxy
+deployment may not.
+
+**This failure is silent by design.** With `EXEC=0` every warm attempt is
+refused with HTTP 403, degrades to a cold run, and judging stays correct — so
+the only symptom is that the pool never actually helps. It was shipped to
+production once in exactly this state and looked healthy: containers were
+created, submissions passed, verdicts were right, and nothing ran warm. The
+worker now names this case explicitly in its log:
+
+```
+warm container unavailable; retrying cold
+reason=docker exec (warm) did not run the command: docker exec was refused
+with HTTP 403 (...); the docker socket proxy does not permit the exec
+endpoint — set EXEC=1 on the docker-socket-proxy service
+```
+
+Changing the value requires **recreating the proxy container** (`docker
+compose up -d docker-proxy`); restarting or redeploying only the worker will
+not pick it up.
+
+Enabling `EXEC=1` does not widen the effective attack surface: the proxy
+already grants `CONTAINERS=1 + POST=1 + ALLOW_START=1` and filters only on
+path/method — it never inspects the request body — so a worker can already
+create and start a `--privileged` container with `/` bind-mounted. `exec`
+into an existing container is strictly weaker than that.
+
 ### Configuring it
 
 Admins control the pool at **`/dashboard/admin/settings`**:
