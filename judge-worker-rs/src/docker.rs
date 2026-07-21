@@ -1279,6 +1279,49 @@ const EXEC_MACHINERY_ERROR_SNIPPETS: &[&str] = &[
     "exec failed:",
 ];
 
+/// Stderr fragments that mean the Docker API refused the exec endpoint itself,
+/// at the HTTP layer, before any container was touched.
+///
+/// Observed in production: the worker talks to the daemon through a
+/// `tecnativa/docker-socket-proxy` (`DOCKER_HOST=tcp://docker-proxy:2375`), and
+/// with `EXEC=0` that proxy denies `POST /containers/{id}/exec`, so the CLI's
+/// connection upgrade fails with "unable to upgrade to tcp, received 403" —
+/// which matched none of [`EXEC_MACHINERY_ERROR_SNIPPETS`], so every warm run
+/// fell through to the timing check and was reported as "daemon did not report
+/// exec_start/exec_die", pointing at the (perfectly healthy) events endpoint.
+///
+/// Only 403 is listed: that proxy denies with HAProxy's `http-request deny`,
+/// which always answers 403 Forbidden, so 403 out of an exec upgrade IS this
+/// failure's signature. Other statuses are deliberately left out — 404/409/500
+/// out of the same code path mean a real daemon-side condition the existing
+/// snippets already describe, and claiming a proxy ACL for them would send an
+/// operator to the wrong file. The bare forms are listed defensively for CLI
+/// and API versions that word the upgrade failure differently; as with the list
+/// above, a submission that merely prints "403 Forbidden" itself costs one
+/// wasted cold re-run, which is the harmless direction.
+const EXEC_ENDPOINT_REFUSED_SNIPPETS: &[&str] = &[
+    "unable to upgrade to tcp, received 403",
+    "received 403",
+    "403 Forbidden",
+];
+
+/// The one-line, actionable reason for an exec the daemon's front door refused,
+/// if that is what this stderr is.
+fn exec_endpoint_refused(stderr: &str) -> Option<String> {
+    if !EXEC_ENDPOINT_REFUSED_SNIPPETS
+        .iter()
+        .any(|snippet| stderr.contains(snippet))
+    {
+        return None;
+    }
+    // Collapsed so a multi-line CLI diagnostic still logs as a single line.
+    let detail = stderr.split_whitespace().collect::<Vec<_>>().join(" ");
+    Some(format!(
+        "docker exec was refused with HTTP 403 ({detail}); the docker socket proxy \
+         does not permit the exec endpoint — set EXEC=1 on the docker-socket-proxy service"
+    ))
+}
+
 /// Whether a finished `docker exec` failed as MACHINERY rather than as a
 /// submission.
 ///
@@ -1293,6 +1336,12 @@ fn exec_machinery_failure(result: &DockerRunResult) -> Option<String> {
     }
     if !result.stdout.is_empty() {
         return None; // the submission produced output, so it ran
+    }
+    // Checked before the exit-code gate below: a refusal at the HTTP layer
+    // never reaches a container, so it is machinery whatever exit code the CLI
+    // happens to report the failed upgrade with.
+    if let Some(reason) = exec_endpoint_refused(&result.stderr) {
+        return Some(reason);
     }
     // `docker exec` uses these itself when it cannot start the command; a
     // submission exiting with one of them is re-run cold, which is harmless.
@@ -3122,6 +3171,31 @@ mod tests {
         }
     }
 
+    /// The production incident this replaces: with `EXEC=0` on the docker
+    /// socket proxy every warm attempt failed, and because the CLI's 403 hit
+    /// none of the machinery snippets it was reported as "daemon did not report
+    /// exec_start/exec_die" — a message about the events endpoint, which was
+    /// fine. The refusal must name itself and name the fix.
+    #[test]
+    fn a_proxy_refused_exec_names_the_exec_permission() {
+        for stderr in [
+            "unable to upgrade to tcp, received 403",
+            "Error response from daemon: 403 Forbidden",
+            "received 403",
+        ] {
+            let reason = super::exec_machinery_failure(&warm_result(Some(1), "", stderr))
+                .unwrap_or_else(|| panic!("{stderr:?} must fall back to cold"));
+            assert!(
+                reason.contains("403") && reason.contains("EXEC=1") && reason.contains("proxy"),
+                "reason must point at the proxy's exec permission, got: {reason}"
+            );
+            assert!(
+                !reason.contains('\n'),
+                "reason must stay one log line, got: {reason}"
+            );
+        }
+    }
+
     /// ...but a submission that merely fails must still be judged, or every
     /// runtime error would cost a pointless second run.
     #[test]
@@ -3130,6 +3204,15 @@ mod tests {
         assert!(
             super::exec_machinery_failure(&warm_result(Some(1), "", "Traceback: KeyError"))
                 .is_none()
+        );
+        assert!(
+            super::exec_machinery_failure(&warm_result(
+                Some(1),
+                "",
+                "terminate called after throwing an instance of 'std::out_of_range'"
+            ))
+            .is_none(),
+            "a genuine program that exits 1 with ordinary stderr is a verdict"
         );
         assert!(super::exec_machinery_failure(&warm_result(Some(139), "", "")).is_none());
         assert!(
