@@ -14,7 +14,7 @@ export const chatWidgetPlugin: PluginDefinition = {
     claudeApiKey: "",
     claudeModel: "claude-sonnet-4-6",
     geminiApiKey: "",
-    geminiModel: "gemini-3.1-flash-lite",
+    geminiModel: "gemini-3.6-flash",
     assistantName: "",
     systemPrompt: "",
     knowledgeBase: "",
