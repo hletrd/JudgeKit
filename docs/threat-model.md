@@ -1,6 +1,6 @@
 # Threat Model
 
-_Last updated: 2026-04-04_
+_Last updated: 2026-07-22_
 
 ## Purpose
 
@@ -261,7 +261,7 @@ Risk:
 
 Required direction:
 - hash API keys
-- encrypt provider secrets at rest
+- encrypt provider secrets at rest (but see §8.7 for the chat-widget exception)
 
 ## 8.2 Broken access control on private files
 Current concern:
@@ -321,6 +321,32 @@ Required direction:
 - mode-based restrictions
 - AI off by default in high-stakes modes
 
+## 8.7 Accepted risk: plaintext chat-widget provider keys
+
+Decision (owner, 2026-07-22):
+- the chat-widget plugin's provider API keys (`openaiApiKey`, `claudeApiKey`,
+  `geminiApiKey`, `openrouterApiKey`) are stored **plaintext at rest** — they are
+  deliberately not AES-256-GCM encrypted (`src/lib/plugins/secrets.ts`)
+
+Rationale:
+- the symmetric encryption key would live on the same host as the database, so
+  at-rest encryption is judged low value against this threat model
+- this is a scoped exception: it applies **only** to chat-widget provider keys.
+  System-settings secrets (`hcaptchaSecret`, `smtpPass`) remain encrypted
+
+Retained protections:
+- response redaction — keys are never echoed to the browser
+  (`redactPluginConfigForRead`) and are `[REDACTED]` in audit logs
+  (`redactPluginConfigForAudit`)
+- legacy `enc:v1:` ciphertext rows are still decrypted on read for backward
+  compatibility
+
+Residual exposure (accepted):
+- a database-only leak (backup / `pg_dump`, read replica, SQL injection) now
+  exposes these provider keys in cleartext, without needing the host's
+  encryption key. Mitigation is operational: protect DB backups/replicas and
+  rotate provider keys if a DB leak is suspected
+
 ---
 
 # 9. Threat scenarios
@@ -347,6 +373,10 @@ Mitigations required:
 - encrypt provider secrets
 - rotate exposed secrets
 - redact sensitive logs
+
+Note: chat-widget provider keys are a deliberate exception — stored plaintext at
+rest by owner decision (§8.7). For those keys the residual DB-leak exposure is
+accepted; response redaction and key rotation are the compensating controls.
 
 ---
 
