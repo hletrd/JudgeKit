@@ -33,6 +33,7 @@ import { getSubmissionReviewGroupIds } from "@/lib/assignments/submissions";
 import { InboxIcon } from "lucide-react";
 import { FilterSelect } from "@/components/filter-select";
 import { AdminSubmissionsBulkRejudge } from "./admin-submissions-bulk-rejudge";
+import { AdminSubmissionsBackfill } from "./admin-submissions-backfill";
 import { normalizePage } from "@/lib/pagination";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 
@@ -415,6 +416,7 @@ export default async function AdminSubmissionsPage({
           </form>
         </CardContent>
       </Card>
+      {canBulkRejudge ? <AdminSubmissionsBackfill /> : null}
       <Card>
         <CardHeader>
           <CardTitle>{t("recent")}</CardTitle>
