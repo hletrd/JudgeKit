@@ -322,6 +322,55 @@ All 102 Docker images build and run on arm64 (Ampere Altra). Previously problema
 - **apl**: Builds with SIMD disabled (`PERFORMANCE_WANTED=no`)
 - **b**: Uses bext-lang/b compiler on arm64 (BCause on amd64) with `-hist` flag for traditional B escape sequences
 
+### AI Assistant (chat-widget plugin)
+
+The in-app AI coding assistant is the **`chat-widget` plugin**
+(`src/lib/plugins/chat-widget/`). Four LLM providers:
+`openai`, `claude`, `gemini`, `openrouter` (OpenRouter is OpenAI-wire-compatible;
+base `https://openrouter.ai/api/v1/chat/completions` + attribution headers).
+Provider/model/API key are set per provider on the plugin admin page
+(`/dashboard/admin/plugins/chat-widget`, `system.plugins` capability).
+
+- **Gating**: `aiAssistantEnabled` system setting (Settings → General); forced
+  **off** by default in exam/contest/recruiting modes unless
+  `allowAiAssistantInRestrictedModes` is set. Also a per-problem
+  `problems.allowAiAssistant` toggle. Logic in `src/lib/system-settings.ts`
+  (`isAiAssistantEnabled` / `getEffectiveModeRestrictions`).
+- **Live model pickers** (OpenRouter + Gemini) back the model field via
+  admin-gated endpoints `GET /api/v1/plugins/chat-widget/openrouter-models`
+  (proxies OpenRouter `/api/v1/models`) and
+  `GET /api/v1/plugins/chat-widget/gemini-models` (proxies Google `/v1beta/models`,
+  key via `x-goog-api-key`). Both cache ~1h and degrade to a hardcoded recommended
+  shortlist (`openrouter-models.ts` / `gemini-models.ts`). OpenAI/Claude use a
+  text model field. `test-connection` reads the saved key (never from the body).
+- **Plaintext provider keys**: `openaiApiKey`/`claudeApiKey`/`geminiApiKey`/
+  `openrouterApiKey` are stored **plaintext at rest** — a deliberate decision
+  (`src/lib/plugins/secrets.ts` module header). Do NOT re-add encrypt-on-write.
+  Response redaction and `[REDACTED]` audit logs are retained; legacy `enc:v1:`
+  rows still decrypt on read. This applies ONLY to chat-widget keys —
+  system-settings secrets (`hcaptchaSecret`, `smtpPass`) stay encrypted. See
+  `docs/ai-assistant.md` and `docs/threat-model.md` §8.7.
+
+### Warm Container Pool
+
+Admin-configurable pool of pre-started, single-use judge containers kept warm per
+language, so the RUN phase skips Docker cold start. Config in
+`system_settings.warm_pool` (JSONB), normalized server-side to per-docker-image
+targets (`resolveWarmPoolTargets` in `src/lib/judge/warm-pool.ts`; C and C++ share
+`judge-cpp:latest`, counts merge with MAX). Targets reach workers via the
+`register`/`heartbeat` responses (~30s to take effect). Compile stays cold;
+anything the warm path can't safely serve falls back to a cold `docker run`.
+
+- **Prerequisite**: the docker-socket-proxy must allow `exec` (**`EXEC=1`**) or
+  every warm attempt silently 403s and falls back to cold. Both
+  `docker-compose.production.yml` and `docker-compose.worker.yml` set it.
+- **`WORKER_WARM_POOL_DISABLE=true`** (worker env): kill switch — ignore pool
+  targets, judge every case cold.
+- **`WARM_POOL_DEFAULT_ENABLED`** (app env, read by the Next.js app process):
+  default the pool **on** for a deployment until an admin saves an explicit value;
+  backfilled into `.env.production` for `DEPLOY_TARGET=oj`/`auraedu`.
+- Deep doc: `docs/judge-workers.md` → "Warm container pool".
+
 ## Setup
 
 ### `scripts/setup.sh` — Interactive Setup Wizard
