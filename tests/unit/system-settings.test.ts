@@ -177,6 +177,7 @@ describe("getSystemSettings", () => {
       emailVerificationRequired: null,
       communityUpvoteEnabled: null,
       communityDownvoteEnabled: null,
+      autoCodeReviewEnabled: null,
     });
     expect(mocks.dbSelectFromWhereLimit).toHaveBeenCalledWith(1);
   });

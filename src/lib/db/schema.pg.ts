@@ -674,6 +674,11 @@ export const systemSettings = pgTable("system_settings", {
   // disabling the board entirely. Defaults preserve current behavior.
   communityUpvoteEnabled: boolean("community_upvote_enabled").notNull().default(true),
   communityDownvoteEnabled: boolean("community_downvote_enabled").notNull().default(true),
+  // Master on/off for the automatic per-submission AI code review that fires
+  // when a submission is accepted. Default TRUE preserves the pre-toggle
+  // behavior. Only the AUTO trigger reads this; admin manual/backfill actions
+  // run regardless.
+  autoCodeReviewEnabled: boolean("auto_code_review_enabled").notNull().default(true),
   // Warm container pool: admin-controlled idle judge containers kept ready per
   // language so test-case execution skips Docker cold start. Shape:
   // { enabled: boolean, languages: Record<string, number> }. NULL = use the

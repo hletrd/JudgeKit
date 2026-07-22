@@ -115,6 +115,7 @@ export async function updateSystemSettings(
     emailVerificationRequired,
     communityUpvoteEnabled,
     communityDownvoteEnabled,
+    autoCodeReviewEnabled,
     smtpHost,
     smtpPort,
     smtpSecure,
@@ -190,6 +191,9 @@ export async function updateSystemSettings(
   }
   if (hasOwnInput("communityDownvoteEnabled")) {
     baseValues.communityDownvoteEnabled = communityDownvoteEnabled ?? true;
+  }
+  if (hasOwnInput("autoCodeReviewEnabled")) {
+    baseValues.autoCodeReviewEnabled = autoCodeReviewEnabled ?? true;
   }
   if (hasOwnInput("smtpHost")) {
     baseValues.smtpHost = smtpHost ?? null;

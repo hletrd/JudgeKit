@@ -88,6 +88,7 @@ export const systemSettingsSchema = z.object({
   emailVerificationRequired: z.boolean().optional(),
   communityUpvoteEnabled: z.boolean().optional(),
   communityDownvoteEnabled: z.boolean().optional(),
+  autoCodeReviewEnabled: z.boolean().optional(),
   smtpHost: z.preprocess(normalizeOptionalString, z.string().max(255).optional()),
   smtpPort: z.preprocess((v) => (v === "" || v === null || v === undefined ? undefined : Number(v)), z.number().int().min(1).max(65535).optional()),
   smtpSecure: z.boolean().optional(),

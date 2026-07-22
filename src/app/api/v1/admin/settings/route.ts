@@ -62,6 +62,7 @@ export const PUT = createApiHandler({
       allowedHosts,
       sessionMaxAgeSeconds,
       emailVerificationRequired,
+      autoCodeReviewEnabled,
       ...restConfig
     } = body;
     // `currentPassword` stays in `restConfig`; the shared reconfirm helper reads
@@ -148,6 +149,9 @@ export const PUT = createApiHandler({
     if (hasOwnInput("emailVerificationRequired")) {
       baseValues.emailVerificationRequired = emailVerificationRequired ?? false;
     }
+    if (hasOwnInput("autoCodeReviewEnabled")) {
+      baseValues.autoCodeReviewEnabled = autoCodeReviewEnabled ?? true;
+    }
     if (hasOwnInput("publicSignupEnabled")) {
       baseValues.publicSignupEnabled = publicSignupEnabled ?? false;
     }
@@ -212,6 +216,9 @@ export const PUT = createApiHandler({
         ...(hasOwnInput("sessionMaxAgeSeconds") ? { sessionMaxAgeSeconds: sessionMaxAgeSeconds ?? null } : {}),
         ...(hasOwnInput("emailVerificationRequired")
           ? { emailVerificationRequired: emailVerificationRequired ?? false }
+          : {}),
+        ...(hasOwnInput("autoCodeReviewEnabled")
+          ? { autoCodeReviewEnabled: autoCodeReviewEnabled ?? true }
           : {}),
         ...(hasOwnInput("allowStandaloneCompilerInRestrictedModes")
           ? { allowStandaloneCompilerInRestrictedModes: allowStandaloneCompilerInRestrictedModes ?? false }
