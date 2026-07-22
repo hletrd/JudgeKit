@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,10 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   const [rejudging, setRejudging] = useState(false);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [gradingTestCase, setGradingTestCase] = useState<string | null>(null);
+  const [generatingAiReview, setGeneratingAiReview] = useState(false);
+  // Bumped after an admin-triggered AI review is created so CommentSection
+  // refetches and the new AI comment appears without a full page reload.
+  const [commentRefreshSignal, setCommentRefreshSignal] = useState(0);
 
   // Notify chat widget of submission results with problem context (skip for assignments/contests)
   const firedEventRef = useRef<string | null>(null);
@@ -207,6 +211,41 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
     }
   }
 
+  async function handleGenerateAiReview() {
+    if (generatingAiReview) return;
+    setGeneratingAiReview(true);
+    try {
+      const response = await apiFetch(`/api/v1/admin/submissions/${submission.id}/ai-review`, {
+        method: "POST",
+      });
+      if (!response.ok) {
+        toast.error(t("aiReviewError"));
+        return;
+      }
+      const payload = (await response.json().catch(() => ({ data: null }))) as {
+        data?: { status?: string; reason?: string } | null;
+      };
+      const status = payload.data?.status;
+      if (status === "created") {
+        toast.success(t("aiReviewCreated"));
+        // Refetch the comment list so the freshly created AI comment appears.
+        setCommentRefreshSignal((prev) => prev + 1);
+      } else if (status === "skipped") {
+        toast.message(t("aiReviewSkipped"));
+        // A review may already exist but be hidden by a stale list — refetch too.
+        setCommentRefreshSignal((prev) => prev + 1);
+      } else if (status === "disabled") {
+        toast.error(t("aiReviewDisabled"));
+      } else {
+        toast.error(t("aiReviewError"));
+      }
+    } catch {
+      toast.error(t("aiReviewError"));
+    } finally {
+      setGeneratingAiReview(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
@@ -333,6 +372,22 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
       <CommentSection
         submissionId={submission.id}
         canComment={canComment}
+        refreshSignal={commentRefreshSignal}
+        headerAction={
+          canRejudge ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void handleGenerateAiReview()}
+              disabled={generatingAiReview}
+              aria-label={t("generateAiReviewAria")}
+              aria-busy={generatingAiReview}
+            >
+              {generatingAiReview && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              {t("generateAiReview")}
+            </Button>
+          ) : undefined
+        }
       />
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,9 +27,16 @@ type CommentSectionProps = {
   canComment: boolean;
   targetLine?: number | null;
   onClearTargetLine?: () => void;
+  /** Bumping this value (e.g. after an admin generates an AI review) triggers a
+   *  refetch of the comment list so the new AI comment appears without a full
+   *  page reload. */
+  refreshSignal?: number;
+  /** Optional action rendered in the card header (e.g. an admin "Generate AI
+   *  review" button placed next to the section title). */
+  headerAction?: ReactNode;
 };
 
-export function CommentSection({ submissionId, canComment, targetLine = null, onClearTargetLine }: CommentSectionProps) {
+export function CommentSection({ submissionId, canComment, targetLine = null, onClearTargetLine, refreshSignal = 0, headerAction }: CommentSectionProps) {
   const tCommon = useTranslations("common");
   const tComments = useTranslations("comments");
   const locale = useLocale();
@@ -56,7 +63,9 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
 
   useEffect(() => {
     void fetchComments();
-  }, [fetchComments]);
+    // `refreshSignal` is an intentional trigger: bumping it re-runs the fetch so
+    // a freshly generated AI review shows up immediately.
+  }, [fetchComments, refreshSignal]);
 
   async function handleCommentSubmit() {
     if (!commentContent.trim() || commentSubmitting) return;
@@ -89,8 +98,9 @@ export function CommentSection({ submissionId, canComment, targetLine = null, on
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
         <CardTitle>{tComments("title")}</CardTitle>
+        {headerAction}
       </CardHeader>
       <CardContent className="space-y-4">
         {comments.length === 0 && (

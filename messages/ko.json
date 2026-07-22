@@ -784,6 +784,12 @@
     "rejudge": "재채점",
     "rejudgeSuccess": "재채점 대기열에 넣었어요.",
     "rejudgeFailed": "재채점 요청에 실패했어요.",
+    "generateAiReview": "AI 리뷰 생성",
+    "generateAiReviewAria": "이 제출에 대한 AI 코드 리뷰 생성",
+    "aiReviewCreated": "AI 리뷰를 생성했어요.",
+    "aiReviewSkipped": "이 제출에는 이미 AI 리뷰가 있어요.",
+    "aiReviewDisabled": "AI 리뷰를 사용할 수 없어요. AI 도우미가 켜져 있고 설정돼 있는지 확인해 주세요.",
+    "aiReviewError": "AI 리뷰 생성에 실패했어요.",
     "resubmit": "수정 제출",
     "statusFilter": {
       "all": "전체 상태",
