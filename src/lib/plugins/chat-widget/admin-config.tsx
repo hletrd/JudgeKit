@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { apiFetch } from "@/lib/api/client";
+import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import type { PluginAdminProps } from "@/lib/plugins/types";
+import type { OpenRouterModelInfo } from "@/lib/plugins/chat-widget/openrouter-models";
 
-type Provider = "openai" | "claude" | "gemini";
+type Provider = "openai" | "openrouter" | "claude" | "gemini";
+
+const OPENROUTER_MODELS_ENDPOINT = "/api/v1/plugins/chat-widget/openrouter-models";
+
+type OpenRouterModelsResponse = {
+  models: OpenRouterModelInfo[];
+  error: boolean;
+  stale: boolean;
+};
+
+// OpenRouter reports pricing as a per-token USD string (e.g. "0.0000003").
+// Present it per 1M tokens for readability. Returns null when unparseable/absent.
+function formatPricePerMillion(value: string | null): string | null {
+  if (value == null) return null;
+  const perToken = Number.parseFloat(value);
+  if (!Number.isFinite(perToken)) return null;
+  const perMillion = perToken * 1_000_000;
+  if (perMillion === 0) return "$0";
+  const decimals = perMillion < 1 ? 3 : 2;
+  return `$${perMillion.toFixed(decimals)}`;
+}
 
 export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminProps) {
   const t = useTranslations("plugins.chatWidget");
@@ -26,6 +47,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   const [provider, setProvider] = useState<Provider>((config.provider as Provider) ?? "openai");
   const [openaiApiKey, setOpenaiApiKey] = useState((config.openaiApiKey as string) ?? "");
   const [openaiModel, setOpenaiModel] = useState((config.openaiModel as string) ?? "gpt-5-mini");
+  const [openrouterApiKey, setOpenrouterApiKey] = useState((config.openrouterApiKey as string) ?? "");
+  const [openrouterModel, setOpenrouterModel] = useState((config.openrouterModel as string) ?? "deepseek/deepseek-v4-flash");
   const [claudeApiKey, setClaudeApiKey] = useState((config.claudeApiKey as string) ?? "");
   const [claudeModel, setClaudeModel] = useState((config.claudeModel as string) ?? "claude-sonnet-4-6");
   const [geminiApiKey, setGeminiApiKey] = useState((config.geminiApiKey as string) ?? "");
@@ -38,21 +61,45 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   const [isLoading, setIsLoading] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  // OpenRouter live model-list picker state.
+  const [openrouterModels, setOpenrouterModels] = useState<OpenRouterModelInfo[]>([]);
+  const [openrouterModelsLoading, setOpenrouterModelsLoading] = useState(false);
+  const [openrouterModelsDegraded, setOpenrouterModelsDegraded] = useState(false);
+  const [openrouterModelsFetched, setOpenrouterModelsFetched] = useState(false);
+  const [openrouterModelSearch, setOpenrouterModelSearch] = useState("");
   const openaiApiKeyConfigured = config.openaiApiKeyConfigured === true;
+  const openrouterApiKeyConfigured = config.openrouterApiKeyConfigured === true;
   const claudeApiKeyConfigured = config.claudeApiKeyConfigured === true;
   const geminiApiKeyConfigured = config.geminiApiKeyConfigured === true;
 
-  const currentApiKey = provider === "claude" ? claudeApiKey : provider === "gemini" ? geminiApiKey : openaiApiKey;
-  const currentModel = provider === "claude" ? claudeModel : provider === "gemini" ? geminiModel : openaiModel;
+  const currentApiKey =
+    provider === "openrouter"
+      ? openrouterApiKey
+      : provider === "claude"
+        ? claudeApiKey
+        : provider === "gemini"
+          ? geminiApiKey
+          : openaiApiKey;
+  const currentModel =
+    provider === "openrouter"
+      ? openrouterModel
+      : provider === "claude"
+        ? claudeModel
+        : provider === "gemini"
+          ? geminiModel
+          : openaiModel;
   const currentApiKeyConfigured =
-    provider === "claude"
-      ? claudeApiKeyConfigured
-      : provider === "gemini"
-        ? geminiApiKeyConfigured
-        : openaiApiKeyConfigured;
+    provider === "openrouter"
+      ? openrouterApiKeyConfigured
+      : provider === "claude"
+        ? claudeApiKeyConfigured
+        : provider === "gemini"
+          ? geminiApiKeyConfigured
+          : openaiApiKeyConfigured;
 
   const providerLabels: Record<string, string> = {
     openai: t("providerOptions.openai"),
+    openrouter: t("providerOptions.openrouter"),
     claude: t("providerOptions.claude"),
     gemini: t("providerOptions.gemini"),
   };
@@ -87,6 +134,71 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
     "gemini-2.0-flash": "Gemini 2.0 Flash",
   };
+
+  const fetchOpenrouterModels = useCallback(async () => {
+    setOpenrouterModelsLoading(true);
+    const { ok, data } = await apiFetchJson<OpenRouterModelsResponse>(
+      OPENROUTER_MODELS_ENDPOINT,
+      undefined,
+      { models: [], error: true, stale: false },
+    );
+    // The endpoint returns HTTP 200 even when degraded (error/stale flags set),
+    // so a degraded live list still yields the recommended shortlist here.
+    setOpenrouterModels(Array.isArray(data.models) ? data.models : []);
+    setOpenrouterModelsDegraded(!ok || data.error === true || data.stale === true);
+    setOpenrouterModelsFetched(true);
+    setOpenrouterModelsLoading(false);
+  }, []);
+
+  // Fetch the live model list the first time the OpenRouter section is shown.
+  useEffect(() => {
+    if (provider === "openrouter" && !openrouterModelsFetched && !openrouterModelsLoading) {
+      void fetchOpenrouterModels();
+    }
+  }, [provider, openrouterModelsFetched, openrouterModelsLoading, fetchOpenrouterModels]);
+
+  const recommendedOpenrouterModels = openrouterModels.filter((m) => m.recommended);
+  const openrouterSearchQuery = openrouterModelSearch.trim().toLowerCase();
+  const filteredOpenrouterModels = openrouterSearchQuery
+    ? openrouterModels.filter(
+        (m) =>
+          m.id.toLowerCase().includes(openrouterSearchQuery) ||
+          (m.name ?? "").toLowerCase().includes(openrouterSearchQuery),
+      )
+    : openrouterModels;
+
+  function openrouterModelMeta(m: OpenRouterModelInfo): string {
+    const parts: string[] = [];
+    const promptPrice = formatPricePerMillion(m.pricing.prompt);
+    const completionPrice = formatPricePerMillion(m.pricing.completion);
+    if (promptPrice != null && completionPrice != null) {
+      parts.push(`${t("openrouterPriceIn")} ${promptPrice} · ${t("openrouterPriceOut")} ${completionPrice} ${t("openrouterPricePerM")}`);
+    } else {
+      parts.push(t("openrouterPriceUnavailable"));
+    }
+    if (m.contextLength != null && m.contextLength > 0) {
+      parts.push(`${m.contextLength.toLocaleString()} ${t("openrouterContextLabel")}`);
+    }
+    return parts.join(" · ");
+  }
+
+  function renderOpenrouterOption(m: OpenRouterModelInfo) {
+    const selected = m.id === openrouterModel;
+    return (
+      <button
+        key={m.id}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        onClick={() => setOpenrouterModel(m.id)}
+        className={`flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${selected ? "bg-accent text-accent-foreground" : ""}`}
+      >
+        <span className="font-medium">{m.name ?? m.id}</span>
+        {m.name != null && <span className="text-xs text-muted-foreground">{m.id}</span>}
+        <span className="text-xs text-muted-foreground">{openrouterModelMeta(m)}</span>
+      </button>
+    );
+  }
 
   async function handleTestConnection() {
     setIsTesting(true);
@@ -123,6 +235,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
         provider,
         openaiApiKey,
         openaiModel,
+        openrouterApiKey,
+        openrouterModel,
         claudeApiKey,
         claudeModel,
         geminiApiKey,
@@ -139,13 +253,15 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   }
 
   function setCurrentApiKey(value: string) {
-    if (provider === "claude") setClaudeApiKey(value);
+    if (provider === "openrouter") setOpenrouterApiKey(value);
+    else if (provider === "claude") setClaudeApiKey(value);
     else if (provider === "gemini") setGeminiApiKey(value);
     else setOpenaiApiKey(value);
   }
 
   function setCurrentModel(value: string) {
-    if (provider === "claude") setClaudeModel(value);
+    if (provider === "openrouter") setOpenrouterModel(value);
+    else if (provider === "claude") setClaudeModel(value);
     else if (provider === "gemini") setGeminiModel(value);
     else setOpenaiModel(value);
   }
@@ -165,6 +281,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="openai" label={t("providerOptions.openai")}>{t("providerOptions.openai")}</SelectItem>
+                <SelectItem value="openrouter" label={t("providerOptions.openrouter")}>{t("providerOptions.openrouter")}</SelectItem>
                 <SelectItem value="claude" label={t("providerOptions.claude")}>{t("providerOptions.claude")}</SelectItem>
                 <SelectItem value="gemini" label={t("providerOptions.gemini")}>{t("providerOptions.gemini")}</SelectItem>
               </SelectContent>
@@ -192,6 +309,69 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
             )}
           </div>
 
+          {provider === "openrouter" ? (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="openrouter-model-id">{t("model")}</Label>
+                <Input
+                  id="openrouter-model-id"
+                  value={openrouterModel}
+                  onChange={(e) => setOpenrouterModel(e.target.value)}
+                  placeholder={t("openrouterModelPlaceholder")}
+                />
+                <p className="text-xs text-muted-foreground">{t("openrouterModelHint")}</p>
+              </div>
+
+              {openrouterModelsLoading && (
+                <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+                  {t("openrouterModelsLoading")}
+                </p>
+              )}
+              {!openrouterModelsLoading && openrouterModelsDegraded && (
+                <p className="text-xs text-amber-600 dark:text-amber-400" role="status" aria-live="polite">
+                  {t("openrouterModelsStale")}
+                </p>
+              )}
+
+              {recommendedOpenrouterModels.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">{t("openrouterRecommended")}</p>
+                  <div
+                    role="listbox"
+                    aria-label={t("openrouterRecommended")}
+                    className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
+                  >
+                    {recommendedOpenrouterModels.map(renderOpenrouterOption)}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <Label htmlFor="openrouter-model-search">{t("openrouterAllModels")}</Label>
+                <Input
+                  id="openrouter-model-search"
+                  type="search"
+                  value={openrouterModelSearch}
+                  onChange={(e) => setOpenrouterModelSearch(e.target.value)}
+                  placeholder={t("openrouterSearchPlaceholder")}
+                  aria-label={t("openrouterSearchLabel")}
+                />
+                {filteredOpenrouterModels.length > 0 ? (
+                  <div
+                    role="listbox"
+                    aria-label={t("openrouterAllModels")}
+                    className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
+                  >
+                    {filteredOpenrouterModels.map(renderOpenrouterOption)}
+                  </div>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {openrouterModelsLoading ? t("openrouterModelsLoading") : t("openrouterModelsEmpty")}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
           <div className="space-y-2">
             <Label>{t("model")}</Label>
             <Select value={currentModel} onValueChange={(v) => { if (v) setCurrentModel(v); }}>
@@ -237,6 +417,7 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
               </SelectContent>
             </Select>
           </div>
+          )}
 
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => void handleTestConnection()} disabled={isTesting || (!currentApiKey && !currentApiKeyConfigured)}>
