@@ -1917,17 +1917,77 @@ Only the authoritative latest user message and the server-generated assistant re
 
 #### `POST /api/v1/plugins/chat-widget/test-connection`
 
-Test an AI provider connection. **Admin or Super Admin.**
+Test an AI provider connection. Requires the `system.plugins` capability (**Admin or Super Admin**). Rate limit: `plugins:chat-widget:test-connection`.
 
 **Request Body:**
 ```json
-{ "provider": "openai|claude|gemini", "apiKey": "string", "model": "string" }
+{ "provider": "openai|claude|gemini|openrouter", "model": "string" }
 ```
+
+The API key is **not** taken from the request body — the route reads the stored, saved key for the selected provider from the plugin config (prevents SSRF via an attacker-supplied key and tests the real configuration). The model name is validated against a per-provider pattern before use.
 
 **Response:**
 ```json
-{ "data": { "success": true } }
+{ "success": true }
 ```
+
+On a failed upstream call: `{ "success": false, "error": "connectionFailed_<status>" }`. Validation/config errors return `400` with `{ "error": "invalidModel|notConfigured|apiKeyNotConfigured" }`.
+
+---
+
+#### `GET /api/v1/plugins/chat-widget/openrouter-models`
+
+Live model list for the OpenRouter provider, used to populate the admin model picker. Requires the `system.plugins` capability (**Admin or Super Admin**). Rate limit: `plugins:chat-widget:openrouter-models`.
+
+Proxies OpenRouter's public `GET https://openrouter.ai/api/v1/models` (fixed upstream URL — no SSRF surface), trims each entry to a compact shape, marks the hardcoded recommended shortlist, and sorts recommended ids first. Responses are cached in memory (~1h); a slow or failed upstream degrades to the stale cache, or to the recommended shortlist (ids only, null metadata) when there is no cache. No API key is involved (the OpenRouter model catalog is public).
+
+**Response:**
+```json
+{
+  "models": [
+    {
+      "id": "deepseek/deepseek-v4-flash",
+      "name": "string|null",
+      "contextLength": 0,
+      "pricing": { "prompt": "string|null", "completion": "string|null" },
+      "created": 0,
+      "recommended": true
+    }
+  ],
+  "error": false,
+  "stale": false
+}
+```
+
+`error: true` means the live fetch failed and the list is a fallback; `stale: true` means it came from an expired cache.
+
+---
+
+#### `GET /api/v1/plugins/chat-widget/gemini-models`
+
+Live model list for the Gemini provider, used to populate the admin model picker. Requires the `system.plugins` capability (**Admin or Super Admin**). Rate limit: `plugins:chat-widget:gemini-models`.
+
+Proxies Google's `GET https://generativelanguage.googleapis.com/v1beta/models` (fixed upstream URL). The saved Gemini API key is read from the plugin config and sent only in the `x-goog-api-key` request header (never in a URL/query param, so it can never appear in a logged URL). The list is filtered to models that support `generateContent`, trimmed, and the recommended shortlist is marked and sorted first. Same in-memory cache (~1h) and graceful degradation as the OpenRouter route.
+
+**Response:**
+```json
+{
+  "models": [
+    {
+      "id": "gemini-3.6-flash",
+      "displayName": "string|null",
+      "description": "string|null",
+      "inputTokenLimit": 0,
+      "recommended": true
+    }
+  ],
+  "error": false,
+  "stale": false,
+  "keyConfigured": true
+}
+```
+
+`keyConfigured: false` means no Gemini key is saved yet — the route returns the recommended shortlist (ids only) without calling upstream. `error`/`stale` behave as in the OpenRouter route.
 
 ---
 
