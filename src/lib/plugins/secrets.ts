@@ -3,6 +3,21 @@ import { getPluginDefinition } from "./registry";
 import { logger } from "@/lib/logger";
 import { deriveEncryptionKey, legacyEncryptionKey } from "@/lib/security/derive-key";
 
+/**
+ * PLAINTEXT-AT-REST for chat-widget plugin provider API keys — DELIBERATE
+ * product decision (owner, 2026-07-22). New writes store these secrets
+ * verbatim; `encryptPluginSecret` is intentionally NOT called on the write
+ * path. Rationale: the symmetric key would live on the same host as the DB, so
+ * at-rest encryption is judged low value for this threat model. This is not an
+ * oversight — do not re-add encrypt-on-write and do not add a config toggle.
+ *
+ * Response redaction is RETAINED and is a separate protection: keys are never
+ * echoed to the browser (`redactPluginConfigForRead`) and are `[REDACTED]` in
+ * audit logs (`redactPluginConfigForAudit`). Legacy `enc:v1:` ciphertext rows
+ * are still decrypted on read for backward compatibility, which is the only
+ * remaining reason `encrypt/decryptPluginSecret` exist.
+ */
+
 const ENCRYPTION_VERSION = "enc:v1";
 const SECRET_KEY_SUFFIX = "Configured";
 const PLUGIN_DOMAIN = "plugin-config";
@@ -50,47 +65,36 @@ export function encryptPluginSecret(plaintext: string | null | undefined): strin
 }
 
 /**
- * Read a plugin secret value. Current writes store `enc:v1:iv:tag:ciphertext`
- * ciphertexts. The plaintext-readable fallback is OPT-IN only
- * (`{ allowPlaintextFallback: true }`): the default is `false`, so a value that
- * lacks the `enc:v1:` prefix throws instead of being returned as-is. This
- * prevents an attacker who can write plaintext to a secret column from
- * bypassing the GCM auth tag. The fallback remains available for migration
- * callers that explicitly request it (and still emits the production warn-log
- * audit trail when used). The flip from the legacy `true` default is gated by
- * the warn-log having shipped across deploy cycles (C4-4 / AGG-10); the
- * contained failure mode in `decryptPluginConfigForUse` (catch → log + `""`)
- * keeps a stray plaintext value from crashing the process.
+ * Read a plugin secret value.
+ *
+ * Plaintext-at-rest is now the intended storage state for plugin provider keys
+ * (see module header), so a value WITHOUT the `enc:v1:` prefix is a clean
+ * plaintext secret and is returned VERBATIM and SILENTLY when the plaintext
+ * fallback is enabled — no warning is emitted, because this runs on every chat
+ * request and every admin read and a warn would spam logs / cry wolf. Only a
+ * genuinely malformed `enc:v1:` ciphertext is treated as an error.
+ *
+ * The plaintext return is OPT-IN via `{ allowPlaintextFallback: true }` (which
+ * `decryptPluginConfigForUse` and the chat route pass). With the default
+ * `false`, a non-`enc:v1:` value throws so a stray unguarded call is caught
+ * rather than silently trusted. A value WITH the `enc:v1:` prefix is always
+ * decrypted (legacy backward compatibility) regardless of the option.
  */
 export function decryptPluginSecret(
   value: string,
   options?: { allowPlaintextFallback?: boolean }
 ) {
   const allowPlaintext = options?.allowPlaintextFallback ?? false;
-  // Capture the prefix before isEncryptedPluginSecret()'s `value is string`
-  // type-guard narrows `value` to `never` in the negative branch below.
-  const prefix = value.slice(0, 10);
 
   if (!isEncryptedPluginSecret(value)) {
     if (!allowPlaintext) {
       throw new Error(
         "decryptPluginSecret() called on non-encrypted value. " +
-          "If this is expected during migration, pass { allowPlaintextFallback: true }. " +
-          "Otherwise, investigate possible data tampering or incomplete migration."
+          "Plugin provider secrets are stored plaintext at rest; pass " +
+          "{ allowPlaintextFallback: true } to read them."
       );
     }
-    // Plaintext fallback is the known C4-4/AGG-10 attack surface: an attacker
-    // who can write plaintext to a secret column bypasses the GCM auth tag.
-    // The default flip + re-encryption migration are gated on an audit cycle
-    // (see encryption.ts:18-22), so until then emit a production warn so the
-    // fallback is observable — this is the audit trail whose review is the
-    // exit criterion for flipping the default to false. (C4-4 partial)
-    if (process.env.NODE_ENV === "production") {
-      logger.warn(
-        { prefix },
-        "[plugins] decryptPluginSecret() fell back to plaintext — possible data tampering or incomplete migration"
-      );
-    }
+    // Clean plaintext value — the intended at-rest state. Return as-is, no warn.
     return value;
   }
 
@@ -182,7 +186,9 @@ export function decryptPluginConfigForUse(
     }
 
     try {
-      decrypted[key] = decryptPluginSecret(rawValue);
+      // Plaintext-at-rest: plaintext values return verbatim; legacy `enc:v1:`
+      // ciphertext rows are still decrypted for backward compatibility.
+      decrypted[key] = decryptPluginSecret(rawValue, { allowPlaintextFallback: true });
     } catch (error) {
       logger.error({ err: error, pluginId, key }, "Failed to decrypt plugin secret");
       decrypted[key] = "";
@@ -193,12 +199,34 @@ export function decryptPluginConfigForUse(
 }
 
 /**
+ * Pass a plugin secret through for plaintext-at-rest storage.
+ *
+ * Plaintext-at-rest (see module header): secret values are persisted VERBATIM,
+ * not encrypted. The only guard is defense-in-depth: a value that carries the
+ * `enc:v1:` prefix but is not a well-formed ciphertext is rejected, because the
+ * decrypt-on-read path attempts to decrypt any `enc:v1:` value and a malformed
+ * token would corrupt the row. Clean plaintext and well-formed legacy `enc:v1:`
+ * ciphertext both pass through unchanged.
+ */
+function passStoredSecretThrough(pluginId: string, key: string, value: string): string {
+  if (isEncryptedPluginSecret(value) && !isValidEncryptedPluginSecret(value)) {
+    throw new Error(
+      `Malformed encrypted plugin secret for ${pluginId}.${key}: ` +
+        "value starts with `enc:v1:` but does not match the expected " +
+        "`enc:v1:iv:tag:ciphertext` shape. Refusing to persist."
+    );
+  }
+  return value;
+}
+
+/**
  * Prepare a plugin config payload for persistence.
  *
- * Empty-string inputs mean "keep existing value if it's a real secret,
- * otherwise clear" so the redacted-on-read UI can round-trip safely. Existing
- * plaintext rows are opportunistically encrypted when an admin saves the
- * plugin form.
+ * Secrets are stored PLAINTEXT at rest (deliberate decision — see module
+ * header); nothing here encrypts. Empty-string inputs mean "keep existing value
+ * if it's a real secret, otherwise clear" so the redacted-on-read UI can
+ * round-trip safely; the kept value is passed through verbatim, whether it is a
+ * plaintext secret or a legacy `enc:v1:` ciphertext row.
  */
 export function preparePluginConfigForStorage(
   pluginId: string,
@@ -213,7 +241,7 @@ export function preparePluginConfigForStorage(
 
     if (typeof incomingValue !== "string") {
       if (typeof existingValue === "string") {
-        prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: existingValue })[key];
+        prepared[key] = passStoredSecretThrough(pluginId, key, existingValue);
       }
       continue;
     }
@@ -221,14 +249,14 @@ export function preparePluginConfigForStorage(
     if (incomingValue.length === 0) {
       // Empty string means "keep existing value if it's a real secret, otherwise clear"
       if (typeof existingValue === "string" && existingValue.length > 0) {
-        prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: existingValue })[key];
+        prepared[key] = passStoredSecretThrough(pluginId, key, existingValue);
       } else {
         prepared[key] = null;
       }
       continue;
     }
 
-    prepared[key] = encryptPluginConfigSecrets(pluginId, { [key]: incomingValue })[key];
+    prepared[key] = passStoredSecretThrough(pluginId, key, incomingValue);
   }
 
   return prepared;

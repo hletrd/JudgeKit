@@ -248,7 +248,9 @@ export const POST = createApiHandler({
     let apiKey = "";
     if (typeof encryptedKey === "string" && encryptedKey.length > 0) {
       try {
-        apiKey = decryptPluginSecret(encryptedKey);
+        // Plaintext-at-rest: plaintext keys return verbatim; legacy `enc:v1:`
+        // rows still decrypt. Without the fallback a plaintext key would throw.
+        apiKey = decryptPluginSecret(encryptedKey, { allowPlaintextFallback: true });
       } catch (err) {
         logger.error({ err, provider: config.provider }, "[chat] Failed to decrypt provider API key");
         return NextResponse.json({ error: "notConfigured" }, { status: 500 });

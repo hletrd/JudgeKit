@@ -47,11 +47,11 @@ afterAll(() => {
 });
 
 describe("plugin secret helpers", () => {
-  it("encrypts plugin secrets for storage and preserves existing values on blank updates", () => {
-    // Blank inputs continue to fall back to whatever was stored previously
-    // so partial updates don't wipe other secrets. Existing plaintext rows are
-    // encrypted opportunistically when the admin saves the form.
-    const existingSecret = encryptPluginSecret("existing-openai-key");
+  it("stores new plugin secrets PLAINTEXT verbatim and preserves existing values on blank updates", () => {
+    // Plaintext-at-rest: a new secret value is persisted verbatim (NOT
+    // encrypted). Blank inputs continue to fall back to whatever was stored
+    // previously — including a legacy `enc:v1:` row — passed through verbatim.
+    const existingLegacySecret = encryptPluginSecret("existing-openai-key");
 
     const prepared = preparePluginConfigForStorage(
       "chat-widget",
@@ -62,16 +62,30 @@ describe("plugin secret helpers", () => {
         geminiApiKey: "new-gemini-key",
       },
       {
-        openaiApiKey: existingSecret,
+        openaiApiKey: existingLegacySecret,
         claudeApiKey: "",
         geminiApiKey: "",
       }
     );
 
-    expect(prepared.openaiApiKey).toBe(existingSecret);
+    // Blank input keeps the existing legacy ciphertext verbatim.
+    expect(prepared.openaiApiKey).toBe(existingLegacySecret);
+    // Blank input with no existing value clears the secret.
     expect(prepared.claudeApiKey).toBeNull();
-    expect(isEncryptedPluginSecret(prepared.geminiApiKey)).toBe(true);
-    expect(decryptPluginSecret(prepared.geminiApiKey as string)).toBe("new-gemini-key");
+    // A new value is stored PLAINTEXT — not encrypted.
+    expect(prepared.geminiApiKey).toBe("new-gemini-key");
+    expect(isEncryptedPluginSecret(prepared.geminiApiKey)).toBe(false);
+  });
+
+  it("keeps an existing plaintext secret verbatim on a blank update", () => {
+    // The "keep existing" branch must pass a plaintext row through unchanged
+    // (not just legacy enc:v1: rows).
+    const prepared = preparePluginConfigForStorage(
+      "chat-widget",
+      { provider: "gemini", geminiApiKey: "" },
+      { geminiApiKey: "existing-plaintext-gemini-key" }
+    );
+    expect(prepared.geminiApiKey).toBe("existing-plaintext-gemini-key");
   });
 
   it("rejects malformed enc:v1: payloads on the storage path (defense in depth)", () => {
@@ -121,21 +135,45 @@ describe("plugin secret helpers", () => {
     expect(encrypted.assistantName).toBe("Tutor");
   });
 
-  it("redacts secrets for admin reads and restores them for runtime use", () => {
-    const encrypted = encryptPluginSecret("live-secret");
+  it("redacts secrets for admin reads and restores them for runtime use (plaintext + legacy)", () => {
+    // Redaction is RETAINED under plaintext-at-rest: keys are still blanked and
+    // a `${key}Configured` flag is set for the browser. Read-for-use returns a
+    // plaintext row verbatim AND still decrypts a legacy `enc:v1:` row.
+    const legacyEncrypted = encryptPluginSecret("legacy-live-secret");
     const storedConfig = {
       provider: "openai",
-      openaiApiKey: encrypted,
-      claudeApiKey: "",
+      openaiApiKey: legacyEncrypted, // legacy ciphertext row
+      claudeApiKey: "plaintext-live-secret", // plaintext row (new normal)
       geminiApiKey: "",
     };
 
     const redacted = redactPluginConfigForRead("chat-widget", storedConfig);
     expect(redacted.openaiApiKey).toBe("");
     expect(redacted.openaiApiKeyConfigured).toBe(true);
+    expect(redacted.claudeApiKey).toBe("");
+    expect(redacted.claudeApiKeyConfigured).toBe(true);
+    expect(redacted.geminiApiKeyConfigured).toBe(false);
 
     const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
-    expect(decrypted.openaiApiKey).toBe("live-secret");
+    expect(decrypted.openaiApiKey).toBe("legacy-live-secret");
+    expect(decrypted.claudeApiKey).toBe("plaintext-live-secret");
+  });
+
+  it("does not emit a tamper warn when reading plaintext rows for use", () => {
+    // Plaintext is the intended at-rest state; the read-for-use path (called on
+    // every chat request + admin read) must NOT log a false tamper warning.
+    loggerWarnMock.mockClear();
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const decrypted = decryptPluginConfigForUse("chat-widget", {
+        provider: "gemini",
+        geminiApiKey: "plaintext-gemini-key",
+      });
+      expect(decrypted.geminiApiKey).toBe("plaintext-gemini-key");
+      expect(loggerWarnMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("redacts secret keys in audit payloads", () => {
@@ -175,17 +213,15 @@ describe("plugin secret helpers", () => {
     });
   });
 
-  describe("decryptPluginSecret plaintext fallback", () => {
-    it("decrypts a valid encrypted secret", () => {
+  describe("decryptPluginSecret plaintext-at-rest contract", () => {
+    it("decrypts a legacy encrypted secret", () => {
       const encrypted = encryptPluginSecret("my-secret");
       expect(decryptPluginSecret(encrypted!)).toBe("my-secret");
     });
 
-    // C4-4 / AGG-10: the plaintext-readable fallback default was flipped from
-    // true to false. An attacker who can write plaintext to a secret column
-    // must NOT be able to bypass the GCM auth tag by default. This is the
-    // revert-RED guard: removing the `?? false` default makes this test fail.
-    it("throws on plaintext by default after the C4-4 default flip", () => {
+    // The plaintext return is opt-in: an unguarded call on a non-enc value
+    // still throws so a stray caller is caught rather than silently trusted.
+    it("throws on plaintext without the opt-in fallback (guard for stray callers)", () => {
       vi.stubEnv("NODE_ENV", "production");
       try {
         expect(() => decryptPluginSecret("plaintext-value")).toThrow(
@@ -196,7 +232,7 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("throws on plaintext by default in non-production too", () => {
+    it("throws on plaintext without the opt-in fallback in non-production too", () => {
       vi.stubEnv("NODE_ENV", "development");
       try {
         expect(() => decryptPluginSecret("plaintext-value")).toThrow(
@@ -207,7 +243,7 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("allows explicit plaintext fallback even in production (migration opt-in)", () => {
+    it("returns plaintext verbatim with the opt-in fallback", () => {
       vi.stubEnv("NODE_ENV", "production");
       try {
         expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
@@ -218,21 +254,16 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    // C4-4 audit trail: the fallback CODE remains (explicit opt-in) and still
-    // emits the production warn-log so migration callers are observable. The
-    // warn trail is what makes the fallback safe to keep for migration.
-    it("emits a production warn when the explicit fallback is used (C4-4 audit trail)", () => {
+    // KEY anti-log-spam requirement: plaintext is the intended state, so a clean
+    // plaintext read must NOT emit the old "possible data tampering" warn.
+    it("does NOT warn on a clean plaintext fallback in production", () => {
       loggerWarnMock.mockClear();
       vi.stubEnv("NODE_ENV", "production");
       try {
         expect(decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })).toBe(
           "plaintext-value"
         );
-        expect(loggerWarnMock).toHaveBeenCalledTimes(1);
-        expect(loggerWarnMock).toHaveBeenCalledWith(
-          expect.objectContaining({ prefix: "plaintext-" }),
-          expect.stringContaining("fell back to plaintext")
-        );
+        expect(loggerWarnMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
       }
@@ -251,34 +282,30 @@ describe("plugin secret helpers", () => {
       }
     });
 
-    it("does not warn on explicit plaintext fallback outside production", () => {
-      loggerWarnMock.mockClear();
-      vi.stubEnv("NODE_ENV", "development");
-      try {
-        expect(
-          decryptPluginSecret("plaintext-value", { allowPlaintextFallback: true })
-        ).toBe("plaintext-value");
-        expect(loggerWarnMock).not.toHaveBeenCalled();
-      } finally {
-        vi.unstubAllEnvs();
-      }
+    // Only a genuinely malformed `enc:v1:` value is an error — even with the
+    // plaintext fallback enabled, a broken ciphertext must still throw (it is
+    // NOT silently returned as if it were plaintext).
+    it("still throws on a malformed enc:v1: value even with the plaintext fallback", () => {
+      expect(() =>
+        decryptPluginSecret("enc:v1:only-two-parts", { allowPlaintextFallback: true })
+      ).toThrow(/Malformed encrypted plugin secret/);
     });
 
-    it("decryptPluginConfigForUse clears legacy plaintext rows via the contained failure mode", () => {
-      // Post C4-4 flip: runtime decryption of a legacy plaintext row hits the
-      // default-false fallback, the throw is caught in decryptPluginConfigForUse,
-      // and the value becomes "" (a non-functional secret + logged error) rather
-      // than crashing the process or silently passing plaintext through.
+    it("decryptPluginConfigForUse returns legacy plaintext rows verbatim (no clear, no warn)", () => {
+      // Plaintext-at-rest: a runtime read of a plaintext row now returns the
+      // value verbatim (it is a valid secret), not "" — and emits no tamper warn.
+      loggerWarnMock.mockClear();
       vi.stubEnv("NODE_ENV", "production");
       try {
         const storedConfig = {
           provider: "openai",
-          openaiApiKey: "not-encrypted",
+          openaiApiKey: "plaintext-openai-key",
           claudeApiKey: "",
           geminiApiKey: "",
         };
         const decrypted = decryptPluginConfigForUse("chat-widget", storedConfig);
-        expect(decrypted.openaiApiKey).toBe("");
+        expect(decrypted.openaiApiKey).toBe("plaintext-openai-key");
+        expect(loggerWarnMock).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllEnvs();
       }
