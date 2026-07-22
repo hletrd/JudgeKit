@@ -25,12 +25,14 @@
 - **Cross-platform (AMD64 + ARM64)** — Full stack runs natively on both architectures: Next.js app, Rust judge worker, Rust sidecars, and the full supported judge-image set. Deploy on x86-64 servers or ARM64 (AWS Graviton, Ampere Altra, Apple Silicon) with automatic architecture detection — no emulation, no cross-compilation
 - **125 languages** — C/C++, Java, Python, Rust, Go, Deno, Bun, Gleam, Lean 4, Hare, Koka, Chapel, Elm, Idris 2, plaintext, HDL output-only modes, and [many more](docs/languages.md), all with multi-arch Docker images and admin-customizable compile/run settings
 - **Scalable judging** — Distributed judge workers with automatic registration and heartbeats. Live admin dashboard. Deploy across multiple machines with a single script
+- **Warm container pool** — Admin-configurable pool of pre-started, single-use judge containers kept warm per language, so the RUN phase skips Docker cold start. Compile stays cold, and anything the warm path can't safely serve falls back to a normal cold `docker run`. Off by default; kill switch and per-deployment default via env vars. See [Judge Workers → Warm container pool](docs/judge-workers.md#warm-container-pool)
 - **Secure execution** — Docker containers with no network, seccomp, memory/CPU limits
 - **Role-based access** — Super admin, admin, instructor, assistant (group-scoped TA), student. Capabilities are granular (43 of them) and admin-editable; the assistant role is intentionally view+comment-only and respects per-group `group_instructors.role` assignments.
 - **Classroom management** — Groups, enrollments, assignments with deadlines and late penalties
 - **Contest system** — IOI and ICPC scoring, scheduled and windowed modes, real-time leaderboard, anti-cheat
 - **Function-signature judging** — LeetCode-style `function` problems: define a typed signature (scalars + 1-D arrays incl. `double`) plus I/O examples, and the platform auto-generates a per-language harness + starter stub, judged across Python, C++, Java, JavaScript, TypeScript, Go, and C#. See [function-signature judging](docs/function-judging.md)
 - **Code similarity** — Rust-accelerated Jaccard n-gram analysis with TS fallback
+- **AI assistant** — Optional in-app coding helper (the `chat-widget` plugin) backed by multiple LLM providers — OpenAI, Anthropic Claude, Google Gemini, and OpenRouter. Admins pick the provider, model, and API key from the plugin admin page, with live model pickers for OpenRouter and Gemini. Gated by a system setting and off by default in exam/contest/recruiting modes. See [AI Assistant](docs/ai-assistant.md)
 
 ## Getting Started
 
@@ -294,7 +296,8 @@ The client uses `GET /api/v1/time` to align its clock with the database server b
 - [Authentication](docs/authentication.md) — sign-in flow, session token & cookie architecture, password policy, API smoke test
 - [Admin Security Operations](docs/admin-security-operations.md) — lockout policy, MFA/SSO integration guidance, and dependency scanning baseline
 - [Languages](docs/languages.md) — all 125 variants, Docker image presets, admin management
-- [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment
+- [Judge Workers](docs/judge-workers.md) — multi-worker architecture, registration, deployment, warm container pool
+- [AI Assistant](docs/ai-assistant.md) — chat-widget plugin, LLM providers (OpenAI/Claude/Gemini/OpenRouter), model pickers, key storage
 - [Privacy & Retention](docs/privacy-retention.md) — current retention windows and handling rules for sensitive operational data
 - [High-Stakes Operations](docs/high-stakes-operations.md) — operational truth and launch checks for recruiting, exams, and serious contests
 - [Exam Integrity Model](docs/exam-integrity-model.md) — what the current anti-cheat telemetry does and does not prove
