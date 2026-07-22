@@ -5,12 +5,15 @@ import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
 import { getProvider } from "@/lib/plugins/chat-widget/providers";
 import { chatWidgetConfigSchema } from "@/lib/plugins/chat-widget/schema";
 import { isAiAssistantEnabledForContext } from "@/lib/platform-mode-context";
+import { getSystemSettings } from "@/lib/system-settings";
 import { logger } from "@/lib/logger";
 import { sanitizePromptInput } from "@/lib/judge/prompt-sanitization";
 import pLimit from "p-limit";
 
 /** Concurrency limiter for auto-review AI API calls. Prevents burst API usage
- *  when multiple submissions are judged and accepted simultaneously. */
+ *  when multiple submissions are judged and accepted simultaneously. Shared by
+ *  the auto-trigger AND the admin bulk backfill so both drain through the same
+ *  bounded queue. */
 const reviewLimiter = pLimit(2);
 
 /** Maximum number of pending + active reviews in the queue. Prevents unbounded
@@ -24,22 +27,50 @@ const MAX_REVIEW_QUEUE_SIZE = 20;
  *  8 KB ≈ 200 lines of typical code — sufficient for educational feedback. */
 const AUTO_REVIEW_MAX_SOURCE_CODE_BYTES = 8192;
 
-/**
- * Trigger an AI code review for an accepted submission.
- * Runs in the background — errors are logged but do not affect the judge result.
- */
-export async function triggerAutoCodeReview(submissionId: string): Promise<void> {
-  // Skip if the review queue is already full — prevents unbounded memory and
-  // cost accumulation when many submissions are accepted simultaneously.
-  if (reviewLimiter.activeCount + reviewLimiter.pendingCount >= MAX_REVIEW_QUEUE_SIZE) {
-    logger.debug(
-      { submissionId, active: reviewLimiter.activeCount, pending: reviewLimiter.pendingCount, max: MAX_REVIEW_QUEUE_SIZE },
-      "[auto-review] Skipping — review queue is full",
-    );
-    return;
-  }
+/** Outcome of a single review generation attempt. */
+export type GenerateReviewStatus = "created" | "skipped" | "disabled" | "error";
 
-  return reviewLimiter(async () => {
+export type GenerateReviewResult = {
+  status: GenerateReviewStatus;
+  /** Machine-readable detail for skipped/disabled/error outcomes. */
+  reason?: string;
+};
+
+export type GenerateReviewOptions = {
+  /** Skip the "AI comment already exists" dedup check and regenerate. */
+  force?: boolean;
+  /** Require the submission to be in the "accepted" status. Defaults to true
+   *  (matches the auto-trigger). Admin manual triggers pass false so a review
+   *  can be generated on a submission of any status. */
+  requireAccepted?: boolean;
+};
+
+/** True when the shared review limiter still has capacity for another enqueue.
+ *  Used to bound cost/memory: both the auto-trigger and the backfill refuse to
+ *  enqueue once the queue is full. */
+export function hasReviewQueueCapacity(): boolean {
+  return reviewLimiter.activeCount + reviewLimiter.pendingCount < MAX_REVIEW_QUEUE_SIZE;
+}
+
+/**
+ * Generate an AI code review for a submission and store it as an AI-authored
+ * (`authorId = NULL`) comment. This is the reusable core shared by the
+ * auto-trigger, the admin manual trigger, and the bulk backfill.
+ *
+ * Preserves every guard from the original auto-trigger: source-byte cap,
+ * AI-enabled-for-context, chat-widget plugin enabled/configured, per-problem
+ * `allowAiAssistant`, and the "skip if an AI comment already exists" dedup —
+ * the dedup is bypassed only when `opts.force` is set.
+ *
+ * Errors never throw: any failure is logged and returned as `{ status: "error" }`
+ * so callers (including the fire-and-forget judge pipeline) are never affected.
+ */
+export async function generateAndStoreReview(
+  submissionId: string,
+  opts: GenerateReviewOptions = {},
+): Promise<GenerateReviewResult> {
+  const { force = false, requireAccepted = true } = opts;
+
   try {
     const submission = await db.query.submissions.findFirst({
       where: eq(submissions.id, submissionId),
@@ -48,6 +79,7 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
         userId: true,
         sourceCode: true,
         language: true,
+        status: true,
         executionTimeMs: true,
         memoryUsedKb: true,
         assignmentId: true,
@@ -62,7 +94,15 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
       },
     });
 
-    if (!submission || !submission.sourceCode) return;
+    if (!submission || !submission.sourceCode) {
+      return { status: "skipped", reason: "notFound" };
+    }
+
+    // Explicit admin actions may run on any status (requireAccepted: false);
+    // the auto-trigger and backfill only review accepted submissions.
+    if (requireAccepted && submission.status !== "accepted") {
+      return { status: "skipped", reason: "notAccepted" };
+    }
 
     // Skip auto-review for very large source files to avoid exceeding the AI
     // provider's context window and incurring unnecessary token costs.
@@ -75,21 +115,21 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
         { submissionId, sourceCodeBytes, limit: AUTO_REVIEW_MAX_SOURCE_CODE_BYTES },
         "[auto-review] Skipping — source code exceeds size cap",
       );
-      return;
+      return { status: "skipped", reason: "sourceTooLarge" };
     }
 
     const globalEnabled = await isAiAssistantEnabledForContext({
       userId: submission.userId,
       assignmentId: submission.assignmentId,
     });
-    if (!globalEnabled) return;
+    if (!globalEnabled) return { status: "disabled", reason: "aiDisabledForContext" };
 
     // Check if chat-widget plugin is enabled and configured
     const pluginEnabled = await isPluginEnabled("chat-widget");
-    if (!pluginEnabled) return;
+    if (!pluginEnabled) return { status: "disabled", reason: "pluginDisabled" };
 
     const pluginState = await getPluginState("chat-widget", { includeSecrets: true });
-    if (!pluginState) return;
+    if (!pluginState) return { status: "disabled", reason: "pluginNotConfigured" };
 
     const configParse = chatWidgetConfigSchema.safeParse(pluginState.config);
     if (!configParse.success) {
@@ -97,11 +137,13 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
         { submissionId, issues: configParse.error.issues },
         "[auto-review] Plugin config validation failed, skipping review",
       );
-      return;
+      return { status: "error", reason: "invalidConfig" };
     }
     const config = configParse.data;
 
-    // Determine API key and model
+    // Determine API key and model. Mirrors the chat route's provider selection
+    // — an explicit `openrouter` case is required so OpenRouter uses its own
+    // key/model instead of falling through to the OpenAI defaults.
     let apiKey: string;
     let model: string;
     switch (config.provider) {
@@ -113,31 +155,40 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
         apiKey = config.geminiApiKey;
         model = config.geminiModel;
         break;
+      case "openrouter":
+        apiKey = config.openrouterApiKey;
+        model = config.openrouterModel;
+        break;
       default:
         apiKey = config.openaiApiKey;
         model = config.openaiModel;
         break;
     }
 
-    if (!apiKey) return;
+    if (!apiKey) return { status: "disabled", reason: "noApiKey" };
 
     const problemTitle = submission.problem?.title ?? "Unknown";
     const problemDescription = submission.problem?.description ?? "";
 
     // Check if per-problem AI is enabled
-    if (submission.problem && !submission.problem.allowAiAssistant) return;
+    if (submission.problem && !submission.problem.allowAiAssistant) {
+      return { status: "disabled", reason: "problemAiDisabled" };
+    }
 
     // Determine review language from user preference, default to Korean
     const reviewLanguage = submission.user?.preferredLanguage ?? "ko";
 
-    // Check if we already have an AI comment for this submission
-    const existingAiComment = await db.query.submissionComments.findFirst({
-      where: and(
-        eq(submissionComments.submissionId, submissionId),
-        isNull(submissionComments.authorId),
-      ),
-    });
-    if (existingAiComment) return;
+    // Check if we already have an AI comment for this submission. Skipped only
+    // when the caller forces regeneration.
+    if (!force) {
+      const existingAiComment = await db.query.submissionComments.findFirst({
+        where: and(
+          eq(submissionComments.submissionId, submissionId),
+          isNull(submissionComments.authorId),
+        ),
+      });
+      if (existingAiComment) return { status: "skipped", reason: "alreadyExists" };
+    }
 
     const provider = getProvider(config.provider);
 
@@ -191,7 +242,7 @@ ${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB`
 
     // Output guardrails: reject empty or excessively long responses
     const trimmedReview = reviewText.trim();
-    if (!trimmedReview) return;
+    if (!trimmedReview) return { status: "skipped", reason: "emptyOutput" };
     if (trimmedReview.length > 8_192) {
       logger.warn(
         { submissionId, reviewLength: trimmedReview.length },
@@ -208,9 +259,80 @@ ${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB`
     });
 
     logger.info({ submissionId }, "Auto code review comment posted");
+    return { status: "created" };
   } catch (error) {
     // Never let review errors affect the judge pipeline
     logger.error({ err: error, submissionId }, "Auto code review failed");
+    return { status: "error", reason: "exception" };
   }
+}
+
+/**
+ * Enqueue a review generation through the shared bounded queue (pLimit(2) +
+ * MAX_REVIEW_QUEUE_SIZE cap), fire-and-forget. Returns `false` without
+ * enqueuing when the queue is full so callers (e.g. the backfill) can back off.
+ * Dedup-safe: repeated enqueues of the same submission will no-op once a review
+ * exists.
+ */
+export function enqueueReview(
+  submissionId: string,
+  opts: GenerateReviewOptions = {},
+): boolean {
+  if (!hasReviewQueueCapacity()) {
+    logger.debug(
+      { submissionId, active: reviewLimiter.activeCount, pending: reviewLimiter.pendingCount, max: MAX_REVIEW_QUEUE_SIZE },
+      "[auto-review] Skipping enqueue — review queue is full",
+    );
+    return false;
+  }
+
+  void reviewLimiter(async () => {
+    try {
+      await generateAndStoreReview(submissionId, opts);
+    } catch (error) {
+      // generateAndStoreReview already swallows its own errors, but guard the
+      // limiter task against any unexpected throw so it never rejects.
+      logger.error({ err: error, submissionId }, "[auto-review] enqueued review failed");
+    }
+  });
+  return true;
+}
+
+/**
+ * Trigger an AI code review for an accepted submission (the auto-trigger).
+ * Runs in the background — errors are logged but do not affect the judge result.
+ *
+ * Thin wrapper over `generateAndStoreReview` that preserves today's behavior:
+ * accepted-only, dedup-guarded, bounded by the shared review queue. Unlike the
+ * admin manual/backfill actions, the auto-trigger is gated by the
+ * `autoCodeReviewEnabled` system setting.
+ */
+export async function triggerAutoCodeReview(submissionId: string): Promise<void> {
+  // Auto-generation is gated by the admin toggle. Manual + backfill are admin
+  // actions and are NOT gated. A settings-read failure must not block the judge
+  // pipeline, so on error we log and proceed (default-enabled, pre-toggle
+  // behavior).
+  try {
+    const settings = await getSystemSettings();
+    if (!(settings?.autoCodeReviewEnabled ?? true)) {
+      logger.debug({ submissionId }, "[auto-review] Skipping — auto code review disabled by setting");
+      return;
+    }
+  } catch (error) {
+    logger.warn({ err: error, submissionId }, "[auto-review] Failed to read auto-review setting; proceeding");
+  }
+
+  // Skip if the review queue is already full — prevents unbounded memory and
+  // cost accumulation when many submissions are accepted simultaneously.
+  if (!hasReviewQueueCapacity()) {
+    logger.debug(
+      { submissionId, max: MAX_REVIEW_QUEUE_SIZE },
+      "[auto-review] Skipping — review queue is full",
+    );
+    return;
+  }
+
+  await reviewLimiter(async () => {
+    await generateAndStoreReview(submissionId, { requireAccepted: true });
   });
 }
