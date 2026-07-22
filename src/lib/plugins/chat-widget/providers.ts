@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { getSiteUrl } from "@/lib/seo";
 
 // ── Zod Schemas for provider response parsing ────────────────────────────────
 
@@ -136,6 +137,121 @@ const openaiProvider: ChatProvider = {
       const text = await response.text();
       logger.warn({ provider: "openai", status: response.status, body: text.slice(0, 500) }, "Provider API error");
       throw new Error(`OpenAI API error ${response.status}`);
+    }
+
+    const data: Record<string, unknown> = await response.json().catch(() => ({}));
+    const choices = data.choices as Array<{ message?: { tool_calls?: unknown[]; content?: string } }> | undefined;
+    const msg = choices?.[0]?.message;
+
+    if (msg?.tool_calls && msg.tool_calls.length > 0) {
+      return {
+        type: "tool_calls" as const,
+        toolCalls: msg.tool_calls.map((raw: unknown) => {
+          const tc = OpenAIToolCallSchema.parse(raw);
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(tc.function.arguments || "{}"); } catch { /* malformed response */ }
+          return {
+            id: tc.id,
+            name: tc.function.name,
+            arguments: args,
+          };
+        }),
+        rawAssistantMessage: msg,
+      };
+    }
+
+    return {
+      type: "text" as const,
+      text: msg?.content ?? "",
+      rawAssistantMessage: msg,
+    };
+  },
+
+  formatToolResult(toolCallId: string, _toolName: string, result: string) {
+    return { role: "tool" as const, tool_call_id: toolCallId, content: result };
+  },
+};
+
+// ── OpenRouter ────────────────────────────────────────────────────────────────
+// OpenRouter is OpenAI wire-compatible: the streaming delta path, tool-call
+// format, and tool-result format are IDENTICAL to `openaiProvider`. This adapter
+// therefore clones the OpenAI logic verbatim and changes only the base URL and the
+// request headers (adding OpenRouter's `HTTP-Referer` / `X-Title` attribution).
+
+const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
+const OPENROUTER_APP_TITLE = "JudgeKit";
+
+/**
+ * OpenRouter attribution headers. `HTTP-Referer` reuses the existing site URL
+ * (`AUTH_URL`/`NEXTAUTH_URL`, falling back to localhost) — no new env var — and
+ * `X-Title` is a fixed app name. A misconfigured AUTH_URL must never block a chat
+ * call, so the referer degrades to a constant on error.
+ */
+function openrouterHeaders(apiKey: string): Record<string, string> {
+  let referer = "https://judgekit.app";
+  try {
+    referer = getSiteUrl().toString();
+  } catch {
+    // AUTH_URL invalid — attribution is best-effort, keep the constant.
+  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+    "HTTP-Referer": referer,
+    "X-Title": OPENROUTER_APP_TITLE,
+  };
+}
+
+const openrouterProvider: ChatProvider = {
+  async stream({ apiKey, model, messages, maxTokens }) {
+    const response = await fetch(OPENROUTER_BASE_URL, {
+      method: "POST",
+      headers: openrouterHeaders(apiKey),
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: maxTokens,
+        stream: true,
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn({ provider: "openrouter", status: response.status, body: text.slice(0, 500) }, "Provider API error");
+      throw new Error(`OpenRouter API error ${response.status}`);
+    }
+
+    if (!response.body) throw new Error("No response body from OpenRouter");
+
+    return transformSSE(response.body, (data) => {
+      if (data === "[DONE]") return null;
+      try {
+        const parsed = JSON.parse(data);
+        return parsed.choices?.[0]?.delta?.content ?? null;
+      } catch {
+        return null;
+      }
+    });
+  },
+
+  async chatWithTools({ apiKey, model, messages, maxTokens, tools }) {
+    const openaiTools = tools.map((t) => ({
+      type: "function" as const,
+      function: { name: t.name, description: t.description, parameters: t.parameters },
+    }));
+
+    const response = await fetch(OPENROUTER_BASE_URL, {
+      method: "POST",
+      headers: openrouterHeaders(apiKey),
+      signal: AbortSignal.timeout(PROVIDER_REQUEST_TIMEOUT_MS),
+      body: JSON.stringify({ model, messages, max_tokens: maxTokens, tools: openaiTools }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      logger.warn({ provider: "openrouter", status: response.status, body: text.slice(0, 500) }, "Provider API error");
+      throw new Error(`OpenRouter API error ${response.status}`);
     }
 
     const data: Record<string, unknown> = await response.json().catch(() => ({}));
@@ -517,6 +633,7 @@ function transformSSE(
 
 const providers: Record<string, ChatProvider> = {
   openai: openaiProvider,
+  openrouter: openrouterProvider,
   claude: claudeProvider,
   gemini: geminiProvider,
 };
