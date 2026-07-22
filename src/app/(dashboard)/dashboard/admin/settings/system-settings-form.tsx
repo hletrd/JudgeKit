@@ -40,6 +40,7 @@ type SystemSettingsFormProps = {
   initialEmailVerificationRequired: boolean;
   initialCommunityUpvoteEnabled: boolean;
   initialCommunityDownvoteEnabled: boolean;
+  initialAutoCodeReviewEnabled: boolean;
   initialSmtpHost: string;
   initialSmtpPort: string;
   initialSmtpSecure: boolean;
@@ -80,6 +81,7 @@ export function SystemSettingsForm({
   initialEmailVerificationRequired,
   initialCommunityUpvoteEnabled,
   initialCommunityDownvoteEnabled,
+  initialAutoCodeReviewEnabled,
   initialSmtpHost,
   initialSmtpPort,
   initialSmtpSecure,
@@ -107,6 +109,7 @@ export function SystemSettingsForm({
   const [emailVerificationRequired, setEmailVerificationRequired] = useState(initialEmailVerificationRequired);
   const [communityUpvoteEnabled, setCommunityUpvoteEnabled] = useState(initialCommunityUpvoteEnabled);
   const [communityDownvoteEnabled, setCommunityDownvoteEnabled] = useState(initialCommunityDownvoteEnabled);
+  const [autoCodeReviewEnabled, setAutoCodeReviewEnabled] = useState(initialAutoCodeReviewEnabled);
   const [smtpHost, setSmtpHost] = useState(initialSmtpHost);
   const [smtpPort, setSmtpPort] = useState(initialSmtpPort);
   const [smtpSecure, setSmtpSecure] = useState(initialSmtpSecure);
@@ -177,6 +180,7 @@ export function SystemSettingsForm({
         emailVerificationRequired,
         communityUpvoteEnabled,
         communityDownvoteEnabled,
+        autoCodeReviewEnabled,
         smtpHost,
         smtpPort: smtpPort ? Number(smtpPort) : undefined,
         smtpSecure,
@@ -368,6 +372,19 @@ export function SystemSettingsForm({
         {aiForcedOffByMode && (
           <p className="text-xs text-amber-600 dark:text-amber-500">{t("aiAssistantRestrictedByModeNote")}</p>
         )}
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="auto-code-review-enabled">{t("autoCodeReviewTitle")}</Label>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
+            id="auto-code-review-enabled"
+            checked={autoCodeReviewEnabled}
+            onCheckedChange={(checked) => setAutoCodeReviewEnabled(checked === true)}
+          />
+          <span>{t("autoCodeReviewEnabled")}</span>
+        </label>
+        <p className="text-xs text-muted-foreground">{t("autoCodeReviewEnabledHint")}</p>
       </div>
 
       <div className="space-y-2">

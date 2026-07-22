@@ -135,6 +135,8 @@ export default async function AdminSettingsPage() {
     typeof stored?.communityUpvoteEnabled === "boolean" ? stored.communityUpvoteEnabled : true;
   const initialCommunityDownvoteEnabled =
     typeof stored?.communityDownvoteEnabled === "boolean" ? stored.communityDownvoteEnabled : true;
+  const initialAutoCodeReviewEnabled =
+    typeof stored?.autoCodeReviewEnabled === "boolean" ? stored.autoCodeReviewEnabled : true;
   const initialSmtpHost = (stored?.smtpHost as string) ?? "";
   const initialSmtpPort = stored?.smtpPort != null ? String(stored.smtpPort) : "";
   const initialSmtpSecure = typeof stored?.smtpSecure === "boolean" ? stored.smtpSecure : false;
@@ -233,6 +235,7 @@ export default async function AdminSettingsPage() {
                 initialEmailVerificationRequired={initialEmailVerificationRequired}
                 initialCommunityUpvoteEnabled={initialCommunityUpvoteEnabled}
                 initialCommunityDownvoteEnabled={initialCommunityDownvoteEnabled}
+                initialAutoCodeReviewEnabled={initialAutoCodeReviewEnabled}
                 initialSmtpHost={initialSmtpHost}
                 initialSmtpPort={initialSmtpPort}
                 initialSmtpSecure={initialSmtpSecure}
