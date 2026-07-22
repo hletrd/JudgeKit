@@ -380,6 +380,11 @@ export default function ChatWidget() {
       {/* Input */}
       <div className="border-t p-3">
         <div className="flex items-end gap-2">
+          {/*
+            text-base (16px) on mobile prevents iOS Safari from auto-zooming the
+            viewport when the field is focused (which then overflows the screen);
+            sm:text-sm keeps the compact 14px look on the desktop floating panel.
+          */}
           <textarea
             ref={inputRef}
             value={input}
@@ -389,7 +394,7 @@ export default function ChatWidget() {
             aria-label={t("placeholder")}
             rows={1}
             disabled={isStreaming}
-            className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
+            className="flex-1 resize-none rounded-lg border bg-background px-3 py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-primary disabled:opacity-50"
             style={{ maxHeight: "120px" }}
             onInput={(e) => {
               const target = e.target as HTMLTextAreaElement;
