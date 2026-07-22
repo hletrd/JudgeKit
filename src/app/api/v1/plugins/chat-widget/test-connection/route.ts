@@ -3,13 +3,14 @@ import { z } from "zod";
 import { createApiHandler } from "@/lib/api/handler";
 import { getPluginState } from "@/lib/plugins/data";
 import { SAFE_GEMINI_MODEL_PATTERN } from "@/lib/plugins/chat-widget/providers";
+import { isValidOpenRouterModel } from "@/lib/plugins/chat-widget/openrouter-models";
 import { logger } from "@/lib/logger";
 
 const OPENAI_MODEL_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 const CLAUDE_MODEL_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
 
 const requestSchema = z.object({
-  provider: z.enum(["openai", "claude", "gemini"]),
+  provider: z.enum(["openai", "openrouter", "claude", "gemini"]),
   model: z.string().min(1),
 });
 
@@ -24,6 +25,12 @@ export const POST = createApiHandler({
 
     // Validate model names against strict patterns to prevent injection
     if (provider === "openai" && !OPENAI_MODEL_PATTERN.test(model)) {
+      return NextResponse.json({ error: "invalidModel" }, { status: 400 });
+    }
+    // OpenRouter ids contain `/` and `:`, so use the permissive-but-bounded
+    // pattern (never the OpenAI/Claude patterns, which reject `/`). The model
+    // goes only in the JSON body below, never a URL path.
+    if (provider === "openrouter" && !isValidOpenRouterModel(model)) {
       return NextResponse.json({ error: "invalidModel" }, { status: 400 });
     }
     if (provider === "claude" && !CLAUDE_MODEL_PATTERN.test(model)) {
@@ -49,6 +56,9 @@ export const POST = createApiHandler({
       case "openai":
         apiKey = config.openaiApiKey as string | undefined;
         break;
+      case "openrouter":
+        apiKey = config.openrouterApiKey as string | undefined;
+        break;
       case "claude":
         apiKey = config.claudeApiKey as string | undefined;
         break;
@@ -71,6 +81,25 @@ export const POST = createApiHandler({
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
+          },
+          signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
+          body: JSON.stringify({
+            model,
+            messages: [{ role: "user", content: "Hi" }],
+            max_tokens: 1,
+          }),
+        });
+        break;
+
+      case "openrouter":
+        // OpenRouter is OpenAI wire-compatible; same request shape, different URL.
+        response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": "https://judgekit.app",
+            "X-Title": "JudgeKit",
           },
           signal: AbortSignal.timeout(TEST_CONNECTION_TIMEOUT_MS),
           body: JSON.stringify({

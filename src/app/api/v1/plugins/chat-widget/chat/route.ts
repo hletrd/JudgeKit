@@ -60,9 +60,11 @@ const requestSchema = z.object({
 });
 
 const pluginConfigSchema = z.object({
-  provider: z.enum(["openai", "claude", "gemini"]),
+  provider: z.enum(["openai", "openrouter", "claude", "gemini"]),
   openaiApiKey: z.string(),
   openaiModel: z.string(),
+  openrouterApiKey: z.string(),
+  openrouterModel: z.string(),
   claudeApiKey: z.string(),
   claudeModel: z.string(),
   geminiApiKey: z.string(),
@@ -236,7 +238,7 @@ export const POST = createApiHandler({
     }
     const config = configParse.data;
 
-    const selectedKeyField = `${config.provider}ApiKey` as "openaiApiKey" | "claudeApiKey" | "geminiApiKey";
+    const selectedKeyField = `${config.provider}ApiKey` as "openaiApiKey" | "openrouterApiKey" | "claudeApiKey" | "geminiApiKey";
 
     // Re-read the raw plugin config from DB to get the encrypted key value
     // for the selected provider only. The redacted config from getPluginState
@@ -333,6 +335,9 @@ export const POST = createApiHandler({
     // least-privilege decryption — see C12-2).
     let model: string;
     switch (config.provider) {
+      case "openrouter":
+        model = config.openrouterModel;
+        break;
       case "claude":
         model = config.claudeModel;
         break;
