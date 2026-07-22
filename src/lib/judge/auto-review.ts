@@ -1,4 +1,4 @@
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { submissions, submissionComments } from "@/lib/db/schema";
 import { isPluginEnabled, getPluginState } from "@/lib/plugins/data";
@@ -251,12 +251,36 @@ ${submission.memoryUsedKb !== null ? `Memory used: ${submission.memoryUsedKb}KB`
     }
     const finalReviewText = trimmedReview.slice(0, 8_192);
 
-    // Insert as comment with null authorId (AI Assistant)
-    await db.insert(submissionComments).values({
-      submissionId,
-      authorId: null,
-      content: finalReviewText,
-    });
+    // Insert as comment with null authorId (AI Assistant). The pre-check above
+    // avoids the wasted LLM call in the common case, but two concurrent/looping
+    // generations can both pass it, so the partial unique index
+    // `submission_comments_ai_unique` (submission_id WHERE author_id IS NULL) is
+    // the race-proof backstop. ON CONFLICT DO NOTHING makes the losing
+    // generation a no-op; RETURNING lets us detect it (0 rows) and report
+    // "skipped" instead of persisting a duplicate student-visible comment.
+    const inserted = await db
+      .insert(submissionComments)
+      .values({
+        submissionId,
+        authorId: null,
+        content: finalReviewText,
+      })
+      .onConflictDoNothing({
+        target: submissionComments.submissionId,
+        where: sql`${submissionComments.authorId} is null`,
+      })
+      .returning({ id: submissionComments.id });
+
+    if (inserted.length === 0) {
+      // A concurrent generation already inserted the AI comment for this
+      // submission; the unique index rejected ours. Not an error — the review
+      // exists, ours just lost the race.
+      logger.debug(
+        { submissionId },
+        "[auto-review] Skipping — AI comment inserted concurrently (lost race)",
+      );
+      return { status: "skipped", reason: "raceLostConflict" };
+    }
 
     logger.info({ submissionId }, "Auto code review comment posted");
     return { status: "created" };

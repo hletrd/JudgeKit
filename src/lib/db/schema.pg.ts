@@ -752,6 +752,17 @@ export const submissionComments = pgTable(
   (table) => [
     index("sc_submission_idx").on(table.submissionId),
     index("sc_author_idx").on(table.authorId),
+    // At most one AI-authored (authorId IS NULL) comment per submission. The
+    // AI code-review generator + admin backfill are check-then-insert with no
+    // lock, so a concurrent/looping backfill can select and generate the same
+    // submission twice and insert TWO student-visible AI comments. This partial
+    // unique index is the race-proof backstop; the generator's insert uses
+    // onConflictDoNothing on it so the loser reports "skipped", not an error.
+    // (Defined in migration drizzle/pg/0042_submission_comments_ai_unique.sql,
+    // which also de-dupes any pre-existing rows before creating the index.)
+    uniqueIndex("submission_comments_ai_unique")
+      .on(table.submissionId)
+      .where(sql`author_id is null`),
   ]
 );
 

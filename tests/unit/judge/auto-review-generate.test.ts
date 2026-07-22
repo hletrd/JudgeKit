@@ -5,6 +5,8 @@ const {
   commentsFindFirstMock,
   insertValuesMock,
   insertMock,
+  onConflictDoNothingMock,
+  returningMock,
   isPluginEnabledMock,
   getPluginStateMock,
   chatWithToolsMock,
@@ -16,6 +18,8 @@ const {
   commentsFindFirstMock: vi.fn(),
   insertValuesMock: vi.fn(),
   insertMock: vi.fn(),
+  onConflictDoNothingMock: vi.fn(),
+  returningMock: vi.fn(),
   isPluginEnabledMock: vi.fn(),
   getPluginStateMock: vi.fn(),
   chatWithToolsMock: vi.fn(),
@@ -23,6 +27,17 @@ const {
   isAiEnabledForContextMock: vi.fn(),
   getSystemSettingsMock: vi.fn(),
 }));
+
+// The AI-comment insert chains .values(...).onConflictDoNothing(...).returning().
+// returningMock resolves to the inserted rows: a non-empty array means the row
+// persisted (status "created"); an empty array means ON CONFLICT DO NOTHING
+// swallowed a concurrent duplicate (status "skipped").
+function wireInsertChain() {
+  insertMock.mockReturnValue({ values: insertValuesMock });
+  insertValuesMock.mockReturnValue({ onConflictDoNothing: onConflictDoNothingMock });
+  onConflictDoNothingMock.mockReturnValue({ returning: returningMock });
+  returningMock.mockResolvedValue([{ id: "c-new" }]);
+}
 
 vi.mock("@/lib/db", () => ({
   db: {
@@ -85,8 +100,7 @@ describe("generateAndStoreReview", () => {
     vi.clearAllMocks();
     submissionsFindFirstMock.mockResolvedValue(baseSubmission());
     commentsFindFirstMock.mockResolvedValue(null);
-    insertMock.mockReturnValue({ values: insertValuesMock });
-    insertValuesMock.mockResolvedValue(undefined);
+    wireInsertChain();
     isPluginEnabledMock.mockResolvedValue(true);
     getPluginStateMock.mockResolvedValue({
       config: { provider: "openai", openaiApiKey: "oa-key", openaiModel: "gpt-x" },
@@ -104,6 +118,32 @@ describe("generateAndStoreReview", () => {
     expect(insertValuesMock).toHaveBeenCalledWith(
       expect.objectContaining({ submissionId: "sub-1", authorId: null, content: "Nice solution." }),
     );
+  });
+
+  it("inserts with onConflictDoNothing on the partial unique index (race backstop)", async () => {
+    const result = await generateAndStoreReview("sub-1");
+    expect(result.status).toBe("created");
+    // The insert must go through .onConflictDoNothing(...).returning() so a
+    // concurrent generation can never persist a second AI comment.
+    expect(onConflictDoNothingMock).toHaveBeenCalledTimes(1);
+    const conflictConfig = onConflictDoNothingMock.mock.calls[0]?.[0];
+    // Targets submission_id with a WHERE predicate matching the partial index
+    // (author_id IS NULL) so Postgres infers submission_comments_ai_unique.
+    expect(conflictConfig).toBeDefined();
+    expect(conflictConfig).toHaveProperty("target");
+    expect(conflictConfig).toHaveProperty("where");
+    expect(returningMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports skipped (not error) when a concurrent insert wins the unique-index race", async () => {
+    // ON CONFLICT DO NOTHING swallowed our insert — RETURNING yields 0 rows.
+    returningMock.mockResolvedValue([]);
+    const result = await generateAndStoreReview("sub-1");
+    expect(result).toEqual({ status: "skipped", reason: "raceLostConflict" });
+    // The provider WAS called (both generations passed the pre-check), but the
+    // duplicate row did not persist — the loser degrades to skipped, not error.
+    expect(chatWithToolsMock).toHaveBeenCalledTimes(1);
+    expect(onConflictDoNothingMock).toHaveBeenCalledTimes(1);
   });
 
   it("skips (dedup) when an AI comment already exists and does not call the provider", async () => {
@@ -192,8 +232,7 @@ describe("triggerAutoCodeReview (auto-trigger gate)", () => {
     vi.clearAllMocks();
     submissionsFindFirstMock.mockResolvedValue(baseSubmission());
     commentsFindFirstMock.mockResolvedValue(null);
-    insertMock.mockReturnValue({ values: insertValuesMock });
-    insertValuesMock.mockResolvedValue(undefined);
+    wireInsertChain();
     isPluginEnabledMock.mockResolvedValue(true);
     getPluginStateMock.mockResolvedValue({
       config: { provider: "openai", openaiApiKey: "oa-key", openaiModel: "gpt-x" },
