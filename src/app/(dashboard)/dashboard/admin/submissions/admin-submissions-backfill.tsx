@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
@@ -47,6 +47,18 @@ export function AdminSubmissionsBackfill() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [enqueuedTotal, setEnqueuedTotal] = useState(0);
   const stopRef = useRef(false);
+  // Tracks whether the component is still mounted so the auto-loop can bail
+  // out of setState after an unmount instead of warning/leaking. Unmount also
+  // flips `stopRef`, which the loop already checks before every POST, so
+  // navigating away halts further requests the same way the Stop button does.
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+      stopRef.current = true;
+    };
+  }, []);
 
   // Span in days measured exactly like the backend (both bounds coerced from the
   // YYYY-MM-DD string to UTC midnight), so the client and server agree on the cap.
@@ -93,6 +105,14 @@ export function AdminSubmissionsBackfill() {
         const payload = (await response.json().catch(() => ({ data: null }))) as {
           data?: { enqueued?: number; remaining?: number } | null;
         };
+
+        // The component may have unmounted while the request/JSON parsing
+        // above was in flight. Bail before touching state (and before the
+        // loop can queue another POST on its next iteration).
+        if (!isMountedRef.current) {
+          break;
+        }
+
         const enqueued = typeof payload.data?.enqueued === "number" ? payload.data.enqueued : 0;
         const rem = typeof payload.data?.remaining === "number" ? payload.data.remaining : 0;
         setEnqueuedTotal((prev) => prev + enqueued);
@@ -120,7 +140,11 @@ export function AdminSubmissionsBackfill() {
         await new Promise((resolve) => setTimeout(resolve, LOOP_DELAY_MS));
       }
     } finally {
-      setRunning(false);
+      // Skip if unmounted during the last await above — nothing left to
+      // update, and calling setState here would warn/leak.
+      if (isMountedRef.current) {
+        setRunning(false);
+      }
       stopRef.current = false;
     }
   }
