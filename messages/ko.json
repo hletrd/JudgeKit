@@ -2161,6 +2161,11 @@
       "openrouterPricePerM": "100만 토큰당",
       "openrouterPriceUnavailable": "가격 정보 없어요",
       "openrouterContextLabel": "컨텍스트",
+      "geminiModelPlaceholder": "예: gemini-3.6-flash",
+      "geminiModelHint": "Gemini 모델 ID를 입력하거나 아래 목록에서 골라 주세요.",
+      "geminiSearchLabel": "Gemini 모델 검색",
+      "geminiModelsNoKey": "실시간 모델 목록을 불러오려면 유효한 Gemini API 키를 입력해 주세요.",
+      "geminiTokenLimitLabel": "최대 입력 토큰",
       "providerOptions": {
         "openai": "OpenAI",
         "openrouter": "OpenRouter",

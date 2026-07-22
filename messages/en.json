@@ -2161,6 +2161,11 @@
       "openrouterPricePerM": "per 1M tokens",
       "openrouterPriceUnavailable": "Pricing unavailable",
       "openrouterContextLabel": "context",
+      "geminiModelPlaceholder": "e.g. gemini-3.6-flash",
+      "geminiModelHint": "Enter a Gemini model id, or pick one from the lists below.",
+      "geminiSearchLabel": "Search Gemini models",
+      "geminiModelsNoKey": "Enter a valid Gemini API key to load the live model list.",
+      "geminiTokenLimitLabel": "max input tokens",
       "providerOptions": {
         "openai": "OpenAI",
         "openrouter": "OpenRouter",

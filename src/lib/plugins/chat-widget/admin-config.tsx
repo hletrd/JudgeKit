@@ -17,15 +17,24 @@ import {
 import { apiFetch, apiFetchJson } from "@/lib/api/client";
 import type { PluginAdminProps } from "@/lib/plugins/types";
 import type { OpenRouterModelInfo } from "@/lib/plugins/chat-widget/openrouter-models";
+import type { GeminiModelInfo } from "@/lib/plugins/chat-widget/gemini-models";
 
 type Provider = "openai" | "openrouter" | "claude" | "gemini";
 
 const OPENROUTER_MODELS_ENDPOINT = "/api/v1/plugins/chat-widget/openrouter-models";
+const GEMINI_MODELS_ENDPOINT = "/api/v1/plugins/chat-widget/gemini-models";
 
 type OpenRouterModelsResponse = {
   models: OpenRouterModelInfo[];
   error: boolean;
   stale: boolean;
+};
+
+type GeminiModelsResponse = {
+  models: GeminiModelInfo[];
+  error: boolean;
+  stale: boolean;
+  keyConfigured: boolean;
 };
 
 // OpenRouter reports pricing as a per-token USD string (e.g. "0.0000003").
@@ -38,6 +47,160 @@ function formatPricePerMillion(value: string | null): string | null {
   if (perMillion === 0) return "$0";
   const decimals = perMillion < 1 ? 3 : 2;
   return `$${perMillion.toFixed(decimals)}`;
+}
+
+// ── Shared live model picker ──────────────────────────────────────────────────
+// One picker UI reused by every provider whose model list is fetched live
+// (OpenRouter, Gemini). It renders a free-text id input (the authoritative
+// value), a recommended/known group, and a searchable full list — degrading
+// gracefully while loading, when the live list is stale, or when no key is set.
+// Provider-specific bits (how to label/search a row, its metadata line) are
+// injected as callbacks so the component stays model-shape agnostic.
+interface PickerModelBase {
+  id: string;
+  recommended: boolean;
+}
+
+interface ModelPickerLabels {
+  modelLabel: string;
+  modelPlaceholder: string;
+  modelHint: string;
+  recommended: string;
+  allModels: string;
+  searchLabel: string;
+  searchPlaceholder: string;
+  loading: string;
+  stale: string;
+  empty: string;
+}
+
+interface ModelPickerProps<T extends PickerModelBase> {
+  /** Stable prefix for input ids (e.g. "openrouter", "gemini"). */
+  idPrefix: string;
+  models: T[];
+  selectedId: string;
+  onSelect: (id: string) => void;
+  loading: boolean;
+  degraded: boolean;
+  /** Optional extra note shown when not loading (e.g. "enter a valid key"). */
+  note?: string | null;
+  search: string;
+  onSearchChange: (value: string) => void;
+  getPrimaryLabel: (m: T) => string;
+  getSecondaryLabel: (m: T) => string | null;
+  getMeta: (m: T) => string | null;
+  matchesSearch: (m: T, query: string) => boolean;
+  labels: ModelPickerLabels;
+}
+
+function ModelPicker<T extends PickerModelBase>({
+  idPrefix,
+  models,
+  selectedId,
+  onSelect,
+  loading,
+  degraded,
+  note,
+  search,
+  onSearchChange,
+  getPrimaryLabel,
+  getSecondaryLabel,
+  getMeta,
+  matchesSearch,
+  labels,
+}: ModelPickerProps<T>) {
+  const recommended = models.filter((m) => m.recommended);
+  const query = search.trim().toLowerCase();
+  const filtered = query ? models.filter((m) => matchesSearch(m, query)) : models;
+
+  function renderOption(m: T) {
+    const selected = m.id === selectedId;
+    const secondary = getSecondaryLabel(m);
+    const meta = getMeta(m);
+    return (
+      <button
+        key={m.id}
+        type="button"
+        role="option"
+        aria-selected={selected}
+        onClick={() => onSelect(m.id)}
+        className={`flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${selected ? "bg-accent text-accent-foreground" : ""}`}
+      >
+        <span className="font-medium">{getPrimaryLabel(m)}</span>
+        {secondary != null && <span className="text-xs text-muted-foreground">{secondary}</span>}
+        {meta != null && <span className="text-xs text-muted-foreground">{meta}</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-2">
+        <Label htmlFor={`${idPrefix}-model-id`}>{labels.modelLabel}</Label>
+        <Input
+          id={`${idPrefix}-model-id`}
+          value={selectedId}
+          onChange={(e) => onSelect(e.target.value)}
+          placeholder={labels.modelPlaceholder}
+        />
+        <p className="text-xs text-muted-foreground">{labels.modelHint}</p>
+      </div>
+
+      {loading && (
+        <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+          {labels.loading}
+        </p>
+      )}
+      {!loading && degraded && (
+        <p className="text-xs text-amber-600 dark:text-amber-400" role="status" aria-live="polite">
+          {labels.stale}
+        </p>
+      )}
+      {!loading && note != null && (
+        <p className="text-xs text-amber-600 dark:text-amber-400" role="status" aria-live="polite">
+          {note}
+        </p>
+      )}
+
+      {recommended.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">{labels.recommended}</p>
+          <div
+            role="listbox"
+            aria-label={labels.recommended}
+            className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
+          >
+            {recommended.map(renderOption)}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        <Label htmlFor={`${idPrefix}-model-search`}>{labels.allModels}</Label>
+        <Input
+          id={`${idPrefix}-model-search`}
+          type="search"
+          value={search}
+          onChange={(e) => onSearchChange(e.target.value)}
+          placeholder={labels.searchPlaceholder}
+          aria-label={labels.searchLabel}
+        />
+        {filtered.length > 0 ? (
+          <div
+            role="listbox"
+            aria-label={labels.allModels}
+            className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
+          >
+            {filtered.map(renderOption)}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            {loading ? labels.loading : labels.empty}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminProps) {
@@ -67,6 +230,13 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
   const [openrouterModelsDegraded, setOpenrouterModelsDegraded] = useState(false);
   const [openrouterModelsFetched, setOpenrouterModelsFetched] = useState(false);
   const [openrouterModelSearch, setOpenrouterModelSearch] = useState("");
+  // Gemini live model-list picker state (mirrors the OpenRouter picker above).
+  const [geminiModels, setGeminiModels] = useState<GeminiModelInfo[]>([]);
+  const [geminiModelsLoading, setGeminiModelsLoading] = useState(false);
+  const [geminiModelsDegraded, setGeminiModelsDegraded] = useState(false);
+  const [geminiModelsKeyConfigured, setGeminiModelsKeyConfigured] = useState(true);
+  const [geminiModelsFetched, setGeminiModelsFetched] = useState(false);
+  const [geminiModelSearch, setGeminiModelSearch] = useState("");
   const openaiApiKeyConfigured = config.openaiApiKeyConfigured === true;
   const openrouterApiKeyConfigured = config.openrouterApiKeyConfigured === true;
   const claudeApiKeyConfigured = config.claudeApiKeyConfigured === true;
@@ -122,17 +292,8 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     "claude-opus-4-20250514": "Claude Opus 4",
     "claude-sonnet-4-5-20250929": "Claude Sonnet 4.5",
     "claude-opus-4-5-20251101": "Claude Opus 4.5",
-    "gemini-3.6-flash": "Gemini 3.6 Flash",
-    "gemini-3.5-flash": "Gemini 3.5 Flash",
-    "gemini-2.5-pro": "Gemini 2.5 Pro",
-    "gemini-2.5-flash": "Gemini 2.5 Flash",
-    "gemini-2.5-flash-lite": "Gemini 2.5 Flash Lite",
-    // Legacy display labels for configs saved before these models were retired
-    // from the selectable list; the trigger falls back to the raw id otherwise.
-    "gemini-3-flash-preview": "Gemini 3 Flash (Preview)",
-    "gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite",
-    "gemini-3.1-pro-preview": "Gemini 3.1 Pro",
-    "gemini-2.0-flash": "Gemini 2.0 Flash",
+    // Gemini uses the live model picker (see <ModelPicker> below), not this
+    // Select map — its display names come from the /gemini-models endpoint.
   };
 
   const fetchOpenrouterModels = useCallback(async () => {
@@ -157,15 +318,28 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     }
   }, [provider, openrouterModelsFetched, openrouterModelsLoading, fetchOpenrouterModels]);
 
-  const recommendedOpenrouterModels = openrouterModels.filter((m) => m.recommended);
-  const openrouterSearchQuery = openrouterModelSearch.trim().toLowerCase();
-  const filteredOpenrouterModels = openrouterSearchQuery
-    ? openrouterModels.filter(
-        (m) =>
-          m.id.toLowerCase().includes(openrouterSearchQuery) ||
-          (m.name ?? "").toLowerCase().includes(openrouterSearchQuery),
-      )
-    : openrouterModels;
+  const fetchGeminiModels = useCallback(async () => {
+    setGeminiModelsLoading(true);
+    const { ok, data } = await apiFetchJson<GeminiModelsResponse>(
+      GEMINI_MODELS_ENDPOINT,
+      undefined,
+      { models: [], error: true, stale: false, keyConfigured: false },
+    );
+    // The endpoint returns HTTP 200 even when degraded (error/stale) or when no
+    // key is configured, so the recommended shortlist still renders here.
+    setGeminiModels(Array.isArray(data.models) ? data.models : []);
+    setGeminiModelsDegraded(!ok || data.error === true || data.stale === true);
+    setGeminiModelsKeyConfigured(data.keyConfigured === true);
+    setGeminiModelsFetched(true);
+    setGeminiModelsLoading(false);
+  }, []);
+
+  // Fetch the live model list the first time the Gemini section is shown.
+  useEffect(() => {
+    if (provider === "gemini" && !geminiModelsFetched && !geminiModelsLoading) {
+      void fetchGeminiModels();
+    }
+  }, [provider, geminiModelsFetched, geminiModelsLoading, fetchGeminiModels]);
 
   function openrouterModelMeta(m: OpenRouterModelInfo): string {
     const parts: string[] = [];
@@ -182,22 +356,12 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
     return parts.join(" · ");
   }
 
-  function renderOpenrouterOption(m: OpenRouterModelInfo) {
-    const selected = m.id === openrouterModel;
-    return (
-      <button
-        key={m.id}
-        type="button"
-        role="option"
-        aria-selected={selected}
-        onClick={() => setOpenrouterModel(m.id)}
-        className={`flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground ${selected ? "bg-accent text-accent-foreground" : ""}`}
-      >
-        <span className="font-medium">{m.name ?? m.id}</span>
-        {m.name != null && <span className="text-xs text-muted-foreground">{m.id}</span>}
-        <span className="text-xs text-muted-foreground">{openrouterModelMeta(m)}</span>
-      </button>
-    );
+  // Gemini rows surface the max input-token limit as the context hint when known.
+  function geminiModelMeta(m: GeminiModelInfo): string | null {
+    if (m.inputTokenLimit != null && m.inputTokenLimit > 0) {
+      return `${m.inputTokenLimit.toLocaleString()} ${t("geminiTokenLimitLabel")}`;
+    }
+    return null;
   }
 
   async function handleTestConnection() {
@@ -310,67 +474,68 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
           </div>
 
           {provider === "openrouter" ? (
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="openrouter-model-id">{t("model")}</Label>
-                <Input
-                  id="openrouter-model-id"
-                  value={openrouterModel}
-                  onChange={(e) => setOpenrouterModel(e.target.value)}
-                  placeholder={t("openrouterModelPlaceholder")}
-                />
-                <p className="text-xs text-muted-foreground">{t("openrouterModelHint")}</p>
-              </div>
-
-              {openrouterModelsLoading && (
-                <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
-                  {t("openrouterModelsLoading")}
-                </p>
-              )}
-              {!openrouterModelsLoading && openrouterModelsDegraded && (
-                <p className="text-xs text-amber-600 dark:text-amber-400" role="status" aria-live="polite">
-                  {t("openrouterModelsStale")}
-                </p>
-              )}
-
-              {recommendedOpenrouterModels.length > 0 && (
-                <div className="space-y-1.5">
-                  <p className="text-xs font-medium text-muted-foreground">{t("openrouterRecommended")}</p>
-                  <div
-                    role="listbox"
-                    aria-label={t("openrouterRecommended")}
-                    className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
-                  >
-                    {recommendedOpenrouterModels.map(renderOpenrouterOption)}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <Label htmlFor="openrouter-model-search">{t("openrouterAllModels")}</Label>
-                <Input
-                  id="openrouter-model-search"
-                  type="search"
-                  value={openrouterModelSearch}
-                  onChange={(e) => setOpenrouterModelSearch(e.target.value)}
-                  placeholder={t("openrouterSearchPlaceholder")}
-                  aria-label={t("openrouterSearchLabel")}
-                />
-                {filteredOpenrouterModels.length > 0 ? (
-                  <div
-                    role="listbox"
-                    aria-label={t("openrouterAllModels")}
-                    className="max-h-56 space-y-1 overflow-y-auto rounded-lg border border-input p-1"
-                  >
-                    {filteredOpenrouterModels.map(renderOpenrouterOption)}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    {openrouterModelsLoading ? t("openrouterModelsLoading") : t("openrouterModelsEmpty")}
-                  </p>
-                )}
-              </div>
-            </div>
+            <ModelPicker
+              idPrefix="openrouter"
+              models={openrouterModels}
+              selectedId={openrouterModel}
+              onSelect={setOpenrouterModel}
+              loading={openrouterModelsLoading}
+              degraded={openrouterModelsDegraded}
+              search={openrouterModelSearch}
+              onSearchChange={setOpenrouterModelSearch}
+              getPrimaryLabel={(m) => m.name ?? m.id}
+              getSecondaryLabel={(m) => (m.name != null ? m.id : null)}
+              getMeta={openrouterModelMeta}
+              matchesSearch={(m, q) =>
+                m.id.toLowerCase().includes(q) || (m.name ?? "").toLowerCase().includes(q)
+              }
+              labels={{
+                modelLabel: t("model"),
+                modelPlaceholder: t("openrouterModelPlaceholder"),
+                modelHint: t("openrouterModelHint"),
+                recommended: t("openrouterRecommended"),
+                allModels: t("openrouterAllModels"),
+                searchLabel: t("openrouterSearchLabel"),
+                searchPlaceholder: t("openrouterSearchPlaceholder"),
+                loading: t("openrouterModelsLoading"),
+                stale: t("openrouterModelsStale"),
+                empty: t("openrouterModelsEmpty"),
+              }}
+            />
+          ) : provider === "gemini" ? (
+            <ModelPicker
+              idPrefix="gemini"
+              models={geminiModels}
+              selectedId={geminiModel}
+              onSelect={setGeminiModel}
+              loading={geminiModelsLoading}
+              degraded={geminiModelsDegraded}
+              note={
+                geminiModelsFetched && !geminiModelsKeyConfigured
+                  ? t("geminiModelsNoKey")
+                  : null
+              }
+              search={geminiModelSearch}
+              onSearchChange={setGeminiModelSearch}
+              getPrimaryLabel={(m) => m.displayName ?? m.id}
+              getSecondaryLabel={(m) => (m.displayName != null ? m.id : null)}
+              getMeta={geminiModelMeta}
+              matchesSearch={(m, q) =>
+                m.id.toLowerCase().includes(q) || (m.displayName ?? "").toLowerCase().includes(q)
+              }
+              labels={{
+                modelLabel: t("model"),
+                modelPlaceholder: t("geminiModelPlaceholder"),
+                modelHint: t("geminiModelHint"),
+                recommended: t("openrouterRecommended"),
+                allModels: t("openrouterAllModels"),
+                searchLabel: t("geminiSearchLabel"),
+                searchPlaceholder: t("openrouterSearchPlaceholder"),
+                loading: t("openrouterModelsLoading"),
+                stale: t("openrouterModelsStale"),
+                empty: t("openrouterModelsEmpty"),
+              }}
+            />
           ) : (
           <div className="space-y-2">
             <Label>{t("model")}</Label>
@@ -403,15 +568,6 @@ export default function ChatWidgetAdminConfig({ config, onSave }: PluginAdminPro
                     <SelectItem value="claude-opus-4-20250514" label="Claude Opus 4">Claude Opus 4</SelectItem>
                     <SelectItem value="claude-sonnet-4-5-20250929" label="Claude Sonnet 4.5">Claude Sonnet 4.5</SelectItem>
                     <SelectItem value="claude-opus-4-5-20251101" label="Claude Opus 4.5">Claude Opus 4.5</SelectItem>
-                  </>
-                )}
-                {provider === "gemini" && (
-                  <>
-                    <SelectItem value="gemini-3.6-flash" label="Gemini 3.6 Flash">Gemini 3.6 Flash</SelectItem>
-                    <SelectItem value="gemini-3.5-flash" label="Gemini 3.5 Flash">Gemini 3.5 Flash</SelectItem>
-                    <SelectItem value="gemini-2.5-pro" label="Gemini 2.5 Pro">Gemini 2.5 Pro</SelectItem>
-                    <SelectItem value="gemini-2.5-flash" label="Gemini 2.5 Flash">Gemini 2.5 Flash</SelectItem>
-                    <SelectItem value="gemini-2.5-flash-lite" label="Gemini 2.5 Flash Lite">Gemini 2.5 Flash Lite</SelectItem>
                   </>
                 )}
               </SelectContent>
