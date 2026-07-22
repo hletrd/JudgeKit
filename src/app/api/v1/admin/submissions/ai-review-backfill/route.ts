@@ -16,6 +16,14 @@ import { recordAuditEvent } from "@/lib/audit/events";
  *  shared review queue. */
 const BACKFILL_BATCH = 10;
 
+/** Maximum span of the `{ from, to }` window. An unbounded range would drive an
+ *  expensive full-table count/scan over `submissions` on every (resumable)
+ *  call, so cap the window and make the caller page through history in bounded
+ *  chunks. 180 days comfortably covers a semester/term while keeping the scan
+ *  cost bounded. */
+const MAX_BACKFILL_WINDOW_DAYS = 180;
+const MAX_BACKFILL_WINDOW_MS = MAX_BACKFILL_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
 const backfillSchema = z
   .object({
     from: z.coerce.date(),
@@ -24,6 +32,10 @@ const backfillSchema = z
   .refine((v) => v.from.getTime() <= v.to.getTime(), {
     message: "invalidDateRange",
     path: ["from"],
+  })
+  .refine((v) => v.to.getTime() - v.from.getTime() <= MAX_BACKFILL_WINDOW_MS, {
+    message: "dateRangeTooLarge",
+    path: ["to"],
   });
 
 /**
