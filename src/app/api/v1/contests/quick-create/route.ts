@@ -100,6 +100,7 @@ export const POST = createApiHandler({
         examMode: "windowed",
         examDurationMinutes: body.durationMinutes,
         scoringModel: "ioi",
+        aiAssistantPolicy: "inherit",
         enableAntiCheat: body.enableAntiCheat,
         showResultsToCandidate: false,
       });

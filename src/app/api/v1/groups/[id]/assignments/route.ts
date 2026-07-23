@@ -145,6 +145,7 @@ export async function POST(
       visibility: body.visibility ?? "private",
       examDurationMinutes: body.examDurationMinutes ?? null,
       scoringModel: body.scoringModel ?? "ioi",
+      aiAssistantPolicy: body.aiAssistantPolicy ?? "inherit",
       enableAntiCheat: body.enableAntiCheat ?? false,
       problems: body.problems ?? [],
     });

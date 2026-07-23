@@ -86,6 +86,31 @@ describe("assignmentMutationSchema", () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it("defaults aiAssistantPolicy to inherit when omitted", () => {
+    const parsed = assignmentMutationSchema.parse(validPayload);
+    expect(parsed.aiAssistantPolicy).toBe("inherit");
+  });
+
+  it.each(["inherit", "allow", "forbid"] as const)(
+    "accepts aiAssistantPolicy %s",
+    (policy) => {
+      const result = assignmentMutationSchema.safeParse({
+        ...validPayload,
+        aiAssistantPolicy: policy,
+      });
+      expect(result.success).toBe(true);
+      expect(result.data?.aiAssistantPolicy).toBe(policy);
+    }
+  );
+
+  it("rejects a junk aiAssistantPolicy value", () => {
+    const result = assignmentMutationSchema.safeParse({
+      ...validPayload,
+      aiAssistantPolicy: "banana",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("assignmentPatchSchema", () => {
@@ -132,6 +157,23 @@ describe("assignmentPatchSchema", () => {
       ...contestEditPayload,
       bogusField: "nope",
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts an aiAssistantPolicy-only partial edit", () => {
+    const result = assignmentPatchSchema.safeParse({ aiAssistantPolicy: "forbid" });
+    expect(result.success).toBe(true);
+    expect(result.data?.aiAssistantPolicy).toBe("forbid");
+  });
+
+  it("leaves aiAssistantPolicy undefined when omitted (optional, no default)", () => {
+    const result = assignmentPatchSchema.safeParse({ title: "Edit" });
+    expect(result.success).toBe(true);
+    expect(result.data?.aiAssistantPolicy).toBeUndefined();
+  });
+
+  it("rejects a junk aiAssistantPolicy value", () => {
+    const result = assignmentPatchSchema.safeParse({ aiAssistantPolicy: "banana" });
     expect(result.success).toBe(false);
   });
 });
