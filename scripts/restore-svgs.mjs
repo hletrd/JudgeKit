@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Restore SVG diagrams to 24 problems that lost them
 
-const BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const BASE = (process.env.JUDGE_BASE_URL || 'https://oj.auraedu.me').replace(/\/$/, '');
 const KEY = process.env.JUDGE_API_KEY;
 
 if (!KEY) {

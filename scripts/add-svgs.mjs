@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // ESM script: fetch current descriptions, prepend SVG diagrams, PATCH back
 
-const API_BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const API_BASE = (process.env.JUDGE_BASE_URL || 'https://oj.auraedu.me').replace(/\/$/, '');
 const API_KEY = process.env.JUDGE_API_KEY;
 
 if (!API_KEY) {

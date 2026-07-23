@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Korean naturalization pass 2 - pages 1 & 2
 
-const JUDGE_BASE = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const JUDGE_BASE = (process.env.JUDGE_BASE_URL || 'https://oj.auraedu.me').replace(/\/$/, '');
 const JUDGE_KEY = process.env.JUDGE_API_KEY;
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;

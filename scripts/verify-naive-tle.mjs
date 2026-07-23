@@ -2,7 +2,7 @@
 /**
  * verify-naive-tle.mjs
  *
- * Submits naive C++ implementations to algo.xylolabs.com to verify that
+ * Submits naive C++ implementations to oj.auraedu.me to verify that
  * TLE is correctly triggered on search/sort problems.
  *
  * If any problem returns AC with the naive solution, it is flagged — the
@@ -11,7 +11,7 @@
  * Usage: node scripts/verify-naive-tle.mjs
  */
 
-const BASE_URL = (process.env.JUDGE_BASE_URL || 'https://algo.xylolabs.com').replace(/\/$/, '');
+const BASE_URL = (process.env.JUDGE_BASE_URL || 'https://oj.auraedu.me').replace(/\/$/, '');
 const API_KEY = process.env.JUDGE_API_KEY;
 const LANGUAGE = 'cpp20';
 const SUBMIT_DELAY_MS = 15000;  // delay between submissions (rate limit: 5/min)
