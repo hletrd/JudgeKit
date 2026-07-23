@@ -46,7 +46,14 @@ export function SettingsTabs({ tabs }: SettingsTabsProps) {
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange}>
-      <TabsList className="w-full flex-wrap">
+      {/*
+        The base TabsList is a fixed-height (h-8), horizontally-scrolling strip
+        (overflow-x-auto). With many settings sections we want the triggers to
+        WRAP onto multiple rows instead — so override the fixed height to auto
+        and clear the overflow, otherwise the wrapped second row is clipped by
+        h-8 and becomes an unnecessary scroll.
+      */}
+      <TabsList className="w-full flex-wrap h-auto group-data-horizontal/tabs:h-auto overflow-visible overflow-x-visible gap-1">
         {tabs.map((tab) => (
           <TabsTrigger key={tab.value} value={tab.value}>
             {tab.label}
