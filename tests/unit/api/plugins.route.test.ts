@@ -193,6 +193,8 @@ const PLUGIN_CONFIG = {
   provider: "openai",
   openaiApiKey: "sk-test",
   openaiModel: "gpt-4o",
+  openrouterApiKey: "",
+  openrouterModel: "",
   claudeApiKey: "",
   claudeModel: "",
   geminiApiKey: "",
