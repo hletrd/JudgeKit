@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { PlatformMode } from "@/types";
+import type { AiAssistantPolicy, PlatformMode } from "@/types";
 import { db } from "@/lib/db";
 import { assignments, recruitingInvitations } from "@/lib/db/schema";
 import { rawQueryOne } from "@/lib/db/queries";
@@ -53,22 +53,33 @@ async function hasRedeemedRecruitingAccess({
   return Boolean(invitation);
 }
 
+type AssignmentPlatformContext = {
+  mode: PlatformMode;
+  aiAssistantPolicy: AiAssistantPolicy;
+};
+
 async function getAssignmentPlatformMode(
   assignmentId: string | null | undefined,
   globalMode: PlatformMode
-): Promise<PlatformMode | null> {
+): Promise<AssignmentPlatformContext | null> {
   if (!assignmentId) return null;
 
+  // The single assignment fetch surfaces both the exam mode (drives the
+  // effective platform mode) and the per-contest AI override, so the assistant
+  // gate never needs a second round-trip for the same assignment.
   const assignment = await db.query.assignments.findFirst({
     where: eq(assignments.id, assignmentId),
-    columns: { examMode: true },
+    columns: { examMode: true, aiAssistantPolicy: true },
   });
 
   if (!assignment || assignment.examMode === "none") {
     return null;
   }
 
-  return globalMode === "exam" ? "exam" : "contest";
+  return {
+    mode: globalMode === "exam" ? "exam" : "contest",
+    aiAssistantPolicy: assignment.aiAssistantPolicy ?? "inherit",
+  };
 }
 
 type AssignmentContextRow = {
@@ -247,26 +258,49 @@ export async function resolvePlatformModeAssignmentContextDetails(
   };
 }
 
-export async function getEffectivePlatformMode(
+export type EffectivePlatformModeContext = {
+  mode: PlatformMode;
+  /**
+   * Per-contest AI override of the active restricted assignment in scope, or
+   * "inherit" when there is none (or the resolved assignment is not a
+   * contest/exam). Surfaced here so isAiAssistantEnabledForContext can apply a
+   * contest-level allow/forbid from the same resolve + fetch this function
+   * already performs, without a second DB round-trip.
+   */
+  aiAssistantPolicy: AiAssistantPolicy;
+};
+
+export async function getEffectivePlatformModeContext(
   options: PlatformModeContextOptions = {}
-): Promise<PlatformMode> {
+): Promise<EffectivePlatformModeContext> {
   const assignmentContextId = await resolvePlatformModeAssignmentContext(options);
   const globalMode = await getResolvedPlatformMode();
 
+  // Read the resolved contest's row once. Its AI override applies to the
+  // contest's participants regardless of which mode wins below (a forbid/allow
+  // contest still overrides the assistant gate even under recruiting mode).
+  const assignmentContext = await getAssignmentPlatformMode(assignmentContextId, globalMode);
+  const aiAssistantPolicy = assignmentContext?.aiAssistantPolicy ?? "inherit";
+
   if (globalMode === "recruiting") {
-    return "recruiting";
+    return { mode: "recruiting", aiAssistantPolicy };
   }
 
   if (await hasRedeemedRecruitingAccess({ ...options, assignmentId: assignmentContextId })) {
-    return "recruiting";
+    return { mode: "recruiting", aiAssistantPolicy };
   }
 
-  const assignmentMode = await getAssignmentPlatformMode(assignmentContextId, globalMode);
-  if (assignmentMode) {
-    return assignmentMode;
+  if (assignmentContext) {
+    return { mode: assignmentContext.mode, aiAssistantPolicy };
   }
 
-  return globalMode;
+  return { mode: globalMode, aiAssistantPolicy };
+}
+
+export async function getEffectivePlatformMode(
+  options: PlatformModeContextOptions = {}
+): Promise<PlatformMode> {
+  return (await getEffectivePlatformModeContext(options)).mode;
 }
 
 export async function isAiAssistantEnabledForContext(
@@ -285,13 +319,26 @@ export async function isAiAssistantEnabledForContext(
     }
   }
 
-  const effectiveMode = await getEffectivePlatformMode(options);
+  const settings = await getSystemSettings();
+  const { mode: effectiveMode, aiAssistantPolicy } = await getEffectivePlatformModeContext(options);
+
+  // Per-contest override (participants only — staff already returned above). A
+  // contest can force the assistant on/off for its participants, overriding the
+  // global restricted-mode default. Both branches still honour the master
+  // aiAssistantEnabled kill switch; "inherit" (or no contest in scope) falls
+  // through to the mode restriction below unchanged.
+  if (aiAssistantPolicy === "forbid") {
+    return false;
+  }
+  if (aiAssistantPolicy === "allow") {
+    return settings?.aiAssistantEnabled ?? true;
+  }
+
   // Restricted modes force AI off unless the admin opted out via
   // allowAiAssistantInRestrictedModes. The override rule lives in ONE place
   // (getEffectiveModeRestrictions) so this cannot drift from the
   // system-settings resolution path; the settings record is fetched once and
   // passed through.
-  const settings = await getSystemSettings();
   const { restrictAiByDefault } = await getEffectiveModeRestrictions(effectiveMode, settings);
   if (restrictAiByDefault) {
     return false;
