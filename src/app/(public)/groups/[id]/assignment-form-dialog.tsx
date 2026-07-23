@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import type { AiAssistantPolicy } from "@/types";
 
 type AvailableProblem = {
   id: string;
@@ -51,6 +52,7 @@ export type AssignmentEditorValue = {
   visibility?: "private" | "public";
   examDurationMinutes?: number | null;
   scoringModel?: "ioi" | "icpc";
+  aiAssistantPolicy?: AiAssistantPolicy;
   freezeLeaderboardAt?: number | null;
   enableAntiCheat?: boolean;
   showResultsToCandidate?: boolean;
@@ -120,6 +122,7 @@ export default function AssignmentFormDialog({
   const [visibility, setVisibility] = useState<"private" | "public">(defaultAssignment?.visibility ?? "private");
   const [examDurationMinutes, setExamDurationMinutes] = useState<number | null>(defaultAssignment?.examDurationMinutes ?? null);
   const [scoringModel, setScoringModel] = useState<"ioi" | "icpc">(defaultAssignment?.scoringModel ?? "ioi");
+  const [aiAssistantPolicy, setAiAssistantPolicy] = useState<AiAssistantPolicy>(defaultAssignment?.aiAssistantPolicy ?? "inherit");
   const [freezeLeaderboardAt, setFreezeLeaderboardAt] = useState(formatDateTimeInput(defaultAssignment?.freezeLeaderboardAt ?? null));
   // Default anti-cheat ON for new exam/contest assignments, matching the
   // quick-create contest form (which defaults true). Previously this form
@@ -143,6 +146,11 @@ export default function AssignmentFormDialog({
     ioi: t("scoringModelIoi"),
     icpc: t("scoringModelIcpc"),
   };
+  const aiAssistantPolicyLabels: Record<string, string> = {
+    inherit: t("aiAssistantPolicyInherit"),
+    allow: t("aiAssistantPolicyAllow"),
+    forbid: t("aiAssistantPolicyForbid"),
+  };
   const assignmentVisibilityLabels: Record<string, string> = {
     private: t("assignmentVisibilityPrivate"),
     public: t("assignmentVisibilityPublic"),
@@ -163,6 +171,7 @@ export default function AssignmentFormDialog({
     setVisibility(defaultAssignment?.visibility ?? "private");
     setExamDurationMinutes(defaultAssignment?.examDurationMinutes ?? null);
     setScoringModel(defaultAssignment?.scoringModel ?? "ioi");
+    setAiAssistantPolicy(defaultAssignment?.aiAssistantPolicy ?? "inherit");
     setFreezeLeaderboardAt(formatDateTimeInput(defaultAssignment?.freezeLeaderboardAt ?? null));
     setEnableAntiCheat(defaultAssignment?.enableAntiCheat ?? true);
     setShowResultsToCandidate(defaultAssignment?.showResultsToCandidate ?? false);
@@ -257,6 +266,7 @@ export default function AssignmentFormDialog({
             visibility,
             examDurationMinutes: examMode === "windowed" ? examDurationMinutes : null,
             scoringModel: examMode !== "none" ? scoringModel : "ioi",
+            aiAssistantPolicy: examMode !== "none" ? aiAssistantPolicy : "inherit",
             freezeLeaderboardAt: examMode !== "none" ? parseDateTimeInput(freezeLeaderboardAt) : null,
             enableAntiCheat: examMode !== "none" ? enableAntiCheat : false,
             showResultsToCandidate: examMode !== "none" ? showResultsToCandidate : false,
@@ -499,6 +509,27 @@ export default function AssignmentFormDialog({
                   </Select>
                   <p className="text-sm text-muted-foreground">
                     {t(`scoringModelDescription_${scoringModel}`)}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>{t("aiAssistantPolicyLabel")}</Label>
+                  <Select
+                    value={aiAssistantPolicy}
+                    onValueChange={(value) => setAiAssistantPolicy(value as AiAssistantPolicy)}
+                    disabled={isLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>{aiAssistantPolicyLabels[aiAssistantPolicy] || aiAssistantPolicy}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="inherit" label={t("aiAssistantPolicyInherit")}>{t("aiAssistantPolicyInherit")}</SelectItem>
+                      <SelectItem value="allow" label={t("aiAssistantPolicyAllow")}>{t("aiAssistantPolicyAllow")}</SelectItem>
+                      <SelectItem value="forbid" label={t("aiAssistantPolicyForbid")}>{t("aiAssistantPolicyForbid")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-sm text-muted-foreground">
+                    {t("aiAssistantPolicyDescription")}
                   </p>
                 </div>
 

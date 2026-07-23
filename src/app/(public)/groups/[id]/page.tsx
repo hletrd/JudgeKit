@@ -329,6 +329,7 @@ export default async function GroupDetailPage({ params }: { params: Promise<{ id
                   visibility: assignment.visibility ?? "private",
                   examMode: assignment.examMode ?? "none",
                   scoringModel: assignment.scoringModel ?? "ioi",
+                  aiAssistantPolicy: assignment.aiAssistantPolicy ?? "inherit",
                   examDurationMinutes: assignment.examDurationMinutes ?? null,
                   freezeLeaderboardAt: assignment.freezeLeaderboardAt ? assignment.freezeLeaderboardAt.valueOf() : null,
                   enableAntiCheat: assignment.enableAntiCheat ?? false,

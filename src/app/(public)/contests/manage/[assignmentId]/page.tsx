@@ -259,6 +259,7 @@ export default async function ContestDetailPage({
     visibility: assignment.visibility ?? "private",
     examDurationMinutes: assignment.examDurationMinutes ?? null,
     scoringModel: assignment.scoringModel as "ioi" | "icpc",
+    aiAssistantPolicy: assignment.aiAssistantPolicy ?? "inherit",
     freezeLeaderboardAt: assignment.freezeLeaderboardAt ? new Date(assignment.freezeLeaderboardAt).valueOf() : null,
     enableAntiCheat: assignment.enableAntiCheat ?? false,
   };
