@@ -302,6 +302,13 @@
       "when": 1784738294446,
       "tag": "0042_submission_comments_ai_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1784789549484,
+      "tag": "0043_ai_assistant_policy",
+      "breakpoints": true
     }
   ]
 }

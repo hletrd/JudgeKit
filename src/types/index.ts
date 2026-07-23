@@ -27,6 +27,13 @@ export type SubmissionStatus =
   | "cancelled";
 export type ExamMode = "none" | "scheduled" | "windowed";
 export type ScoringModel = "ioi" | "icpc";
+/**
+ * Per-contest override of the AI assistant availability for participants.
+ * `inherit` defers to the global restricted-mode default; `allow`/`forbid`
+ * force the assistant on/off for that contest's participants (staff always
+ * keep the assistant).
+ */
+export type AiAssistantPolicy = "inherit" | "allow" | "forbid";
 export type Language =
   | "b"
   | "c17"

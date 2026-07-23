@@ -15,7 +15,7 @@ import {
 import { sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { generateSubmissionId } from "@/lib/submissions/id";
-import type { AssignmentVisibility, ExamMode, PlatformMode, ScoringModel } from "@/types";
+import type { AiAssistantPolicy, AssignmentVisibility, ExamMode, PlatformMode, ScoringModel } from "@/types";
 
 export const users = pgTable(
   "users",
@@ -372,6 +372,13 @@ export const assignments = pgTable(
     visibility: text("visibility").$type<AssignmentVisibility>().notNull().default("private"),
     examDurationMinutes: integer("exam_duration_minutes"),
     scoringModel: text("scoring_model").$type<ScoringModel>().notNull().default("ioi"),
+    // Per-contest override of the AI assistant gate for participants. `inherit`
+    // defers to the global restricted-mode default; `allow`/`forbid` force it
+    // on/off for this contest's participants (staff always keep the assistant).
+    aiAssistantPolicy: text("ai_assistant_policy")
+      .$type<AiAssistantPolicy>()
+      .notNull()
+      .default("inherit"),
     accessCode: text("access_code"),
     freezeLeaderboardAt: timestamp("freeze_leaderboard_at", { withTimezone: true }),
     enableAntiCheat: boolean("enable_anti_cheat").notNull().default(false),
@@ -402,6 +409,12 @@ export const assignments = pgTable(
     // whether the assignment is an exam. Client-side coercion alone cannot
     // prevent recurrence.
     check("assignments_exam_mode_valid", sql`exam_mode IN ('none', 'scheduled', 'windowed')`),
+    // Integrity guard mirroring exam_mode: the AI gate branches on this value,
+    // so a corrupt value must not silently defeat a contest's allow/forbid.
+    check(
+      "assignments_ai_assistant_policy_valid",
+      sql`ai_assistant_policy IN ('inherit', 'allow', 'forbid')`
+    ),
   ]
 );
 
