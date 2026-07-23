@@ -18,7 +18,7 @@ In scope:
 - The Next.js application (`src/`)
 - The Rust judge worker (`judge-worker-rs/`)
 - The code-similarity and rate-limiter sidecars (`code-similarity-rs/`, `rate-limiter-rs/`)
-- The deployed instances at `algo.xylolabs.com` (and any other JudgeKit instance the operator publishes)
+- The deployed instances at `oj.auraedu.me` (and any other JudgeKit instance the operator publishes)
 - Docker images, deploy script, runbook content under `docs/`
 
 Out of scope:

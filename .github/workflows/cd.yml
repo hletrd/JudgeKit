@@ -5,8 +5,9 @@ name: CD
 #
 # This workflow previously auto-fired on every successful CI run and invoked a
 # host-based systemd deploy at `~/git/online-judge`, which does not exist on
-# the current Docker-based production hosts (oj.auraedu.me, algo.xylolabs.com;
-# the former test.worv.ai target was retired 2026-07-06).
+# the current Docker-based production hosts (oj.auraedu.me; the former
+# test.worv.ai target was retired 2026-07-06 and the former
+# algo.xylolabs.com target was retired 2026-07-23).
 # That silent auto-run was disabled after the Apr 2026 data-loss incident:
 # instead, production deployments now go through `./deploy-docker.sh` from a
 # workstation, which captures a pre-deploy pg_dump and runs the PG volume

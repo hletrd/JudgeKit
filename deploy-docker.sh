@@ -42,7 +42,7 @@
 #   DRIZZLE_PUSH_FORCE    — "1" to allow drizzle-kit push --force on destructive
 #                            schema diffs. Reserved for explicit user authorization
 #                            with quoted-text consent; never set preemptively.
-#   DEPLOY_INSTANCE       — Optional human-readable host label (e.g. "algo" or
+#   DEPLOY_INSTANCE       — Optional human-readable host label (e.g. "auraedu" or
 #                            "worker-0"). When set, prepended to every info/
 #                            success/warn/error log line as "[host=...]" so
 #                            parallel deploys to different targets remain
@@ -145,12 +145,19 @@ if [[ "${DEPLOY_TARGET}" == "worv" ]]; then
     echo "[FATAL] DEPLOY_TARGET='worv' (test.worv.ai) was retired on 2026-07-06 and is no longer a deploy target." >&2
     exit 1
 fi
+# algo.xylolabs.com was retired from the deployment roster on 2026-07-23
+# (user directive). Refuse it explicitly — a stale local .env.deploy.algo may
+# still exist on disk and must never be deployed to again.
+if [[ "${DEPLOY_TARGET}" == "algo" ]]; then
+    echo "[FATAL] DEPLOY_TARGET='algo' (algo.xylolabs.com) was retired on 2026-07-23 and is no longer a deploy target." >&2
+    exit 1
+fi
 TARGET_ENV_FILE=""
 if [[ -n "${DEPLOY_TARGET}" ]]; then
     case "${DEPLOY_TARGET}" in
-        algo|auraedu) ;;
+        auraedu) ;;
         *)
-            echo "[FATAL] Unknown DEPLOY_TARGET='${DEPLOY_TARGET}'. Expected one of: algo, auraedu (alias: oj)." >&2
+            echo "[FATAL] Unknown DEPLOY_TARGET='${DEPLOY_TARGET}'. Expected one of: auraedu (alias: oj)." >&2
             exit 1
             ;;
     esac
@@ -186,8 +193,8 @@ if [[ -f "${SCRIPT_DIR}/.env.deploy" ]]; then
     source_local_env_profile "${SCRIPT_DIR}/.env.deploy"
 fi
 
-# Source per-target overrides (e.g. .env.deploy.algo) so
-# `DEPLOY_TARGET=algo ./deploy-docker.sh` honours the CLAUDE.md app-server
+# Source per-target overrides (e.g. .env.deploy.auraedu) so
+# `DEPLOY_TARGET=auraedu ./deploy-docker.sh` honours the target-specific
 # defaults (SKIP_LANGUAGES=true, BUILD_WORKER_IMAGE=false, INCLUDE_WORKER=false).
 # Explicit caller env vars still win because the caller-override restoration
 # block below re-applies them after this sourcing, then host safety assertions
@@ -352,12 +359,6 @@ success() { echo -e "${GREEN}[OK]${NC} $(_log_prefix)$*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC} $(_log_prefix)$*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $(_log_prefix)$*" >&2; }
 die()     { error "$*"; exit 1; }
-
-if [[ "${REMOTE_HOST}" == "algo.xylolabs.com" ]]; then
-    if [[ "${SKIP_LANGUAGES}" != "true" || "${BUILD_WORKER_IMAGE}" != "false" || "${INCLUDE_WORKER}" != "false" ]]; then
-        die "algo.xylolabs.com is the app server only. Refusing deploy unless SKIP_LANGUAGES=true BUILD_WORKER_IMAGE=false INCLUDE_WORKER=false (see CLAUDE.md)."
-    fi
-fi
 
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
 if [[ -n "${SSH_KEY:-}" ]]; then

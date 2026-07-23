@@ -120,10 +120,10 @@ curl -I 'https://your-domain.example/og?title=SEO+Check&locale=en&siteTitle=Your
 Replace the domain as needed.
 
 ```bash
-curl -I https://algo.xylolabs.com/
-curl -s https://algo.xylolabs.com/robots.txt
-curl -s https://algo.xylolabs.com/sitemap.xml | head -n 20
-curl -I 'https://algo.xylolabs.com/og?title=SEO+Check&locale=en&siteTitle=Xylolabs+Algo&description=Verification'
+curl -I https://oj.auraedu.me/
+curl -s https://oj.auraedu.me/robots.txt
+curl -s https://oj.auraedu.me/sitemap.xml | head -n 20
+curl -I 'https://oj.auraedu.me/og?title=SEO+Check&locale=en&siteTitle=AuraEdu&description=Verification'
 ```
 
 ## 9. What to watch after launch

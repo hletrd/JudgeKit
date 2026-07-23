@@ -5,5 +5,5 @@
 Contact: mailto:security@xylolabs.com
 Expires: 2027-05-03T00:00:00.000Z
 Preferred-Languages: en, ko
-Canonical: https://algo.xylolabs.com/.well-known/security.txt
+Canonical: https://oj.auraedu.me/.well-known/security.txt
 Policy: https://github.com/hletrd/JudgeKit/blob/main/SECURITY.md

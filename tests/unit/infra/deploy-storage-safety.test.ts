@@ -43,7 +43,6 @@ describe("deploy storage and target safety contracts", () => {
   it("fails closed for known target selection footguns", () => {
     const deployDocker = read("deploy-docker.sh");
     const defaultEnv = readIfExists(".env.deploy");
-    const algoEnv = readIfExists(".env.deploy.algo");
     const worvEnv = readIfExists(".env.deploy.worv");
     const auraeduEnv = readIfExists(".env.deploy.auraedu");
 
@@ -52,21 +51,18 @@ describe("deploy storage and target safety contracts", () => {
     // worv (test.worv.ai) was retired from the roster on 2026-07-06 (RPF
     // cycle-1 U1): it must be explicitly rejected, and the accepted list
     // must not include it.
-    expect(deployDocker).toContain("Expected one of: algo, auraedu (alias: oj)");
+    expect(deployDocker).toContain("Expected one of: auraedu (alias: oj)");
     expect(deployDocker).toContain("DEPLOY_TARGET='worv' (test.worv.ai) was retired");
     expect(deployDocker).not.toContain("Expected one of: algo, worv");
+    // algo (algo.xylolabs.com) was retired from the roster on 2026-07-23
+    // (user directive): it must be explicitly rejected, and the accepted
+    // list must not include it.
+    expect(deployDocker).toContain("DEPLOY_TARGET='algo' (algo.xylolabs.com) was retired");
+    expect(deployDocker).not.toContain("Expected one of: algo, auraedu (alias: oj)");
 
     if (defaultEnv) {
       expect(defaultEnv).not.toContain("DOMAIN=oj-internal.maum.ai");
     }
-    if (algoEnv) {
-      expect(algoEnv).toContain("REMOTE_HOST=algo.xylolabs.com");
-      expect(algoEnv).toContain("INCLUDE_WORKER=false");
-      expect(algoEnv).toContain("BUILD_WORKER_IMAGE=false");
-      expect(algoEnv).toContain("SKIP_LANGUAGES=true");
-    }
-    expect(deployDocker).toContain('REMOTE_HOST}" == "algo.xylolabs.com"');
-    expect(deployDocker).toContain("algo.xylolabs.com is the app server only");
 
     if (worvEnv) {
       expect(worvEnv).toContain("REMOTE_HOST=test.worv.ai");

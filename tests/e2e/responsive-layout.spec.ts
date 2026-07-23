@@ -8,7 +8,7 @@
  *
  * Run:
  *   npx playwright test responsive-layout
- *   PLAYWRIGHT_BASE_URL=https://algo.xylolabs.com npx playwright test responsive-layout
+ *   PLAYWRIGHT_BASE_URL=https://oj.auraedu.me npx playwright test responsive-layout
  */
 import { devices, type Locator, type Page } from "@playwright/test";
 import { test, expect } from "./fixtures";

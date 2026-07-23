@@ -149,18 +149,21 @@ Current production target shortcuts used by the local deploy environment:
 | Target | Domain | SSH user | SSH key | Worker topology |
 |--------|--------|----------|---------|-----------------|
 | `oj` / AuraEdu | `oj.auraedu.me` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | Integrated app + worker host |
-| `algo` | `algo.xylolabs.com` | `ubuntu` | `~/.ssh/xylolabs-algo.pem` | App host + dedicated `worker-0.algo.xylolabs.com` |
 
 > The former `worv` target (`test.worv.ai`) was retired from the deployment
-> roster on 2026-07-06. `deploy-docker.sh` refuses `DEPLOY_TARGET=worv`; do
-> not deploy there. Any local `.env.deploy.worv` / `.env.worv` files are
+> roster on 2026-07-06, and the former `algo` target (`algo.xylolabs.com`)
+> was retired on 2026-07-23. `deploy-docker.sh` refuses both
+> `DEPLOY_TARGET=worv` and `DEPLOY_TARGET=algo`; do not deploy to either. Any
+> local `.env.deploy.worv` / `.env.worv` / `.env.deploy.algo` files are
 > leftover credentials, not an invitation to deploy.
 
-For split-host targets (`algo`), `deploy-docker.sh` computes the app
-`AUTH_URL` before startup and upserts `JUDGE_BASE_URL=<AUTH_URL>/api/v1` into
-each configured `WORKER_HOSTS` machine before restarting `docker-compose.worker.yml`.
-Non-local HTTP worker URLs are rejected; do not recover production workers with
-`JUDGE_ALLOW_INSECURE_HTTP=1`.
+No current production target uses a split-host topology — `oj` / AuraEdu
+runs an integrated app + worker host. The `WORKER_HOSTS` mechanism remains
+available for any future split-host target: `deploy-docker.sh` computes the
+app `AUTH_URL` before startup and upserts `JUDGE_BASE_URL=<AUTH_URL>/api/v1`
+into each configured `WORKER_HOSTS` machine before restarting
+`docker-compose.worker.yml`. Non-local HTTP worker URLs are rejected; do not
+recover production workers with `JUDGE_ALLOW_INSECURE_HTTP=1`.
 
 ## Dedicated Judge Workers
 
@@ -193,8 +196,8 @@ The worker compose file also publishes the internal runner on host loopback:
 127.0.0.1:${RUNNER_PORT:-3001}:3001
 ```
 
-This is what the algo app host's SSH tunnel / host bridge targets for remote
-interactive compiler execution.
+This is what a split-host deployment's app-host SSH tunnel / host bridge
+would target for remote interactive compiler execution.
 
 ### Monitor workers
 

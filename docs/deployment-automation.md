@@ -7,7 +7,6 @@ This document records the current production-standard deployment baseline for Ju
 JudgeKit production deploys currently run from a trusted workstation or operator-managed environment with an explicit target profile:
 
 ```bash
-DEPLOY_TARGET=algo ./deploy-docker.sh
 DEPLOY_TARGET=auraedu ./deploy-docker.sh
 ```
 
@@ -16,10 +15,10 @@ Current target-specific SSH keys in the local deploy environment:
 | Target | Domain | SSH key |
 |--------|--------|---------|
 | `oj` / AuraEdu | `oj.auraedu.me` | `~/.ssh/xylolabs-algo.pem` |
-| `algo` | `algo.xylolabs.com` | `~/.ssh/xylolabs-algo.pem` |
 
-> `worv` (`test.worv.ai`) was retired from the roster on 2026-07-06 and is
-> rejected by `deploy-docker.sh`.
+> `worv` (`test.worv.ai`) was retired from the roster on 2026-07-06 and
+> `algo` (`algo.xylolabs.com`) was retired on 2026-07-23; both are rejected
+> by `deploy-docker.sh`.
 
 That path is the canonical baseline because it:
 

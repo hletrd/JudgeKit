@@ -1,6 +1,6 @@
 import { chromium } from "playwright";
 
-const BASE = "https://algo.xylolabs.com";
+const BASE = "https://oj.auraedu.me";
 const OUT = "/tmp/judgekit-screenshots";
 
 const tablet = { width: 768, height: 1024 };
