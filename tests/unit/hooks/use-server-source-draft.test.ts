@@ -129,4 +129,38 @@ describe("useServerSourceDraft", () => {
       sourceCode: "console.log(2)",
     });
   });
+
+  it("reads and writes the contest-scoped draft when an assignmentId is given", async () => {
+    isTemplateLikeMock.mockReturnValue(false);
+    apiFetchMock.mockResolvedValue(getResponse([]));
+    const setSourceCode = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ code }: { code: string }) =>
+        useServerSourceDraft({
+          problemId: "problem-1",
+          assignmentId: "contest-1",
+          language: "python",
+          sourceCode: code,
+          setSourceCode,
+        }),
+      { initialProps: { code: "print(1)" } }
+    );
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
+    expect(apiFetchMock).toHaveBeenCalledWith("/api/v1/problems/problem-1/draft?assignmentId=contest-1");
+
+    vi.useFakeTimers();
+    rerender({ code: "print(2)" });
+    await act(async () => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    const putCalls = apiFetchMock.mock.calls.filter((c) => c[1] && (c[1] as { method?: string }).method === "PUT");
+    expect(putCalls.length).toBe(1);
+    expect(JSON.parse((putCalls[0][1] as { body: string }).body)).toMatchObject({
+      assignmentId: "contest-1",
+      sourceCode: "print(2)",
+    });
+  });
 });

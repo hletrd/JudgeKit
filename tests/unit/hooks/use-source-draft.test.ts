@@ -146,4 +146,39 @@ describe("useSourceDraft", () => {
     expect(result.current.sourceCode).toBe("console.log('draft')");
     expect(result.current.isDirty).toBe(true);
   });
+
+  it("does not show a practice draft inside a contest, and keeps the contest draft under its own key", async () => {
+    // Own problem id: hooks from earlier tests stay mounted (no RTL
+    // auto-cleanup without vitest globals) and keep flushing to STORAGE_KEY.
+    const practiceKey = "oj:submission-draft:user-1:problem-contest";
+    window.localStorage.setItem(
+      practiceKey,
+      JSON.stringify({
+        version: 1,
+        updatedAt: Date.now(),
+        latestLanguage: "python",
+        drafts: { python: "print('written outside the contest')" },
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useSourceDraft({
+        userId: "user-1",
+        problemId: "problem-contest",
+        scopeId: "contest-1",
+        languages,
+        initialLanguage: "python",
+      }),
+    );
+
+    await waitFor(() => expect(result.current.language).toBe("python"));
+    expect(result.current.sourceCode).toBe("");
+
+    act(() => result.current.setSourceCode("print('contest work')"));
+    await waitFor(() =>
+      expect(window.localStorage.getItem(`${practiceKey}:contest-1`)).toContain("contest work"),
+    );
+    // The practice draft is untouched by contest edits.
+    expect(window.localStorage.getItem(practiceKey)).toContain("written outside the contest");
+  });
 });

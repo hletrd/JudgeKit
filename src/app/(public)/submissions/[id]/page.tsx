@@ -53,6 +53,9 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
       user: {
         columns: { name: true },
       },
+      assignment: {
+        columns: { examMode: true },
+      },
       problem: {
         columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true, visibility: true, problemType: true, functionSpec: true },
       },
@@ -224,6 +227,9 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
         canViewSource={canViewDetails}
         isOwner={isOwner}
+        draftScopeId={
+          submission.assignment && submission.assignment.examMode !== "none" ? submission.assignmentId : null
+        }
       />
 
       {/* Other submissions for this problem */}

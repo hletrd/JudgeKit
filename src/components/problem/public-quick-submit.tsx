@@ -19,6 +19,8 @@ type SubmissionLanguage = {
 
 type PublicQuickSubmitProps = {
   assignmentId?: string | null;
+  /** Contest assignment id to isolate editor drafts to; see ProblemSubmissionForm. */
+  draftScopeId?: string | null;
   editorTheme?: string | null;
   languages: SubmissionLanguage[];
   preferredLanguage?: string | null;
@@ -34,6 +36,7 @@ type PublicQuickSubmitProps = {
 
 export function PublicQuickSubmit({
   assignmentId = null,
+  draftScopeId = null,
   editorTheme = null,
   languages,
   preferredLanguage = null,
@@ -58,6 +61,7 @@ export function PublicQuickSubmit({
       problemId={problemId}
       languages={languages}
       assignmentId={assignmentId}
+      draftScopeId={draftScopeId}
       preferredLanguage={preferredLanguage}
       problemDefaultLanguage={problemDefaultLanguage}
       siteDefaultLanguage={siteDefaultLanguage}

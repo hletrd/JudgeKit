@@ -24,6 +24,7 @@ import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { CommentSection } from "./_components/comment-section";
 import { LiveSubmissionStatus } from "./_components/live-submission-status";
+import { getSourceDraftStorageKey } from "@/hooks/use-source-draft";
 
 type SubmissionDetailClientProps = {
   showCompileOutput: boolean;
@@ -37,6 +38,12 @@ type SubmissionDetailClientProps = {
   problemTimeLimitMs?: number | null;
   canViewSource?: boolean;
   isOwner?: boolean;
+  /**
+   * Contest assignment id when the submission belongs to a contest
+   * (examMode != "none"). "Resubmit" hands the code to the editor through the
+   * localStorage draft, and contest editors only read their own scoped key.
+   */
+  draftScopeId?: string | null;
 };
 
 export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
@@ -89,7 +96,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
 
   function handleResubmit() {
     if (!problemHref || !submission.problem) return;
-    const key = `oj:submission-draft:${props.userId}:${submission.problem.id}`;
+    const key = getSourceDraftStorageKey(props.userId, submission.problem.id, props.draftScopeId ?? null);
     const payload = {
       version: 1,
       updatedAt: Date.now(),

@@ -656,6 +656,7 @@ export default async function PublicProblemDetailPage({
                         functionSpec={problem.functionSpec ?? null}
                         languages={enabledLanguages}
                         assignmentId={assignmentContext?.id ?? null}
+                        draftScopeId={assignmentContext && assignmentContext.examMode !== "none" ? assignmentContext.id : null}
                         preferredLanguage={prefs?.preferredLanguage ?? null}
                         problemDefaultLanguage={problem.defaultLanguage ?? null}
                         siteDefaultLanguage={settings.defaultLanguage ?? null}

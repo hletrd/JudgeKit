@@ -6,6 +6,12 @@ import { isTemplateLike } from "@/lib/judge/code-templates";
 
 interface UseServerSourceDraftOptions {
   problemId: string;
+  /**
+   * Contest the editor is running in (assignment id), or null on the practice
+   * page. The server keeps contest drafts in their own scope, so a contest
+   * editor never restores code autosaved outside that contest.
+   */
+  assignmentId?: string | null;
   language: string;
   sourceCode: string;
   setSourceCode: (code: string) => void;
@@ -41,6 +47,7 @@ const AUTOSAVE_DEBOUNCE_MS = 3000;
  */
 export function useServerSourceDraft({
   problemId,
+  assignmentId = null,
   language,
   sourceCode,
   setSourceCode,
@@ -79,7 +86,8 @@ export function useServerSourceDraft({
     let cancelled = false;
     void (async () => {
       try {
-        const res = await apiFetch(`/api/v1/problems/${problemId}/draft`);
+        const scopeQuery = assignmentId ? `?assignmentId=${encodeURIComponent(assignmentId)}` : "";
+        const res = await apiFetch(`/api/v1/problems/${problemId}/draft${scopeQuery}`);
         if (cancelled || !res.ok) return;
         const json = (await res.json().catch(() => null)) as
           | { data?: { drafts?: Array<{ language: string; sourceCode: string; updatedAt?: string }> } }
@@ -101,7 +109,7 @@ export function useServerSourceDraft({
     return () => {
       cancelled = true;
     };
-  }, [enabled, problemId]);
+  }, [enabled, problemId, assignmentId]);
 
   // Debounced autosave of meaningful (non-template) changes.
   useEffect(() => {
@@ -117,7 +125,7 @@ export function useServerSourceDraft({
       void apiFetch(`/api/v1/problems/${problemId}/draft`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ language: lang, sourceCode: code }),
+        body: JSON.stringify({ language: lang, sourceCode: code, assignmentId }),
       }).catch(() => {
         /* best-effort; localStorage remains the primary cache */
       });
@@ -126,5 +134,5 @@ export function useServerSourceDraft({
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [enabled, problemId, sourceCode, language]);
+  }, [enabled, problemId, assignmentId, sourceCode, language]);
 }

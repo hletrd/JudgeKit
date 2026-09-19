@@ -38,6 +38,12 @@ type DraftStore = {
 type UseSourceDraftOptions = {
   userId: string;
   problemId: string;
+  /**
+   * Contest the editor is running in (assignment id), or null on the practice
+   * page. Contest drafts live under their own key, so code autosaved outside a
+   * contest never shows up in it (and contest code never leaks back out).
+   */
+  scopeId?: string | null;
   languages: readonly string[];
   initialLanguage: string;
 };
@@ -52,8 +58,9 @@ type UseSourceDraftResult = {
   clearDraft: (language?: string) => void;
 };
 
-function getStorageKey(userId: string, problemId: string) {
-  return `${STORAGE_PREFIX}:${userId}:${problemId}`;
+export function getSourceDraftStorageKey(userId: string, problemId: string, scopeId: string | null = null) {
+  const practiceKey = `${STORAGE_PREFIX}:${userId}:${problemId}`;
+  return scopeId ? `${practiceKey}:${scopeId}` : practiceKey;
 }
 
 function getPreferredLanguage(userId: string, languages: readonly string[]): string | null {
@@ -216,7 +223,7 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
   }
 }
 
-export function useSourceDraft({ userId, problemId, languages, initialLanguage }: UseSourceDraftOptions): UseSourceDraftResult {
+export function useSourceDraft({ userId, problemId, scopeId = null, languages, initialLanguage }: UseSourceDraftOptions): UseSourceDraftResult {
   const languagesSignature = useMemo(() => languages.join("\u0000"), [languages]);
   const stableLanguages = useMemo(
     () => (languagesSignature ? languagesSignature.split("\u0000") : []),
@@ -230,7 +237,7 @@ export function useSourceDraft({ userId, problemId, languages, initialLanguage }
     () => initialLanguage ?? availableLanguages[0],
     [availableLanguages, initialLanguage],
   );
-  const storageKey = useMemo(() => getStorageKey(userId, problemId), [problemId, userId]);
+  const storageKey = useMemo(() => getSourceDraftStorageKey(userId, problemId, scopeId), [problemId, scopeId, userId]);
   const draftStore = useMemo(
     () => createDraftStore(availableLanguages, fallbackLanguage),
     [availableLanguages, fallbackLanguage],

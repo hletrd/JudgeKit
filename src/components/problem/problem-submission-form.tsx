@@ -33,6 +33,12 @@ type ProblemSubmissionFormProps = {
   problemId: string;
   languages: SubmissionLanguage[];
   assignmentId?: string | null;
+  /**
+   * Set to the assignment id when the form runs inside a contest
+   * (examMode != "none"). Drafts are then isolated to that contest: code
+   * autosaved on the practice page or in another contest is not restored here.
+   */
+  draftScopeId?: string | null;
   preferredLanguage?: string | null;
   problemDefaultLanguage?: string | null;
   siteDefaultLanguage?: string | null;
@@ -50,6 +56,7 @@ export function ProblemSubmissionForm({
   problemId,
   languages: allLanguages,
   assignmentId = null,
+  draftScopeId = null,
   preferredLanguage = null,
   problemDefaultLanguage = null,
   siteDefaultLanguage = null,
@@ -106,6 +113,7 @@ export function ProblemSubmissionForm({
   const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
     problemId,
+    scopeId: draftScopeId,
     languages: availableLanguages,
     initialLanguage:
       (problemDefaultLanguage && availableLanguages.includes(problemDefaultLanguage) ? problemDefaultLanguage : null)
@@ -125,6 +133,7 @@ export function ProblemSubmissionForm({
   // (RPF cycle-1 UX3/ST3/JA).
   useServerSourceDraft({
     problemId,
+    assignmentId: draftScopeId,
     language,
     sourceCode,
     setSourceCode,
