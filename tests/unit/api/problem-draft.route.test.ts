@@ -6,10 +6,12 @@ const {
   consumeApiRateLimitMock,
   consumeUserApiRateLimitMock,
   canAccessProblemMock,
+  validateAssignmentSubmissionMock,
   upsertSourceDraftMock,
   getSourceDraftsForProblemMock,
   deleteSourceDraftMock,
 } = vi.hoisted(() => ({
+  validateAssignmentSubmissionMock: vi.fn(),
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn(),
   consumeUserApiRateLimitMock: vi.fn(),
@@ -35,6 +37,10 @@ vi.mock("@/lib/auth/permissions", () => ({
   canAccessProblem: canAccessProblemMock,
 }));
 
+vi.mock("@/lib/assignments/submissions", () => ({
+  validateAssignmentSubmission: validateAssignmentSubmissionMock,
+}));
+
 vi.mock("@/lib/drafts/source-draft-store", () => ({
   upsertSourceDraft: upsertSourceDraftMock,
   getSourceDraftsForProblem: getSourceDraftsForProblemMock,
@@ -43,8 +49,8 @@ vi.mock("@/lib/drafts/source-draft-store", () => ({
 
 const PARAMS = Promise.resolve({ id: "problem-1" });
 
-function makeRequest(method: string, body?: unknown) {
-  return new NextRequest("http://localhost:3000/api/v1/problems/problem-1/draft", {
+function makeRequest(method: string, body?: unknown, query = "") {
+  return new NextRequest(`http://localhost:3000/api/v1/problems/problem-1/draft${query}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -70,6 +76,10 @@ beforeEach(() => {
   consumeApiRateLimitMock.mockResolvedValue(null);
   consumeUserApiRateLimitMock.mockResolvedValue(null);
   canAccessProblemMock.mockResolvedValue(true);
+  validateAssignmentSubmissionMock.mockResolvedValue({
+    ok: true,
+    assignment: { id: "contest-1", groupId: "group-1", instructorId: null, examMode: "scheduled" },
+  });
   upsertSourceDraftMock.mockResolvedValue(undefined);
   getSourceDraftsForProblemMock.mockResolvedValue([]);
   deleteSourceDraftMock.mockResolvedValue(undefined);
@@ -85,7 +95,8 @@ describe("GET /api/v1/problems/[id]/draft", () => {
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(getSourceDraftsForProblemMock).toHaveBeenCalledWith("student-1", "problem-1");
+    expect(getSourceDraftsForProblemMock).toHaveBeenCalledWith("student-1", "problem-1", null);
+    expect(validateAssignmentSubmissionMock).not.toHaveBeenCalled();
     expect(body.data.drafts).toHaveLength(1);
     expect(body.data.drafts[0].sourceCode).toBe("print(1)");
   });
@@ -114,6 +125,7 @@ describe("PUT /api/v1/problems/[id]/draft", () => {
       problemId: "problem-1",
       language: "python",
       sourceCode: "print(42)",
+      assignmentId: null,
     });
   });
 
@@ -182,6 +194,60 @@ describe("DELETE /api/v1/problems/[id]/draft", () => {
       userId: "student-1",
       problemId: "problem-1",
       language: "python",
+      assignmentId: null,
     });
+  });
+});
+
+describe("contest draft isolation", () => {
+  it("GET inside a contest only reads that contest's drafts (never the practice draft)", async () => {
+    const { GET } = await import("@/app/api/v1/problems/[id]/draft/route");
+    const res = await GET(makeRequest("GET", undefined, "?assignmentId=contest-1"), { params: PARAMS });
+
+    expect(res.status).toBe(200);
+    expect(validateAssignmentSubmissionMock).toHaveBeenCalledWith("contest-1", "problem-1", "student-1", "student");
+    expect(getSourceDraftsForProblemMock).toHaveBeenCalledWith("student-1", "problem-1", "contest-1");
+  });
+
+  it("PUT and DELETE inside a contest stay in that contest's scope", async () => {
+    const { PUT, DELETE } = await import("@/app/api/v1/problems/[id]/draft/route");
+    await PUT(
+      makeRequest("PUT", { language: "python", sourceCode: "print(1)", assignmentId: "contest-1" }),
+      { params: PARAMS }
+    );
+    await DELETE(makeRequest("DELETE", { language: "python", assignmentId: "contest-1" }), { params: PARAMS });
+
+    expect(upsertSourceDraftMock).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: "contest-1" }));
+    expect(deleteSourceDraftMock).toHaveBeenCalledWith(expect.objectContaining({ assignmentId: "contest-1" }));
+  });
+
+  it("a plain homework assignment (examMode none) shares the practice scope", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: true,
+      assignment: { id: "homework-1", groupId: "group-1", instructorId: null, examMode: "none" },
+    });
+    const { GET } = await import("@/app/api/v1/problems/[id]/draft/route");
+    await GET(makeRequest("GET", undefined, "?assignmentId=homework-1"), { params: PARAMS });
+
+    expect(getSourceDraftsForProblemMock).toHaveBeenCalledWith("student-1", "problem-1", null);
+  });
+
+  it("rejects an assignment the caller cannot submit to — no read, no write", async () => {
+    validateAssignmentSubmissionMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      error: "assignmentEnrollmentRequired",
+    });
+    const { GET, PUT } = await import("@/app/api/v1/problems/[id]/draft/route");
+    const getRes = await GET(makeRequest("GET", undefined, "?assignmentId=contest-9"), { params: PARAMS });
+    const putRes = await PUT(
+      makeRequest("PUT", { language: "python", sourceCode: "x", assignmentId: "contest-9" }),
+      { params: PARAMS }
+    );
+
+    expect(getRes.status).toBe(403);
+    expect(putRes.status).toBe(403);
+    expect(getSourceDraftsForProblemMock).not.toHaveBeenCalled();
+    expect(upsertSourceDraftMock).not.toHaveBeenCalled();
   });
 });

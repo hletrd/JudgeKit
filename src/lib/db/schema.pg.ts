@@ -1153,17 +1153,25 @@ export const sourceDrafts = pgTable(
       .notNull()
       .references(() => problems.id, { onDelete: "cascade" }),
     language: text("language").notNull(),
+    // Contest scope. NULL = the shared practice draft; set = a draft written
+    // inside that contest (examMode != "none"). Contest editors only ever read
+    // their own scope, so code autosaved outside a contest never shows up in it.
+    assignmentId: text("assignment_id").references(() => assignments.id, { onDelete: "cascade" }),
     sourceCode: text("source_code").notNull(),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),
   },
   (table) => [
-    uniqueIndex("source_drafts_user_problem_lang_unique").on(
-      table.userId,
-      table.problemId,
-      table.language
-    ),
+    // Two partial indexes instead of one 4-column index: NULLs are distinct in
+    // a plain unique index, which would let the practice scope grow duplicates.
+    // (Defined in migration drizzle/pg/0044_source_drafts_contest_scope.sql.)
+    uniqueIndex("source_drafts_practice_unique")
+      .on(table.userId, table.problemId, table.language)
+      .where(sql`assignment_id is null`),
+    uniqueIndex("source_drafts_contest_unique")
+      .on(table.userId, table.problemId, table.language, table.assignmentId)
+      .where(sql`assignment_id is not null`),
   ]
 );
 

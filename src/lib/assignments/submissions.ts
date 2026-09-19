@@ -72,6 +72,7 @@ type AssignmentValidationSuccess = {
     id: string;
     groupId: string;
     instructorId: string | null;
+    examMode: string;
   };
   /**
    * Present (non-null) iff `options.probeStaleHeartbeat` was set AND the
@@ -424,6 +425,7 @@ export async function validateAssignmentSubmission(
       id: assignment.id,
       groupId: assignment.groupId,
       instructorId: assignment.instructorId,
+      examMode: assignment.examMode,
     },
     staleHeartbeat,
   };

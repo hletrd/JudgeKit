@@ -232,7 +232,6 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   { name: "enrollments", table: schema.enrollments, orderColumns: ["id"] },
   { name: "groupInstructors", table: schema.groupInstructors, orderColumns: ["id"] },
   { name: "testCases", table: schema.testCases, orderColumns: ["id"] },
-  { name: "sourceDrafts", table: schema.sourceDrafts, orderColumns: ["id"] },
   { name: "problemGroupAccess", table: schema.problemGroupAccess, orderColumns: ["id"] },
   { name: "assignments", table: schema.assignments, orderColumns: ["id"] },
   { name: "problemSetProblems", table: schema.problemSetProblems, orderColumns: ["id"] },
@@ -249,6 +248,8 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   { name: "recruitingInvitations", table: schema.recruitingInvitations, orderColumns: ["id"] },
   { name: "examSessions", table: schema.examSessions, orderColumns: ["id"] },
   { name: "contestAccessTokens", table: schema.contestAccessTokens, orderColumns: ["id"] },
+  // FK to assignments (contest draft scope), so it restores after them.
+  { name: "sourceDrafts", table: schema.sourceDrafts, orderColumns: ["id"] },
   // Level 4: FK to level 0-3
   { name: "submissions", table: schema.submissions, orderColumns: ["id"] },
   { name: "antiCheatEvents", table: schema.antiCheatEvents, orderColumns: ["id"] },

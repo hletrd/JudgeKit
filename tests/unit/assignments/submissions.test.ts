@@ -209,6 +209,7 @@ describe("validateAssignmentSubmission", () => {
         id: "assignment-1",
         groupId: "group-1",
         instructorId: "instructor-1",
+        examMode: "none",
       },
       staleHeartbeat: null,
     });
@@ -239,6 +240,7 @@ describe("validateAssignmentSubmission", () => {
         id: "assignment-1",
         groupId: "group-1",
         instructorId: "instructor-1",
+        examMode: "windowed",
       },
       staleHeartbeat: null,
     });
@@ -311,6 +313,7 @@ describe("validateAssignmentSubmission", () => {
         id: "assignment-1",
         groupId: "group-1",
         instructorId: "instructor-1",
+        examMode: "none",
       },
       staleHeartbeat: null,
     });
@@ -363,6 +366,7 @@ describe("validateAssignmentSubmission — contest access-token validity (AGG6-1
         id: "assignment-1",
         groupId: "group-1",
         instructorId: "instructor-1",
+        examMode: "none",
       },
       staleHeartbeat: null,
     });

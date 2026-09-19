@@ -3,15 +3,19 @@
  *
  * Persists a user's in-progress editor code so unsubmitted work survives a
  * device crash / browser switch (the client previously kept drafts only in
- * localStorage). One row per (user, problem, language), upserted as the editor
- * autosaves; read back to rehydrate the editor.
+ * localStorage). One row per (user, problem, language, scope), upserted as the
+ * editor autosaves; read back to rehydrate the editor.
+ *
+ * The scope is the contest the draft was written in (assignmentId), or null for
+ * the shared practice draft. Reads never cross scopes, so code autosaved outside
+ * a contest is not restored into that contest's editor (and vice versa).
  *
  * This is distinct from code_snapshots, which is append-only anti-cheat
  * telemetry and is never read back into the editor.
  */
 import { db } from "@/lib/db";
 import { sourceDrafts } from "@/lib/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDbNowUncached } from "@/lib/db-time";
 
 export interface SourceDraftRecord {
@@ -20,33 +24,51 @@ export interface SourceDraftRecord {
   updatedAt: Date;
 }
 
-/** Upsert the draft for (user, problem, language). */
+function scopeCondition(assignmentId: string | null) {
+  return assignmentId ? eq(sourceDrafts.assignmentId, assignmentId) : isNull(sourceDrafts.assignmentId);
+}
+
+/** Upsert the draft for (user, problem, language) within a scope. */
 export async function upsertSourceDraft(params: {
   userId: string;
   problemId: string;
   language: string;
   sourceCode: string;
+  assignmentId: string | null;
 }): Promise<void> {
   const now = await getDbNowUncached();
+  // Each scope has its own partial unique index (see schema.pg.ts), so the
+  // conflict target has to name the matching one.
+  const conflictTarget = params.assignmentId
+    ? {
+        target: [sourceDrafts.userId, sourceDrafts.problemId, sourceDrafts.language, sourceDrafts.assignmentId],
+        targetWhere: sql`${sourceDrafts.assignmentId} is not null`,
+      }
+    : {
+        target: [sourceDrafts.userId, sourceDrafts.problemId, sourceDrafts.language],
+        targetWhere: sql`${sourceDrafts.assignmentId} is null`,
+      };
   await db
     .insert(sourceDrafts)
     .values({
       userId: params.userId,
       problemId: params.problemId,
       language: params.language,
+      assignmentId: params.assignmentId,
       sourceCode: params.sourceCode,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [sourceDrafts.userId, sourceDrafts.problemId, sourceDrafts.language],
+      ...conflictTarget,
       set: { sourceCode: params.sourceCode, updatedAt: now },
     });
 }
 
-/** All of a user's saved drafts for a problem (one per language). */
+/** A user's saved drafts for a problem within a scope (one per language). */
 export async function getSourceDraftsForProblem(
   userId: string,
-  problemId: string
+  problemId: string,
+  assignmentId: string | null
 ): Promise<SourceDraftRecord[]> {
   return db
     .select({
@@ -55,14 +77,21 @@ export async function getSourceDraftsForProblem(
       updatedAt: sourceDrafts.updatedAt,
     })
     .from(sourceDrafts)
-    .where(and(eq(sourceDrafts.userId, userId), eq(sourceDrafts.problemId, problemId)));
+    .where(
+      and(
+        eq(sourceDrafts.userId, userId),
+        eq(sourceDrafts.problemId, problemId),
+        scopeCondition(assignmentId)
+      )
+    );
 }
 
-/** Remove a single (user, problem, language) draft — e.g. after a successful submission. */
+/** Remove a single (user, problem, language) draft in a scope — e.g. after a successful submission. */
 export async function deleteSourceDraft(params: {
   userId: string;
   problemId: string;
   language: string;
+  assignmentId: string | null;
 }): Promise<void> {
   await db
     .delete(sourceDrafts)
@@ -70,7 +99,8 @@ export async function deleteSourceDraft(params: {
       and(
         eq(sourceDrafts.userId, params.userId),
         eq(sourceDrafts.problemId, params.problemId),
-        eq(sourceDrafts.language, params.language)
+        eq(sourceDrafts.language, params.language),
+        scopeCondition(params.assignmentId)
       )
     );
 }

@@ -309,6 +309,13 @@
       "when": 1784789549484,
       "tag": "0043_ai_assistant_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789787023101,
+      "tag": "0044_source_drafts_contest_scope",
+      "breakpoints": true
     }
   ]
 }
