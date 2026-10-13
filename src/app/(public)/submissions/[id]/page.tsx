@@ -8,16 +8,6 @@ import { getResolvedSystemTimeZone } from "@/lib/system-settings";
 import { redirect, notFound } from "next/navigation";
 import { SubmissionDetailClient } from "@/components/submissions/submission-detail-client";
 import { buildLocalePath, NO_INDEX_METADATA } from "@/lib/seo";
-import { formatScore } from "@/lib/formatting";
-import { SubmissionStatusBadge } from "@/components/submission-status-badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
-import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
-import { getLanguageDisplayLabel } from "@/lib/judge/languages";
-import { buildStatusLabels } from "@/lib/judge/status-labels";
-import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
@@ -44,9 +34,6 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   const fromParam = resolvedSearchParams?.from;
 
   const timeZone = await getResolvedSystemTimeZone();
-  const t = await getTranslations("submissions");
-  const tCommon = await getTranslations("common");
-  const statusLabels = buildStatusLabels(t);
 
   const submission = await db.query.submissions.findFirst({
     where: eq(submissions.id, submissionId),
@@ -129,7 +116,9 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   // an empty list, which hid the rejudge button from instructors and admins.
   const userCapabilities = [...await resolveCapabilities(session.user.role ?? "user")];
 
-  // Fetch the viewer's own other submissions for the same problem
+  // Fetch the viewer's own other submissions for the same problem. The
+  // submission shown here is excluded on purpose: the client merges it back in
+  // with its live (polled) status, which this server render cannot know yet.
   const otherSubmissions = submission.problemId
     ? await db
         .select({
@@ -244,71 +233,16 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         draftScopeId={
           submission.assignment && submission.assignment.examMode !== "none" ? submission.assignmentId : null
         }
+        problemSubmissions={
+          submission.problemId
+            ? otherSubmissions.map((sub) => ({
+                ...sub,
+                status: sub.status ?? "pending",
+                submittedAt: sub.submittedAt ? sub.submittedAt.valueOf() : null,
+              }))
+            : null
+        }
       />
-
-      {/* Other submissions for this problem */}
-      {submission.problemId && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{t("forProblem")}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {otherSubmissions.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("noOtherSubmissions")}</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>{t("table.id")}</TableHead>
-                      <TableHead>{t("table.language")}</TableHead>
-                      <TableHead>{t("table.status")}</TableHead>
-                      <TableHead>{t("table.score")}</TableHead>
-                      <TableHead>{t("table.submittedAt")}</TableHead>
-                      <TableHead>{t("table.action")}</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {otherSubmissions.map((sub) => (
-                      <TableRow key={sub.id}>
-                        <TableCell className="font-mono text-xs">
-                          <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)} className="text-primary hover:underline">
-                            {formatSubmissionIdPrefix(sub.id)}
-                          </Link>
-                        </TableCell>
-                        <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
-                        <TableCell>
-                          <SubmissionStatusBadge
-                            label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
-                            status={sub.status}
-                            executionTimeMs={sub.executionTimeMs}
-                            memoryUsedKb={sub.memoryUsedKb}
-                            score={sub.score}
-                            failedTestCaseIndex={sub.failedTestCaseIndex}
-                            runtimeErrorType={sub.runtimeErrorType}
-                            locale={locale}
-                          />
-                        </TableCell>
-                        <TableCell>{formatScore(sub.score, locale)}</TableCell>
-                        <TableCell>
-                          {sub.submittedAt
-                            ? formatDateTimeInTimeZone(sub.submittedAt, locale, timeZone)
-                            : "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Link href={buildLocalePath(`/submissions/${sub.id}`, locale)}>
-                            <Button variant="outline" size="sm">{tCommon("view")}</Button>
-                          </Link>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

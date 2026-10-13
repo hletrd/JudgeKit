@@ -25,6 +25,8 @@ import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { CommentSection } from "./_components/comment-section";
 import { LiveSubmissionStatus } from "./_components/live-submission-status";
 import { getSourceDraftStorageKey } from "@/hooks/use-source-draft";
+import { ProblemSubmissionHistory } from "./_components/problem-submission-history";
+import { withCurrentSubmission, type ProblemSubmissionHistoryRow } from "@/lib/submissions/problem-history";
 
 type SubmissionDetailClientProps = {
   showCompileOutput: boolean;
@@ -34,6 +36,12 @@ type SubmissionDetailClientProps = {
   backHref: string;
   /** The list the problem belongs to (contest, group assignment, or practice). */
   problemListHref?: string | null;
+  /**
+   * The viewer's other submissions for this problem (excluding this one), or
+   * null to hide the list. The owner's own row is merged in client-side so it
+   * shows the live verdict.
+   */
+  problemSubmissions?: ProblemSubmissionHistoryRow[] | null;
   timeZone: string;
   userId: string;
   capabilities: string[];
@@ -412,6 +420,29 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
           ) : undefined
         }
       />
+
+      {props.problemSubmissions && (
+        <ProblemSubmissionHistory
+          rows={withCurrentSubmission(
+            props.problemSubmissions,
+            isOwner
+              ? {
+                  id: submission.id,
+                  language: submission.language,
+                  status: submission.status,
+                  score: submission.score,
+                  submittedAt: submission.submittedAt,
+                  executionTimeMs: submission.executionTimeMs,
+                  memoryUsedKb: submission.memoryUsedKb,
+                  failedTestCaseIndex: submission.failedTestCaseIndex,
+                  runtimeErrorType: submission.runtimeErrorType,
+                }
+              : null,
+          )}
+          currentId={submission.id}
+          timeZone={props.timeZone}
+        />
+      )}
     </div>
   );
 }

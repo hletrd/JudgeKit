@@ -819,6 +819,7 @@
     "sourceHidden": "The source code is only visible to the author of this submission.",
     "forProblem": "My submissions for this problem",
     "noOtherSubmissions": "No other submissions for this problem.",
+    "currentSubmission": "Current",
     "pagination": {
       "showingRange": "Showing {start}-{end}"
     }

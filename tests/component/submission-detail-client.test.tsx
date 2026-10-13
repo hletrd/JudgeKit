@@ -59,7 +59,7 @@ vi.mock("@/components/ui/button", () => ({
 }));
 
 vi.mock("@/components/submission-status-badge", () => ({
-  SubmissionStatusBadge: () => <span>status</span>,
+  SubmissionStatusBadge: ({ status }: { status: string }) => <span>{`status:${status}`}</span>,
 }));
 
 vi.mock("@/components/ui/card", () => ({
@@ -74,7 +74,9 @@ vi.mock("@/components/ui/table", () => ({
   Table: ({ children }: { children: React.ReactNode }) => <table>{children}</table>,
   TableHeader: ({ children }: { children: React.ReactNode }) => <thead>{children}</thead>,
   TableBody: ({ children }: { children: React.ReactNode }) => <tbody>{children}</tbody>,
-  TableRow: ({ children }: { children: React.ReactNode }) => <tr>{children}</tr>,
+  TableRow: ({ children, ...props }: { children: React.ReactNode; "aria-current"?: "page" }) => (
+    <tr aria-current={props["aria-current"]}>{children}</tr>
+  ),
   TableHead: ({ children }: { children: React.ReactNode }) => <th>{children}</th>,
   TableCell: ({ children }: { children: React.ReactNode }) => <td>{children}</td>,
 }));
@@ -274,5 +276,84 @@ describe("SubmissionDetailClient problem-list link", () => {
     render(<SubmissionDetailClient {...makeProps({ status: "accepted" })} />);
 
     expect(screen.queryByText("problemList")).toBeNull();
+  });
+});
+
+describe("SubmissionDetailClient problem submission history", () => {
+  const olderWrongAnswer = {
+    id: "older-wrong-answer",
+    language: "python",
+    status: "wrong_answer",
+    score: 0,
+    submittedAt: 1713292700000,
+    executionTimeMs: null,
+    memoryUsedKb: null,
+    failedTestCaseIndex: 1,
+    runtimeErrorType: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: null }) });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function historyRows() {
+    // Skip the header row.
+    return screen.getAllByRole("row").slice(1);
+  }
+
+  it("lists the submission being viewed, with its live verdict, above older ones", () => {
+    render(
+      <SubmissionDetailClient
+        {...makeProps({ status: "accepted", id: "current-accepted" })}
+        problemSubmissions={[olderWrongAnswer]}
+      />,
+    );
+
+    const rows = historyRows();
+    expect(rows).toHaveLength(2);
+
+    const [currentRow, olderRow] = rows;
+    expect(currentRow).toHaveAttribute("aria-current", "page");
+    expect(currentRow).toHaveTextContent("currentSubmission");
+    expect(currentRow).toHaveTextContent("status:accepted");
+    // The current row is not a link to the page the user is already on.
+    expect(currentRow.querySelector("a")).toBeNull();
+
+    expect(olderRow).not.toHaveAttribute("aria-current");
+    expect(olderRow).toHaveTextContent("status:wrong_answer");
+    expect(olderRow.querySelector("a")).toHaveAttribute("href", "/submissions/older-wrong-answer");
+  });
+
+  it("shows the current row even when it is the owner's only submission", () => {
+    render(<SubmissionDetailClient {...makeProps({ status: "accepted" })} problemSubmissions={[]} />);
+
+    expect(historyRows()).toHaveLength(1);
+    expect(screen.queryByText("noOtherSubmissions")).toBeNull();
+  });
+
+  it("does not add someone else's submission to the viewer's own list", () => {
+    render(
+      <SubmissionDetailClient
+        {...makeProps({ status: "accepted" })}
+        isOwner={false}
+        problemSubmissions={[olderWrongAnswer]}
+      />,
+    );
+
+    const rows = historyRows();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toHaveTextContent("status:wrong_answer");
+    expect(screen.queryByText("currentSubmission")).toBeNull();
+  });
+
+  it("renders no history card when the page has no problem list to show", () => {
+    render(<SubmissionDetailClient {...makeProps({ status: "accepted" })} />);
+
+    expect(screen.queryByText("forProblem")).toBeNull();
   });
 });

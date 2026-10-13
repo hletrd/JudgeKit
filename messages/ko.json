@@ -819,6 +819,7 @@
     "sourceHidden": "소스 코드는 제출자 본인에게만 보여요.",
     "forProblem": "이 문제의 내 제출 목록",
     "noOtherSubmissions": "이 문제에 다른 제출이 없어요.",
+    "currentSubmission": "현재 제출",
     "pagination": {
       "showingRange": "{start}-{end}개 표시 중"
     }
