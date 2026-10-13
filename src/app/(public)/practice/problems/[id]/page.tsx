@@ -38,6 +38,7 @@ import { getJudgeLanguageDefinition } from "@/lib/judge/languages";
 import { ProblemKeyboardNav } from "./problem-keyboard-nav";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { getProblemListPath } from "@/lib/navigation/problem-list";
+import { RefreshOnHistoryRestore } from "@/components/refresh-on-history-restore";
 import { validateAssignmentSubmission } from "@/lib/assignments/submissions";
 import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getDbNow } from "@/lib/db-time";
@@ -473,6 +474,8 @@ export default async function PublicProblemDetailPage({
   return (
     <>
       <JsonLd data={[problemJsonLd, breadcrumbJsonLd]} />
+      {/* "My submissions" must include what was submitted before coming back. */}
+      <RefreshOnHistoryRestore />
       <ProblemKeyboardNav
         prevProblemId={prevProblem?.id ?? null}
         nextProblemId={nextProblem?.id ?? null}

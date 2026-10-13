@@ -12,6 +12,7 @@ import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 import { getProblemListPath } from "@/lib/navigation/problem-list";
+import { RefreshOnHistoryRestore } from "@/components/refresh-on-history-restore";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -192,6 +193,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
 
   return (
     <div className="space-y-6">
+      <RefreshOnHistoryRestore />
       <SubmissionDetailClient
         initialSubmission={{
           id: submission.id,
