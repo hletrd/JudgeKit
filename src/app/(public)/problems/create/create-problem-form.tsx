@@ -199,7 +199,7 @@ export default function CreateProblemForm({
       JSON.stringify(referenceSolution) !== JSON.stringify(initialProblem?.referenceSolution ?? DEFAULT_REFERENCE_SOLUTION)
     ));
 
-  const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
+  const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty, warningMessage: t("unsavedChangesWarning") });
 
   useEffect(() => {
     if (forceDisableAiAssistant) {

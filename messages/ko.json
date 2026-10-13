@@ -368,6 +368,8 @@
     "languageSwitchShowsDraft": "에디터 내용이 {language}에서 작성하던 코드로 바뀌어요.",
     "languageSwitchKeepsCode": "지금 작성한 코드는 {language}에 저장되어 있어서, 언어를 다시 바꾸면 그대로 돌아와요.",
     "languageSwitchConfirm": "언어 바꾸기",
+    "unsavedCodeWarning": "아직 제출하지 않은 코드가 있어요. 이 페이지를 나갈까요?",
+    "unsavedChangesWarning": "저장하지 않은 변경사항이 있어요. 이 페이지를 나갈까요?",
     "writeCodePlaceholder": "여기에 코드를 입력하세요",
     "descriptionTitle": "설명",
     "noDescription": "설명이 없어요.",

@@ -115,6 +115,53 @@ describe("useSourceDraft", () => {
     );
   });
 
+  it("does not mark the form dirty for a preloaded skeleton, only for real edits", async () => {
+    const SKELETON = "def main():\n    pass\n";
+    const isPlaceholder = (code: string) => code.trim() === SKELETON.trim();
+
+    const { result } = renderHook(() =>
+      useSourceDraft({
+        userId: "user-1",
+        problemId: "problem-1",
+        languages,
+        initialLanguage: "python",
+        isPlaceholder,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.language).toBe("python"));
+
+    // What the editor does on open: preload the skeleton into the empty draft.
+    act(() => {
+      result.current.setSourceCode(SKELETON);
+    });
+    expect(result.current.sourceCode).toBe(SKELETON);
+    expect(result.current.isDirty).toBe(false);
+
+    act(() => {
+      result.current.setSourceCode(`${SKELETON}print(42)\n`);
+    });
+    expect(result.current.isDirty).toBe(true);
+
+    // Reverting to the untouched skeleton is clean again.
+    act(() => {
+      result.current.setSourceCode(SKELETON);
+    });
+    expect(result.current.isDirty).toBe(false);
+  });
+
+  it("still marks a preloaded skeleton dirty when no placeholder predicate is given", async () => {
+    const { result } = renderHook(() =>
+      useSourceDraft({ userId: "user-1", problemId: "problem-1", languages, initialLanguage: "python" }),
+    );
+
+    await waitFor(() => expect(result.current.language).toBe("python"));
+    act(() => {
+      result.current.setSourceCode("def main():\n    pass\n");
+    });
+    expect(result.current.isDirty).toBe(true);
+  });
+
   it("does not drop unsaved draft state when the languages prop is recreated with the same values", async () => {
     const { result, rerender } = renderHook(
       (props: { languages: string[] }) =>

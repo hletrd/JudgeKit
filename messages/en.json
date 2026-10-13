@@ -368,6 +368,8 @@
     "languageSwitchShowsDraft": "The editor will switch to the code you were writing in {language}.",
     "languageSwitchKeepsCode": "Your current code stays saved under {language} and comes back when you switch back.",
     "languageSwitchConfirm": "Switch language",
+    "unsavedCodeWarning": "You have code you haven't submitted yet. Leave this page?",
+    "unsavedChangesWarning": "You have unsaved changes. Leave this page?",
     "writeCodePlaceholder": "Write your code here...",
     "descriptionTitle": "Description",
     "noDescription": "No description.",

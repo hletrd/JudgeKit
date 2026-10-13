@@ -121,11 +121,16 @@ export function ProblemSubmissionForm({
     return map;
   }, [languages]);
   const knownStarters = useMemo(() => [...starterByLanguage.values()], [starterByLanguage]);
+  const isPlaceholderDraft = useCallback(
+    (code: string) => isTemplateLike(code, activeFunctionSpec, knownStarters),
+    [activeFunctionSpec, knownStarters],
+  );
   const { language, setLanguage, sourceCode, setSourceCode, drafts, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
     problemId,
     scopeId: draftScopeId,
     languages: availableLanguages,
+    isPlaceholder: isPlaceholderDraft,
     initialLanguage:
       (problemDefaultLanguage && availableLanguages.includes(problemDefaultLanguage) ? problemDefaultLanguage : null)
       ?? (preferredLanguage && availableLanguages.includes(preferredLanguage) ? preferredLanguage : null)
@@ -133,7 +138,7 @@ export function ProblemSubmissionForm({
       ?? (availableLanguages.includes("c") ? "c" : languages[0]?.language ?? "c"),
   });
 
-  const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty });
+  const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty, warningMessage: t("unsavedCodeWarning") });
   const { setContent } = useEditorContent();
 
   // Server-side backup + recovery, additive on top of the localStorage draft.

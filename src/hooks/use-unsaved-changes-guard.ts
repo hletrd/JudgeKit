@@ -225,6 +225,9 @@ export function useUnsavedChangesGuard({
     }
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Already confirmed in-page (e.g. a BackLink whose previous entry is
+      // another document): don't stack the browser's own prompt on top.
+      if (bypassNavigationRef.current) return;
       event.preventDefault();
       Reflect.set(event, "returnValue", warningMessage);
       return warningMessage;
@@ -381,6 +384,20 @@ export function useUnsavedChangesGuard({
         return;
       }
 
+      // BackLink goes back through history when there is any, so its href is
+      // only a fallback and the real destination is the previous entry.
+      // Confirm here once and let that traversal through; otherwise the
+      // navigate/popstate handlers would ask again for the actual URL.
+      if (anchor.hasAttribute("data-history-back") && window.history.length > 1) {
+        if (bypassNavigationRef.current || window.confirm(warningMessage)) {
+          bypassNavigationRef.current = true;
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+
       const currentUrl = new URL(window.location.href);
       const nextUrl = new URL(anchor.href, currentUrl);
 
@@ -399,7 +416,7 @@ export function useUnsavedChangesGuard({
     return () => {
       document.removeEventListener("click", handleClick, true);
     };
-  }, [confirmNavigation, isDirty]);
+  }, [confirmNavigation, isDirty, warningMessage]);
 
   return {
     allowNextNavigation,

@@ -46,6 +46,12 @@ type UseSourceDraftOptions = {
   scopeId?: string | null;
   languages: readonly string[];
   initialLanguage: string;
+  /**
+   * Drafts holding no real work — e.g. the starter/skeleton the editor
+   * preloads. They are still saved, but they do not make the form dirty, so
+   * opening a problem and leaving it untouched never triggers a leave warning.
+   */
+  isPlaceholder?: (sourceCode: string) => boolean;
 };
 
 type UseSourceDraftResult = {
@@ -225,7 +231,7 @@ function readDraftPayload(storageKey: string, languages: readonly string[]) {
   }
 }
 
-export function useSourceDraft({ userId, problemId, scopeId = null, languages, initialLanguage }: UseSourceDraftOptions): UseSourceDraftResult {
+export function useSourceDraft({ userId, problemId, scopeId = null, languages, initialLanguage, isPlaceholder }: UseSourceDraftOptions): UseSourceDraftResult {
   const languagesSignature = useMemo(() => languages.join("\u0000"), [languages]);
   const stableLanguages = useMemo(
     () => (languagesSignature ? languagesSignature.split("\u0000") : []),
@@ -420,12 +426,15 @@ export function useSourceDraft({ userId, problemId, scopeId = null, languages, i
 
   const isDirty = useMemo(() => {
     if (!hasHydrated || !draftState.isReady) return false;
-    const currentDrafts = draftState.drafts;
+    const withoutPlaceholders = (drafts: Record<string, string>) =>
+      isPlaceholder ? Object.fromEntries(Object.entries(drafts).filter(([, code]) => !isPlaceholder(code))) : drafts;
+    const currentDrafts = withoutPlaceholders(draftState.drafts);
+    const initialDrafts = withoutPlaceholders(draftState.initialDrafts);
     const currentKeys = Object.keys(currentDrafts);
-    const initialKeys = Object.keys(draftState.initialDrafts);
+    const initialKeys = Object.keys(initialDrafts);
     if (currentKeys.length !== initialKeys.length) return true;
-    return currentKeys.some((key) => currentDrafts[key] !== draftState.initialDrafts[key]);
-  }, [draftState.drafts, draftState.initialDrafts, draftState.isReady, hasHydrated]);
+    return currentKeys.some((key) => currentDrafts[key] !== initialDrafts[key]);
+  }, [draftState.drafts, draftState.initialDrafts, draftState.isReady, hasHydrated, isPlaceholder]);
 
   return {
     language: draftState.selectedLanguage,

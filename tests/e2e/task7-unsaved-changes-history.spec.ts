@@ -107,7 +107,7 @@ async function expectBackDialog(page: Page, accept: boolean) {
   expect(["beforeunload", "confirm"]).toContain(dialog.type());
 
   if (dialog.type() === "confirm") {
-    expect(dialog.message()).toBe("You have unsaved code changes. Leave this page?");
+    expect(dialog.message()).toBe("You have code you haven't submitted yet. Leave this page?");
   }
 
   if (accept) {

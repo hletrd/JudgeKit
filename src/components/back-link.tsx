@@ -31,6 +31,9 @@ export function BackLink({
     <Link
       href={fallbackHref}
       className={className}
+      // Tells useUnsavedChangesGuard the destination is a history entry, not
+      // the href, so it confirms once instead of once per destination guess.
+      data-history-back=""
       onClick={(event) => {
         if (
           !event.defaultPrevented &&
