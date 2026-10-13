@@ -795,6 +795,7 @@
     "aiReviewDisabled": "AI review is unavailable. Check that the AI assistant is enabled and configured.",
     "aiReviewError": "Failed to generate the AI review.",
     "resubmit": "Resubmit",
+    "problemList": "Problem list",
     "statusFilter": {
       "all": "All statuses",
       "accepted": "AC",

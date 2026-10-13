@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BackLink } from "@/components/back-link";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, List, Loader2 } from "lucide-react";
 import { CodeViewer } from "@/components/code/code-viewer";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -32,6 +32,8 @@ type SubmissionDetailClientProps = {
   showRuntimeErrors: boolean;
   initialSubmission: SubmissionDetailView;
   backHref: string;
+  /** The list the problem belongs to (contest, group assignment, or practice). */
+  problemListHref?: string | null;
   timeZone: string;
   userId: string;
   capabilities: string[];
@@ -340,14 +342,26 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
               {t("rejudge")}
             </Button>
           )}
-          {problemHref && isOwner && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleResubmit}
-            >
-              {t("resubmit")}
-            </Button>
+          {(props.problemListHref || (problemHref && isOwner)) && (
+            <div className="flex flex-wrap justify-end gap-2">
+              {props.problemListHref && (
+                <Link href={props.problemListHref}>
+                  <Button size="sm" variant="outline">
+                    <List className="size-4" aria-hidden="true" />
+                    {t("problemList")}
+                  </Button>
+                </Link>
+              )}
+              {problemHref && isOwner && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleResubmit}
+                >
+                  {t("resubmit")}
+                </Button>
+              )}
+            </div>
           )}
         </div>
       </div>

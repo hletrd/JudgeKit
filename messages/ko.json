@@ -795,6 +795,7 @@
     "aiReviewDisabled": "AI 리뷰를 사용할 수 없어요. AI 도우미가 켜져 있고 설정돼 있는지 확인해 주세요.",
     "aiReviewError": "AI 리뷰 생성에 실패했어요.",
     "resubmit": "수정 제출",
+    "problemList": "문제 목록",
     "statusFilter": {
       "all": "전체 상태",
       "accepted": "AC",

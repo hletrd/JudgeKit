@@ -241,3 +241,38 @@ describe("SubmissionDetailClient", () => {
     );
   });
 });
+
+describe("SubmissionDetailClient problem-list link", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: null }) });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("offers a way back to the problem list, not just to the problem", () => {
+    render(
+      <SubmissionDetailClient
+        {...makeProps({ status: "accepted" })}
+        backHref="/practice/problems/problem-1?assignmentId=contest-1"
+        problemListHref="/contests/contest-1"
+      />,
+    );
+
+    const listLink = screen.getByText("problemList").closest("a");
+    expect(listLink).toHaveAttribute("href", "/contests/contest-1");
+    // "Back" still returns to the problem the submission came from.
+    expect(screen.getByText("back").closest("a")).toHaveAttribute(
+      "href",
+      "/practice/problems/problem-1?assignmentId=contest-1",
+    );
+  });
+
+  it("omits the problem-list link when no list is known", () => {
+    render(<SubmissionDetailClient {...makeProps({ status: "accepted" })} />);
+
+    expect(screen.queryByText("problemList")).toBeNull();
+  });
+});

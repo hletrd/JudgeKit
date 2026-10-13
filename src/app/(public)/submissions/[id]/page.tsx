@@ -21,6 +21,7 @@ import { formatDateTimeInTimeZone } from "@/lib/datetime";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
+import { getProblemListPath } from "@/lib/navigation/problem-list";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -54,7 +55,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         columns: { name: true },
       },
       assignment: {
-        columns: { examMode: true },
+        columns: { examMode: true, groupId: true },
       },
       problem: {
         columns: { id: true, title: true, timeLimitMs: true, showCompileOutput: true, showDetailedResults: true, showRuntimeErrors: true, visibility: true, problemType: true, functionSpec: true },
@@ -108,6 +109,18 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
       : fromParam === "admin"
         ? "/dashboard/admin/submissions"
         : "/submissions",
+    locale,
+  );
+
+  // "Problem list" escape hatch next to "back": after submitting, history
+  // back lands on the problem, and the list it was picked from (the contest,
+  // the group assignment, or practice) is one more step away.
+  const problemListHref = buildLocalePath(
+    getProblemListPath(
+      submission.assignmentId && submission.assignment
+        ? { id: submission.assignmentId, ...submission.assignment }
+        : null,
+    ),
     locale,
   );
 
@@ -218,6 +231,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
           results: canViewDetails ? filteredResults : [],
         }}
         backHref={backHref}
+        problemListHref={problemListHref}
         timeZone={timeZone}
         showCompileOutput={showCompileOutput}
         showDetailedResults={showDetailedResults}
