@@ -222,6 +222,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
           results: canViewDetails ? filteredResults : [],
         }}
         backHref={backHref}
+        cameFromProblem={fromParam === "problem"}
         problemListHref={problemListHref}
         timeZone={timeZone}
         showCompileOutput={showCompileOutput}

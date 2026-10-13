@@ -1,4 +1,4 @@
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import { SubmissionDetailClient } from "@/components/submissions/submission-detail-client";
 
@@ -14,8 +14,11 @@ vi.mock("next-intl", () => ({
   useLocale: () => "en-US",
 }));
 
+const routerPushMock = vi.fn();
+const routerBackMock = vi.fn();
+
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: routerPushMock, back: routerBackMock }),
 }));
 
 vi.mock("next/link", () => ({
@@ -355,5 +358,46 @@ describe("SubmissionDetailClient problem submission history", () => {
     render(<SubmissionDetailClient {...makeProps({ status: "accepted" })} />);
 
     expect(screen.queryByText("forProblem")).toBeNull();
+  });
+});
+
+describe("SubmissionDetailClient resubmit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: null }) });
+    Object.defineProperty(window.history, "length", { configurable: true, get: () => 3 });
+  });
+
+  afterEach(() => {
+    cleanup();
+    Reflect.deleteProperty(window.history, "length");
+  });
+
+  it("returns to the problem page it was submitted from instead of stacking another copy", () => {
+    render(<SubmissionDetailClient {...makeProps({ status: "wrong_answer" })} cameFromProblem />);
+
+    fireEvent.click(screen.getByText("resubmit"));
+
+    expect(routerBackMock).toHaveBeenCalledTimes(1);
+    expect(routerPushMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the problem page when the submission was not reached from it", () => {
+    render(<SubmissionDetailClient {...makeProps({ status: "wrong_answer" })} />);
+
+    fireEvent.click(screen.getByText("resubmit"));
+
+    expect(routerPushMock).toHaveBeenCalledWith("/practice/problems/problem-1");
+    expect(routerBackMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the problem page when there is no history to go back to (new tab)", () => {
+    Object.defineProperty(window.history, "length", { configurable: true, get: () => 1 });
+    render(<SubmissionDetailClient {...makeProps({ status: "wrong_answer" })} cameFromProblem />);
+
+    fireEvent.click(screen.getByText("resubmit"));
+
+    expect(routerPushMock).toHaveBeenCalledWith("/practice/problems/problem-1");
+    expect(routerBackMock).not.toHaveBeenCalled();
   });
 });

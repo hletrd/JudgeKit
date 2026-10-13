@@ -34,6 +34,11 @@ type SubmissionDetailClientProps = {
   showRuntimeErrors: boolean;
   initialSubmission: SubmissionDetailView;
   backHref: string;
+  /**
+   * Reached by submitting on the problem page (`?from=problem`), so that page
+   * is the previous history entry.
+   */
+  cameFromProblem?: boolean;
   /** The list the problem belongs to (contest, group assignment, or practice). */
   problemListHref?: string | null;
   /**
@@ -116,7 +121,14 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
       },
     };
     try { localStorage.setItem(key, JSON.stringify(payload)); } catch { /* quota exceeded or private browsing */ }
-    router.push(problemHref);
+    // Submitted from the problem page: return to that history entry instead of
+    // stacking a second copy of it, or "back" from the editor would bounce
+    // through this page again. The restored editor reads the draft just saved.
+    if (props.cameFromProblem && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push(problemHref);
+    }
   }
 
   async function handleRetryRefresh() {
