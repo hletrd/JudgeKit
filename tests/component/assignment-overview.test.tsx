@@ -1,11 +1,29 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { AssignmentOverview } from "@/components/assignment/assignment-overview";
 import { DEFAULT_PROBLEM_POINTS } from "@/lib/assignments/constants";
 
+const backMock = vi.fn();
+
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
+  default: ({
+    href,
+    children,
+    onClick,
+  }: {
+    href: string;
+    children: ReactNode;
+    onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void;
+  }) => (
+    <a href={href} onClick={onClick}>
+      {children}
+    </a>
+  ),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ back: backMock, push: vi.fn() }),
 }));
 
 vi.mock("@/components/exam/countdown-timer", () => ({
@@ -65,7 +83,7 @@ describe("AssignmentOverview", () => {
       examBadgeWindowed: "Windowed 120 min",
       examDuration: "Duration",
     },
-    backHref: "/contests/assignment-1",
+    backHref: "/contests",
     problemHrefPrefix: "/practice/problems/",
   };
 
@@ -112,5 +130,20 @@ describe("AssignmentOverview", () => {
     );
 
     expect(screen.getAllByText("Points: 0").length).toBeGreaterThan(0);
+  });
+
+  it("back button returns through history, falling back to backHref (never the page itself)", () => {
+    Object.defineProperty(window.history, "length", { configurable: true, get: () => 3 });
+    try {
+      render(<AssignmentOverview {...baseProps} />);
+
+      const backButton = screen.getByRole("button", { name: "Back" });
+      expect(backButton.closest("a")).toHaveAttribute("href", "/contests");
+
+      fireEvent.click(backButton);
+      expect(backMock).toHaveBeenCalledTimes(1);
+    } finally {
+      Reflect.deleteProperty(window.history, "length");
+    }
   });
 });

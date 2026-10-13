@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { BackLink } from "@/components/back-link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -348,13 +348,13 @@ export default async function ContestDetailPage({
 
   return (
     <div className="space-y-4">
-      <Link
-        href="/contests/manage"
+      <BackLink
+        fallbackHref="/contests/manage"
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         {tCommon("back")}
-      </Link>
+      </BackLink>
 
       {/* Header with scoring model badge */}
       <div className="space-y-2 overflow-hidden">

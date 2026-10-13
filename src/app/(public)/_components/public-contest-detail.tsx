@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,13 +99,13 @@ export function PublicContestDetail({
     <div className="space-y-6">
       <div className="space-y-5">
         <div>
-          <Link
-            href={backHref}
+          <BackLink
+            fallbackHref={backHref}
             className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded-md"
           >
             <ArrowLeft className="size-4" />
             {backLabel}
-          </Link>
+          </BackLink>
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-2">

@@ -7,6 +7,10 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: ReactNode }) => <a href={href}>{children}</a>,
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ back: vi.fn(), push: vi.fn() }),
+}));
+
 describe("PublicContestDetail", () => {
   it("renders contest overview and public problem links", () => {
     render(

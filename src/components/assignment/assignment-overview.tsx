@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { BackLink } from "@/components/back-link";
 import { CheckCircle2, Circle, MinusCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -70,7 +71,11 @@ export interface AssignmentOverviewProps {
   timeZone: string;
   labels: AssignmentOverviewLabels;
   problemStatuses?: StudentProblemStatus[];
-  /** Override the back button href. Defaults to `/groups/${groupId}`. */
+  /**
+   * Fallback for the back button when there is no history to return to (the
+   * button otherwise goes back to wherever the user came from). Defaults to
+   * `/groups/${groupId}`.
+   */
   backHref?: string;
   /** URL prefix for problem links. Defaults to `/problems/`. */
   problemHrefPrefix?: string;
@@ -155,9 +160,9 @@ export function AssignmentOverview({
           </p>
         </div>
 
-        <Link href={resolvedBackHref}>
+        <BackLink fallbackHref={resolvedBackHref}>
           <Button variant="outline">{labels.back}</Button>
-        </Link>
+        </BackLink>
       </div>
 
       <Card>

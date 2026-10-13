@@ -37,6 +37,7 @@ import { getProblemTierInfo } from "@/lib/problem-tiers";
 import { getJudgeLanguageDefinition } from "@/lib/judge/languages";
 import { ProblemKeyboardNav } from "./problem-keyboard-nav";
 import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
+import { getProblemListPath } from "@/lib/navigation/problem-list";
 import { validateAssignmentSubmission } from "@/lib/assignments/submissions";
 import { getExamSession } from "@/lib/assignments/exam-sessions";
 import { getDbNow } from "@/lib/db-time";
@@ -465,9 +466,9 @@ export default async function PublicProblemDetailPage({
     examSession = { startedAt: assignmentContext.examStartedAt, personalDeadline: assignmentContext.personalDeadline };
   }
 
-  const resolvedBackHref = assignmentContext
-    ? buildLocalePath(`/contests/${assignmentContext.id}`, locale)
-    : buildLocalePath("/practice", locale);
+  // Fallback only: the back link uses real history when there is any, so it
+  // returns to wherever the problem was opened from.
+  const resolvedBackHref = buildLocalePath(getProblemListPath(assignmentContext), locale);
 
   return (
     <>

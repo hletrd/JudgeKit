@@ -40,6 +40,7 @@ import { db } from "@/lib/db";
 import { submissions, problems } from "@/lib/db/schema";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { BackLink } from "@/components/back-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -222,13 +223,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
           enabled={Boolean(contest.enableAntiCheat)}
         />
 
-        <Link
-          href={buildLocalePath("/contests", locale)}
+        <BackLink
+          fallbackHref={buildLocalePath("/contests", locale)}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           {tCommon("back")}
-        </Link>
+        </BackLink>
 
         <div className="overflow-hidden">
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
@@ -336,7 +337,7 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
               timeZone={resolvedTimeZone}
               labels={overviewLabels}
               problemStatuses={studentProblemStatuses}
-              backHref={buildLocalePath(`/contests/${contest.id}`, locale)}
+              backHref={buildLocalePath("/contests", locale)}
               problemHrefPrefix="/practice/problems/"
             />
             <ContestClarifications
@@ -438,13 +439,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     if (userAccess === "managing" && session?.user) {
       return (
         <div className="space-y-6">
-          <Link
-            href={buildLocalePath("/contests", locale)}
+          <BackLink
+            fallbackHref={buildLocalePath("/contests", locale)}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
             {tCommon("back")}
-          </Link>
+          </BackLink>
           <div className="rounded-lg border p-6 text-center space-y-4">
             <p className="text-muted-foreground">{tContest("privateContestNotice")}</p>
             <Link href={buildLocalePath(`/contests/manage/${id}`, locale)}>
@@ -472,13 +473,13 @@ export default async function PublicContestDetailPage({ params }: { params: Prom
     if (session?.user) {
       return (
         <div className="space-y-6">
-          <Link
-            href={buildLocalePath("/contests", locale)}
+          <BackLink
+            fallbackHref={buildLocalePath("/contests", locale)}
             className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
             {tCommon("back")}
-          </Link>
+          </BackLink>
           <ContestJoinClient />
         </div>
       );

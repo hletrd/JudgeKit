@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { BackLink } from "@/components/back-link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { eq } from "drizzle-orm";
 import { Badge } from "@/components/ui/badge";
@@ -174,13 +174,13 @@ export default async function GroupAssignmentDetailPage({
 
     return (
       <div className="space-y-6">
-        <Link
-          href={`/groups/${groupId}`}
+        <BackLink
+          fallbackHref={`/groups/${groupId}`}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-4" />
           {tCommon("back")}
-        </Link>
+        </BackLink>
 
         {assignment.examMode === "scheduled" && assignment.deadline && (
           <CountdownTimer deadline={new Date(assignment.deadline).getTime()} label={tGroups("examTimeRemaining")} />
@@ -315,13 +315,13 @@ export default async function GroupAssignmentDetailPage({
 
   return (
     <div className="space-y-6">
-      <Link
-        href={`/groups/${groupId}`}
+      <BackLink
+        fallbackHref={`/groups/${groupId}`}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
         {tCommon("back")}
-      </Link>
+      </BackLink>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-2">
@@ -335,9 +335,9 @@ export default async function GroupAssignmentDetailPage({
           </p>
         </div>
 
-        <Link href={`/groups/${groupId}`}>
+        <BackLink fallbackHref={`/groups/${groupId}`}>
           <Button variant="outline">{tCommon("back")}</Button>
-        </Link>
+        </BackLink>
       </div>
 
       <AssignmentOverview
