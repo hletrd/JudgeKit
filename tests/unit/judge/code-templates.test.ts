@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
+import { getLanguageSwitchOutcome, getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
 import { getAdapter } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 
@@ -95,5 +95,75 @@ describe("isTemplateLike", () => {
   it("treats real student code as NOT template-like", () => {
     expect(isTemplateLike("class Solution:\n    def twoSum(self, nums, target):\n        return [0, 1]\n", twoSum)).toBe(false);
     expect(isTemplateLike("print('hello world')", null, [SAMPLE_STARTER])).toBe(false);
+  });
+});
+
+describe("getLanguageSwitchOutcome", () => {
+  const studentCode = "n = int(input())\nprint(n * 2)\n";
+  const CPP_STARTER = "#include <iostream>\nint main() {\n}\n";
+
+  it("warns when the target language's skeleton would replace the student's code", () => {
+    expect(
+      getLanguageSwitchOutcome({
+        currentCode: studentCode,
+        targetDraft: undefined,
+        targetStarter: CPP_STARTER,
+        knownStarters: [SAMPLE_STARTER, CPP_STARTER],
+      }),
+    ).toBe("starter");
+  });
+
+  it("warns when the target language has no skeleton and the editor would go blank", () => {
+    expect(
+      getLanguageSwitchOutcome({ currentCode: studentCode, targetDraft: undefined, targetStarter: "" }),
+    ).toBe("blank");
+  });
+
+  it("warns when the target language's own earlier draft would be shown instead", () => {
+    expect(
+      getLanguageSwitchOutcome({
+        currentCode: studentCode,
+        targetDraft: "#include <cstdio>\nint main() { puts(\"hi\"); }\n",
+        targetStarter: CPP_STARTER,
+        knownStarters: [CPP_STARTER],
+      }),
+    ).toBe("draft");
+  });
+
+  it("treats an untouched skeleton in the target draft as the skeleton, not a draft", () => {
+    expect(
+      getLanguageSwitchOutcome({
+        currentCode: studentCode,
+        targetDraft: CPP_STARTER,
+        targetStarter: CPP_STARTER,
+        knownStarters: [CPP_STARTER],
+      }),
+    ).toBe("starter");
+  });
+
+  it("does not warn while the editor only holds a skeleton, a stub, or nothing", () => {
+    expect(
+      getLanguageSwitchOutcome({
+        currentCode: SAMPLE_STARTER,
+        targetDraft: undefined,
+        targetStarter: CPP_STARTER,
+        knownStarters: [SAMPLE_STARTER, CPP_STARTER],
+      }),
+    ).toBeNull();
+    expect(
+      getLanguageSwitchOutcome({
+        currentCode: getAdapter("python").generateStub(twoSum),
+        targetDraft: undefined,
+        targetStarter: getAdapter("cpp23").generateStub(twoSum),
+        functionSpec: twoSum,
+      }),
+    ).toBeNull();
+    expect(getLanguageSwitchOutcome({ currentCode: "", targetDraft: undefined, targetStarter: CPP_STARTER })).toBeNull();
+  });
+
+  it("does not warn when the editor would show the same code", () => {
+    expect(
+      getLanguageSwitchOutcome({ currentCode: studentCode, targetDraft: studentCode, targetStarter: "" }),
+    ).toBeNull();
   });
 });

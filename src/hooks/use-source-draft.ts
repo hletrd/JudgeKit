@@ -53,6 +53,8 @@ type UseSourceDraftResult = {
   setLanguage: (language: string) => void;
   sourceCode: string;
   setSourceCode: (sourceCode: string) => void;
+  /** Saved code per language (the editor shows `drafts[language]`). */
+  drafts: Readonly<Record<string, string>>;
   isDirty: boolean;
   clearAllDrafts: () => void;
   clearDraft: (language?: string) => void;
@@ -430,6 +432,7 @@ export function useSourceDraft({ userId, problemId, scopeId = null, languages, i
     setLanguage,
     sourceCode: draftState.drafts[draftState.selectedLanguage] ?? "",
     setSourceCode,
+    drafts: draftState.drafts,
     isDirty,
     clearAllDrafts,
     clearDraft,

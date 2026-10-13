@@ -205,3 +205,42 @@ export function isTemplateLike(
 
   return false;
 }
+
+/**
+ * What switching the editor to another language replaces on screen.
+ *
+ * Drafts are kept per language, so a switch never deletes code, but the editor
+ * swaps to the target language's own draft — or, when that is empty/template,
+ * to its starter code (skeleton, function stub, or blank). To a student that
+ * reads as "my code was reset". Returns null when nothing the student wrote is
+ * on screen (the editor only holds template content) or when the editor would
+ * show the same code anyway; otherwise what the editor will show instead.
+ */
+export type LanguageSwitchOutcome = "draft" | "starter" | "blank";
+
+export function getLanguageSwitchOutcome(opts: {
+  currentCode: string;
+  /** The target language's saved draft, if any. */
+  targetDraft: string | null | undefined;
+  /** What `getStarterCode` preloads for the target language. */
+  targetStarter: string;
+  functionSpec?: FunctionSpec | null;
+  knownStarters?: readonly string[];
+}): LanguageSwitchOutcome | null {
+  const { currentCode, targetDraft, targetStarter, functionSpec, knownStarters } = opts;
+
+  if (isTemplateLike(currentCode, functionSpec, knownStarters)) {
+    return null;
+  }
+
+  const showsTargetDraft = !!targetDraft && !isTemplateLike(targetDraft, functionSpec, knownStarters);
+  const nextCode = showsTargetDraft ? targetDraft : targetStarter;
+
+  if (nextCode === currentCode) {
+    return null;
+  }
+  if (showsTargetDraft) {
+    return "draft";
+  }
+  return nextCode.trim().length > 0 ? "starter" : "blank";
+}

@@ -9,8 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { LanguageSelector } from "@/components/language-selector";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { apiFetch, parseApiResponse } from "@/lib/api/client";
-import { getStarterCode, isTemplateLike } from "@/lib/judge/code-templates";
+import { getLanguageSwitchOutcome, getStarterCode, isTemplateLike, type LanguageSwitchOutcome } from "@/lib/judge/code-templates";
+import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { FUNCTION_JUDGING_LANGUAGES } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
 import { useSourceDraft } from "@/hooks/use-source-draft";
@@ -110,7 +121,7 @@ export function ProblemSubmissionForm({
     return map;
   }, [languages]);
   const knownStarters = useMemo(() => [...starterByLanguage.values()], [starterByLanguage]);
-  const { language, setLanguage, sourceCode, setSourceCode, isDirty, clearAllDrafts } = useSourceDraft({
+  const { language, setLanguage, sourceCode, setSourceCode, drafts, isDirty, clearAllDrafts } = useSourceDraft({
     userId,
     problemId,
     scopeId: draftScopeId,
@@ -147,6 +158,30 @@ export function ProblemSubmissionForm({
       toast.info(time ? t("draftRecovered", { time }) : t("draftRecoveredNoTime"));
     },
   });
+
+  // A language switch swaps the editor to the target language's draft or
+  // starter code. When that would take the student's own code off screen,
+  // confirm first — it is kept under the old language, but looks erased.
+  const [pendingLanguageSwitch, setPendingLanguageSwitch] = useState<{
+    language: string;
+    outcome: LanguageSwitchOutcome;
+  } | null>(null);
+
+  function handleLanguageChange(nextLanguage: string) {
+    if (nextLanguage === language) return;
+    const outcome = getLanguageSwitchOutcome({
+      currentCode: sourceCode,
+      targetDraft: drafts[nextLanguage],
+      targetStarter: getStarterCode({ problemType, functionSpec: activeFunctionSpec, language: nextLanguage, starterCode: starterByLanguage.get(nextLanguage) ?? null }),
+      functionSpec: activeFunctionSpec,
+      knownStarters,
+    });
+    if (outcome === null) {
+      setLanguage(nextLanguage);
+      return;
+    }
+    setPendingLanguageSwitch({ language: nextLanguage, outcome });
+  }
 
   const prevLanguageRef = useRef(language);
   useEffect(() => {
@@ -445,7 +480,7 @@ export function ProblemSubmissionForm({
           id="language"
           languages={languages}
           value={language}
-          onValueChange={setLanguage}
+          onValueChange={handleLanguageChange}
           preferredLanguage={preferredLanguage}
           placeholder={t("selectLanguage")}
           searchPlaceholder={t("searchLanguages")}
@@ -514,6 +549,42 @@ export function ProblemSubmissionForm({
           {isSubmitting ? tCommon("loading") : `${tCommon("submit")} (${submitShortcutLabel})`}
         </Button>
       </div>
+      <AlertDialog
+        open={pendingLanguageSwitch !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingLanguageSwitch(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("languageSwitchTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingLanguageSwitch && (
+                <>
+                  {pendingLanguageSwitch.outcome === "draft"
+                    ? t("languageSwitchShowsDraft", { language: getLanguageDisplayLabel(pendingLanguageSwitch.language) })
+                    : pendingLanguageSwitch.outcome === "blank"
+                      ? t("languageSwitchShowsBlank", { language: getLanguageDisplayLabel(pendingLanguageSwitch.language) })
+                      : t("languageSwitchShowsStarter", { language: getLanguageDisplayLabel(pendingLanguageSwitch.language) })}{" "}
+                  {t("languageSwitchKeepsCode", { language: getLanguageDisplayLabel(language) })}
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{tCommon("cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={() => {
+                if (pendingLanguageSwitch) setLanguage(pendingLanguageSwitch.language);
+                setPendingLanguageSwitch(null);
+              }}
+            >
+              {t("languageSwitchConfirm")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {runResult && (
         <div className="space-y-3 rounded-md border bg-muted/50 p-4 text-sm">
           <div className="flex items-center justify-between">

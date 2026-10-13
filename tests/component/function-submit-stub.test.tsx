@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ProblemSubmissionForm } from "@/components/problem/problem-submission-form";
 import { getAdapter } from "@/lib/judge/function-judging/registry";
 import type { FunctionSpec } from "@/lib/judge/function-judging/types";
@@ -72,18 +72,24 @@ vi.mock("@/components/language-selector", () => ({
   ),
 }));
 
-// Minimal stateful stand-in for the localStorage-backed draft hook. Holds the
-// selected language + per-language source, starting from initialLanguage with
-// an empty editor (matching a fresh problem open).
+// Minimal stateful stand-in for the localStorage-backed draft hook. Like the
+// real hook it keeps one draft PER LANGUAGE (the editor shows the selected
+// language's draft), starting from initialLanguage with an empty editor
+// (matching a fresh problem open).
 vi.mock("@/hooks/use-source-draft", () => ({
   useSourceDraft: ({ initialLanguage }: { initialLanguage: string }) => {
-    const [language, setLanguage] = useState(initialLanguage);
-    const [sourceCode, setSourceCode] = useState("");
+    const [state, setState] = useState({ language: initialLanguage, drafts: {} as Record<string, string> });
+    const setLanguage = useCallback((language: string) => setState((prev) => ({ ...prev, language })), []);
+    const setSourceCode = useCallback(
+      (code: string) => setState((prev) => ({ ...prev, drafts: { ...prev.drafts, [prev.language]: code } })),
+      [],
+    );
     return {
-      language,
+      language: state.language,
       setLanguage,
-      sourceCode,
+      sourceCode: state.drafts[state.language] ?? "",
       setSourceCode,
+      drafts: state.drafts,
       isDirty: false,
       clearAllDrafts: vi.fn(),
     };
@@ -207,11 +213,16 @@ describe("ProblemSubmissionForm — function-problem stub preload + language gat
     fireEvent.change(screen.getByTestId("editor"), { target: { value: studentCode } });
     expect(editorValue()).toBe(studentCode);
 
+    // Switching away from real work asks first (the editor would show the
+    // cpp23 stub instead).
     fireEvent.click(screen.getByRole("button", { name: "cpp23" }));
+    fireEvent.click(await screen.findByRole("button", { name: "languageSwitchConfirm" }));
+    await waitFor(() => expect(editorValue()).toBe(getAdapter("cpp23").generateStub(twoSum)));
 
-    // Real work survives the language switch — no stub clobber.
-    await new Promise((r) => setTimeout(r, 20));
-    expect(editorValue()).toBe(studentCode);
+    // Real work survives the language switch — no stub clobber: it is kept
+    // under python and comes back when switching back.
+    fireEvent.click(screen.getByRole("button", { name: "python" }));
+    await waitFor(() => expect(editorValue()).toBe(studentCode));
   });
 
   it("normal (non-function) problem preloads the admin-configured starter, blank when unset", async () => {
