@@ -472,7 +472,7 @@ export default async function PublicProblemDetailPage({
   const resolvedBackHref = buildLocalePath(getProblemListPath(assignmentContext), locale);
 
   return (
-    <>
+    <div className="space-y-6">
       <JsonLd data={[problemJsonLd, breadcrumbJsonLd]} />
       {/* "My submissions" must include what was submitted before coming back. */}
       <RefreshOnHistoryRestore />
@@ -982,6 +982,6 @@ export default async function PublicProblemDetailPage({
           </TabsContent>
         </Tabs>
       </div>
-    </>
+    </div>
   );
 }

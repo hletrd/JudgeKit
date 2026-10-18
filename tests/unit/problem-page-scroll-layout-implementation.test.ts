@@ -24,4 +24,13 @@ describe("problem page scroll layout implementation", () => {
     expect(publicSource).toContain("lg:overflow-y-auto");
     expect(publicSource).toContain("grid grid-cols-1 gap-6 lg:grid-cols-2");
   });
+
+  it("stacks the assignment countdown and notices above the problem body with a gap", () => {
+    const publicSource = read("src/app/(public)/practice/problems/[id]/page.tsx");
+
+    // The page renders straight into <main>, which has no vertical spacing of
+    // its own, so the deadline badge needs a spaced wrapper to keep it off the
+    // tabs below.
+    expect(publicSource).toMatch(/return \(\n    <div className="space-y-6">\n      <JsonLd/);
+  });
 });
