@@ -9,10 +9,10 @@ const {
   rawQueryAllMock,
   recordAuditEventMock,
   recordAuditEventDurableMock,
-  canManageGroupResourcesAsyncMock,
+  canViewContestSignatureFlagsMock,
   getContestSignatureFlagCountsMock,
 } = vi.hoisted(() => ({
-  canManageGroupResourcesAsyncMock: vi.fn(),
+  canViewContestSignatureFlagsMock: vi.fn(),
   getContestSignatureFlagCountsMock: vi.fn(),
   canViewAssignmentSubmissionsMock: vi.fn(),
   computeContestRankingMock: vi.fn(),
@@ -55,11 +55,8 @@ vi.mock("@/lib/db/queries", () => ({
   rawQueryAll: rawQueryAllMock,
 }));
 
-vi.mock("@/lib/assignments/management", () => ({
-  canManageGroupResourcesAsync: canManageGroupResourcesAsyncMock,
-}));
-
 vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  canViewContestSignatureFlags: canViewContestSignatureFlagsMock,
   getContestSignatureFlagCounts: getContestSignatureFlagCountsMock,
 }));
 
@@ -79,7 +76,7 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
       scoringModel: "ioi",
     });
     canViewAssignmentSubmissionsMock.mockResolvedValue(true);
-    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    canViewContestSignatureFlagsMock.mockResolvedValue(false);
     getContestSignatureFlagCountsMock.mockResolvedValue({
       "user-1": { total: 3, problems: { "p-1": 2, "p-2": 1 } },
     });
@@ -196,11 +193,12 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     );
   });
 
-  it("adds the AI-suspected column only for contest managers", async () => {
+  it("adds the AI-suspected column only for the contest group's staff", async () => {
     const { GET } = await import("@/app/api/v1/contests/[assignmentId]/export/route");
 
-    // A viewer who can read the export but not manage the contest (e.g. a TA)
-    // never gets the column, and the flag table is never read for them.
+    // A viewer who can read the export but is not staff of the contest's
+    // group (here an admin by role only) never gets the column, and the flag
+    // table is never read for them.
     const taResponse = await GET(
       new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=csv"),
       { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
@@ -212,7 +210,8 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     rawQueryAllMock
       .mockResolvedValueOnce([{ userId: "user-1", count: 2 }])
       .mockResolvedValueOnce([{ userId: "user-1", ips: "10.0.0.1" }]);
-    canManageGroupResourcesAsyncMock.mockResolvedValue(true);
+    // Group staff (owner, co_instructor, or TA) get the column.
+    canViewContestSignatureFlagsMock.mockResolvedValue(true);
     const managerResponse = await GET(
       new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=csv"),
       { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
@@ -222,5 +221,9 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
     const index = columns.indexOf("AI Suspected Submissions");
     expect(index).toBeGreaterThan(-1);
     expect(row.split(",")[index]).toBe("3");
+    expect(canViewContestSignatureFlagsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "recruiter-1" }),
+      "group-1",
+    );
   });
 });

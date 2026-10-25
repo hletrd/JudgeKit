@@ -27,7 +27,7 @@ type AiSignatureBadgeProps = {
 /**
  * "AI suspected" marker for a submission whose source contains a problem's
  * `{{signature: token}}` token. Render it only with data from
- * src/lib/submissions/ai-signature-flags.ts, which is manager-scoped.
+ * src/lib/submissions/ai-signature-flags.ts, which is staff-scoped.
  */
 export function AiSignatureBadge({ matches, compact = false, className }: AiSignatureBadgeProps) {
   const t = useTranslations("submissions.aiSignature");

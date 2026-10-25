@@ -283,7 +283,7 @@ export default async function SubmissionsPage({
       problem: rest.problem,
     }),
   }));
-  // AI-use signature flags: manager-scoped (null scope for students/guests,
+  // AI-use signature flags: staff-scoped (null scope for students/guests,
   // which never queries the flag table).
   const signatureFlagScope = isGuest
     ? null

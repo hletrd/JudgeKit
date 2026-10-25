@@ -238,7 +238,13 @@ describe("source-grep test inventory", () => {
     //     tests/unit/infra/deploy-storage-safety.test.ts (S9) are infra text
     //     contracts; language-contract spans TS/Rust language identifiers and
     //     deploy-storage-safety guards destructive Docker prune commands.
-    const DOCUMENTED_BASELINE = 163;
+    // Bumped 163 -> 164 (2026-10-25, AI signature flags):
+    //   - tests/unit/ai-signature-flags-surfaces-implementation.test.ts pins
+    //     that every flag surface reads flags through the staff-scoped helpers
+    //     (resolveSignatureFlagViewerScope / canViewContestSignatureFlags) and
+    //     never queries submission_signature_flags directly; the page-level
+    //     RSC payloads are not reachable from route mocks.
+    const DOCUMENTED_BASELINE = 164;
     expect(sourceGrepFiles.length).toBe(DOCUMENTED_BASELINE);
   });
 

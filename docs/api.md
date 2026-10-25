@@ -479,19 +479,41 @@ A problem description may contain signature markers, one token each:
   (group owner, co_instructor, `groups.view_all`), or `{ "all": true }`
   (`groups.view_all`) re-computes existing submissions and returns
   `{ scanned, flagged }`. CLI: `npm run signature-flags:recompute [-- --problem <id> | --assignment <id>]`.
-- **Visibility (manager-only):** a flag is visible to users who can manage
-  the submission's group (owner, `co_instructor`, `groups.view_all`); flags of
-  submissions outside an assignment only to `groups.view_all`. TAs, students,
+- **Visibility (group staff only):** one rule,
+  `resolveSignatureFlagViewerScope()` in
+  `src/lib/submissions/ai-signature-flags.ts`, decides every surface below.
+  A flag of a contest (assignment) submission is visible only to the staff of
+  that contest's group: the group owner (`groups.instructor_id`) and
+  `group_instructors` rows with role `co_instructor` or `ta`. A flag of a
+  submission outside any assignment is visible only to the problem's author
+  (`problems.author_id`). Global roles and capabilities (`groups.view_all`,
+  `submissions.view_all`, admin, super_admin) grant nothing by themselves: an
+  admin who is not registered as staff of the group sees no flag. Students
   and guests never receive a flag, a token, or the `aiSignatureFlag` field.
+  The rule only hides or shows flags; it never widens access to a page or an
+  API (a TA sees flags only where the TA could already open the submission).
+
+  | Viewer | Contest submission | Submission outside a contest |
+  |---|---|---|
+  | Group owner | yes | only if problem author |
+  | Group `co_instructor` | yes | only if problem author |
+  | Group `ta` | yes | only if problem author |
+  | Admin / `groups.view_all`, not staff of the group | no | only if problem author |
+  | Student, guest | no | no |
+
   - `GET /api/v1/submissions` and `GET /api/v1/submissions/:id` add
     `aiSignatureFlag: { matches: [{ token, problemId, problemTitle }] }` to
     rows the viewer may see; `?aiFlagged=1` on the list filters to them (ignored
     for everyone else).
   - `GET /api/v1/contests/:id/leaderboard?aiFlags=1` adds
     `aiSignatureFlags: { [userId]: { total, problems: { [problemId]: n } } }`
-    for contest managers only; the student-facing contest page never asks.
-  - The contest CSV/JSON export adds "AI Suspected Submissions" for contest
-    managers only.
+    when the caller gets the instructor view of the board (canManageContest)
+    and is staff of the contest's group. A TA who is not a contest manager
+    gets the leaderboard's normal access rule (403 unless enrolled), so the
+    management leaderboard tab shows no markers for a TA; the student-facing
+    contest page never asks.
+  - The contest CSV/JSON export adds "AI Suspected Submissions" for the
+    contest group's staff (owner, co_instructor, TA).
   - UI: "AI 의심" badge on the submission lists (`/submissions`, admin
     submissions with an "AI 의심" filter, contest participant submissions) and
     the submission detail page; shield icon per flagged student/problem cell and

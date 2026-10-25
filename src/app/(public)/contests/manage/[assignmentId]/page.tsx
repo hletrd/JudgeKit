@@ -29,6 +29,7 @@ import { StatusBoard } from "../../../groups/[id]/assignments/[assignmentId]/sta
 import { SubmissionListAutoRefresh } from "@/components/submission-list-auto-refresh";
 import { IN_PROGRESS_JUDGE_STATUSES } from "@/lib/judge/verdict";
 import { LeaderboardTable } from "@/components/contest/leaderboard-table";
+import { canViewContestSignatureFlags } from "@/lib/submissions/ai-signature-flags";
 import { AccessCodeManager } from "@/components/contest/access-code-manager";
 import { InviteParticipants } from "@/components/contest/invite-participants";
 import { ContestQuickStats } from "@/components/contest/contest-quick-stats";
@@ -168,6 +169,8 @@ export default async function ContestDetailPage({
     role,
     groupId
   );
+
+  const canViewAiSignatureFlags = await canViewContestSignatureFlags(session.user, groupId);
 
   const sortedProblems = [...assignment.assignmentProblems].sort(
     (left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0)
@@ -532,7 +535,7 @@ export default async function ContestDetailPage({
 
         {/* Leaderboard Tab */}
         <TabsContent value="leaderboard" className="mt-4">
-          <LeaderboardTable assignmentId={assignmentId} canViewStudentDetails showAiSignatureFlags={canManage} />
+          <LeaderboardTable assignmentId={assignmentId} canViewStudentDetails showAiSignatureFlags={canViewAiSignatureFlags} />
         </TabsContent>
 
         {/* Analytics Tab */}

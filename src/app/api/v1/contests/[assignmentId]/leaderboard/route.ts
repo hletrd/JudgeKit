@@ -5,7 +5,7 @@ import { canManageContest } from "@/lib/assignments/contests";
 import { computeLeaderboard, computeSingleUserLiveRank, getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { rawQueryOne } from "@/lib/db/queries";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
-import { getContestSignatureFlagCounts } from "@/lib/submissions/ai-signature-flags";
+import { canViewContestSignatureFlags, getContestSignatureFlagCounts } from "@/lib/submissions/ai-signature-flags";
 
 type AssignmentAccessRow = {
   groupId: string;
@@ -85,11 +85,15 @@ export const GET = createApiHandler({
           }),
         }));
 
-    // AI-use signature flag counts: manager view only, and only when the
-    // management leaderboard asks for them (`aiFlags=1`), so a manager
-    // projecting the student-facing contest page never shows them.
+    // AI-use signature flag counts: only for the contest group's staff (owner,
+    // co_instructor, TA; not global admins by role alone), only on the
+    // un-anonymized instructor view, and only when the management leaderboard
+    // asks for them (`aiFlags=1`), so projecting the student-facing contest
+    // page never shows them.
     const aiSignatureFlags =
-      isInstructorView && req.nextUrl.searchParams.get("aiFlags") === "1"
+      isInstructorView &&
+      req.nextUrl.searchParams.get("aiFlags") === "1" &&
+      (await canViewContestSignatureFlags(user, assignment.groupId))
         ? await getContestSignatureFlagCounts(assignmentId)
         : null;
 

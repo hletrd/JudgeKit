@@ -95,9 +95,33 @@ describe("GET /api/v1/submissions/[id]", () => {
     expect(JSON.stringify(body)).not.toContain("aiSignature");
   });
 
-  it("includes the AI signature flag for a contest manager", async () => {
+  it("omits the AI signature flag for an admin who is not staff of the group", async () => {
+    // Global capabilities let the admin open the submission, but the flag
+    // scope (group staff only) is null for them.
+    resolveCapabilitiesMock.mockResolvedValue(
+      new Set(["groups.view_all", "submissions.view_all", "submissions.view_source"]),
+    );
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue(null);
+    submissionsFindFirstMock.mockResolvedValueOnce({
+      id: "sub-1",
+      userId: "student-2",
+      assignmentId: "assignment-1",
+      sourceCode: "int main() { // sr5j\n}",
+      results: [],
+    });
+
+    const { GET } = await import("@/app/api/v1/submissions/[id]/route");
+    const response = await GET(makeRequest(), { params: Promise.resolve({ id: "sub-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.sourceCode).toBeDefined();
+    expect(body.data.aiSignatureFlag).toBeUndefined();
+  });
+
+  it("includes the AI signature flag for a group TA", async () => {
     resolveCapabilitiesMock.mockResolvedValue(new Set(["submissions.view_all", "submissions.view_source"]));
-    resolveSignatureFlagViewerScopeMock.mockResolvedValue({ all: false, groupIds: ["group-1"] });
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue({ userId: "ta-1", groupIds: ["group-1"], authorsProblems: false });
     submissionsFindFirstMock.mockResolvedValueOnce({
       id: "sub-1",
       userId: "student-2",

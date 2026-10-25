@@ -118,8 +118,9 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   // an empty list, which hid the rejudge button from instructors and admins.
   const userCapabilities = [...await resolveCapabilities(session.user.role ?? "user")];
 
-  // AI-use signature flag: manager-only. Students (including the owner) get
-  // a null scope, so nothing about the flag reaches their RSC payload.
+  // AI-use signature flag: contest group staff (owner, co_instructor, TA) or
+  // the problem's author outside a contest. Students (including the owner)
+  // get a null scope, so nothing about the flag reaches their RSC payload.
   const signatureFlag = await getSignatureFlagForSubmission(
     submission.id,
     await resolveSignatureFlagViewerScope({ id: session.user.id, role: session.user.role ?? "user" }),

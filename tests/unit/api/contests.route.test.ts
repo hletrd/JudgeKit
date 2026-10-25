@@ -23,8 +23,10 @@ const {
   resolveCapabilitiesMock,
   getDbNowUncachedMock,
   getContestSignatureFlagCountsMock,
+  canViewContestSignatureFlagsMock,
 } = vi.hoisted(() => ({
   getContestSignatureFlagCountsMock: vi.fn(),
+  canViewContestSignatureFlagsMock: vi.fn(),
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
   consumeUserApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
@@ -94,6 +96,7 @@ vi.mock("@/lib/db/queries", () => ({
 }));
 
 vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  canViewContestSignatureFlags: canViewContestSignatureFlagsMock,
   getContestSignatureFlagCounts: getContestSignatureFlagCountsMock,
 }));
 
@@ -754,7 +757,8 @@ describe("GET /api/v1/contests/[assignmentId]/leaderboard", () => {
     expect(computeSingleUserLiveRankMock).toHaveBeenCalledWith("assign-1", "student-1");
   });
 
-  it("returns AI signature flag counts to a contest manager who asks for them", async () => {
+  it("returns AI signature flag counts to the contest group's staff who ask for them", async () => {
+    canViewContestSignatureFlagsMock.mockResolvedValue(true);
     getContestSignatureFlagCountsMock.mockResolvedValue({ "student-1": { total: 1, problems: { "p-1": 1 } } });
     const res = await leaderboardGET(
       new NextRequest("http://localhost:3000/api/v1/contests/assign-1/leaderboard?aiFlags=1", { method: "GET" }),
@@ -763,6 +767,20 @@ describe("GET /api/v1/contests/[assignmentId]/leaderboard", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.data.aiSignatureFlags).toEqual({ "student-1": { total: 1, problems: { "p-1": 1 } } });
+    expect(canViewContestSignatureFlagsMock).toHaveBeenCalledWith(expect.anything(), "g-1");
+  });
+
+  it("omits AI signature flags for a contest manager who is not staff of the group (admin by role)", async () => {
+    canViewContestSignatureFlagsMock.mockResolvedValue(false);
+    getContestSignatureFlagCountsMock.mockResolvedValue({ "student-1": { total: 1, problems: { "p-1": 1 } } });
+    const res = await leaderboardGET(
+      new NextRequest("http://localhost:3000/api/v1/contests/assign-1/leaderboard?aiFlags=1", { method: "GET" }),
+      { params: PARAMS() },
+    );
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.aiSignatureFlags).toBeUndefined();
+    expect(getContestSignatureFlagCountsMock).not.toHaveBeenCalled();
   });
 
   it("omits AI signature flags for managers who did not ask (student-facing page)", async () => {

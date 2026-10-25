@@ -784,7 +784,7 @@ export const submissionComments = pgTable(
  * submission whose source contains a `{{signature: token}}` token of its
  * problem or of another problem in the same contest; no row means "not
  * flagged". Kept out of the submissions table on purpose: many student-facing
- * reads select whole submission rows, and this data is manager-only
+ * reads select whole submission rows, and this data is staff-only
  * (src/lib/submissions/ai-signature-flags.ts). Defined in migration
  * drizzle/pg/0045_submission_signature_flags.sql.
  */

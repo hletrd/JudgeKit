@@ -37,8 +37,9 @@ import {
 } from "@/lib/submissions/ai-signature-flags";
 
 /**
- * Attach `aiSignatureFlag` to rows whose flag the viewer may see (managers
- * only); other rows, and every row for students, are returned unchanged.
+ * Attach `aiSignatureFlag` to rows whose flag the viewer may see (contest
+ * group staff or the problem author only); other rows, and every row for
+ * students, are returned unchanged.
  */
 function withSignatureFlags<T extends { id: string }>(rows: T[], flags: Map<string, SignatureFlagView>) {
   if (flags.size === 0) return rows;
@@ -57,7 +58,7 @@ export const GET = createApiHandler({
     const assignmentId = searchParams.get("assignmentId");
     const includeSummary = searchParams.get("includeSummary") === "1";
     const caps = await resolveCapabilities(user.role);
-    // AI-use signature flags are manager-only. `aiFlagged=1` filters to
+    // AI-use signature flags are staff-only. `aiFlagged=1` filters to
     // flagged submissions the viewer may see; for everyone else it is ignored
     // (a student must not learn whether their own submission is flagged).
     const signatureFlagScope = await resolveSignatureFlagViewerScope(user);
@@ -481,7 +482,7 @@ export const POST = createApiHandler({
       });
     }
 
-    // AI-use signature flag (manager-only, src/lib/problem-signatures.ts).
+    // AI-use signature flag (staff-only, src/lib/submissions/ai-signature-flags.ts).
     // Fail open: a flagging error must never block the submission.
     await computeAndStoreSignatureFlag({
       id,

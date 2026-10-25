@@ -175,8 +175,12 @@ Descriptions may also include signature markers, `{{signature: token}}`, which
 are never shown in any form (renderer, copy, meta, search, AI prompts,
 non-manager problem API); `stripHiddenNotes()` strips them too. Submissions
 whose source contains a token as a whole word are flagged in
-`submission_signature_flags` (manager-only: group owner, co_instructor,
-`groups.view_all`). Never select or return flag data outside
+`submission_signature_flags`. Flags are visible only to the contest group's
+staff (owner, co_instructor, TA) or, for a submission outside a contest, to
+the problem's author; global admin roles and capabilities (`groups.view_all`)
+grant nothing by themselves. The one rule is
+`resolveSignatureFlagViewerScope()` / `canViewContestSignatureFlags()`.
+Never select or return flag data outside
 `src/lib/submissions/ai-signature-flags.ts` and its scope helpers. See
 `docs/api.md` → "Signature tokens and AI-use flags".
 

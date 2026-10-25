@@ -1,4 +1,4 @@
-import { and, asc, eq, exists, gt, inArray, like, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, exists, gt, inArray, isNotNull, isNull, like, or, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db";
 import {
   assignmentProblems,
@@ -9,7 +9,6 @@ import {
   submissionSignatureFlags,
   submissions,
 } from "@/lib/db/schema";
-import { resolveCapabilities } from "@/lib/capabilities/cache";
 import {
   extractSignatureTokens,
   matchSignatureTokens,
@@ -30,10 +29,11 @@ import {
  * problem in its assignment (plus its own problem); a submission outside an
  * assignment only against its own problem's tokens.
  *
- * Visibility: manager-only. Only viewers who can manage the submission's
- * group (owner, co_instructor, `groups.view_all`) may see a flag; submissions
- * outside an assignment are visible to `groups.view_all` only. Students,
- * TAs, and anonymous viewers never receive flags or tokens.
+ * Visibility: a contest submission's flag is shown only to the staff of the
+ * contest's group (owner, co_instructor, TA); a flag of a submission outside
+ * any assignment only to the problem's author. Global admin capabilities do
+ * not widen this. Students and anonymous viewers never receive flags or
+ * tokens. See resolveSignatureFlagViewerScope.
  */
 
 const RECOMPUTE_BATCH_SIZE = 500;
@@ -230,36 +230,84 @@ export async function recomputeAllSignatureFlags(): Promise<SignatureRecomputeRe
 // ---------------------------------------------------------------------------
 
 /**
- * Which flags a viewer may see: every flag (`groups.view_all`), or the flags
- * of contest submissions in the groups they own or co-instruct. `null` means
- * none at all (students, TAs, assistants, anonymous).
+ * Which flags a viewer may see. This is the single permission rule for every
+ * flag surface (submission lists and detail, the list filter, the contest
+ * leaderboard and export):
+ *
+ *   - a contest (assignment) submission: the staff of the assignment's group,
+ *     i.e. the group owner (`groups.instructorId`) and `group_instructors`
+ *     rows with role `co_instructor` or `ta`;
+ *   - a submission outside any assignment: the problem's author
+ *     (`problems.authorId`).
+ *
+ * Global capabilities (`groups.view_all`, `submissions.view_all`, admin
+ * roles) grant nothing by themselves: an admin who is not staff of the group
+ * (or the problem's author) sees no flag. `null` means no flag at all
+ * (students, unrelated staff, anonymous viewers).
  */
-export type SignatureFlagViewerScope = { all: true } | { all: false; groupIds: string[] };
+export type SignatureFlagViewerScope = {
+  userId: string;
+  /** Groups whose contest submissions' flags the viewer may see. */
+  groupIds: string[];
+  /** Whether the viewer authored at least one problem (practice flags). */
+  authorsProblems: boolean;
+};
+
+const SIGNATURE_FLAG_GROUP_ROLES = ["co_instructor", "ta"] as const;
 
 export async function resolveSignatureFlagViewerScope(
-  user: { id: string; role: string } | null | undefined,
+  // `role` is accepted for call-site convenience but deliberately unused:
+  // platform roles and capabilities never grant flag visibility.
+  user: { id: string; role?: string | null } | null | undefined,
 ): Promise<SignatureFlagViewerScope | null> {
   if (!user?.id) return null;
-  const caps = await resolveCapabilities(user.role);
-  if (caps.has("groups.view_all")) return { all: true };
 
-  const rows = await db
-    .select({ id: groups.id })
-    .from(groups)
-    .leftJoin(
-      groupInstructors,
-      and(
-        eq(groupInstructors.groupId, groups.id),
-        eq(groupInstructors.userId, user.id),
-        eq(groupInstructors.role, "co_instructor"),
-      ),
-    )
-    .where(or(eq(groups.instructorId, user.id), eq(groupInstructors.userId, user.id)));
-  const groupIds = [...new Set(rows.map((row) => row.id))];
-  return groupIds.length > 0 ? { all: false, groupIds } : null;
+  const [groupRows, authoredRows] = await Promise.all([
+    db
+      .select({ id: groups.id })
+      .from(groups)
+      .leftJoin(
+        groupInstructors,
+        and(
+          eq(groupInstructors.groupId, groups.id),
+          eq(groupInstructors.userId, user.id),
+          inArray(groupInstructors.role, [...SIGNATURE_FLAG_GROUP_ROLES]),
+        ),
+      )
+      .where(or(eq(groups.instructorId, user.id), eq(groupInstructors.userId, user.id))),
+    db
+      .select({ id: problems.id })
+      .from(problems)
+      .where(eq(problems.authorId, user.id))
+      .limit(1),
+  ]);
+
+  const groupIds = [...new Set(groupRows.map((row) => row.id))];
+  const authorsProblems = authoredRows.length > 0;
+  if (groupIds.length === 0 && !authorsProblems) return null;
+  return { userId: user.id, groupIds, authorsProblems };
 }
 
-/** A flag as shown to a manager (tooltip: token + the problem defining it). */
+/** Whether `scope` covers the contest submissions of `groupId`. */
+export function signatureFlagScopeCoversGroup(
+  scope: SignatureFlagViewerScope | null,
+  groupId: string | null | undefined,
+): boolean {
+  return !!scope && !!groupId && scope.groupIds.includes(groupId);
+}
+
+/**
+ * Whether `user` may see the per-contest flag aggregates (leaderboard markers,
+ * export column) of a contest in `groupId`: group owner, co_instructor or TA.
+ */
+export async function canViewContestSignatureFlags(
+  user: { id: string; role?: string | null } | null | undefined,
+  groupId: string,
+): Promise<boolean> {
+  return signatureFlagScopeCoversGroup(await resolveSignatureFlagViewerScope(user), groupId);
+}
+
+/** A flag as shown to staff (tooltip: token + the problem defining it). */
 export type SignatureFlagView = {
   matches: { token: string; problemId: string; problemTitle: string | null }[];
 };
@@ -279,15 +327,20 @@ export async function getSignatureFlagsForSubmissions(
     .select({
       submissionId: submissionSignatureFlags.submissionId,
       matches: submissionSignatureFlags.matches,
+      assignmentId: submissions.assignmentId,
       groupId: assignments.groupId,
+      problemAuthorId: problems.authorId,
     })
     .from(submissionSignatureFlags)
     .innerJoin(submissions, eq(submissions.id, submissionSignatureFlags.submissionId))
     .leftJoin(assignments, eq(assignments.id, submissions.assignmentId))
+    .leftJoin(problems, eq(problems.id, submissions.problemId))
     .where(inArray(submissionSignatureFlags.submissionId, [...new Set(submissionIds)]));
 
-  const visible = rows.filter(
-    (row) => scope.all || (row.groupId !== null && scope.groupIds.includes(row.groupId)),
+  const visible = rows.filter((row) =>
+    row.assignmentId !== null
+      ? row.groupId !== null && scope.groupIds.includes(row.groupId)
+      : row.problemAuthorId !== null && row.problemAuthorId === scope.userId,
   );
   if (visible.length === 0) return result;
 
@@ -334,22 +387,36 @@ export function submissionHasSignatureFlagSql(): SQL {
  * query over `submissions`.
  */
 export function visibleSignatureFlagFilterSql(scope: SignatureFlagViewerScope): SQL {
-  if (scope.all) return submissionHasSignatureFlagSql();
-  return and(
-    submissionHasSignatureFlagSql(),
-    inArray(
-      submissions.assignmentId,
-      db
-        .select({ id: assignments.id })
-        .from(assignments)
-        .where(inArray(assignments.groupId, scope.groupIds)),
-    ),
-  ) as SQL;
+  const contestScope = scope.groupIds.length > 0
+    ? and(
+        isNotNull(submissions.assignmentId),
+        inArray(
+          submissions.assignmentId,
+          db
+            .select({ id: assignments.id })
+            .from(assignments)
+            .where(inArray(assignments.groupId, scope.groupIds)),
+        ),
+      )
+    : undefined;
+  const practiceScope = scope.authorsProblems
+    ? and(
+        isNull(submissions.assignmentId),
+        inArray(
+          submissions.problemId,
+          db.select({ id: problems.id }).from(problems).where(eq(problems.authorId, scope.userId)),
+        ),
+      )
+    : undefined;
+  const visibleScope = contestScope && practiceScope
+    ? or(contestScope, practiceScope)
+    : (contestScope ?? practiceScope ?? sql`false`);
+  return and(submissionHasSignatureFlagSql(), visibleScope) as SQL;
 }
 
 /**
  * Per-student, per-problem counts of flagged submissions in a contest, for
- * the manager leaderboard. Callers must have checked canManageContest.
+ * the manager leaderboard. Callers must have checked canViewContestSignatureFlags.
  */
 export type ContestSignatureFlagCounts = Record<string, { total: number; problems: Record<string, number> }>;
 

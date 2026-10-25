@@ -119,8 +119,9 @@ export default async function AdminSubmissionsPage({
       )
     : undefined;
   const submissionReviewGroupIds = await getSubmissionReviewGroupIds(session.user.id, session.user.role);
-  // AI-use signature flags are manager-only (not TAs/assistants): the filter
-  // and badges appear only for a non-null scope.
+  // AI-use signature flags: contest group staff (owner, co_instructor, TA) or
+  // the problem's author; global admin roles alone see none. The filter and
+  // badges appear only for a non-null scope.
   const signatureFlagScope = await resolveSignatureFlagViewerScope({ id: session.user.id, role: session.user.role });
   const aiFlagFilter = signatureFlagScope && resolvedSearchParams?.aiFlag === "flagged" ? "flagged" : "all";
 

@@ -1054,8 +1054,8 @@ describe("GET /api/v1/submissions", () => {
     expect(JSON.stringify(body)).not.toContain("aiSignatureFlag");
   });
 
-  it("attaches visible AI signature flags and applies aiFlagged=1 for managers", async () => {
-    const scope = { all: true };
+  it("attaches visible AI signature flags and applies aiFlagged=1 for group staff", async () => {
+    const scope = { userId: "ta-1", groupIds: ["group-1"], authorsProblems: false };
     resolveSignatureFlagViewerScopeMock.mockResolvedValue(scope);
     getSignatureFlagsForSubmissionsMock.mockResolvedValue(
       new Map([["submission-1", { matches: [{ token: "sr5j", problemId: "problem-1", problemTitle: "A+B" }] }]]),

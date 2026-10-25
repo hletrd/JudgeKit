@@ -13,7 +13,8 @@
  *
  * When a submission's source code contains a signature token as a whole word
  * (in code or in a comment), the submission is flagged as "AI suspected" for
- * contest/group managers only. See src/lib/submissions/ai-signature-flags.ts
+ * the contest group's staff (owner, co_instructor, TA) or, outside a
+ * contest, the problem's author. See src/lib/submissions/ai-signature-flags.ts
  * and docs/api.md → "Signature tokens and AI-use flags".
  */
 

@@ -59,7 +59,7 @@ type LeaderboardData = {
   entries: LeaderboardEntry[];
   /**
    * AI-use signature flag counts per user ({ total, problems: { [problemId]: n } }).
-   * Present only for contest managers that requested them (`aiFlags=1`).
+   * Present only for the contest group's staff that requested them (`aiFlags=1`).
    */
   aiSignatureFlags?: Record<string, { total: number; problems: Record<string, number> }>;
 };

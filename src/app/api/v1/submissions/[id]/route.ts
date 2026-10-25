@@ -55,8 +55,9 @@ export const GET = createApiHandler({
     const caps = await resolveCapabilities(user.role);
     const sanitized = await sanitizeSubmissionForViewer(submission, user.id, caps);
 
-    // AI-use signature flag: only managers of the submission's group (or
-    // groups.view_all) get the field at all.
+    // AI-use signature flag: only the contest group's staff (owner,
+    // co_instructor, TA), or the problem's author for a submission outside a
+    // contest, get the field at all.
     const signatureFlag = await getSignatureFlagForSubmission(
       submission.id,
       await resolveSignatureFlagViewerScope(user),
