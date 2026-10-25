@@ -8,6 +8,7 @@ import { canAccessSubmission } from "@/lib/auth/permissions";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { sanitizeSubmissionForViewer } from "@/lib/submissions/visibility";
 import { createApiHandler } from "@/lib/api/handler";
+import { getSignatureFlagForSubmission, resolveSignatureFlagViewerScope } from "@/lib/submissions/ai-signature-flags";
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user, params }) => {
@@ -54,6 +55,13 @@ export const GET = createApiHandler({
     const caps = await resolveCapabilities(user.role);
     const sanitized = await sanitizeSubmissionForViewer(submission, user.id, caps);
 
-    return apiSuccess(sanitized);
+    // AI-use signature flag: only managers of the submission's group (or
+    // groups.view_all) get the field at all.
+    const signatureFlag = await getSignatureFlagForSubmission(
+      submission.id,
+      await resolveSignatureFlagViewerScope(user),
+    );
+
+    return apiSuccess(signatureFlag ? { ...sanitized, aiSignatureFlag: signatureFlag } : sanitized);
   },
 });

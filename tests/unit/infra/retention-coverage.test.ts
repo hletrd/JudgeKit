@@ -63,6 +63,7 @@ const NO_RETENTION_ALLOWLIST: Record<string, string> = {
   files: "user/problem assets with explicit delete + bulk-delete management routes",
   passwordResetTokens: "short-lived tokens; consumed/invalidated by the auth flow on use and reissue",
   emailVerificationTokens: "short-lived tokens; consumed/invalidated by the auth flow on use and reissue",
+  submissionSignatureFlags: "per-submission AI-signature flag rows; ON DELETE CASCADE from submissions, so they follow the submission retention prune",
 };
 
 function listSchemaTables(source: string): string[] {

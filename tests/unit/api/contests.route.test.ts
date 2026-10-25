@@ -22,7 +22,9 @@ const {
   recordAuditEventMock,
   resolveCapabilitiesMock,
   getDbNowUncachedMock,
+  getContestSignatureFlagCountsMock,
 } = vi.hoisted(() => ({
+  getContestSignatureFlagCountsMock: vi.fn(),
   getApiUserMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
   consumeUserApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
@@ -89,6 +91,10 @@ vi.mock("@/lib/assignments/leaderboard", () => ({
 
 vi.mock("@/lib/db/queries", () => ({
   rawQueryOne: rawQueryOneMock,
+}));
+
+vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  getContestSignatureFlagCounts: getContestSignatureFlagCountsMock,
 }));
 
 const dbSelectFromWhereMock = vi.fn(() => Promise.resolve([{ id: "problem-1" }]));
@@ -746,6 +752,41 @@ describe("GET /api/v1/contests/[assignmentId]/leaderboard", () => {
     expect(body.data.entries[0].liveRank).toBe(3);
     expect(computeLeaderboardMock).toHaveBeenCalledWith("assign-1", false);
     expect(computeSingleUserLiveRankMock).toHaveBeenCalledWith("assign-1", "student-1");
+  });
+
+  it("returns AI signature flag counts to a contest manager who asks for them", async () => {
+    getContestSignatureFlagCountsMock.mockResolvedValue({ "student-1": { total: 1, problems: { "p-1": 1 } } });
+    const res = await leaderboardGET(
+      new NextRequest("http://localhost:3000/api/v1/contests/assign-1/leaderboard?aiFlags=1", { method: "GET" }),
+      { params: PARAMS() },
+    );
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.aiSignatureFlags).toEqual({ "student-1": { total: 1, problems: { "p-1": 1 } } });
+  });
+
+  it("omits AI signature flags for managers who did not ask (student-facing page)", async () => {
+    const res = await leaderboardGET(makeLeaderboardRequest(), { params: PARAMS() });
+    const body = await res.json();
+    expect(body.data.aiSignatureFlags).toBeUndefined();
+    expect(getContestSignatureFlagCountsMock).not.toHaveBeenCalled();
+  });
+
+  it("never returns AI signature flags to a student, even with aiFlags=1", async () => {
+    getApiUserMock.mockResolvedValue(STUDENT_USER);
+    rawQueryOneMock
+      .mockResolvedValueOnce({ groupId: "g-1", instructorId: "inst-1", examMode: "scheduled", anonymousLeaderboard: 0 })
+      .mockResolvedValueOnce({ one: 1 });
+    getContestSignatureFlagCountsMock.mockResolvedValue({ "student-1": { total: 1, problems: { "p-1": 1 } } });
+    const res = await leaderboardGET(
+      new NextRequest("http://localhost:3000/api/v1/contests/assign-1/leaderboard?aiFlags=1", { method: "GET" }),
+      { params: PARAMS() },
+    );
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.aiSignatureFlags).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("aiSignature");
+    expect(getContestSignatureFlagCountsMock).not.toHaveBeenCalled();
   });
 
   it("returns problems list alongside leaderboard", async () => {

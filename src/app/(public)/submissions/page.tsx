@@ -34,6 +34,8 @@ import { FilterSelect } from "@/components/filter-select";
 import { getEnabledCompilerLanguages } from "@/lib/compiler/catalog";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
+import { getSignatureFlagsForSubmissions, resolveSignatureFlagViewerScope } from "@/lib/submissions/ai-signature-flags";
+import { AiSignatureBadge } from "@/components/submissions/ai-signature-badge";
 
 const PAGE_PATH = "/submissions";
 
@@ -281,6 +283,16 @@ export default async function SubmissionsPage({
       problem: rest.problem,
     }),
   }));
+  // AI-use signature flags: manager-scoped (null scope for students/guests,
+  // which never queries the flag table).
+  const signatureFlagScope = isGuest
+    ? null
+    : await resolveSignatureFlagViewerScope({ id: session!.user.id, role: session!.user.role ?? "user" });
+  const signatureFlags = await getSignatureFlagsForSubmissions(
+    cleanSubmissions.map((sub) => sub.id),
+    signatureFlagScope,
+  );
+
   const rangeStart = cleanSubmissions.length === 0 ? 0 : clampedOffset + 1;
   const rangeEnd = clampedOffset + cleanSubmissions.length;
   const hasActiveSubmissions = cleanSubmissions.some(
@@ -492,15 +504,20 @@ export default async function SubmissionsPage({
                   </TableCell>
                   <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
                   <TableCell>
-                    <SubmissionStatusBadge
-                      label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
-                      status={sub.status}
-                      compileOutput={sub.compileOutput}
-                      executionTimeMs={sub.executionTimeMs}
-                      memoryUsedKb={sub.memoryUsedKb}
-                      score={sub.score}
-                      locale={locale}
-                    />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <SubmissionStatusBadge
+                        label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
+                        status={sub.status}
+                        compileOutput={sub.compileOutput}
+                        executionTimeMs={sub.executionTimeMs}
+                        memoryUsedKb={sub.memoryUsedKb}
+                        score={sub.score}
+                        locale={locale}
+                      />
+                      {signatureFlags.has(sub.id) ? (
+                        <AiSignatureBadge matches={signatureFlags.get(sub.id)!.matches} />
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>{formatScore(sub.score, locale)}</TableCell>
                   <TableCell>
@@ -543,6 +560,9 @@ export default async function SubmissionsPage({
                       score={sub.score}
                       locale={locale}
                     />
+                    {signatureFlags.has(sub.id) ? (
+                      <AiSignatureBadge matches={signatureFlags.get(sub.id)!.matches} compact />
+                    ) : null}
                   </div>
                   <div className="mt-1 text-sm">
                     {sub.problem ? (

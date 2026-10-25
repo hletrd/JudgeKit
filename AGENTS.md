@@ -171,6 +171,15 @@ description text outside the rendered statement (summaries, search, AI
 prompts) must call `stripHiddenNotes()` from `src/lib/problem-hidden-notes.ts`.
 See `docs/api.md` → "Hidden notes in problem descriptions".
 
+Descriptions may also include signature markers, `{{signature: token}}`, which
+are never shown in any form (renderer, copy, meta, search, AI prompts,
+non-manager problem API); `stripHiddenNotes()` strips them too. Submissions
+whose source contains a token as a whole word are flagged in
+`submission_signature_flags` (manager-only: group owner, co_instructor,
+`groups.view_all`). Never select or return flag data outside
+`src/lib/submissions/ai-signature-flags.ts` and its scope helpers. See
+`docs/api.md` → "Signature tokens and AI-use flags".
+
 ## Problem Types & Judging
 
 Each problem has a `problemType` that selects how it is judged:

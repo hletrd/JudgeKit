@@ -13,6 +13,7 @@ import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
 import { getProblemListPath } from "@/lib/navigation/problem-list";
 import { RefreshOnHistoryRestore } from "@/components/refresh-on-history-restore";
+import { getSignatureFlagForSubmission, resolveSignatureFlagViewerScope } from "@/lib/submissions/ai-signature-flags";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("submissions");
@@ -116,6 +117,13 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
   // submission detail UI (`SubmissionDetailClient`). Previously hard-coded to
   // an empty list, which hid the rejudge button from instructors and admins.
   const userCapabilities = [...await resolveCapabilities(session.user.role ?? "user")];
+
+  // AI-use signature flag: manager-only. Students (including the owner) get
+  // a null scope, so nothing about the flag reaches their RSC payload.
+  const signatureFlag = await getSignatureFlagForSubmission(
+    submission.id,
+    await resolveSignatureFlagViewerScope({ id: session.user.id, role: session.user.role ?? "user" }),
+  );
 
   // Fetch the viewer's own other submissions for the same problem. The
   // submission shown here is excluded on purpose: the client merges it back in
@@ -231,6 +239,7 @@ export default async function PublicSubmissionDetailPage({ params, searchParams 
         userId={session.user.id}
         capabilities={userCapabilities}
         problemTimeLimitMs={submission.problem?.timeLimitMs ?? null}
+        {...(signatureFlag ? { aiSignatureMatches: signatureFlag.matches } : {})}
         canViewSource={canViewDetails}
         isOwner={isOwner}
         draftScopeId={

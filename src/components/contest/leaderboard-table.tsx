@@ -18,7 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Trophy } from "lucide-react";
+import { RefreshCw, ShieldAlert, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type LeaderboardProblemResult = {
@@ -57,6 +57,11 @@ type LeaderboardData = {
   startsAt: number | null;
   problems: LeaderboardProblem[];
   entries: LeaderboardEntry[];
+  /**
+   * AI-use signature flag counts per user ({ total, problems: { [problemId]: n } }).
+   * Present only for contest managers that requested them (`aiFlags=1`).
+   */
+  aiSignatureFlags?: Record<string, { total: number; problems: Record<string, number> }>;
 };
 
 interface LeaderboardTableProps {
@@ -64,6 +69,8 @@ interface LeaderboardTableProps {
   refreshInterval?: number;
   currentUserId?: string;
   canViewStudentDetails?: boolean;
+  /** Management leaderboard: request and show AI-use signature flags. */
+  showAiSignatureFlags?: boolean;
 }
 
 function formatIcpcCell(result: LeaderboardProblemResult, contestStartMs: number | null): string {
@@ -175,10 +182,12 @@ function IoiCell({
   score,
   maxPoints,
   locale,
+  marker,
 }: {
   score: number;
   maxPoints: number;
   locale: string | string[];
+  marker?: React.ReactNode;
 }) {
   const ratio = maxPoints > 0 ? Math.min(score / maxPoints, 1) : 0;
   const hue = Math.round(ratio * 120);
@@ -187,6 +196,7 @@ function IoiCell({
     return (
       <TableCell className="text-center text-sm text-muted-foreground transition-all duration-300">
         0
+        {marker}
       </TableCell>
     );
   }
@@ -204,6 +214,7 @@ function IoiCell({
       }
     >
       {formatScore(score, locale)}
+      {marker}
     </TableCell>
   );
 }
@@ -213,6 +224,7 @@ export function LeaderboardTable({
   refreshInterval = 30_000,
   currentUserId,
   canViewStudentDetails,
+  showAiSignatureFlags = false,
 }: LeaderboardTableProps) {
   const t = useTranslations("contests.leaderboard");
   const locale = useLocale();
@@ -241,7 +253,7 @@ export function LeaderboardTable({
 
       try {
         const { ok, data: json } = await apiFetchJson<{ data: LeaderboardData }>(
-          `/api/v1/contests/${assignmentId}/leaderboard`,
+          `/api/v1/contests/${assignmentId}/leaderboard${showAiSignatureFlags ? "?aiFlags=1" : ""}`,
           { signal: controller.signal },
           { data: { entries: [] } as unknown as LeaderboardData }
         );
@@ -268,7 +280,7 @@ export function LeaderboardTable({
         setRefreshing(false);
       }
     },
-    [assignmentId]
+    [assignmentId, showAiSignatureFlags]
   );
 
   useVisibilityPolling(() => { void fetchLeaderboard(true); }, refreshInterval);
@@ -391,6 +403,7 @@ export function LeaderboardTable({
               // muted colors because of zero/untried styling, so mute the
               // name cell too for visual consistency.
               const isInactiveEntry = entry.totalScore === 0;
+              const entryAiFlags = data.aiSignatureFlags?.[entry.userId];
               return (
               <TableRow
                 key={entry.userId || `row-${idx}`}
@@ -452,6 +465,16 @@ export function LeaderboardTable({
                         {t("live")}
                       </Badge>
                     ) : null}
+                    {entryAiFlags && entryAiFlags.total > 0 ? (
+                      <Badge
+                        variant="outline"
+                        data-testid="leaderboard-ai-flag-count"
+                        className="ml-2 gap-1 border-amber-400 bg-amber-50 text-[10px] text-amber-800 dark:border-amber-600 dark:bg-amber-950/40 dark:text-amber-300"
+                      >
+                        <ShieldAlert className="size-3" aria-hidden="true" />
+                        {t("aiSuspectedCount", { count: entryAiFlags.total })}
+                      </Badge>
+                    ) : null}
                   </div>
                   {canViewStudentDetails ? (
                     <Link
@@ -483,6 +506,16 @@ export function LeaderboardTable({
                 )}
                 {data.problems.map((p) => {
                   const result = entryProblemMap.get(p.problemId);
+                  const aiFlagMarker = (entryAiFlags?.problems[p.problemId] ?? 0) > 0 ? (
+                    <span
+                      data-testid="leaderboard-ai-flag-cell"
+                      title={t("aiSuspectedCell")}
+                      aria-label={t("aiSuspectedCell")}
+                      className="ml-1 inline-flex align-middle"
+                    >
+                      <ShieldAlert className="size-3.5 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                    </span>
+                  ) : null;
 
                   // Untried
                   if (!result || result.attempts === 0) {
@@ -492,6 +525,7 @@ export function LeaderboardTable({
                         className="text-center text-sm text-muted-foreground/40 transition-all duration-300"
                       >
                         –
+                        {aiFlagMarker}
                       </TableCell>
                     );
                   }
@@ -514,6 +548,7 @@ export function LeaderboardTable({
                         )}
                       >
                         {formatIcpcCell(result, data.startsAt ?? null)}
+                        {aiFlagMarker}
                       </TableCell>
                     );
                   }
@@ -525,6 +560,7 @@ export function LeaderboardTable({
                       score={result.score}
                       maxPoints={p.points}
                       locale={locale}
+                      marker={aiFlagMarker}
                     />
                   );
                 })}

@@ -25,7 +25,7 @@ import { normalizePage, normalizePageSize, setPaginationParams } from "@/lib/pag
 import { getProblemTierInfo } from "@/lib/problem-tiers";
 import { DifficultyRangeFilter } from "@/components/problem/difficulty-range-filter";
 import { hasCustomDifficultyRange, normalizeDifficultyRange, serializeDifficultyRange } from "@/lib/practice/difficulty-range";
-import { HIDDEN_NOTE_SQL_PATTERN } from "@/lib/problem-hidden-notes";
+import { DESCRIPTION_MARKER_SQL_PATTERN } from "@/lib/problem-hidden-notes";
 import { getPracticeSearchMatchKinds, normalizePracticeSearch, type PracticeSearchMatchKind } from "@/lib/practice/search";
 
 type ProblemProgress = "solved" | "attempted" | "untried";
@@ -171,8 +171,9 @@ export default async function PracticePage({
   const searchFilter = searchQuery
     ? or(
         sql`${problems.title} LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
-        // Hidden notes ({{hidden: ...}}) must not be searchable.
-        sql`regexp_replace(${problems.description}, ${HIDDEN_NOTE_SQL_PATTERN}, '', 'g') LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
+        // Hidden notes ({{hidden: ...}}) and signature markers
+        // ({{signature: ...}}) must not be searchable.
+        sql`regexp_replace(${problems.description}, ${DESCRIPTION_MARKER_SQL_PATTERN}, '', 'g') LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`,
         sql`CAST(${problems.sequenceNumber} AS TEXT) LIKE ${`%${escapeLikePattern(searchQuery)}%`} ESCAPE '\\'`
       )
     : undefined;

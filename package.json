@@ -22,6 +22,7 @@
     "db:studio": "JUDGEKIT_HOST_DATABASE_URL=1 drizzle-kit studio",
     "seed": "JUDGEKIT_HOST_DATABASE_URL=1 tsx scripts/seed.ts",
     "languages:sync": "JUDGEKIT_HOST_DATABASE_URL=1 tsx scripts/sync-language-configs.ts",
+    "signature-flags:recompute": "JUDGEKIT_HOST_DATABASE_URL=1 tsx scripts/recompute-signature-flags.ts",
     "test:integration": "vitest run --config vitest.config.integration.ts",
     "test:component": "vitest run --config vitest.config.component.ts",
     "test:harness": "vitest run --config vitest.config.harness.ts",

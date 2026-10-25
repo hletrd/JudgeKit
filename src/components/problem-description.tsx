@@ -9,6 +9,7 @@ import "katex/dist/katex.min.css";
 import { CopyCodeButton } from "@/components/code/copy-code-button";
 import { getProblemCodeThemeStyle } from "@/lib/code/problem-code-themes";
 import { extractHiddenNotes, rehypeHiddenNotes, stripHiddenNotes } from "@/lib/problem-hidden-notes";
+import { stripSignatureMarkers } from "@/lib/problem-signatures";
 import { sanitizeHtmlWithHiddenNotes } from "@/lib/security/sanitize-html";
 import { cn } from "@/lib/utils";
 
@@ -38,9 +39,12 @@ function getCodeBlockText(children: ReactNode): string {
 
 export function ProblemDescription({
   className,
-  description,
+  description: rawDescription,
   editorTheme,
 }: ProblemDescriptionProps) {
+  // `{{signature: token}}` markers are never rendered in any form (not even
+  // inside code blocks), unlike hidden notes. See src/lib/problem-signatures.ts.
+  const description = stripSignatureMarkers(rawDescription);
   const themeStyle = getProblemCodeThemeStyle(editorTheme);
   // Detect the format on the description without hidden notes so a note's
   // plain-text body cannot flip the renderer mode.

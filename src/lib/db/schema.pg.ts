@@ -779,6 +779,35 @@ export const submissionComments = pgTable(
   ]
 );
 
+/**
+ * AI-use signature matches (src/lib/problem-signatures.ts). One row per
+ * submission whose source contains a `{{signature: token}}` token of its
+ * problem or of another problem in the same contest; no row means "not
+ * flagged". Kept out of the submissions table on purpose: many student-facing
+ * reads select whole submission rows, and this data is manager-only
+ * (src/lib/submissions/ai-signature-flags.ts). Defined in migration
+ * drizzle/pg/0045_submission_signature_flags.sql.
+ */
+export const submissionSignatureFlags = pgTable(
+  "submission_signature_flags",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => nanoid()),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => submissions.id, { onDelete: "cascade" }),
+    /** Matched tokens and the problem that defines each one. */
+    matches: jsonb("matches").$type<{ token: string; problemId: string }[]>().notNull(),
+    computedAt: timestamp("computed_at", { withTimezone: true })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("submission_signature_flags_submission_unique").on(table.submissionId),
+  ]
+);
+
 export const scoreOverrides = pgTable(
   "score_overrides",
   {

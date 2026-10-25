@@ -2,6 +2,7 @@ import { z } from "zod";
 import { trimString } from "@/lib/validators/preprocess";
 import { functionSpecSchema } from "@/lib/judge/function-judging/types";
 import { supportsFunctionJudging } from "@/lib/judge/function-judging/registry";
+import { findInvalidSignatureMarkers } from "@/lib/problem-signatures";
 
 export const problemVisibilityValues = ["public", "private", "hidden"] as const;
 export const problemTypeValues = ["auto", "manual", "function"] as const;
@@ -32,6 +33,15 @@ function validateProblemDescriptionMarkdown(
       message: "descriptionRequired",
     });
     return;
+  }
+
+  // {{signature: token}} takes exactly one token of ASCII letters, digits,
+  // and underscores (src/lib/problem-signatures.ts).
+  if (findInvalidSignatureMarkers(description).length > 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "descriptionSignatureInvalid",
+    });
   }
 
   if (/<\/?[a-z][\s\S]*?>/i.test(description)) {

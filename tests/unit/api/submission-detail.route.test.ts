@@ -6,7 +6,11 @@ const {
   resolveCapabilitiesMock,
   submissionsFindFirstMock,
   assignmentsFindFirstMock,
+  getSignatureFlagForSubmissionMock,
+  resolveSignatureFlagViewerScopeMock,
 } = vi.hoisted(() => ({
+  getSignatureFlagForSubmissionMock: vi.fn(),
+  resolveSignatureFlagViewerScopeMock: vi.fn(),
   canAccessSubmissionMock: vi.fn(),
   resolveCapabilitiesMock: vi.fn(),
   submissionsFindFirstMock: vi.fn(),
@@ -36,6 +40,11 @@ vi.mock("@/lib/capabilities/cache", () => ({
   resolveCapabilities: resolveCapabilitiesMock,
 }));
 
+vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  getSignatureFlagForSubmission: getSignatureFlagForSubmissionMock,
+  resolveSignatureFlagViewerScope: resolveSignatureFlagViewerScopeMock,
+}));
+
 vi.mock("@/lib/db", () => ({
   db: {
     query: {
@@ -60,6 +69,51 @@ describe("GET /api/v1/submissions/[id]", () => {
     vi.clearAllMocks();
     canAccessSubmissionMock.mockResolvedValue(true);
     assignmentsFindFirstMock.mockResolvedValue({ showResultsToCandidate: true, hideScoresFromCandidates: false });
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue(null);
+    // The real helper returns null for a null scope; mirror that contract.
+    getSignatureFlagForSubmissionMock.mockImplementation(async (_id: string, scope: unknown) =>
+      scope ? { matches: [{ token: "sr5j", problemId: "problem-1", problemTitle: "A+B" }] } : null,
+    );
+  });
+
+  it("omits the AI signature flag for a student, even the owner of a flagged submission", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set());
+    submissionsFindFirstMock.mockResolvedValueOnce({
+      id: "sub-1",
+      userId: "student-1",
+      assignmentId: "assignment-1",
+      sourceCode: "int main() { // sr5j\n}",
+      results: [],
+    });
+
+    const { GET } = await import("@/app/api/v1/submissions/[id]/route");
+    const response = await GET(makeRequest(), { params: Promise.resolve({ id: "sub-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.aiSignatureFlag).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("aiSignature");
+  });
+
+  it("includes the AI signature flag for a contest manager", async () => {
+    resolveCapabilitiesMock.mockResolvedValue(new Set(["submissions.view_all", "submissions.view_source"]));
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue({ all: false, groupIds: ["group-1"] });
+    submissionsFindFirstMock.mockResolvedValueOnce({
+      id: "sub-1",
+      userId: "student-2",
+      assignmentId: "assignment-1",
+      sourceCode: "int main() { // sr5j\n}",
+      results: [],
+    });
+
+    const { GET } = await import("@/app/api/v1/submissions/[id]/route");
+    const response = await GET(makeRequest(), { params: Promise.resolve({ id: "sub-1" }) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.aiSignatureFlag).toEqual({
+      matches: [{ token: "sr5j", problemId: "problem-1", problemTitle: "A+B" }],
+    });
   });
 
   it("removes source code and hidden test outputs for non-privileged viewers", async () => {

@@ -5,6 +5,7 @@ import { canManageContest } from "@/lib/assignments/contests";
 import { computeLeaderboard, computeSingleUserLiveRank, getLeaderboardProblems } from "@/lib/assignments/leaderboard";
 import { rawQueryOne } from "@/lib/db/queries";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { getContestSignatureFlagCounts } from "@/lib/submissions/ai-signature-flags";
 
 type AssignmentAccessRow = {
   groupId: string;
@@ -84,6 +85,14 @@ export const GET = createApiHandler({
           }),
         }));
 
+    // AI-use signature flag counts: manager view only, and only when the
+    // management leaderboard asks for them (`aiFlags=1`), so a manager
+    // projecting the student-facing contest page never shows them.
+    const aiSignatureFlags =
+      isInstructorView && req.nextUrl.searchParams.get("aiFlags") === "1"
+        ? await getContestSignatureFlagCounts(assignmentId)
+        : null;
+
     return apiSuccess({
       scoringModel: leaderboard.scoringModel,
       frozen: leaderboard.frozen,
@@ -91,6 +100,7 @@ export const GET = createApiHandler({
       startsAt: leaderboard.startsAt,
       problems,
       entries,
+      ...(aiSignatureFlags ? { aiSignatureFlags } : {}),
     });
   },
 });

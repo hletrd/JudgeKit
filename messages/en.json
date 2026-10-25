@@ -628,7 +628,8 @@
     "noLanguagesFound": "No languages found.",
     "allowAiAssistantRestricted": "AI assistance is forced off in the current platform mode.",
     "draftRecovered": "Recovered your unsubmitted draft from {time}. This is your own saved work — keep editing or clear the editor.",
-    "draftRecoveredNoTime": "Recovered your unsubmitted draft. This is your own saved work — keep editing or clear the editor."
+    "draftRecoveredNoTime": "Recovered your unsubmitted draft. This is your own saved work — keep editing or clear the editor.",
+    "descriptionSignatureInvalid": "A signature marker takes one token of letters, digits, or underscores"
   },
   "problemSets": {
     "title": "Problem Sets",
@@ -830,6 +831,15 @@
     "currentSubmission": "Current",
     "pagination": {
       "showingRange": "Showing {start}-{end}"
+    },
+    "aiSignature": {
+      "badge": "AI suspected",
+      "tooltipTitle": "Matched signatures",
+      "match": "{token} · {problem}",
+      "unknownProblem": "Unknown problem",
+      "filterLabel": "AI suspicion",
+      "filterAll": "All",
+      "filterFlagged": "AI suspected only"
     }
   },
   "groups": {
@@ -2350,7 +2360,9 @@
       "fetchError": "Failed to load data.",
       "retry": "Retry",
       "affiliation": "Affiliation",
-      "timeline": "Timeline"
+      "timeline": "Timeline",
+      "aiSuspectedCell": "AI-suspected submission on this problem",
+      "aiSuspectedCount": "AI suspected: {count}"
     },
     "accessCode": {
       "title": "Access Code",

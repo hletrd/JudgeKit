@@ -8,6 +8,8 @@ import { rawQueryOne, rawQueryAll } from "@/lib/db/queries";
 import { recordAuditEventDurable } from "@/lib/audit/events";
 import { contentDispositionAttachment } from "@/lib/http/content-disposition";
 import { escapeCsvField } from "@/lib/csv/escape-field";
+import { canManageGroupResourcesAsync } from "@/lib/assignments/management";
+import { getContestSignatureFlagCounts } from "@/lib/submissions/ai-signature-flags";
 
 /** Hard cap to prevent OOM on large contests — matches the CSV-01 limit applied to
  *  audit-logs, login-logs, and submissions exports in prior cycles. */
@@ -76,6 +78,12 @@ export const GET = createApiHandler({
     );
     const ipMap = new Map(ipRows.map((r) => [r.userId, r.ips]));
 
+    // AI-use signature flag counts: contest managers only (not TAs with
+    // assignments.view_status, who can otherwise read this export).
+    const aiFlagCounts = (await canManageGroupResourcesAsync(assignment.instructorId, user.id, user.role, assignment.groupId))
+      ? await getContestSignatureFlagCounts(assignmentId)
+      : null;
+
     const exportedEntries = limitedEntries.map((entry) => {
       if (!anonymized) return entry;
       return {
@@ -106,6 +114,7 @@ export const GET = createApiHandler({
           };
         }),
         antiCheatEventCount: cheatCountMap.get(entry.userId) ?? 0,
+        ...(aiFlagCounts ? { aiSuspectedSubmissions: aiFlagCounts[entry.userId]?.total ?? 0 } : {}),
         ipAddresses: anonymized ? "" : (ipMap.get(entry.userId) ?? ""),
       }));
 
@@ -146,6 +155,7 @@ export const GET = createApiHandler({
       ...problems.map((p) => `${p.title} (Score)`),
       ...problems.map((p) => `${p.title} (Attempts)`),
       "Anti-Cheat Events",
+      ...(aiFlagCounts ? ["AI Suspected Submissions"] : []),
       "IP Addresses",
     ];
 
@@ -166,6 +176,7 @@ export const GET = createApiHandler({
           return pr?.attempts ?? 0;
         }),
         cheatCountMap.get(entry.userId) ?? 0,
+        ...(aiFlagCounts ? [aiFlagCounts[entry.userId]?.total ?? 0] : []),
         anonymized ? "" : (ipMap.get(entry.userId) ?? ""),
       ];
       return row;

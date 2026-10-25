@@ -11,6 +11,9 @@ import { mergeTestCasePatchIntoExisting, updateProblemWithTestCases } from "@/li
 import { problemMutationSchema, referenceSolutionSchema } from "@/lib/validators/problem-management";
 import { functionSpecSchema } from "@/lib/judge/function-judging/types";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
+import { extractSignatureTokens, sameSignatureTokens, stripSignatureMarkers } from "@/lib/problem-signatures";
+import { recomputeSignatureFlagsForProblem } from "@/lib/submissions/ai-signature-flags";
+import { logger } from "@/lib/logger";
 
 const problemPatchSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -74,7 +77,12 @@ export const GET = createApiHandler({
       // stub + language list.
       const { referenceSolution: _referenceSolution, ...studentVisible } = problem;
       void _referenceSolution;
-      return apiSuccess(studentVisible);
+      // Signature markers ({{signature: token}}) are manager-only: the token
+      // must never reach a student-facing read in any form.
+      return apiSuccess({
+        ...studentVisible,
+        description: stripSignatureMarkers(studentVisible.description),
+      });
     }
 
     // Only fetch test cases for managers (single additional query instead of re-fetching problem)
@@ -178,6 +186,14 @@ export const PATCH = createApiHandler({
     }
 
     await updateProblemWithTestCases(id, parsedInput.data, user.id);
+
+    // A changed signature-token set re-flags the problem's existing
+    // submissions (and every submission of the contests that include it).
+    if (!sameSignatureTokens(extractSignatureTokens(problem.description), extractSignatureTokens(parsedInput.data.description))) {
+      await recomputeSignatureFlagsForProblem(id).catch((error: unknown) => {
+        logger.error({ err: error, problemId: id }, "[ai-signature] recompute after problem update failed");
+      });
+    }
 
     const updated = await db.query.problems.findFirst({
       where: eq(problems.id, id),

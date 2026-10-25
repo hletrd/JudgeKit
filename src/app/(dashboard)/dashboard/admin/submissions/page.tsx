@@ -36,6 +36,12 @@ import { AdminSubmissionsBulkRejudge } from "./admin-submissions-bulk-rejudge";
 import { AdminSubmissionsBackfill } from "./admin-submissions-backfill";
 import { normalizePage } from "@/lib/pagination";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
+import {
+  getSignatureFlagsForSubmissions,
+  resolveSignatureFlagViewerScope,
+  visibleSignatureFlagFilterSql,
+} from "@/lib/submissions/ai-signature-flags";
+import { AiSignatureBadge } from "@/components/submissions/ai-signature-badge";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("admin.submissions");
@@ -75,7 +81,7 @@ function normalizeDateFilter(value?: string) {
 export default async function AdminSubmissionsPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; group?: string; language?: string; dateFrom?: string; dateTo?: string }>;
+  searchParams?: Promise<{ page?: string; search?: string; sort?: string; dir?: string; status?: string; group?: string; language?: string; dateFrom?: string; dateTo?: string; aiFlag?: string }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
@@ -113,6 +119,10 @@ export default async function AdminSubmissionsPage({
       )
     : undefined;
   const submissionReviewGroupIds = await getSubmissionReviewGroupIds(session.user.id, session.user.role);
+  // AI-use signature flags are manager-only (not TAs/assistants): the filter
+  // and badges appear only for a non-null scope.
+  const signatureFlagScope = await resolveSignatureFlagViewerScope({ id: session.user.id, role: session.user.role });
+  const aiFlagFilter = signatureFlagScope && resolvedSearchParams?.aiFlag === "flagged" ? "flagged" : "all";
 
   const scopedGroupFilter =
     submissionReviewGroupIds !== null
@@ -138,7 +148,8 @@ export default async function AdminSubmissionsPage({
       const toMs = parseDateTimeLocalInput(`${dateTo}T23:59:59`, timeZone);
       return toMs !== null ? lte(submissions.submittedAt, new Date(toMs + 999)) : undefined;
     })(),
-    searchWhereClause
+    searchWhereClause,
+    aiFlagFilter === "flagged" && signatureFlagScope ? visibleSignatureFlagFilterSql(signatureFlagScope) : undefined
   );
 
   const availableLanguages = submissionReviewGroupIds === null
@@ -241,6 +252,11 @@ export default async function AdminSubmissionsPage({
     }),
   }));
 
+  const signatureFlags = await getSignatureFlagsForSubmissions(
+    cleanSubmissions.map((submission) => submission.id),
+    signatureFlagScope,
+  );
+
   const rangeStart = cleanSubmissions.length === 0 ? 0 : clampedOffset + 1;
   const rangeEnd = clampedOffset + cleanSubmissions.length;
   const hasActiveSubmissions = cleanSubmissions.some(
@@ -256,6 +272,7 @@ export default async function AdminSubmissionsPage({
     if (languageFilter) params.set("language", languageFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
+    if (aiFlagFilter !== "all") params.set("aiFlag", aiFlagFilter);
     if (effectiveSort !== "submittedAt") params.set("sort", effectiveSort);
     if (sortDir === "asc") params.set("dir", "asc");
     const qs = params.toString();
@@ -282,6 +299,7 @@ export default async function AdminSubmissionsPage({
     if (languageFilter) params.set("language", languageFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
+    if (aiFlagFilter !== "all") params.set("aiFlag", aiFlagFilter);
     if (column === effectiveSort) {
       params.set("dir", sortDir === "desc" ? "asc" : "desc");
     } else {
@@ -401,6 +419,23 @@ export default async function AdminSubmissionsPage({
                 defaultValue={dateTo}
               />
             </div>
+            {signatureFlagScope ? (
+              <div className="space-y-1.5">
+                <label className="block text-sm font-medium whitespace-nowrap" htmlFor="submissions-ai-flag">
+                  {tSubmissions("aiSignature.filterLabel")}
+                </label>
+                <FilterSelect
+                  id="submissions-ai-flag"
+                  name="aiFlag"
+                  defaultValue={aiFlagFilter}
+                  placeholder={tSubmissions("aiSignature.filterAll")}
+                  options={[
+                    { value: "all", label: tSubmissions("aiSignature.filterAll") },
+                    { value: "flagged", label: tSubmissions("aiSignature.filterFlagged") },
+                  ]}
+                />
+              </div>
+            ) : null}
             <div className="flex gap-2 items-end">
               <Button type="submit">{tCommon("search")}</Button>
               <Link href="/dashboard/admin/submissions">
@@ -480,15 +515,20 @@ export default async function AdminSubmissionsPage({
                   </TableCell>
                   <TableCell>{getLanguageDisplayLabel(sub.language)}</TableCell>
                   <TableCell>
-                    <SubmissionStatusBadge
-                      label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
-                      status={sub.status}
-                      compileOutput={sub.compileOutput}
-                      executionTimeMs={sub.executionTimeMs}
-                      memoryUsedKb={sub.memoryUsedKb}
-                      score={sub.score}
-                      locale={locale}
-                    />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <SubmissionStatusBadge
+                        label={statusLabels[sub.status as keyof typeof statusLabels] ?? sub.status}
+                        status={sub.status}
+                        compileOutput={sub.compileOutput}
+                        executionTimeMs={sub.executionTimeMs}
+                        memoryUsedKb={sub.memoryUsedKb}
+                        score={sub.score}
+                        locale={locale}
+                      />
+                      {signatureFlags.has(sub.id) ? (
+                        <AiSignatureBadge matches={signatureFlags.get(sub.id)!.matches} />
+                      ) : null}
+                    </div>
                   </TableCell>
                   <TableCell>{formatScore(sub.score, locale)}</TableCell>
                   <TableCell>

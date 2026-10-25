@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProblemDescription } from "@/components/problem-description";
 import { parseProblemStatementBlocks } from "@/lib/problem-statement";
+import { stripSignatureMarkers } from "@/lib/problem-signatures";
 import { cn } from "@/lib/utils";
 
 type StructuredProblemStatementProps = {
@@ -14,7 +15,7 @@ export function StructuredProblemStatement({
   description,
   editorTheme,
 }: StructuredProblemStatementProps) {
-  const blocks = parseProblemStatementBlocks(description);
+  const blocks = parseProblemStatementBlocks(stripSignatureMarkers(description));
 
   return (
     <div className={cn("space-y-4", className)}>

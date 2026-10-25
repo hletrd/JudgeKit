@@ -532,7 +532,7 @@ export default async function ContestDetailPage({
 
         {/* Leaderboard Tab */}
         <TabsContent value="leaderboard" className="mt-4">
-          <LeaderboardTable assignmentId={assignmentId} canViewStudentDetails />
+          <LeaderboardTable assignmentId={assignmentId} canViewStudentDetails showAiSignatureFlags={canManage} />
         </TabsContent>
 
         {/* Analytics Tab */}

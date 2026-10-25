@@ -1,4 +1,5 @@
 import type { Element, ElementContent, Properties, Root, RootContent, Text } from "hast";
+import { stripSignatureMarkers } from "@/lib/problem-signatures";
 
 /**
  * Hidden notes in problem descriptions.
@@ -29,6 +30,12 @@ const HIDDEN_NOTE_SOURCE = String.raw`\{\{hidden:((?:(?!\}\})[^\r\n])*)\}\}`;
  */
 export const HIDDEN_NOTE_SQL_PATTERN = String.raw`\{\{hidden:[^\r\n]*?\}\}`;
 
+/**
+ * Hidden notes and signature markers in one PostgreSQL ARE, for search
+ * surfaces that must match neither.
+ */
+export const DESCRIPTION_MARKER_SQL_PATTERN = String.raw`\{\{(?:hidden|signature):[^\r\n]*?\}\}`;
+
 const PLACEHOLDER_START = "\uE000";
 const PLACEHOLDER_END = "\uE001";
 const PLACEHOLDER_CHARS_PATTERN = /[\uE000\uE001]/g;
@@ -44,14 +51,23 @@ export function hasHiddenNotes(text: string | null | undefined): boolean {
   return typeof text === "string" && text.includes("{{hidden:") && hiddenNotePattern().test(text);
 }
 
-/** Remove every hidden note marker (and its text) from `text`. */
+/**
+ * Remove every hidden note marker (and its text) from `text`. Signature
+ * markers (`{{signature: token}}`, src/lib/problem-signatures.ts) are removed
+ * as well, first, so every surface that already strips hidden notes never
+ * shows a signature token either.
+ */
 export function stripHiddenNotes(text: string): string;
 export function stripHiddenNotes(text: string | null | undefined): string | null | undefined;
 export function stripHiddenNotes(text: string | null | undefined) {
-  if (typeof text !== "string" || !text.includes("{{hidden:")) {
+  if (typeof text !== "string") {
     return text;
   }
-  return text.replace(hiddenNotePattern(), "");
+  const withoutSignatures = stripSignatureMarkers(text);
+  if (!withoutSignatures.includes("{{hidden:")) {
+    return withoutSignatures;
+  }
+  return withoutSignatures.replace(hiddenNotePattern(), "");
 }
 
 export type HiddenNote = {

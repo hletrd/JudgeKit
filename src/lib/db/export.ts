@@ -258,6 +258,7 @@ export const TABLE_ORDER: { name: string; table: PgTable; orderColumns: string[]
   // Level 5: FK to level 0-4
   { name: "submissionResults", table: schema.submissionResults, orderColumns: ["id"] },
   { name: "submissionComments", table: schema.submissionComments, orderColumns: ["id"] },
+  { name: "submissionSignatureFlags", table: schema.submissionSignatureFlags, orderColumns: ["id"] },
 ];
 
 /** Returns the ordered table names for import/export */

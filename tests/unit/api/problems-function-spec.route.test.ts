@@ -19,7 +19,9 @@ const {
   resolveCapabilitiesMock,
   canAccessProblemMock,
   canManageProblemMock,
+  recomputeSignatureFlagsForProblemMock,
 } = vi.hoisted(() => ({
+  recomputeSignatureFlagsForProblemMock: vi.fn(),
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn<() => NextResponse | null>(() => null),
   consumeApiRateLimitMock: vi.fn<() => NextResponse | null>(() => null),
@@ -102,6 +104,10 @@ vi.mock("@/lib/db", () => ({
     select: dbSelectMock,
   },
   execTransaction: vi.fn(),
+}));
+
+vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  recomputeSignatureFlagsForProblem: recomputeSignatureFlagsForProblemMock,
 }));
 
 // Import handlers AFTER all mocks are set up
@@ -198,6 +204,7 @@ beforeEach(() => {
   canAccessProblemMock.mockResolvedValue(true);
   canManageProblemMock.mockResolvedValue(true);
   testCasesFindManyMock.mockResolvedValue([]);
+  recomputeSignatureFlagsForProblemMock.mockResolvedValue({ scanned: 0, flagged: 0 });
   submissionsFindFirstMock.mockResolvedValue(null);
   problemsFindFirstMock.mockResolvedValue({
     id: "prob-1",
@@ -348,6 +355,35 @@ describe("PATCH /api/v1/problems/[id] — function spec", () => {
     expect(arg.referenceSolution).toMatchObject({ language: "python" });
   });
 
+  it("recomputes AI signature flags when the signature tokens change", async () => {
+    const res = await PATCH(
+      makePatchRequest("prob-1", {
+        description: VALID_DESCRIPTION.replace("two integers.", "two integers.{{signature: sr5j}}"),
+      }),
+      routeCtx("prob-1")
+    );
+    expect(res.status).toBe(200);
+    expect(recomputeSignatureFlagsForProblemMock).toHaveBeenCalledWith("prob-1");
+  });
+
+  it("does not recompute AI signature flags when the tokens are unchanged", async () => {
+    const res = await PATCH(makePatchRequest("prob-1", { title: "Renamed" }), routeCtx("prob-1"));
+    expect(res.status).toBe(200);
+    expect(recomputeSignatureFlagsForProblemMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed signature marker", async () => {
+    const res = await PATCH(
+      makePatchRequest("prob-1", {
+        description: VALID_DESCRIPTION.replace("two integers.", "two integers.{{signature: sr-5j}}"),
+      }),
+      routeCtx("prob-1")
+    );
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("descriptionSignatureInvalid");
+    expect(updateProblemWithTestCasesMock).not.toHaveBeenCalled();
+  });
+
   it("returns 400 when switching to function type without a spec", async () => {
     const res = await PATCH(
       makePatchRequest("prob-1", { problemType: "function" }),
@@ -390,6 +426,27 @@ describe("GET /api/v1/problems/[id] — referenceSolution hiding", () => {
     // Non-managers must not receive hidden test cases either.
     expect(body.data.testCases).toBeUndefined();
     expect(testCasesFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it("removes signature markers (but keeps hidden notes) from a non-manager read", async () => {
+    getApiUserMock.mockResolvedValue(STUDENT_USER);
+    resolveCapabilitiesMock.mockResolvedValue({ has: () => false });
+    canAccessProblemMock.mockResolvedValue(true);
+    canManageProblemMock.mockResolvedValue(false);
+    problemsFindFirstMock
+      .mockResolvedValueOnce({ id: "prob-1", authorId: "author-9", visibility: "public" })
+      .mockResolvedValueOnce({
+        id: "prob-1",
+        title: "Sum",
+        description: "합{{hidden: 주석 // sr5j}}{{signature: sr5j}} 끝",
+        problemType: "auto",
+        visibility: "public",
+      });
+
+    const res = await GET(makeGetRequest("prob-1"), routeCtx("prob-1"));
+    const body = await res.json();
+    expect(body.data.description).toBe("합{{hidden: 주석 // sr5j}} 끝");
+    expect(JSON.stringify(body)).not.toContain("signature");
   });
 
   it("strips referenceSolution + hidden testCases from a problems.edit holder outside the teaching group", async () => {

@@ -27,6 +27,7 @@ import { LiveSubmissionStatus } from "./_components/live-submission-status";
 import { getSourceDraftStorageKey } from "@/hooks/use-source-draft";
 import { ProblemSubmissionHistory } from "./_components/problem-submission-history";
 import { withCurrentSubmission, type ProblemSubmissionHistoryRow } from "@/lib/submissions/problem-history";
+import { AiSignatureBadge, type AiSignatureBadgeMatch } from "./ai-signature-badge";
 
 type SubmissionDetailClientProps = {
   showCompileOutput: boolean;
@@ -59,6 +60,8 @@ type SubmissionDetailClientProps = {
    * localStorage draft, and contest editors only read their own scoped key.
    */
   draftScopeId?: string | null;
+  /** AI-use signature matches; passed only to managers (manager-scoped data). */
+  aiSignatureMatches?: AiSignatureBadgeMatch[];
 };
 
 export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
@@ -317,6 +320,9 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
                 timeLimitMs={props.problemTimeLimitMs ?? null}
                 locale={locale}
               />
+              {props.aiSignatureMatches && props.aiSignatureMatches.length > 0 ? (
+                <AiSignatureBadge matches={props.aiSignatureMatches} />
+              ) : null}
             </div>
           </div>
 

@@ -28,6 +28,25 @@ import { apiError, apiPaginated, apiSuccess } from "@/lib/api/responses";
 import { createApiHandler } from "@/lib/api/handler";
 import { resolveCapabilities } from "@/lib/capabilities/cache";
 import { getDbNowUncached } from "@/lib/db-time";
+import {
+  computeAndStoreSignatureFlag,
+  getSignatureFlagsForSubmissions,
+  resolveSignatureFlagViewerScope,
+  visibleSignatureFlagFilterSql,
+  type SignatureFlagView,
+} from "@/lib/submissions/ai-signature-flags";
+
+/**
+ * Attach `aiSignatureFlag` to rows whose flag the viewer may see (managers
+ * only); other rows, and every row for students, are returned unchanged.
+ */
+function withSignatureFlags<T extends { id: string }>(rows: T[], flags: Map<string, SignatureFlagView>) {
+  if (flags.size === 0) return rows;
+  return rows.map((row) => {
+    const flag = flags.get(row.id);
+    return flag ? { ...row, aiSignatureFlag: flag } : row;
+  });
+}
 
 export const GET = createApiHandler({
   handler: async (req: NextRequest, { user }) => {
@@ -38,6 +57,14 @@ export const GET = createApiHandler({
     const assignmentId = searchParams.get("assignmentId");
     const includeSummary = searchParams.get("includeSummary") === "1";
     const caps = await resolveCapabilities(user.role);
+    // AI-use signature flags are manager-only. `aiFlagged=1` filters to
+    // flagged submissions the viewer may see; for everyone else it is ignored
+    // (a student must not learn whether their own submission is flagged).
+    const signatureFlagScope = await resolveSignatureFlagViewerScope(user);
+    const aiFlagFilter =
+      signatureFlagScope && searchParams.get("aiFlagged") === "1"
+        ? visibleSignatureFlagFilterSql(signatureFlagScope)
+        : undefined;
 
     if (status && !isSubmissionStatus(status)) {
       return apiError("invalidSubmissionStatus", 400);
@@ -100,7 +127,7 @@ export const GET = createApiHandler({
         }
       }
 
-      const filters = [userFilter, problemFilter, statusFilter, assignmentFilter, cursorFilter].flatMap((f) =>
+      const filters = [userFilter, problemFilter, statusFilter, assignmentFilter, aiFlagFilter, cursorFilter].flatMap((f) =>
         f ? [f] : []
       );
       const whereClause =
@@ -135,7 +162,8 @@ export const GET = createApiHandler({
         ? Buffer.from(JSON.stringify({ id: lastResult.id, t: lastResult.submittedAt.toISOString() }), "utf-8").toString("base64")
         : undefined;
 
-      return apiSuccess({ data: pageResults, nextCursor: nextCursor ?? null });
+      const pageFlags = await getSignatureFlagsForSubmissions(pageResults.map((row) => row.id), signatureFlagScope);
+      return apiSuccess({ data: withSignatureFlags(pageResults, pageFlags), nextCursor: nextCursor ?? null });
     }
 
     // Offset-based pagination mode (default, backward compatible)
@@ -143,7 +171,7 @@ export const GET = createApiHandler({
     // count/data inconsistency under concurrent writes.
     const { page, limit, offset } = parsePagination(searchParams);
 
-    const filters = [userFilter, problemFilter, statusFilter, assignmentFilter].flatMap((filter) =>
+    const filters = [userFilter, problemFilter, statusFilter, assignmentFilter, aiFlagFilter].flatMap((filter) =>
       filter ? [filter] : []
     );
     const whereClause =
@@ -176,7 +204,10 @@ export const GET = createApiHandler({
 
     const total = results.length > 0 ? Number(results[0]._total) : 0;
     // Strip the internal _total field from the response
-    const cleanResults = results.map(({ _total, ...rest }) => rest);
+    const cleanResults = withSignatureFlags(
+      results.map(({ _total, ...rest }) => rest),
+      await getSignatureFlagsForSubmissions(results.map((row) => row.id), signatureFlagScope),
+    );
 
     if (includeSummary) {
       const grouped = await db
@@ -449,6 +480,20 @@ export const POST = createApiHandler({
         headers: { "Retry-After": txResult.retryAfter },
       });
     }
+
+    // AI-use signature flag (manager-only, src/lib/problem-signatures.ts).
+    // Fail open: a flagging error must never block the submission.
+    await computeAndStoreSignatureFlag({
+      id,
+      problemId,
+      assignmentId: normalizedAssignmentId,
+      sourceCode,
+    }).catch((error: unknown) => {
+      logger.warn(
+        { err: error, submissionId: id, problemId, assignmentId: normalizedAssignmentId },
+        "[ai-signature] failed to compute submission flag",
+      );
+    });
 
     // The submission is now ACCEPTED — record the stale-heartbeat escalate
     // flag if the freshness probe missed (RPF cycle-5 AGG5-1). The flag row

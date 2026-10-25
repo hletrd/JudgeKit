@@ -15,6 +15,8 @@ import { formatSubmissionIdPrefix } from "@/lib/submissions/format";
 import { buildStatusLabels } from "@/lib/judge/status-labels";
 import { getLanguageDisplayLabel } from "@/lib/judge/languages";
 import { mapFunctionCompileOutputForDisplay } from "@/lib/submissions/visibility";
+import { getSignatureFlagsForSubmissions, resolveSignatureFlagViewerScope } from "@/lib/submissions/ai-signature-flags";
+import { AiSignatureBadge } from "@/components/submissions/ai-signature-badge";
 import { SubmissionStatusBadge } from "@/components/submission-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -105,6 +107,12 @@ export default async function ContestParticipantSubmissionsPage({
 
   const statusLabels: Record<string, string> = buildStatusLabels(tSubmissions);
 
+  // Manager-only: a student viewing their own list gets a null scope.
+  const signatureFlags = await getSignatureFlagsForSubmissions(
+    visibleRows.map((row) => row.id),
+    await resolveSignatureFlagViewerScope({ id: session.user.id, role: session.user.role }),
+  );
+
   return (
     <div className="space-y-6">
       <BackLink
@@ -170,19 +178,24 @@ export default async function ContestParticipantSubmissionsPage({
                         )}
                       </TableCell>
                       <TableCell>
-                        {sub.status ? (
-                          <SubmissionStatusBadge
-                            status={sub.status}
-                            label={statusLabels[sub.status] ?? sub.status}
-                            compileOutput={sub.compileOutput}
-                            executionTimeMs={sub.executionTimeMs}
-                            memoryUsedKb={sub.memoryUsedKb}
-                            score={sub.score}
-                            locale={locale}
-                          />
-                        ) : (
-                          <Badge variant="outline">-</Badge>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {sub.status ? (
+                            <SubmissionStatusBadge
+                              status={sub.status}
+                              label={statusLabels[sub.status] ?? sub.status}
+                              compileOutput={sub.compileOutput}
+                              executionTimeMs={sub.executionTimeMs}
+                              memoryUsedKb={sub.memoryUsedKb}
+                              score={sub.score}
+                              locale={locale}
+                            />
+                          ) : (
+                            <Badge variant="outline">-</Badge>
+                          )}
+                          {signatureFlags.has(sub.id) ? (
+                            <AiSignatureBadge matches={signatureFlags.get(sub.id)!.matches} />
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>
                         {formatScore(sub.score, locale)}

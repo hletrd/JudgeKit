@@ -9,7 +9,11 @@ const {
   rawQueryAllMock,
   recordAuditEventMock,
   recordAuditEventDurableMock,
+  canManageGroupResourcesAsyncMock,
+  getContestSignatureFlagCountsMock,
 } = vi.hoisted(() => ({
+  canManageGroupResourcesAsyncMock: vi.fn(),
+  getContestSignatureFlagCountsMock: vi.fn(),
   canViewAssignmentSubmissionsMock: vi.fn(),
   computeContestRankingMock: vi.fn(),
   getLeaderboardProblemsMock: vi.fn(),
@@ -51,6 +55,14 @@ vi.mock("@/lib/db/queries", () => ({
   rawQueryAll: rawQueryAllMock,
 }));
 
+vi.mock("@/lib/assignments/management", () => ({
+  canManageGroupResourcesAsync: canManageGroupResourcesAsyncMock,
+}));
+
+vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  getContestSignatureFlagCounts: getContestSignatureFlagCountsMock,
+}));
+
 vi.mock("@/lib/audit/events", () => ({
   recordAuditEvent: recordAuditEventMock,
   recordAuditEventDurable: recordAuditEventDurableMock,
@@ -67,6 +79,10 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
       scoringModel: "ioi",
     });
     canViewAssignmentSubmissionsMock.mockResolvedValue(true);
+    canManageGroupResourcesAsyncMock.mockResolvedValue(false);
+    getContestSignatureFlagCountsMock.mockResolvedValue({
+      "user-1": { total: 3, problems: { "p-1": 2, "p-2": 1 } },
+    });
     getLeaderboardProblemsMock.mockResolvedValue([
       { problemId: "p-1", title: "A + B" },
       { problemId: "p-2", title: "Prefix Sum" },
@@ -178,5 +194,33 @@ describe("GET /api/v1/contests/[assignmentId]/export", () => {
         details: expect.objectContaining({ anonymized: true }),
       })
     );
+  });
+
+  it("adds the AI-suspected column only for contest managers", async () => {
+    const { GET } = await import("@/app/api/v1/contests/[assignmentId]/export/route");
+
+    // A viewer who can read the export but not manage the contest (e.g. a TA)
+    // never gets the column, and the flag table is never read for them.
+    const taResponse = await GET(
+      new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=csv"),
+      { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
+    );
+    const taCsv = await taResponse.text();
+    expect(taCsv).not.toContain("AI Suspected Submissions");
+    expect(getContestSignatureFlagCountsMock).not.toHaveBeenCalled();
+
+    rawQueryAllMock
+      .mockResolvedValueOnce([{ userId: "user-1", count: 2 }])
+      .mockResolvedValueOnce([{ userId: "user-1", ips: "10.0.0.1" }]);
+    canManageGroupResourcesAsyncMock.mockResolvedValue(true);
+    const managerResponse = await GET(
+      new NextRequest("http://localhost/api/v1/contests/assignment-1/export?format=csv"),
+      { params: Promise.resolve({ assignmentId: "assignment-1" }) } as never
+    );
+    const [header, row] = (await managerResponse.text()).replace(/^\uFEFF/, "").split("\r\n");
+    const columns = header.split(",");
+    const index = columns.indexOf("AI Suspected Submissions");
+    expect(index).toBeGreaterThan(-1);
+    expect(row.split(",")[index]).toBe("3");
   });
 });

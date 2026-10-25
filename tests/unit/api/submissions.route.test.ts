@@ -13,7 +13,15 @@ const {
   canAccessProblemMock,
   generateSubmissionIdMock,
   resolveCapabilitiesMock,
+  computeAndStoreSignatureFlagMock,
+  getSignatureFlagsForSubmissionsMock,
+  resolveSignatureFlagViewerScopeMock,
+  visibleSignatureFlagFilterSqlMock,
 } = vi.hoisted(() => ({
+  computeAndStoreSignatureFlagMock: vi.fn(),
+  getSignatureFlagsForSubmissionsMock: vi.fn(),
+  resolveSignatureFlagViewerScopeMock: vi.fn(),
+  visibleSignatureFlagFilterSqlMock: vi.fn(),
   getApiUserMock: vi.fn(),
   csrfForbiddenMock: vi.fn(),
   consumeApiRateLimitMock: vi.fn(),
@@ -50,6 +58,20 @@ vi.mock("@/lib/assignments/submissions", () => ({
 vi.mock("@/lib/auth/permissions", () => ({
   canAccessProblem: canAccessProblemMock,
 }));
+
+vi.mock("@/lib/submissions/ai-signature-flags", () => ({
+  computeAndStoreSignatureFlag: computeAndStoreSignatureFlagMock,
+  getSignatureFlagsForSubmissions: getSignatureFlagsForSubmissionsMock,
+  resolveSignatureFlagViewerScope: resolveSignatureFlagViewerScopeMock,
+  visibleSignatureFlagFilterSql: visibleSignatureFlagFilterSqlMock,
+}));
+
+function resetSignatureFlagMocks() {
+  computeAndStoreSignatureFlagMock.mockResolvedValue([]);
+  getSignatureFlagsForSubmissionsMock.mockResolvedValue(new Map());
+  resolveSignatureFlagViewerScopeMock.mockResolvedValue(null);
+  visibleSignatureFlagFilterSqlMock.mockReturnValue({ __aiFlagFilter: true });
+}
 
 vi.mock("@/lib/submissions/id", () => ({
   generateSubmissionId: generateSubmissionIdMock,
@@ -152,6 +174,7 @@ const VALID_BODY = {
 describe("POST /api/v1/submissions", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetSignatureFlagMocks();
 
     resolveCapabilitiesMock.mockImplementation(async (role: string) => {
       const { DEFAULT_ROLE_CAPABILITIES } = await import("@/lib/capabilities/defaults");
@@ -219,6 +242,30 @@ describe("POST /api/v1/submissions", () => {
       status: "pending",
     });
     expect(recordAuditEventMock).toHaveBeenCalledOnce();
+  });
+
+  it("computes the AI signature flag for the accepted submission", async () => {
+    const { POST } = await import("@/app/api/v1/submissions/route");
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(201);
+    expect(computeAndStoreSignatureFlagMock).toHaveBeenCalledWith({
+      id: "submission-abc123",
+      problemId: "problem-1",
+      assignmentId: null,
+      sourceCode: 'print("hello")',
+    });
+    // The create response never carries flag data, even when flagged.
+    const payload = await response.json();
+    expect(JSON.stringify(payload)).not.toContain("aiSignature");
+  });
+
+  it("never blocks the submission when computing the signature flag fails", async () => {
+    computeAndStoreSignatureFlagMock.mockRejectedValue(new Error("db down"));
+    const { POST } = await import("@/app/api/v1/submissions/route");
+    const response = await POST(makeRequest(VALID_BODY), { params: Promise.resolve({}) });
+
+    expect(response.status).toBe(201);
   });
 
   it("snapshots the author's sharing preference into sharedWithCommunity", async () => {
@@ -898,6 +945,7 @@ describe("POST /api/v1/submissions", () => {
 describe("GET /api/v1/submissions", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetSignatureFlagMocks();
 
     resolveCapabilitiesMock.mockImplementation(async (role: string) => {
       const { DEFAULT_ROLE_CAPABILITIES } = await import("@/lib/capabilities/defaults");
@@ -991,5 +1039,35 @@ describe("GET /api/v1/submissions", () => {
     expect(response.status).toBe(200);
     // The code now uses db.select() — verify the select was called
     expect(dbSelectMock).toHaveBeenCalled();
+  });
+
+  it("never exposes AI signature flags to a student and ignores aiFlagged=1", async () => {
+    // Even if the flag table had a row, a null scope yields nothing.
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue(null);
+    const { GET } = await import("@/app/api/v1/submissions/route");
+    const response = await GET(makeGetRequest("?aiFlagged=1"), { params: Promise.resolve({}) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(visibleSignatureFlagFilterSqlMock).not.toHaveBeenCalled();
+    expect(getSignatureFlagsForSubmissionsMock).toHaveBeenCalledWith(["submission-1"], null);
+    expect(JSON.stringify(body)).not.toContain("aiSignatureFlag");
+  });
+
+  it("attaches visible AI signature flags and applies aiFlagged=1 for managers", async () => {
+    const scope = { all: true };
+    resolveSignatureFlagViewerScopeMock.mockResolvedValue(scope);
+    getSignatureFlagsForSubmissionsMock.mockResolvedValue(
+      new Map([["submission-1", { matches: [{ token: "sr5j", problemId: "problem-1", problemTitle: "A+B" }] }]]),
+    );
+    const { GET } = await import("@/app/api/v1/submissions/route");
+    const response = await GET(makeGetRequest("?aiFlagged=1"), { params: Promise.resolve({}) });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(visibleSignatureFlagFilterSqlMock).toHaveBeenCalledWith(scope);
+    expect(body.data[0].aiSignatureFlag).toEqual({
+      matches: [{ token: "sr5j", problemId: "problem-1", problemTitle: "A+B" }],
+    });
   });
 });
