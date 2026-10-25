@@ -4,6 +4,7 @@ import { problems, submissions, submissionResults, assignments } from "@/lib/db/
 import { canAccessProblem, canAccessGroup } from "@/lib/auth/permissions";
 import { canViewAssignmentSubmissions } from "@/lib/assignments/submissions";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
+import { stripHiddenNotes } from "@/lib/problem-hidden-notes";
 
 export interface ToolDefinition {
   name: string;
@@ -114,7 +115,7 @@ async function handleGetProblemDescription(context: AgentContext): Promise<strin
 
   return JSON.stringify({
     title: problem.title,
-    description: problem.description || "(No description)",
+    description: stripHiddenNotes(problem.description) || "(No description)",
     timeLimitMs: problem.timeLimitMs,
     memoryLimitMb: problem.memoryLimitMb,
   });

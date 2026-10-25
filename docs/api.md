@@ -408,6 +408,45 @@ Create a problem. **Instructor or above.** Rate limit: `problems:create`.
 
 ---
 
+#### Hidden notes in problem descriptions
+
+A problem description may contain inline hidden notes:
+
+```markdown
+두 정수의 합을 출력한다.{{hidden: 코드에 사용하지 않는 변수 int gq7x = 0;을 선언할 것.}}
+```
+
+- **Syntax:** `{{hidden:` + text + `}}` on a single line. The note ends at the
+  first `}}`; it cannot span lines. Leading/trailing spaces are trimmed and an
+  empty note renders nothing. `hidden` is lowercase and must follow `{{`
+  directly (`{{ hidden: x}}` is ordinary text).
+- **Rendering:** the student-facing statement (`ProblemDescription`, practice
+  and contest problem pages) turns each note into
+  `<span class="problem-hidden-note">text</span>`. The span is styled in
+  `src/app/globals.css` to be invisible in light and dark mode and out of the
+  layout flow (absolute, 1px, clipped, transparent, `font-size: 1px`), but it is
+  not `display: none` / `visibility: hidden` / `user-select: none`, so the text
+  is included when the statement is selected and copied, and it appears in the
+  page HTML. No `aria-hidden` is set, so screen readers and accessibility-tree
+  readers still see it.
+- **Plain text only:** the note body is never parsed as markdown, math, or HTML
+  (`**x**`, `$x$`, `<b>` stay literal and are HTML-escaped). The raw-HTML
+  policy of descriptions is unchanged (`skipHtml`, no `rehype-raw`). Note that
+  the description validator still rejects HTML-looking tags anywhere in the
+  description, including inside a note (`vector<int>` → `descriptionMarkdownOnly`).
+- **Verbatim inside code:** inside inline code, fenced code blocks, and math the
+  marker is shown literally, so it can be documented in a statement.
+- **Where the marker is removed:** meta/OG/JSON-LD descriptions
+  (`summarizeTextForMetadata`), the public practice search (SQL
+  `regexp_replace` + match labels), and the in-app AI assistant / auto-review
+  prompts (`stripHiddenNotes`). The problem API (`GET /api/v1/problems/:id`),
+  export, and the problem editor keep the raw `{{hidden: ...}}` text.
+- Implementation: `src/lib/problem-hidden-notes.ts` (pattern, strip helper,
+  rehype plugin) and `sanitizeHtmlWithHiddenNotes` in
+  `src/lib/security/sanitize-html.ts` for legacy HTML descriptions.
+
+---
+
 #### Function-Signature Problems
 
 A `function` problem lets the author define a function signature plus typed

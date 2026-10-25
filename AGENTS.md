@@ -165,6 +165,12 @@ After syncing, the judge worker reads `dockerImage`, `compileCommand`, and `runC
 
 See `.context/development/problem-descriptions.md` for full specification.
 
+Descriptions may include inline hidden notes, `{{hidden: text}}`, rendered as an
+invisible but copyable `span.problem-hidden-note`. Any new surface that shows
+description text outside the rendered statement (summaries, search, AI
+prompts) must call `stripHiddenNotes()` from `src/lib/problem-hidden-notes.ts`.
+See `docs/api.md` → "Hidden notes in problem descriptions".
+
 ## Problem Types & Judging
 
 Each problem has a `problemType` that selects how it is judged:

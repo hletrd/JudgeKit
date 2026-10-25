@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DEFAULT_LOCALE, SUPPORTED_LOCALES, type SupportedLocale } from "@/lib/i18n/constants";
 import { buildLocalePath, normalizeMetadataPath, normalizeSupportedLocale } from "@/lib/locale-paths";
 import { getAuthUrlObject } from "@/lib/security/env";
+import { stripHiddenNotes } from "@/lib/problem-hidden-notes";
 
 export { buildLocalePath, buildLocalizedHref, normalizeMetadataPath, normalizeSupportedLocale } from "@/lib/locale-paths";
 
@@ -40,7 +41,7 @@ export function summarizeTextForMetadata(text: string | null | undefined, maxLen
     return "";
   }
 
-  const normalized = text
+  const normalized = stripHiddenNotes(text)
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/<[^>]+>/g, " ")
@@ -64,7 +65,7 @@ function summarizeShortLabelForMetadata(text: string | null | undefined, maxLeng
     return "";
   }
 
-  const normalized = text
+  const normalized = stripHiddenNotes(text)
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
     .replace(/<[^>]+>/g, " ")

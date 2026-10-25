@@ -1,3 +1,5 @@
+import { stripHiddenNotes } from "@/lib/problem-hidden-notes";
+
 export type PracticeSearchMatchKind = "number" | "title" | "content";
 
 export function normalizePracticeSearch(value?: string) {
@@ -23,7 +25,7 @@ export function getPracticeSearchMatchKinds(
 
   const matches: PracticeSearchMatchKind[] = [];
   const normalizedTitle = problem.title.toLocaleLowerCase();
-  const normalizedDescription = (problem.description ?? "").toLocaleLowerCase();
+  const normalizedDescription = stripHiddenNotes(problem.description ?? "").toLocaleLowerCase();
   const normalizedSequenceNumber = problem.sequenceNumber != null ? String(problem.sequenceNumber) : "";
 
   if (normalizedSequenceNumber.includes(normalizedQuery)) {

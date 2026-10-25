@@ -8,7 +8,8 @@ import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { CopyCodeButton } from "@/components/code/copy-code-button";
 import { getProblemCodeThemeStyle } from "@/lib/code/problem-code-themes";
-import { sanitizeHtml } from "@/lib/security/sanitize-html";
+import { extractHiddenNotes, rehypeHiddenNotes, stripHiddenNotes } from "@/lib/problem-hidden-notes";
+import { sanitizeHtmlWithHiddenNotes } from "@/lib/security/sanitize-html";
 import { cn } from "@/lib/utils";
 
 type ProblemDescriptionProps = {
@@ -41,7 +42,10 @@ export function ProblemDescription({
   editorTheme,
 }: ProblemDescriptionProps) {
   const themeStyle = getProblemCodeThemeStyle(editorTheme);
-  const hasHtmlTags = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(description);
+  // Detect the format on the description without hidden notes so a note's
+  // plain-text body cannot flip the renderer mode.
+  const formatProbe = stripHiddenNotes(description);
+  const hasHtmlTags = /<(p|h[1-6]|pre|ul|ol|li|table|blockquote|img|div|br|hr)\b/i.test(formatProbe);
   // Markdown markers: ATX headings, setext headings, fenced code, bold/italic
   // pairs, dollar-delimited math, list bullets at line start. Their presence
   // means the document is markdown (possibly with embedded HTML), so we must
@@ -50,13 +54,13 @@ export function ProblemDescription({
   // markdown/TeX rendering and leaves users seeing literal `$N$`, `### Title`,
   // etc. (cycle 8).
   const hasMarkdownStructure =
-    /^#{1,6}\s+\S/m.test(description)
-    || /^[-*+]\s+\S/m.test(description)
-    || /^[ \t]{0,3}>\s+\S/m.test(description)
-    || /^[ \t]*```/m.test(description)
-    || /\*\*[^*\n]+\*\*/.test(description)
-    || /(?<![\\$])\$[^$\n]+\$/.test(description)
-    || /\$\$[\s\S]+?\$\$/.test(description);
+    /^#{1,6}\s+\S/m.test(formatProbe)
+    || /^[-*+]\s+\S/m.test(formatProbe)
+    || /^[ \t]{0,3}>\s+\S/m.test(formatProbe)
+    || /^[ \t]*```/m.test(formatProbe)
+    || /\*\*[^*\n]+\*\*/.test(formatProbe)
+    || /(?<![\\$])\$[^$\n]+\$/.test(formatProbe)
+    || /\$\$[\s\S]+?\$\$/.test(formatProbe);
   const looksLikeLegacyHtml = hasHtmlTags && !hasMarkdownStructure;
 
   if (looksLikeLegacyHtml) {
@@ -64,15 +68,21 @@ export function ProblemDescription({
       <div
         className={cn("problem-description", className)}
         style={themeStyle}
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(description) }}
+        dangerouslySetInnerHTML={{ __html: sanitizeHtmlWithHiddenNotes(description) }}
       />
     );
   }
+
+  // `{{hidden: ...}}` notes are swapped for placeholder tokens before markdown
+  // parsing (so their body is never parsed as markdown/math/HTML) and turned
+  // into invisible `span.problem-hidden-note` elements by rehypeHiddenNotes.
+  const { source: markdownSource, notes: hiddenNotes } = extractHiddenNotes(description);
 
   return (
     <div className={cn("problem-description", className)} style={themeStyle}>
       <ReactMarkdown
         rehypePlugins={[
+          [rehypeHiddenNotes, { notes: hiddenNotes }],
           rehypeHighlight,
           // strict: throw on unrecognised macros / commands so a malicious
           // problem statement cannot smuggle nested constructs that DoS the
@@ -112,7 +122,7 @@ export function ProblemDescription({
           },
         }}
       >
-        {description}
+        {markdownSource}
       </ReactMarkdown>
     </div>
   );

@@ -216,6 +216,33 @@
     white-space: pre-wrap;
   }
 
+  /* Hidden note (`{{hidden: ...}}` in a problem description, see
+     src/lib/problem-hidden-notes.ts). Invisible in every theme and out of the
+     layout flow, but still rendered text, so it is included when the statement
+     is selected and copied. Never use display:none / visibility:hidden /
+     user-select:none here: those drop the text from the clipboard. */
+  .problem-description .problem-hidden-note {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    color: transparent;
+    background: transparent;
+    font-size: 1px;
+    line-height: 1px;
+    pointer-events: none;
+  }
+
+  .problem-description .problem-hidden-note::selection {
+    color: transparent;
+    background: transparent;
+  }
+
   .problem-description > :first-child {
     margin-top: 0;
   }

@@ -8,6 +8,7 @@ import { isAiAssistantEnabledForContext } from "@/lib/platform-mode-context";
 import { getSystemSettings } from "@/lib/system-settings";
 import { logger } from "@/lib/logger";
 import { sanitizePromptInput } from "@/lib/judge/prompt-sanitization";
+import { stripHiddenNotes } from "@/lib/problem-hidden-notes";
 import pLimit from "p-limit";
 
 /** Concurrency limiter for auto-review AI API calls. Prevents burst API usage
@@ -177,7 +178,7 @@ export async function generateAndStoreReview(
     if (!apiKey) return { status: "disabled", reason: "noApiKey" };
 
     const problemTitle = submission.problem?.title ?? "Unknown";
-    const problemDescription = submission.problem?.description ?? "";
+    const problemDescription = stripHiddenNotes(submission.problem?.description ?? "");
 
     // Check if per-problem AI is enabled
     if (submission.problem && !submission.problem.allowAiAssistant) {
