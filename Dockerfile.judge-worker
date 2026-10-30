@@ -24,7 +24,7 @@ RUN cargo clean && cargo build --release && \
 # ---------------------------------------------------------------------------
 # Runtime: Alpine with docker-cli for spawning judge containers
 # ---------------------------------------------------------------------------
-FROM alpine:3.21 AS runner
+FROM alpine:3.24 AS runner
 
 RUN apk add --no-cache docker-cli ca-certificates
 
