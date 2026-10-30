@@ -270,6 +270,29 @@ jobs:
     timeout-minutes: 45
     needs: quality
 
+    # Same address and credentials the Playwright webServer
+    # (scripts/playwright-local-webserver.sh) would start its own container
+    # with; it reuses a reachable database there, so the schema, seed and
+    # backup steps below and the browser tests all share this one.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: judgekit
+          POSTGRES_PASSWORD: judgekit_test
+          POSTGRES_DB: judgekit
+          PGDATA: /var/lib/postgresql/data/pgdata
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U judgekit -d judgekit"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://judgekit:judgekit_test@127.0.0.1:55432/judgekit
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -306,9 +329,16 @@ jobs:
         run: npm run languages:sync
 
       - name: Verify backup and restore scripts
+        # pg_dump runs inside the PostgreSQL 18 service container (the
+        # runner's own client is older than the server); the verify step then
+        # restores the dump into a throwaway database.
+        env:
+          CONTAINER_NAME: ${{ job.services.postgres.id }}
+          POSTGRES_PASSWORD: judgekit_test
+          RESTORE_DATABASE_URL: postgres://judgekit:judgekit_test@127.0.0.1:55432/postgres
         run: |
-          npm run backup:db -- "$RUNNER_TEMP/judgekit-backup.db"
-          npm run backup:verify -- "$RUNNER_TEMP/judgekit-backup.db" "$RUNNER_TEMP/judgekit-restore.db"
+          npm run backup:db -- "$RUNNER_TEMP/judgekit-backup.sql.gz"
+          npm run backup:verify -- "$RUNNER_TEMP/judgekit-backup.sql.gz"
 
       - name: Build app for Playwright webServer
         run: npm run build
