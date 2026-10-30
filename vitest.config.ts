@@ -13,6 +13,7 @@ export default defineConfig({
     },
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
+    setupFiles: ["tests/unit/setup.ts"],
     // Several tests import heavy Next.js page/route module graphs. In isolation
     // they run in well under a second, but under full-suite parallel CPU
     // contention those imports can take 10–15s, blowing the 5s vitest default
