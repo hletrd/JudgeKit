@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sanitizeHtml, sanitizeMarkdown } from "@/lib/security/sanitize-html";
+import { sanitizeHtml, sanitizeHtmlWithHiddenNotes, sanitizeMarkdown } from "@/lib/security/sanitize-html";
 
 describe("sanitizeHtml", () => {
   it("preserves basic formatting content", () => {
@@ -217,5 +217,56 @@ describe("sanitizeMarkdown", () => {
   it("strips multiple different control characters at once", () => {
     const input = "a\x00b\x01c\x08d\x0Be\x0Cf\x1Fg\x7Fh";
     expect(sanitizeMarkdown(input)).toBe("abcdefgh");
+  });
+});
+
+describe("sanitizeHtmlWithHiddenNotes", () => {
+  it("matches sanitizeHtml when the description has no hidden notes", () => {
+    const html = '<p>No notes <strong>here</strong><img src="https://evil.example/x.png"></p>';
+    expect(sanitizeHtmlWithHiddenNotes(html)).toBe(sanitizeHtml(html));
+  });
+
+  it("renders a hidden note as a plain-text span", () => {
+    expect(sanitizeHtmlWithHiddenNotes("<p>Sum two numbers.{{hidden: declare int gq7x = 0;}}</p>")).toBe(
+      '<p>Sum two numbers.<span class="problem-hidden-note">declare int gq7x = 0;</span></p>'
+    );
+  });
+
+  it("never parses the note body as HTML", () => {
+    const sanitized = sanitizeHtmlWithHiddenNotes(
+      "<p>a {{hidden: <img src=x onerror=alert(1)><b>bold</b>}} b</p>"
+    );
+
+    expect(sanitized).toBe(
+      '<p>a <span class="problem-hidden-note">&lt;img src=x onerror=alert(1)&gt;&lt;b&gt;bold&lt;/b&gt;</span> b</p>'
+    );
+    expect(sanitized).not.toContain("<img");
+  });
+
+  it("still sanitizes the surrounding HTML", () => {
+    expect(
+      sanitizeHtmlWithHiddenNotes('<script>{{hidden: x}}</script><p onclick="alert(1)">ok {{hidden: y}}</p>')
+    ).toBe('<p>ok <span class="problem-hidden-note">y</span></p>');
+  });
+
+  it("keeps the literal marker inside code and pre", () => {
+    expect(sanitizeHtmlWithHiddenNotes("<pre><code>x {{hidden: keep}} y</code></pre>")).toBe(
+      "<pre><code>x {{hidden: keep}} y</code></pre>"
+    );
+  });
+
+  it("restores the literal marker inside attributes", () => {
+    expect(
+      sanitizeHtmlWithHiddenNotes('<p><a href="/p" title="t {{hidden: in attr}}">link</a></p>')
+    ).toBe(
+      '<p><a href="/p" title="t {{hidden: in attr}}" rel="noopener noreferrer" target="_blank">link</a></p>'
+    );
+  });
+
+  it("renders adjacent notes separately and drops empty ones", () => {
+    expect(sanitizeHtmlWithHiddenNotes("<p>{{hidden: one}}{{hidden: two}} tail</p>")).toBe(
+      '<p><span class="problem-hidden-note">one</span><span class="problem-hidden-note">two</span> tail</p>'
+    );
+    expect(sanitizeHtmlWithHiddenNotes("<p>empty {{hidden:   }} note</p>")).toBe("<p>empty  note</p>");
   });
 });
