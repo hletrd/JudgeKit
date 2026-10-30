@@ -26,8 +26,7 @@ import { apiSuccess, apiError } from "@/lib/api/responses";
 import { canManageContest } from "@/lib/assignments/contests";
 import { rawQueryOne } from "@/lib/db/queries";
 import { getRecruitingAccessContext } from "@/lib/recruiting/access";
-import { TERMINAL_SUBMISSION_STATUSES_SQL_LIST } from "@/lib/submissions/status";
-import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring";
+import { ICPC_CONTEST_STATS_SQL, IOI_CONTEST_STATS_SQL } from "@/lib/assignments/contest-stats-sql";
 import { registerAssignmentCacheInvalidator } from "@/lib/assignments/contest-scoring";
 import { getDbNowMs } from "@/lib/db-time";
 import { logger } from "@/lib/logger";
@@ -84,10 +83,7 @@ async function computeContestStats(
   assignment: AssignmentAccessRow,
 ): Promise<ContestStats> {
   // Compute all stats in a single query using CTEs to reduce DB round trips.
-  // MUST stay consistent with computeContestRanking (contest-scoring.ts):
-  // same late-penalty scoring, same score_overrides overlay, and the same
-  // per-scoring-model semantics — the stats panel and the leaderboard are
-  // shown side by side for the same contest.
+  // See contest-stats-sql.ts for why it must match computeContestRanking.
   const deadlineMs = assignment.deadline ? new Date(assignment.deadline).getTime() : null;
   const latePenalty = assignment.latePenalty ?? 0;
   const examMode = assignment.examMode ?? "none";
@@ -95,121 +91,17 @@ async function computeContestStats(
 
   const statsResult =
     scoringModel === "icpc"
-      ? // ICPC: the board's totalScore is the SOLVED-PROBLEM COUNT (no late
-        // penalty, no overrides — overrides are deliberately not overlaid for
-        // ICPC, matching computeContestRanking). avgScore is the average
-        // solved count among submitters; problemsSolvedCount counts problems
-        // with at least one AC.
-        await rawQueryOne<ContestStatsRow>(
-          `WITH participants AS (
-      SELECT COUNT(*)::int AS count FROM enrollments WHERE group_id = @groupId
-    ),
-    problem_solved AS (
-      SELECT
-        s.user_id,
-        s.problem_id,
-        MAX(CASE WHEN ROUND(s.score::numeric, 2) = 100 THEN 1 ELSE 0 END) AS has_ac
-      FROM submissions s
-      INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-      WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-      GROUP BY s.user_id, s.problem_id
-    ),
-    user_totals AS (
-      SELECT user_id, SUM(has_ac)::int AS solved_count
-      FROM problem_solved
-      GROUP BY user_id
-    ),
-    submission_stats AS (
-      SELECT
-        COUNT(*)::int AS submitted_count,
-        COALESCE(ROUND(AVG(solved_count), 1), 0)::float AS avg_score
-      FROM user_totals
-    ),
-    solved_problems AS (
-      SELECT COUNT(DISTINCT problem_id)::int AS solved_count
-      FROM problem_solved
-      WHERE has_ac = 1
-    )
-    SELECT
-      (SELECT count FROM participants) AS "participantCount",
-      (SELECT submitted_count FROM submission_stats) AS "submittedCount",
-      (SELECT avg_score FROM submission_stats) AS "avgScore",
-      (SELECT solved_count FROM solved_problems) AS "problemsSolvedCount"`,
-          {
-            groupId: assignment.groupId,
-            assignmentId,
-          },
-        )
-      : // IOI: override-aware. Leaderboard semantics: for every submitter ×
-        // assignment problem, an instructor override REPLACES the judged
-        // adjusted score — including on problems the user never submitted to.
-        await rawQueryOne<ContestStatsRow>(
-          `WITH participants AS (
-      SELECT COUNT(*)::int AS count FROM enrollments WHERE group_id = @groupId
-    ),
-    submitters AS (
-      SELECT DISTINCT s.user_id
-      FROM submissions s
-      WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-    ),
-    judged_best AS (
-      SELECT
-        s.user_id,
-        s.problem_id,
-        MAX(
-          ${buildIoiLatePenaltyCaseExpr("s.score", "COALESCE(ap.points, 100)", "s.submitted_at", "es.personal_deadline")}
-        ) AS judged_score
-      FROM submissions s
-      INNER JOIN assignment_problems ap ON ap.assignment_id = s.assignment_id AND ap.problem_id = s.problem_id
-      LEFT JOIN exam_sessions es ON es.assignment_id = s.assignment_id AND es.user_id = s.user_id
-      WHERE s.assignment_id = @assignmentId AND s.status IN (${TERMINAL_SUBMISSION_STATUSES_SQL_LIST})
-      GROUP BY s.user_id, s.problem_id
-    ),
-    user_best AS (
-      SELECT
-        sub.user_id,
-        ap.problem_id,
-        COALESCE(so.override_score, jb.judged_score) AS best_score,
-        COALESCE(ap.points, 100) AS points
-      FROM submitters sub
-      CROSS JOIN assignment_problems ap
-      LEFT JOIN judged_best jb ON jb.user_id = sub.user_id AND jb.problem_id = ap.problem_id
-      LEFT JOIN score_overrides so
-        ON so.assignment_id = @assignmentId AND so.user_id = sub.user_id AND so.problem_id = ap.problem_id
-      WHERE ap.assignment_id = @assignmentId
-        AND (jb.judged_score IS NOT NULL OR so.override_score IS NOT NULL)
-    ),
-    user_totals AS (
-      SELECT
-        ub.user_id,
-        SUM(ub.best_score) AS total_score
-      FROM user_best ub
-      GROUP BY ub.user_id
-    ),
-    submission_stats AS (
-      SELECT
-        COUNT(*)::int AS submitted_count,
-        COALESCE(ROUND(AVG(ut.total_score), 1), 0)::float AS avg_score
-      FROM user_totals ut
-    ),
-    solved_problems AS (
-      SELECT COUNT(DISTINCT ub.problem_id)::int AS solved_count
-      FROM user_best ub
-      WHERE ROUND(ub.best_score::numeric, 2) >= ROUND(ub.points::numeric, 2)
-    )
-    SELECT
-      (SELECT count FROM participants) AS "participantCount",
-      (SELECT submitted_count FROM submission_stats) AS "submittedCount",
-      (SELECT avg_score FROM submission_stats) AS "avgScore",
-      (SELECT solved_count FROM solved_problems) AS "problemsSolvedCount"`,
-          {
-            groupId: assignment.groupId,
-            assignmentId,
-            deadlineMs,
-            latePenalty,
-            examMode,
-          },
-        );
+      ? await rawQueryOne<ContestStatsRow>(ICPC_CONTEST_STATS_SQL, {
+          groupId: assignment.groupId,
+          assignmentId,
+        })
+      : await rawQueryOne<ContestStatsRow>(IOI_CONTEST_STATS_SQL, {
+          groupId: assignment.groupId,
+          assignmentId,
+          deadlineMs,
+          latePenalty,
+          examMode,
+        });
 
   return {
     participantCount: statsResult?.participantCount ?? 0,

@@ -9,11 +9,11 @@ function read(relativePath: string) {
 /**
  * Tests for the contest stats endpoint implementation.
  *
- * The stats endpoint uses raw SQL queries, so pure unit tests that exercise
- * the SQL are not feasible without integration infrastructure. Instead, these
- * tests validate the *implementation structure* — ensuring that the scoring
- * logic is consistent with the leaderboard and that access control patterns
- * are correct.
+ * The stats endpoint uses raw SQL queries (src/lib/assignments/
+ * contest-stats-sql.ts), which tests/integration/db/contest-stats.test.ts runs
+ * against PostgreSQL. These tests validate the *implementation structure* —
+ * ensuring that the scoring logic is consistent with the leaderboard and that
+ * access control patterns are correct.
  *
  * Key consistency checks:
  * - Uses buildIoiLatePenaltyCaseExpr for scoring (same as leaderboard)
@@ -25,11 +25,15 @@ function read(relativePath: string) {
  *   recompute the aggregate query on every request
  */
 describe("contest stats route implementation", () => {
-  const source = read("src/app/api/v1/contests/[assignmentId]/stats/route.ts");
+  const source = [
+    read("src/app/api/v1/contests/[assignmentId]/stats/route.ts"),
+    read("src/lib/assignments/contest-stats-sql.ts"),
+  ].join("\n");
 
   describe("scoring consistency with leaderboard", () => {
     it("imports and uses buildIoiLatePenaltyCaseExpr for scoring", () => {
       expect(source).toContain('import { buildIoiLatePenaltyCaseExpr } from "@/lib/assignments/scoring"');
+      expect(source).toContain('from "@/lib/assignments/contest-stats-sql"');
       expect(source).toContain("buildIoiLatePenaltyCaseExpr");
     });
 
