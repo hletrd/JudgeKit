@@ -65,6 +65,40 @@ const eslintConfig = defineConfig([
       "react-hooks/exhaustive-deps": "off",
     },
   },
+  // eslint-plugin-react-hooks 7.1 flags these pre-existing patterns that 7.0
+  // accepted. Keep the rules on for everything else so new code is checked.
+  {
+    files: [
+      "src/app/(dashboard)/dashboard/admin/api-keys/api-keys-client.tsx",
+      "src/app/(dashboard)/dashboard/admin/plugins/chat-logs/chat-logs-client.tsx",
+      "src/app/(dashboard)/dashboard/admin/tags/edit-tag-dialog.tsx",
+      "src/app/(dashboard)/dashboard/admin/users/edit-user-dialog.tsx",
+      "src/app/(dashboard)/dashboard/admin/workers/workers-client.tsx",
+      "src/app/(public)/contests/join/contest-join-client.tsx",
+      "src/app/(public)/dashboard/_components/candidate-dashboard.tsx",
+      "src/app/(public)/problems/create/create-problem-form.tsx",
+      "src/components/code/compiler-client.tsx",
+      "src/components/contest/access-code-manager.tsx",
+      "src/components/contest/analytics-charts.tsx",
+      "src/components/contest/code-timeline-panel.tsx",
+      "src/components/contest/invite-participants.tsx",
+      "src/components/contest/recruiter-candidates-panel.tsx",
+      "src/components/contest/recruiting-invitations-panel.tsx",
+      "src/components/problem/function-test-case-editor.tsx",
+      "src/components/problem/problem-submission-form.tsx",
+      "src/components/submissions/_components/comment-section.tsx",
+      "src/components/submissions/submission-detail-client.tsx",
+      "src/hooks/use-mobile.ts",
+      "src/lib/plugins/chat-widget/admin-config.tsx",
+      "src/lib/plugins/chat-widget/chat-widget.tsx",
+    ],
+    rules: {
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/immutability": "off",
+      "react-hooks/purity": "off",
+    },
+  },
   {
     files: [
       "src/app/api/v1/submissions/[id]/events/route.ts",

@@ -5,7 +5,7 @@ import { users } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { logger } from "@/lib/logger";
 
-const ARGON2_OPTIONS: argon2.Options & { raw?: false } = {
+const ARGON2_OPTIONS: argon2.HashOptions & { raw?: false } = {
   type: argon2.argon2id,
   memoryCost: 19456, // 19 MiB (OWASP minimum recommendation)
   timeCost: 2,

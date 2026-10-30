@@ -123,7 +123,7 @@ describe("ProblemDescription", () => {
     );
     const pre = container.querySelector("pre");
 
-    expect(pre).toHaveStyle({ paddingRight: "3rem" });
+    expect(pre?.style.paddingRight).toBe("3rem");
     expect(pre?.style.paddingTop).toBe("");
   });
 });

@@ -77,11 +77,12 @@ export function cppCompiler(): string | null {
 export function tscCommand(): string[] | null {
   const onPath = workingBinary("tsc", "--version");
   if (onPath) return [onPath];
-  // Repo-local typescript: resolve the compiler entry via node so we do not
-  // depend on `npx` (which can hit the network on a cold cache).
+  // Repo-local TypeScript 7 (the `@typescript/native` alias; `typescript` is
+  // the TS 6 API package for ESLint): resolve the compiler entry via node so
+  // we do not depend on `npx` (which can hit the network on a cold cache).
   const r = spawnSync(
     process.execPath,
-    ["-e", "process.stdout.write(require.resolve('typescript/bin/tsc'))"],
+    ["-e", "process.stdout.write(require.resolve('@typescript/native/bin/tsc'))"],
     { encoding: "utf8" },
   );
   if (r.status === 0 && r.stdout.trim()) {

@@ -148,18 +148,19 @@ describe.skipIf(!tsc || !nodeForTs)("typescript harness compile+run", () => {
       assertCase(c, "typescript", (source, dir) => {
         const tsFile = writeSource(dir, "main.ts", source);
         // Compile with strict + Node types, matching the adapter's contract.
+        // --ignoreConfig: TS 7 refuses command-line files while the repo's
+        // tsconfig.json sits in cwd (cwd stays here so @types/node resolves).
         const [tscBin, ...tscArgs] = tsc!;
         const compile = exec(
           tscBin,
           [
             ...tscArgs,
+            "--ignoreConfig",
             "--strict",
             "--target",
             "ES2022",
             "--module",
             "CommonJS",
-            "--moduleResolution",
-            "node",
             "--types",
             "node",
             "--skipLibCheck",

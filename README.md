@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/hletrd/JudgeKit"><img src="https://img.shields.io/badge/GitHub-JudgeKit-181717?logo=github" alt="GitHub" /></a>
   <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
-  <img src="https://img.shields.io/badge/TypeScript-5.9-blue?logo=typescript" alt="TypeScript 5.9" />
+  <img src="https://img.shields.io/badge/TypeScript-7.0-blue?logo=typescript" alt="TypeScript 7.0" />
   <img src="https://img.shields.io/badge/PostgreSQL-Drizzle_ORM-green?logo=postgresql" alt="PostgreSQL" />
   <img src="https://img.shields.io/badge/Docker-Sandboxed-2496ED?logo=docker" alt="Docker" />
   <img src="https://img.shields.io/badge/Platform-AMD64_%7C_ARM64-orange?logo=linux" alt="AMD64 | ARM64" />

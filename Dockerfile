@@ -3,7 +3,7 @@
 # Uses standalone output mode for minimal production image
 # =============================================================================
 
-FROM node:24-alpine AS base
+FROM node:26-alpine AS base
 
 # ---------------------------------------------------------------------------
 # Stage 1: Install dependencies

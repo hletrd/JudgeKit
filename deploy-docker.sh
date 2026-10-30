@@ -1462,8 +1462,8 @@ PUSH_OUT=$(remote "PG_PASS=\$(grep '^POSTGRES_PASSWORD=' ${REMOTE_DIR}/.env.prod
       --network ${NETWORK_NAME} \
       -v ${REMOTE_DIR}:/app -w /app \
       -e POSTGRES_PASSWORD -e PGPASSWORD -e DATABASE_URL \
-      node:24-alpine \
-      sh -c 'npm install --no-save drizzle-kit@0.31.10 drizzle-orm@0.45.2 nanoid@5.1.9 2>&1 | tail -1 && npx drizzle-kit push${PUSH_FORCE_FLAG}'" 2>&1) || \
+      node:26-alpine \
+      sh -c 'npm install --no-save drizzle-kit@0.31.11 drizzle-orm@0.45.4 nanoid@6.0.2 2>&1 | tail -1 && npx drizzle-kit push${PUSH_FORCE_FLAG}'" 2>&1) || \
   { printf '%s\n' "$PUSH_OUT"; die "drizzle-kit push failed — aborting deploy"; }
 # Re-emit captured output so operators see what drizzle-kit reported.
 printf '%s\n' "$PUSH_OUT"

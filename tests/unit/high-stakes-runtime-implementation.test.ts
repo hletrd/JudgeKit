@@ -39,6 +39,6 @@ describe("high-stakes runtime implementation", () => {
     expect(envProduction).toContain("REALTIME_COORDINATION_BACKEND=postgresql");
     expect(envProduction).toContain("RUNNER_AUTH_TOKEN");
     expect(envProduction).toContain("JUDGE_ALLOW_DEFAULT_COMPILE_SECCOMP=0");
-    expect(readme).toContain("TypeScript-5.9");
+    expect(readme).toContain("TypeScript-7.0");
   });
 });
