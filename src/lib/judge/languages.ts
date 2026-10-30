@@ -3,13 +3,13 @@ import type { Language } from "@/types";
 export const JUDGE_TOOLCHAIN_VERSIONS = {
   go: "1.26.1",
   java: "25.0.2",
-  nodejs: "24.14.0",
+  nodejs: "26.13.0",
   kotlin: "2.3.10",
   python: "3.14.3",
   pypy: "3.10",
   rust: "1.94.0",
   swift: "6.2.4",
-  typescript: "6.0",
+  typescript: "7.0",
   mono: "6.12",
   r: "4.5",
   perl: "5.40",
@@ -190,8 +190,8 @@ export const DOCKER_IMAGE_RUNTIME_INFO: Record<string, string> = {
   "judge-moonbit:latest": `Ubuntu 24.04 / MoonBit ${JUDGE_TOOLCHAIN_VERSIONS.moonbit} (native)`,
   "judge-chapel:latest": `Chapel ${JUDGE_TOOLCHAIN_VERSIONS.chapel} (official)`,
   "judge-idris2:latest": `Debian Bookworm / Idris 2 ${JUDGE_TOOLCHAIN_VERSIONS.idris2} + Chez Scheme`,
-  "judge-rescript:latest": `Node.js 24 Alpine / ReScript ${JUDGE_TOOLCHAIN_VERSIONS.rescript}`,
-  "judge-elm:latest": `Node.js 24 Alpine / Elm ${JUDGE_TOOLCHAIN_VERSIONS.elm}`,
+  "judge-rescript:latest": `Node.js 26 Alpine / ReScript ${JUDGE_TOOLCHAIN_VERSIONS.rescript}`,
+  "judge-elm:latest": `Node.js 26 Alpine / Elm ${JUDGE_TOOLCHAIN_VERSIONS.elm}`,
 };
 
 export function getDockerImageRuntimeInfo(dockerImage: string): string {
@@ -286,7 +286,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   javascript: {
     language: "javascript",
     displayName: "JavaScript",
-    standard: "Node.js 24",
+    standard: "Node.js 26",
     extension: ".js",
     dockerImage: "judge-node:latest",
     compiler: `Node.js ${JUDGE_TOOLCHAIN_VERSIONS.nodejs} (LTS)`,
@@ -296,7 +296,7 @@ export const JUDGE_LANGUAGE_CONFIGS: Record<Language, JudgeLanguageDefinition> =
   typescript: {
     language: "typescript",
     displayName: "TypeScript",
-    standard: "TS 6.0",
+    standard: "TS 7.0",
     extension: ".ts",
     dockerImage: "judge-node:latest",
     compiler: `TypeScript ${JUDGE_TOOLCHAIN_VERSIONS.typescript} (tsc) / Node.js ${JUDGE_TOOLCHAIN_VERSIONS.nodejs}`,

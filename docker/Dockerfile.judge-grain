@@ -1,6 +1,6 @@
 FROM ghcr.io/grain-lang/grain:0.7.2-slim AS grain-src
 
-FROM node:24-slim
+FROM node:26-slim
 COPY --from=grain-src /grain /grain
 RUN ln -sf /grain/cli/bin/grain.js /usr/local/bin/grain && \
     useradd --no-create-home --shell /usr/sbin/nologin judge && \

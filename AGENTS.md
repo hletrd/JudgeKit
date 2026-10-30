@@ -36,8 +36,8 @@ JudgeKit currently defines 125 language variants. Treat `src/lib/judge/languages
 | 10 | `java` | Java 25 | `judge-jvm` |
 | 11 | `kotlin` | Kotlin 2.3 | `judge-jvm` |
 | 12 | `python` | Python 3.14 | `judge-python` |
-| 13 | `javascript` | Node.js 24 | `judge-node` |
-| 14 | `typescript` | TypeScript 6.0 (Node.js 24) | `judge-node` |
+| 13 | `javascript` | Node.js 26 | `judge-node` |
+| 14 | `typescript` | TypeScript 7.0 (Node.js 26) | `judge-node` |
 | 15 | `coffeescript` | CoffeeScript 2.7 | `judge-node` |
 | 16 | `rust` | Rust 1.94 | `judge-rust` |
 | 17 | `go` | Go 1.26 | `judge-go` |
@@ -254,7 +254,7 @@ Changes take effect immediately for new submissions without restarting services.
 | `judge-cpp` | 340 MB | Alpine 3.21 | — |
 | `judge-fortran` | 323 MB | Alpine 3.21 | **-115 MB** |
 | `judge-clojure` | 312 MB | temurin:25-jre-alpine | **-123 MB** |
-| `judge-node` | 257 MB | node:24-alpine | **-96 MB** |
+| `judge-node` | 257 MB | node:26-alpine | **-96 MB** |
 | `judge-prolog` | 245 MB | Debian Bookworm slim | — |
 | `judge-pascal` | 219 MB | Debian Bookworm slim | — |
 | `judge-esoteric` | 201 MB | Debian Bookworm | — |

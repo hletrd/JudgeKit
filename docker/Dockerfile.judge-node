@@ -1,6 +1,6 @@
-FROM node:24-alpine
+FROM node:26-alpine
 
-RUN npm install --global typescript@6.0 @types/node@24.12.0 coffeescript && \
+RUN npm install --global typescript@7.0 @types/node@26.6.6 coffeescript && \
     npm cache clean --force && \
     adduser -D -s /bin/false judge && \
     mkdir -p /workspace /opt/judge-output && \

@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:26-alpine
 
 # Create pre-configured ReScript project
 RUN mkdir -p /opt/rescript-project/src && \

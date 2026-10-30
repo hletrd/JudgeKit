@@ -33,7 +33,7 @@ const RECOMMENDED_IMAGES = [
   "ubuntu:24.04", "ubuntu:22.04",
   "debian:bookworm-slim", "debian:bullseye-slim",
   "python:3.14-slim", "python:3.13-slim",
-  "node:24-slim", "node:22-slim",
+  "node:26-slim", "node:24-slim",
   "rust:1.94-slim",
   "golang:1.26-alpine",
   "openjdk:21-slim",

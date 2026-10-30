@@ -19,9 +19,9 @@ Multi-arch Docker images covering 125 language variants. Deployed on both AMD64 
 | 13 | `kotlin` | Kotlin 2.3 | `judge-jvm` | ✅ | ✅ | ✅ | ✅ |
 | 14 | `python` | Python 3.14 | `judge-python` | ✅ | ✅ | ✅ | ✅ |
 | 15 | `pypy` | PyPy 3.10 | `judge-pypy` | ✅ | ✅ | ✅ | ✅ |
-| 16 | `javascript` | Node.js 24 | `judge-node` | ✅ | ✅ | ✅ | ✅ |
-| 17 | `typescript` | TypeScript 6.0 (Node.js 24) | `judge-node` | ✅ | ✅ | ✅ | ✅ |
-| 18 | `coffeescript` | CoffeeScript 2.7 (Node.js 24) | `judge-node` | ✅ | ✅ | ✅ | ✅ |
+| 16 | `javascript` | Node.js 26 | `judge-node` | ✅ | ✅ | ✅ | ✅ |
+| 17 | `typescript` | TypeScript 7.0 (Node.js 26) | `judge-node` | ✅ | ✅ | ✅ | ✅ |
+| 18 | `coffeescript` | CoffeeScript 2.7 (Node.js 26) | `judge-node` | ✅ | ✅ | ✅ | ✅ |
 | 19 | `rust` | Rust 1.94 | `judge-rust` | ✅ | ✅ | ✅ | ✅ |
 | 20 | `go` | Go 1.26 | `judge-go` | ✅ | ✅ | ✅ | ✅ |
 | 21 | `swift` | Swift 6.2 | `judge-swift` | ✅ | ✅ | ✅ | ✅ |
