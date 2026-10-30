@@ -13,6 +13,7 @@ import {
   buildSubmissionResultRows,
   computeFinalJudgeMetrics,
   extractFinalJudgeDetail,
+  truncateJudgeDiagnostic,
 } from "@/lib/judge/verdict";
 
 describe("IN_PROGRESS_JUDGE_STATUSES", () => {
@@ -233,6 +234,31 @@ describe("buildSubmissionResultRows", () => {
 
     expect(rows.map((r) => r.id)).toEqual(["uid-a", "uid-b", "uid-c"]);
     expect(nanoidMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("drops NUL bytes from actualOutput, which PostgreSQL text columns reject", () => {
+    const rows = buildSubmissionResultRows("sub-nul", [
+      { testCaseId: "tc1", status: "wrong_answer", actualOutput: "\u0000" },
+      { testCaseId: "tc2", status: "wrong_answer", actualOutput: "a\u0000b\u0000\n" },
+    ]);
+
+    expect(rows.map((r) => r.actualOutput)).toEqual(["", "ab\n"]);
+  });
+});
+
+describe("truncateJudgeDiagnostic", () => {
+  it("drops NUL bytes from compile output", () => {
+    expect(truncateJudgeDiagnostic("main.c:1: error\u0000")).toBe("main.c:1: error");
+  });
+
+  it("drops NUL bytes before measuring the truncation limit", () => {
+    const value = `${"x".repeat(16 * 1024)}${"\u0000".repeat(8)}`;
+    expect(truncateJudgeDiagnostic(value)).toBe("x".repeat(16 * 1024));
+  });
+
+  it("keeps null and undefined as null", () => {
+    expect(truncateJudgeDiagnostic(null)).toBeNull();
+    expect(truncateJudgeDiagnostic(undefined)).toBeNull();
   });
 });
 

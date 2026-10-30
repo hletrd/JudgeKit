@@ -15,12 +15,16 @@ type JudgeResultInput = {
 
 export function truncateJudgeDiagnostic(value: string | null | undefined): string | null {
   if (value == null) return null;
-  if (Buffer.byteLength(value, "utf8") <= MAX_DIAGNOSTIC_OUTPUT_BYTES) {
-    return value;
+  // PostgreSQL text columns reject U+0000. A program that prints a NUL byte
+  // would otherwise fail the whole result transaction and leave the
+  // submission stuck in "judging", re-claimed and re-failed forever.
+  const text = value.replaceAll("\u0000", "");
+  if (Buffer.byteLength(text, "utf8") <= MAX_DIAGNOSTIC_OUTPUT_BYTES) {
+    return text;
   }
 
   const truncated = Buffer
-    .from(value)
+    .from(text)
     .subarray(0, MAX_DIAGNOSTIC_OUTPUT_BYTES)
     .toString("utf8")
     .replace(/\uFFFD+$/u, "");

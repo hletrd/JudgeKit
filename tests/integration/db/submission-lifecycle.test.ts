@@ -23,6 +23,7 @@ import {
   testCases,
 } from "@/lib/db/schema";
 import { nanoid } from "nanoid";
+import { buildSubmissionResultRows } from "@/lib/judge/verdict";
 
 describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("Submission lifecycle (integration)", () => {
   let ctx: TestDb;
@@ -200,6 +201,25 @@ describe.skipIf(process.env.SKIP_INTEGRATION_TESTS === "1")("Submission lifecycl
 
       expect(results).toHaveLength(2);
       expect(results.every((r) => r.status === "accepted")).toBe(true);
+    });
+
+    it("stores results whose output contained NUL bytes", async () => {
+      const tc = await seedTestCase(ctx, { problemId, input: "1 2\n", expectedOutput: "3\n" });
+      const sub = await seedSubmission(ctx, { userId, problemId, status: "judging" });
+      const reported = [{ testCaseId: tc.id, status: "wrong_answer", actualOutput: "3\u0000\n" }];
+
+      // PostgreSQL rejects U+0000 in text, so the raw worker output cannot be stored.
+      await expect(
+        ctx.db.insert(submissionResults).values({ id: nanoid(), submissionId: sub.id, ...reported[0] }),
+      ).rejects.toThrow();
+
+      await ctx.db.insert(submissionResults).values(buildSubmissionResultRows(sub.id, reported));
+
+      const [row] = await ctx.db
+        .select()
+        .from(submissionResults)
+        .where(eq(submissionResults.submissionId, sub.id));
+      expect(row?.actualOutput).toBe("3\n");
     });
 
     it("finalizes submission as accepted with score and timing", async () => {
