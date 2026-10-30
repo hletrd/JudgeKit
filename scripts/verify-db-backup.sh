@@ -17,8 +17,10 @@ if [[ "$BACKUP_PATH" == *.sql.gz ]]; then
     exit 1
   fi
 
-  # Check it contains SQL statements
-  LINE_COUNT=$(zcat "$BACKUP_PATH" | head -100 | wc -l)
+  # Check it contains SQL statements. `sed -n` reads to EOF: `head` would exit
+  # early, SIGPIPE zcat on any dump larger than a pipe buffer, and pipefail
+  # would then abort the script with status 141.
+  LINE_COUNT=$(zcat "$BACKUP_PATH" | sed -n '1,100p' | wc -l)
   if [ "$LINE_COUNT" -lt 1 ]; then
     echo "ERROR: Backup appears empty: $BACKUP_PATH" >&2
     exit 1
