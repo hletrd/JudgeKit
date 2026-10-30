@@ -138,6 +138,8 @@ jobs:
       - name: Smoke test JVM judge image
         run: |
           workspace="$(mktemp -d)"
+          # The image runs as the non-root `judge` user; mktemp -d is 0700.
+          chmod 0777 "$workspace"
           export WORKSPACE="$workspace"
 
           python3 - <<'PY'
@@ -172,10 +174,10 @@ jobs:
           )
           PY
 
-          java_output="$(docker run --rm -v "$workspace:/workspace" -w /workspace judge-jvm sh -lc "mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java && printf '1 2\n' | java -cp /workspace/out Main")"
+          java_output="$(docker run --rm -v "$workspace:/workspace" -w /workspace judge-jvm sh -c "mkdir -p /workspace/out && cp /workspace/solution.java /workspace/Main.java && javac --release 25 -encoding UTF-8 -d /workspace/out /workspace/Main.java && printf '1 2\n' | java -cp /workspace/out Main")"
           [ "$java_output" = "3" ]
 
-          kotlin_output="$(docker run --rm -v "$workspace:/workspace" -w /workspace judge-jvm sh -lc "kotlinc /workspace/solution.kt -include-runtime -d /workspace/solution.jar && printf '1 2\n' | java -jar /workspace/solution.jar")"
+          kotlin_output="$(docker run --rm -v "$workspace:/workspace" -w /workspace judge-jvm sh -c "kotlinc /workspace/solution.kt -include-runtime -d /workspace/solution.jar && printf '1 2\n' | java -jar /workspace/solution.jar")"
           [ "$kotlin_output" = "3" ]
 
   docker-validate:
