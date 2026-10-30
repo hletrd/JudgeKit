@@ -180,10 +180,9 @@ test("assignment board renders earned points for non-100-point problems", async 
   const fixtures = await seedAssignmentBoardScoreFixtures(runtimeSuffix.replace(/[^a-zA-Z0-9]/g, ""));
 
   try {
-    await page.goto(
-      `/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`,
-      { waitUntil: "networkidle" }
-    );
+    // Not "networkidle": SubmissionListAutoRefresh router.refresh()es this page
+    // every 10s and goto never reached networkidle. The expects auto-wait.
+    await page.goto(`/groups/${fixtures.groupId}/assignments/${fixtures.assignmentId}`);
 
     const studentRow = page.getByRole("row", { name: new RegExp(fixtures.studentName) });
     await expect(studentRow).toBeVisible();

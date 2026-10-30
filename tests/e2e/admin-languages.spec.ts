@@ -46,22 +46,10 @@ test.describe.serial("Admin Languages", () => {
     const mainContent = page.locator("#main-content");
     await expect(mainContent).toBeVisible();
 
-    // Table or list of languages should be present
-    const table = page.locator("#main-content table");
-    const tableCount = await table.count();
-
-    if (tableCount > 0) {
-      await expect(table.first()).toBeVisible();
-      // At least one row (beyond header) should exist for a seeded instance
-      const rows = table.first().locator("tbody tr");
-      const rowCount = await rows.count();
-      expect(rowCount).toBeGreaterThan(0);
-    } else {
-      // Fallback: any list items
-      const listItems = page.locator("#main-content li");
-      const liCount = await listItems.count();
-      expect(liCount).toBeGreaterThan(0);
-    }
+    // The seeded instance lists its languages in a table. Wait for a row
+    // instead of count()ing right after domcontentloaded, which raced the
+    // render and occasionally saw an empty page.
+    await expect(page.locator("#main-content table tbody tr").first()).toBeVisible();
   });
 
   test("Step 4: Search filters languages", async ({ page }) => {

@@ -175,8 +175,9 @@ test("task 7 guards browser back navigation while dirty and stays clean after su
     });
 
     await test.step("successful submit clears the draft so later back navigation has no warning", async () => {
-      await page.getByRole("button", { name: "Submit Solution" }).click();
-      await page.getByRole("button", { name: "Submit (Ctrl+Enter)" }).click();
+      // The practice page renders the submit form inline (no "Submit Solution"
+      // trigger), and the shortcut label is ⌘+Enter on macOS.
+      await page.getByRole("button", { name: /^Submit \((?:Ctrl|⌘)\+Enter\)$/ }).click();
       await page.waitForURL(/\/submissions\/[^/]+$/, { timeout: 15_000 });
 
       await expectNoDialogDuring(page, async () => {

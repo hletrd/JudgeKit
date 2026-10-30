@@ -98,7 +98,9 @@ test("contest detail shows active scheduled assignment timers", async ({ page },
     await loginWithCredentials(page, fixture.username, STUDENT_PASSWORD);
     await page.waitForURL(/\/dashboard(?:$|\/)/, { timeout: 15_000 });
 
-    await page.goto(`/contests/${fixture.assignmentId}`, { waitUntil: "networkidle" });
+    // Not "networkidle": SubmissionListAutoRefresh router.refresh()es this page
+    // every 10s and goto never reached networkidle. The expects auto-wait.
+    await page.goto(`/contests/${fixture.assignmentId}`);
 
     await expect(
       page.getByRole("heading", { name: `Sidebar Contest ${runtimeSuffix}` }).first()
