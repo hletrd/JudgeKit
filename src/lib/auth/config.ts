@@ -371,8 +371,11 @@ export const authConfig: NextAuthConfig = {
         // Use DB server time for the sign-in timestamp so that
         // isTokenInvalidated() comparisons against tokenInvalidatedAt
         // are consistent with the DB's NOW() — avoids clock skew
-        // between app server and database.
-        const authenticatedAtSeconds = Math.trunc(await getDbNowMs() / 1000);
+        // between app server and database. Keep the milliseconds (fractional
+        // seconds): changing a password or clearing mustChangePassword sets
+        // tokenInvalidatedAt and is followed by an immediate re-login, which
+        // whole seconds would reject as issued before the revocation.
+        const authenticatedAtSeconds = await getDbNowMs() / 1000;
 
         const updatedToken = syncTokenWithUser(
           token,

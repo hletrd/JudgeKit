@@ -17,14 +17,12 @@ import {
 
 describe("getTokenAuthenticatedAtSeconds", () => {
   it("returns authenticatedAt when present and finite", () => {
-    expect(getTokenAuthenticatedAtSeconds({ authenticatedAt: 1_700_000_000.9 })).toBe(
-      1_700_000_000
-    );
+    expect(getTokenAuthenticatedAtSeconds({ authenticatedAt: 1_700_000_000 })).toBe(1_700_000_000);
   });
 
-  it("truncates (does not round) fractional seconds", () => {
+  it("keeps the millisecond precision sign-in stores as fractional seconds", () => {
     expect(getTokenAuthenticatedAtSeconds({ authenticatedAt: 1_700_000_000.999 })).toBe(
-      1_700_000_000
+      1_700_000_000.999
     );
   });
 
@@ -104,6 +102,32 @@ describe("isTokenInvalidated", () => {
   it("returns true when token was authenticated one millisecond before revocation", () => {
     const oneMsBeforeSeconds = Math.trunc((invalidatedAt.getTime() - 1) / 1000);
     expect(isTokenInvalidated(oneMsBeforeSeconds, invalidatedAt)).toBe(true);
+  });
+
+  describe("with millisecond sign-in times", () => {
+    const revokedAt = new Date("2024-01-01T00:00:00.400Z");
+    const revokedMs = revokedAt.getTime();
+
+    it("accepts a sign-in later in the same second as the revocation", () => {
+      expect(isTokenInvalidated((revokedMs + 500) / 1000, revokedAt)).toBe(false);
+    });
+
+    it("rejects a sign-in one millisecond before the revocation", () => {
+      expect(isTokenInvalidated((revokedMs - 1) / 1000, revokedAt)).toBe(true);
+    });
+
+    it("rejects a sign-in at the revocation millisecond", () => {
+      expect(isTokenInvalidated(revokedMs / 1000, revokedAt)).toBe(true);
+    });
+
+    it("keeps a token whose sign-in followed the revocation within the same second", () => {
+      const token = { authenticatedAt: (revokedMs + 500) / 1000 };
+      expect(isTokenInvalidated(getTokenAuthenticatedAtSeconds(token), revokedAt)).toBe(false);
+    });
+
+    it("still rejects a whole-second token from the revocation's second", () => {
+      expect(isTokenInvalidated(Math.trunc(revokedMs / 1000), revokedAt)).toBe(true);
+    });
   });
 
   it("returns false when tokenInvalidatedAt is null", () => {

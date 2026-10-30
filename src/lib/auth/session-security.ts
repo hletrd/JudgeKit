@@ -11,8 +11,11 @@ type TokenTimeCarrier = {
 };
 
 export function getTokenAuthenticatedAtSeconds(token: TokenTimeCarrier | null | undefined) {
+  // Not truncated: sign-in stores milliseconds as fractional seconds, which
+  // isTokenInvalidated needs to tell a re-login apart from a token revoked in
+  // the same second. Older tokens hold whole seconds.
   if (typeof token?.authenticatedAt === "number" && Number.isFinite(token.authenticatedAt)) {
-    return Math.trunc(token.authenticatedAt);
+    return token.authenticatedAt;
   }
 
   if (typeof token?.iat === "number" && Number.isFinite(token.iat)) {
@@ -31,8 +34,9 @@ export function isTokenInvalidated(
   }
 
   // Compare at millisecond precision so a token issued one millisecond before
-  // revocation is rejected. The token stores authentication time in whole
-  // seconds, so convert back to milliseconds for the comparison.
+  // revocation is rejected. Sign-in times carry milliseconds as fractional
+  // seconds; whole-second tokens (older sessions, iat fallback) stay
+  // conservative and are rejected anywhere in the revocation's second.
   const invalidatedAtMs =
     tokenInvalidatedAt instanceof Date
       ? tokenInvalidatedAt.getTime()
