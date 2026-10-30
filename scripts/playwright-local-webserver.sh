@@ -28,6 +28,8 @@ mint_secret() {
   export "${var_name?}"
 }
 
+mint_secret AUTH_SECRET
+mint_secret PLUGIN_CONFIG_ENCRYPTION_KEY
 mint_secret JUDGE_AUTH_TOKEN
 mint_secret CRON_SECRET
 mint_secret CODE_SIMILARITY_AUTH_TOKEN
