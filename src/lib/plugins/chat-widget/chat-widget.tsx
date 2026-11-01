@@ -164,15 +164,18 @@ export default function ChatWidget() {
     return () => window.removeEventListener("oj:submission-result", handleSubmissionResult as EventListener);
   }, []);
 
-  // Auto-send proactive analysis when triggered by submission result
+  // Auto-send proactive analysis once the user opens the widget after a
+  // submission result — never in the background, where nobody reads it.
+  // The route prefetches the on-screen submission, so the prompt does not
+  // ask for a get_submission_detail round trip.
   const autoAnalysisTriggered = useRef(false);
   useEffect(() => {
-    if (pendingAutoAnalysis && !isStreaming && problemContext && !autoAnalysisTriggered.current) {
+    if (isOpen && pendingAutoAnalysis && !isStreaming && problemContext && !autoAnalysisTriggered.current) {
       autoAnalysisTriggered.current = true;
       const isError = pendingAutoAnalysis.status !== "accepted";
       const apiPrompt = isError
-        ? `My submission ID is "${pendingAutoAnalysis.submissionId}" and it got "${pendingAutoAnalysis.status}". Use get_submission_detail with this submission ID to fetch my source code and error details, then analyze the issue and help me fix it.`
-        : `My submission ID is "${pendingAutoAnalysis.submissionId}" and it was accepted. Use get_submission_detail with this submission ID to fetch my source code, then review it for improvements, edge cases, or better practices.`;
+        ? `My submission ID is "${pendingAutoAnalysis.submissionId}" and it got "${pendingAutoAnalysis.status}". Look at my source code and error details, then analyze the issue and help me fix it.`
+        : `My submission ID is "${pendingAutoAnalysis.submissionId}" and it was accepted. Look at my source code, then review it for improvements, edge cases, or better practices.`;
       const displayText = isError
         ? t("autoAnalysisError")
         : t("autoAnalysisReview");
@@ -181,7 +184,7 @@ export default function ChatWidget() {
         void sendMessageRef.current(apiPrompt, displayText);
       }
     }
-  }, [pendingAutoAnalysis, isStreaming, problemContext, t]);
+  }, [isOpen, pendingAutoAnalysis, isStreaming, problemContext, t]);
 
   const sendMessage = useCallback(async (text: string, displayText?: string) => {
     if (!text || isStreamingRef.current) return;

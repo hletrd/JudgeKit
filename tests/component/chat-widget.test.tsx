@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatWidget from "@/lib/plugins/chat-widget/chat-widget";
@@ -144,5 +144,30 @@ describe("ChatWidget", () => {
     await user.click(screen.getByRole("button", { name: "send" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("errorUnavailable");
+  });
+
+  it("waits for the widget to open before sending the proactive analysis", async () => {
+    navigation.pathname = "/submissions/sub-42";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(createStreamResponse(["Look at line 3."]));
+    const user = userEvent.setup();
+    render(<ChatWidget />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("oj:submission-result", {
+        detail: { status: "wrong_answer", problemId: "problem-1", submissionId: "sub-42" },
+      }));
+    });
+    // Closed widget: nothing goes to the LLM
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Chat" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.context).toMatchObject({ problemId: "problem-1", submissionId: "sub-42" });
+    expect(await screen.findByText("autoAnalysisError")).toBeInTheDocument();
   });
 });

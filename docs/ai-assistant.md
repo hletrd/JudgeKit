@@ -55,6 +55,10 @@ answer questions about what is on screen
   test results, and source code through `get_submission_detail` so the
   problem's visibility flags apply. For someone else's submission (for example
   an instructor reviewing), only the page snapshot is sent.
+- **Proactive analysis**: on the owner's own finished submission (outside
+  assignments), opening the widget sends a debug or review request on its
+  own. Nothing is sent while the widget stays closed, and staff viewing
+  another user's submission never trigger it.
 
 ---
 

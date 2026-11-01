@@ -80,12 +80,16 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
   // refetches and the new AI comment appears without a full page reload.
   const [commentRefreshSignal, setCommentRefreshSignal] = useState(0);
 
-  // Notify chat widget of submission results with problem context (skip for assignments/contests)
+  // Notify chat widget of submission results with problem context (skip for
+  // assignments/contests, and for staff viewing someone else's submission —
+  // the analysis prompt speaks as the owner and the assistant can only read
+  // the viewer's own submissions)
   const firedEventRef = useRef<string | null>(null);
   useEffect(() => {
     const key = `${submission.id}:${submission.status}`;
     if (firedEventRef.current === key) return;
     if (submission.assignmentId) return;
+    if (props.isOwner === false) return;
     if (["pending", "queued", "judging"].includes(submission.status)) return;
     firedEventRef.current = key;
     const hasError = submission.status !== "accepted";
@@ -98,7 +102,7 @@ export function SubmissionDetailClient(props: SubmissionDetailClientProps) {
         submissionId: submission.id,
       }
     }));
-  }, [submission.id, submission.status, submission.assignmentId, submission.problem?.id]);
+  }, [submission.id, submission.status, submission.assignmentId, submission.problem?.id, props.isOwner]);
 
   const canComment = props.capabilities.includes("submissions.comment");
   const canRejudge = props.capabilities.includes("submissions.rejudge");

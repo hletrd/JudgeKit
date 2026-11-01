@@ -401,3 +401,42 @@ describe("SubmissionDetailClient resubmit", () => {
     expect(routerBackMock).not.toHaveBeenCalled();
   });
 });
+
+describe("SubmissionDetailClient chat-widget notification", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiFetchMock.mockResolvedValue({ ok: true, json: async () => ({ data: null }) });
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function captureResults() {
+    const events: CustomEvent[] = [];
+    const listener = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("oj:submission-result", listener);
+    return { events, stop: () => window.removeEventListener("oj:submission-result", listener) };
+  }
+
+  it("tells the assistant about the owner's finished submission", () => {
+    const capture = captureResults();
+    render(<SubmissionDetailClient {...makeProps({ status: "wrong_answer" })} />);
+    capture.stop();
+
+    expect(capture.events).toHaveLength(1);
+    expect(capture.events[0].detail).toMatchObject({
+      status: "wrong_answer",
+      problemId: "problem-1",
+      submissionId: "submission-1234567890ab",
+    });
+  });
+
+  it("stays silent when staff view someone else's submission", () => {
+    const capture = captureResults();
+    render(<SubmissionDetailClient {...makeProps({ status: "wrong_answer" })} isOwner={false} />);
+    capture.stop();
+
+    expect(capture.events).toHaveLength(0);
+  });
+});
