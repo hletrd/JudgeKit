@@ -25,8 +25,6 @@ import { sanitizePromptInput } from "@/lib/judge/prompt-sanitization";
 
 const MAX_TOOL_ITERATIONS = 5;
 const TOOL_EXECUTION_TIMEOUT_MS = 10_000;
-/** Same cap sanitizePromptInput applies to other prompt-bound content. */
-const SUBMISSION_DETAIL_MAX_LENGTH = 32_768;
 const STREAM_HEADERS = {
   "Content-Type": "text/plain; charset=utf-8",
   "Cache-Control": "no-cache",
@@ -221,14 +219,12 @@ You have tools to fetch the problem description, the student's submission histor
 - If runtime errors exist (and visible), explain what they mean.`;
   }
 
-  // The submission is the requester's own (route scopes it by userId), so it
-  // carries no third-party text; skipping sanitizePromptInput keeps C++ stream
-  // operators (`cin >> a; cout << b`) from being redacted as `<<...>>` markers.
+  // The page snapshot and submission are user-controlled (other users' posts
+  // can appear on a page, and code comments can carry injection phrases), so
+  // they are sanitized like messages and tool results and fenced off as data
+  // (AGG-8 / SEC-6).
   if (config.submissionDetail) {
-    const detail = escapeFenceTag(
-      config.submissionDetail.slice(0, SUBMISSION_DETAIL_MAX_LENGTH),
-      "submission",
-    );
+    const detail = escapeFenceTag(sanitizePromptInput(config.submissionDetail), "submission");
     prompt += `
 
 ## Submission on screen
@@ -238,8 +234,6 @@ ${detail}
 </submission>`;
   }
 
-  // Page text can include other users' posts, so it is sanitized like tool
-  // results and fenced off as data (AGG-8 / SEC-6).
   if (config.page) {
     const pageText = escapeFenceTag(sanitizePromptInput(config.page.text), "page_content");
     prompt += `

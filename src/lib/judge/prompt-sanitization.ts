@@ -8,8 +8,10 @@
  */
 
 const PROMPT_INJECTION_PATTERNS = [
-  // Common jailbreak / delimiter markers
-  /<<[^>]*>>/g,
+  // Common jailbreak / delimiter markers (<<SYS>>, <</SYS>>, <<>>). Only an
+  // uppercase token with no spaces counts: a looser <<...>> span also eats
+  // C++ code such as `cout << x; cin >> y;` or `(1 << k) >> 1`.
+  /<<\/?(?:[A-Z][A-Z0-9_]*)?>>/g,
   /\[\/?(?:INST|SYSTEM|USER|ASSISTANT)\]/gi,
   // Instruction override phrases
   /ignore\s+(?:all\s+)?(?:previous\s+)?instructions?/gi,
