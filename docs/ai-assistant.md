@@ -34,6 +34,30 @@ and the per-problem gate before responding.
 
 ---
 
+## Page context
+
+Each chat request carries the page the user is viewing, so the assistant can
+answer questions about what is on screen
+(`src/lib/plugins/chat-widget/page-context.ts`):
+
+- **Page snapshot**: the pathname (never the query string), `document.title`,
+  and the rendered text of `#main-content`, capped at 8,000 characters. It is
+  captured when a message is sent, so it reflects the open tab. The route
+  sanitizes it with `sanitizePromptInput` and fences it in the system prompt as
+  data, because other users' posts can appear on a page.
+- **Problem page** (`/practice/problems/[id]`): sends `problemId` (plus
+  `assignmentId` from the query), which enables the tool-calling path and the
+  per-problem toggle.
+- **Submission page** (`/submissions/[id]`): sends `submissionId`. The route
+  looks the submission up **among the user's own submissions only**, replaces
+  the client's `problemId`/`assignmentId` with the submission's own before the
+  gates run (a contest submission stays gated), and prefetches its verdict,
+  test results, and source code through `get_submission_detail` so the
+  problem's visibility flags apply. For someone else's submission (for example
+  an instructor reviewing), only the page snapshot is sent.
+
+---
+
 ## Providers
 
 The assistant supports four LLM providers (`src/lib/plugins/chat-widget/providers.ts`):

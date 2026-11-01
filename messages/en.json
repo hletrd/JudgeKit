@@ -2183,6 +2183,7 @@
       "thinking": "Thinking...",
       "errorGeneric": "Something went wrong. Please try again.",
       "errorRateLimit": "Too many messages. Please wait a moment.",
+      "errorUnavailable": "The AI assistant is not available on this page.",
       "errorNotConfigured": "Chat is not configured. Contact your administrator.",
       "provider": "AI Provider",
       "apiKey": "API Key",

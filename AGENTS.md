@@ -356,6 +356,12 @@ Provider/model/API key are set per provider on the plugin admin page
   `allowAiAssistantInRestrictedModes` is set. Also a per-problem
   `problems.allowAiAssistant` toggle. Logic in `src/lib/system-settings.ts`
   (`isAiAssistantEnabled` / `getEffectiveModeRestrictions`).
+- **Page context**: every request carries a snapshot of the page being viewed
+  (pathname, title, `#main-content` text ≤ 8,000 chars; `page-context.ts`).
+  `/practice/problems/[id]` sends `problemId`; `/submissions/[id]` sends
+  `submissionId`, which the route resolves among the user's **own**
+  submissions, uses for the AI gates, and prefetches (verdict, tests, code)
+  into the system prompt. See `docs/ai-assistant.md` § Page context.
 - **Live model pickers** (OpenRouter + Gemini) back the model field via
   admin-gated endpoints `GET /api/v1/plugins/chat-widget/openrouter-models`
   (proxies OpenRouter `/api/v1/models`) and

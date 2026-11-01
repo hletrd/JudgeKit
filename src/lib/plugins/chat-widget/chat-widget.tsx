@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 import { apiFetch } from "@/lib/api/client";
 import { AssistantMarkdown } from "@/components/assistant-markdown";
 import { useEditorContent } from "@/contexts/editor-content-context";
+import { capturePageSnapshot } from "@/lib/plugins/chat-widget/page-context";
 
 interface Message {
   id: string;
@@ -50,20 +51,24 @@ export default function ChatWidget() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Detect problem context from URL
+  // Detect problem context from URL (/problems/[id] redirects here)
   const urlProblemContext = (() => {
-    const match = pathname.match(/\/dashboard\/problems\/([^/]+)$/);
+    const match = pathname.match(/^\/practice\/problems\/([^/]+)$/);
     if (!match) return null;
     const problemId = match[1];
     const assignmentId = searchParams?.get("assignmentId") ?? undefined;
     return { problemId, assignmentId };
   })();
 
+  // Submission detail page — the server resolves its verdict and code
+  const urlSubmissionId = pathname.match(/^\/submissions\/([^/]+)$/)?.[1];
+
   // Event-sourced context (from submission error events)
   const [eventContext, setEventContext] = useState<{ problemId: string; assignmentId?: string; submissionId?: string } | null>(null);
 
   // Use URL context first, fall back to event context
   const problemContext = urlProblemContext ?? eventContext;
+  const submissionId = urlSubmissionId ?? eventContext?.submissionId;
 
   // Hide AI assistant entirely in contest/assignment context
   const isInContestContext = Boolean(
@@ -202,20 +207,31 @@ export default function ChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: recentMessages.map((m) => ({ role: m.role, content: m.content })),
-          context: problemContext ? {
-            problemId: problemContext.problemId,
-            assignmentId: problemContext.assignmentId,
-            editorCode: editorContentRef.current?.code,
-            editorLanguage: editorContentRef.current?.language,
+          context: {
+            ...(problemContext ? {
+              problemId: problemContext.problemId,
+              assignmentId: problemContext.assignmentId,
+              editorCode: editorContentRef.current?.code,
+              editorLanguage: editorContentRef.current?.language,
+            } : {}),
+            submissionId,
             sessionId: sessionId ?? undefined,
-          } : sessionId ? { sessionId } : undefined,
+            // Captured at send time so it reflects the current tab/state of the page
+            page: capturePageSnapshot() ?? undefined,
+          },
         }),
         signal: controller.signal,
       });
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        setError(data.error === "rateLimit" ? t("errorRateLimit") : t("errorGeneric"));
+        setError(
+          data.error === "rateLimit"
+            ? t("errorRateLimit")
+            : data.error === "aiDisabled" || data.error === "aiDisabledForProblem"
+              ? t("errorUnavailable")
+              : t("errorGeneric")
+        );
         setMessages((prev) => prev.slice(0, -1));
         setIsStreaming(false);
         return;
@@ -260,7 +276,7 @@ export default function ChatWidget() {
       setIsStreaming(false);
       abortControllerRef.current = null;
     }
-  }, [problemContext, sessionId, t]);
+  }, [problemContext, submissionId, sessionId, t]);
 
   // Keep sendMessageRef synchronized so effects always call the latest sendMessage
   useEffect(() => { sendMessageRef.current = sendMessage; }, [sendMessage]);

@@ -2183,6 +2183,7 @@
       "thinking": "답변 작성 중",
       "errorGeneric": "문제가 생겼어요. 다시 시도해 주세요.",
       "errorRateLimit": "메시지를 너무 빨리 보냈어요. 잠시 후 다시 시도해 주세요.",
+      "errorUnavailable": "이 페이지에서는 AI 도우미를 쓸 수 없어요.",
       "errorNotConfigured": "채팅이 설정돼 있지 않아요. 관리자에게 문의해 주세요.",
       "provider": "AI 제공자",
       "apiKey": "API 키",
