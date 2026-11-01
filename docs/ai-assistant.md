@@ -32,6 +32,13 @@ not serve the assistant for that problem. The chat route
 (`POST /api/v1/plugins/chat-widget/chat`) enforces both the global context gate
 and the per-problem gate before responding.
 
+The per-problem toggle gates **chat only**. The post-judge AI code review
+(`src/lib/judge/auto-review.ts`, posted as a comment on accepted submissions)
+is not live help, so it ignores the toggle. It still honours the master
+`aiAssistantEnabled` switch, the `autoCodeReviewEnabled` setting, and a
+contest's `aiAssistantPolicy: 'forbid'`. To keep reviews out of an exam, set
+the contest policy to `forbid`.
+
 ---
 
 ## Page context

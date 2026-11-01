@@ -354,7 +354,9 @@ Provider/model/API key are set per provider on the plugin admin page
 - **Gating**: `aiAssistantEnabled` system setting (Settings → General); forced
   **off** by default in exam/contest/recruiting modes unless
   `allowAiAssistantInRestrictedModes` is set. Also a per-problem
-  `problems.allowAiAssistant` toggle. Logic in `src/lib/system-settings.ts`
+  `problems.allowAiAssistant` toggle, which gates **chat only** — the
+  post-judge auto code review ignores it (contest `aiAssistantPolicy: 'forbid'`
+  still suppresses reviews). Logic in `src/lib/system-settings.ts`
   (`isAiAssistantEnabled` / `getEffectiveModeRestrictions`).
 - **Page context**: every request carries a snapshot of the page being viewed
   (pathname, title, `#main-content` text ≤ 8,000 chars; `page-context.ts`).

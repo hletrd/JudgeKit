@@ -204,13 +204,13 @@ describe("generateAndStoreReview", () => {
     expect(chatWithToolsMock).not.toHaveBeenCalled();
   });
 
-  it("is disabled when the per-problem AI assistant is off", async () => {
+  it("still reviews when the per-problem AI assistant is off (that toggle gates chat only)", async () => {
     submissionsFindFirstMock.mockResolvedValue(
       baseSubmission({ problem: { title: "T", description: "d", allowAiAssistant: false } }),
     );
     const result = await generateAndStoreReview("sub-1");
-    expect(result).toEqual({ status: "disabled", reason: "problemAiDisabled" });
-    expect(chatWithToolsMock).not.toHaveBeenCalled();
+    expect(result).toEqual({ status: "created" });
+    expect(chatWithToolsMock).toHaveBeenCalledTimes(1);
   });
 
   it("is disabled when AI is off for the submission context", async () => {

@@ -58,10 +58,10 @@ export function hasReviewQueueCapacity(): boolean {
  * (`authorId = NULL`) comment. This is the reusable core shared by the
  * auto-trigger, the admin manual trigger, and the bulk backfill.
  *
- * Preserves every guard from the original auto-trigger: source-byte cap,
- * AI-enabled-for-context, chat-widget plugin enabled/configured, per-problem
- * `allowAiAssistant`, and the "skip if an AI comment already exists" dedup —
- * the dedup is bypassed only when `opts.force` is set.
+ * Guards: source-byte cap, AI-enabled-for-context, chat-widget plugin
+ * enabled/configured, and the "skip if an AI comment already exists" dedup —
+ * the dedup is bypassed only when `opts.force` is set. The per-problem
+ * `allowAiAssistant` toggle gates chat only and is not checked here.
  *
  * Errors never throw: any failure is logged and returned as `{ status: "error" }`
  * so callers (including the fire-and-forget judge pipeline) are never affected.
@@ -90,7 +90,7 @@ export async function generateAndStoreReview(
           columns: { preferredLanguage: true },
         },
         problem: {
-          columns: { title: true, description: true, allowAiAssistant: true },
+          columns: { title: true, description: true },
         },
       },
     });
@@ -180,10 +180,12 @@ export async function generateAndStoreReview(
     const problemTitle = submission.problem?.title ?? "Unknown";
     const problemDescription = stripHiddenNotes(submission.problem?.description ?? "");
 
-    // Check if per-problem AI is enabled
-    if (submission.problem && !submission.problem.allowAiAssistant) {
-      return { status: "disabled", reason: "problemAiDisabled" };
-    }
+    // The per-problem `allowAiAssistant` toggle is deliberately NOT checked:
+    // it gates live chat help while solving, and a post-verdict review is not
+    // live help (same reasoning as `interactive: false` above). Honoring it
+    // here silently dropped most reviews — exam problems are routinely
+    // created with it off. A contest's `aiAssistantPolicy: 'forbid'` still
+    // suppresses reviews for its submissions.
 
     // Determine review language from user preference, default to Korean
     const reviewLanguage = submission.user?.preferredLanguage ?? "ko";
