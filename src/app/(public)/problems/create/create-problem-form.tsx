@@ -125,9 +125,11 @@ export default function CreateProblemForm({
   const [showCompileOutput, setShowCompileOutput] = useState(initialProblem?.showCompileOutput ?? true);
   const [showDetailedResults, setShowDetailedResults] = useState(initialProblem?.showDetailedResults ?? true);
   const [showRuntimeErrors, setShowRuntimeErrors] = useState(initialProblem?.showRuntimeErrors ?? true);
-  const [allowAiAssistant, setAllowAiAssistant] = useState(
-    forceDisableAiAssistant ? false : (initialProblem?.allowAiAssistant ?? true)
-  );
+  // Holds the stored per-problem value. A restricted platform mode only forces
+  // the checkbox to show "off" (the mode is enforced at runtime); saving it
+  // would bake the restriction into the problem and keep AI off after the
+  // mode changes back.
+  const [allowAiAssistant, setAllowAiAssistant] = useState(initialProblem?.allowAiAssistant ?? true);
   const [comparisonMode, setComparisonMode] = useState<"exact" | "float">(initialProblem?.comparisonMode ?? "exact");
   // Auto problems default the visible tolerance to "1e-6"; function problems whose
   // double return forces float comparison instead start blank so a blank field
@@ -184,7 +186,7 @@ export default function CreateProblemForm({
     showCompileOutput !== (initialProblem?.showCompileOutput ?? true) ||
     showDetailedResults !== (initialProblem?.showDetailedResults ?? true) ||
     showRuntimeErrors !== (initialProblem?.showRuntimeErrors ?? true) ||
-    allowAiAssistant !== (forceDisableAiAssistant ? false : (initialProblem?.allowAiAssistant ?? true)) ||
+    allowAiAssistant !== (initialProblem?.allowAiAssistant ?? true) ||
     comparisonMode !== (initialProblem?.comparisonMode ?? "exact") ||
     difficulty !== (initialProblem?.difficulty?.toString() ?? "") ||
     defaultLanguage !== (initialProblem?.defaultLanguage ?? "") ||
@@ -200,12 +202,6 @@ export default function CreateProblemForm({
     ));
 
   const { allowNextNavigation } = useUnsavedChangesGuard({ isDirty, warningMessage: t("unsavedChangesWarning") });
-
-  useEffect(() => {
-    if (forceDisableAiAssistant) {
-      setAllowAiAssistant(false);
-    }
-  }, [forceDisableAiAssistant]);
 
   // Tags state
   const [tagInput, setTagInput] = useState("");
@@ -936,7 +932,7 @@ export default function CreateProblemForm({
         </label>
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
-            checked={allowAiAssistant}
+            checked={forceDisableAiAssistant ? false : allowAiAssistant}
             onCheckedChange={(checked) => setAllowAiAssistant(checked === true)}
             disabled={isLoading || forceDisableAiAssistant}
           />
