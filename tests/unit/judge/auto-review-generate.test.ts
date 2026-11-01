@@ -78,6 +78,7 @@ import {
   generateAndStoreReview,
   triggerAutoCodeReview,
 } from "@/lib/judge/auto-review";
+import { logger } from "@/lib/logger";
 
 function baseSubmission(overrides: Record<string, unknown> = {}) {
   return {
@@ -254,6 +255,22 @@ describe("triggerAutoCodeReview (auto-trigger gate)", () => {
     await triggerAutoCodeReview("sub-1");
     expect(submissionsFindFirstMock).toHaveBeenCalledTimes(1);
     expect(chatWithToolsMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs why a review was not posted (skips are otherwise silent)", async () => {
+    getSystemSettingsMock.mockResolvedValue({ autoCodeReviewEnabled: true });
+    isPluginEnabledMock.mockResolvedValue(false);
+    await triggerAutoCodeReview("sub-1");
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.objectContaining({ submissionId: "sub-1", status: "disabled", reason: "pluginDisabled" }),
+      "[auto-review] Review not posted",
+    );
+  });
+
+  it("does not log a not-posted line when the review is created", async () => {
+    getSystemSettingsMock.mockResolvedValue({ autoCodeReviewEnabled: true });
+    await triggerAutoCodeReview("sub-1");
+    expect(logger.info).not.toHaveBeenCalledWith(expect.anything(), "[auto-review] Review not posted");
   });
 
   it("proceeds (default-enabled) when the setting is missing", async () => {

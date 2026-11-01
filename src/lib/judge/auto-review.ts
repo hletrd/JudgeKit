@@ -46,6 +46,18 @@ export type GenerateReviewOptions = {
   requireAccepted?: boolean;
 };
 
+/** Log why a review was not posted. `generateAndStoreReview` returns these
+ *  outcomes without logging (errors are logged where they happen), so without
+ *  this a review that never appears leaves no trace. */
+function logReviewNotPosted(submissionId: string, result: GenerateReviewResult): void {
+  if (result.status === "disabled" || result.status === "skipped") {
+    logger.info(
+      { submissionId, status: result.status, reason: result.reason },
+      "[auto-review] Review not posted",
+    );
+  }
+}
+
 /** True when the shared review limiter still has capacity for another enqueue.
  *  Used to bound cost/memory: both the auto-trigger and the backfill refuse to
  *  enqueue once the queue is full. */
@@ -324,7 +336,7 @@ export function enqueueReview(
 
   void reviewLimiter(async () => {
     try {
-      await generateAndStoreReview(submissionId, opts);
+      logReviewNotPosted(submissionId, await generateAndStoreReview(submissionId, opts));
     } catch (error) {
       // generateAndStoreReview already swallows its own errors, but guard the
       // limiter task against any unexpected throw so it never rejects.
@@ -361,7 +373,7 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
   // Skip if the review queue is already full — prevents unbounded memory and
   // cost accumulation when many submissions are accepted simultaneously.
   if (!hasReviewQueueCapacity()) {
-    logger.debug(
+    logger.info(
       { submissionId, max: MAX_REVIEW_QUEUE_SIZE },
       "[auto-review] Skipping — review queue is full",
     );
@@ -369,6 +381,6 @@ export async function triggerAutoCodeReview(submissionId: string): Promise<void>
   }
 
   await reviewLimiter(async () => {
-    await generateAndStoreReview(submissionId, { requireAccepted: true });
+    logReviewNotPosted(submissionId, await generateAndStoreReview(submissionId, { requireAccepted: true }));
   });
 }
